@@ -8,7 +8,7 @@ One builder at a time, in this order. FS-2 is held and not in the queue.
 
 | # | Ticket | Tier | What | Outcome |
 | --- | --- | --- | --- | --- |
-| 1 | FS-1 | simple | globalStore in bunfig | |
+| 1 | FS-1 | simple | globalStore in bunfig | ✅ gate and CI green (#3, 9f85aa2) |
 | 2 | FS-4 | simple | stale AGENTS.md line | |
 | 3 | FS-3 | simple | root build/test:e2e scripts | |
 | 4 | FS-6 | medium | C# server skeleton, Nx, CI, architecture doc | |
