@@ -71,8 +71,8 @@ the drizzle migrations. Add a pattern when a new generator appears. `**/*.md` is
 ## Cloudflare, domains and publishing are human steps
 
 The skeleton adds no Worker route and no custom domain: `featureslash.dev` is not registered. The
-`D1` binding in `apps/web/wrangler.jsonc` carries a placeholder id. Creating the GitHub repository,
-the D1 database, the Worker routes, and the first npm publish each wait for the maintainer's yes.
+`D1` binding in `apps/web/wrangler.jsonc` carries a placeholder id. Creating the D1 database, the
+Worker routes, and the first npm publish each wait for the maintainer's yes.
 `featureslash.dev` is used for canonical URLs and copy only.
 
 ## Landing
