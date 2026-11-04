@@ -42,16 +42,17 @@ force a rerun. There is no Nx Cloud here. Lint rules are all errors; fix the cod
 rule. A TODO carries an issue: `TODO(#123)`. Tests live in `packages/*/test/` and
 `apps/*/src/**/*.test.ts` and run with `bun --bun vitest`.
 
-A change to `apps/web` or `apps/site` also runs that app's gate (from the worktree root):
+A change to `apps/web` or `apps/site` also runs their builds, Playwright and Worker dry-runs (from the
+worktree root). `test:e2e` runs before `build`: web's e2e run leaves its own build behind, and `build` replaces it.
 
 ```bash
-bunx nx test:e2e web              # Playwright: builds with the e2e env on a fresh local D1
-bunx nx build web                 # after e2e: the e2e run leaves its own build behind
+bun run test:e2e                  # nx run-many -t test:e2e  (Playwright: web and site; web builds with the e2e env on a fresh local D1)
+bun run build                     # nx run-many -t build  (every project's build target: web, site, cli)
 (cd apps/web && bunx wrangler deploy --dry-run --outdir "$TMPDIR/fs-web-dry")
-bunx nx build site
-bunx nx test:e2e site
 (cd apps/site && bunx wrangler deploy --dry-run --outdir "$TMPDIR/fs-site-dry")
 ```
+
+One app: `bunx nx test:e2e web`, `bunx nx build site`.
 
 First time on a machine: `bunx playwright install chromium-headless-shell`.
 

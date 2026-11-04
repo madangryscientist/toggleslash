@@ -13,7 +13,9 @@
     "lint": "nx run-many -t lint",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
-    "test": "nx run-many -t test"
+    "build": "nx run-many -t build",
+    "test": "nx run-many -t test",
+    "test:e2e": "nx run-many -t test:e2e"
   },
   "devDependencies": {
     "@types/bun": "1.4.4",
