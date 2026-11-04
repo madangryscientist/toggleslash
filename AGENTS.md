@@ -23,8 +23,9 @@ A small Nx workspace on Bun workspaces:
 | `site` | `apps/site` | featureslash.dev: TanStack Start on a Worker, every page prerendered; no D1, no secrets |
 | `scripts` | `scripts` | `check-slop.ts`, `test-tmp-scope.ts` (typecheck + lint only) |
 
-`bunfig.toml` sets `[install] linker = "isolated"`: a package sees its own declared dependencies and
-the root's, not another package's. Declare what a package imports in that package's `package.json`.
+`bunfig.toml` sets `[install] linker = "isolated"` and `globalStore = true` (the shared package store that
+makes a warm worktree install fast): a package sees its own declared dependencies and the root's, not
+another package's. Declare what a package imports in that package's `package.json`.
 
 A change is green when all of these pass **from the worktree**:
 
