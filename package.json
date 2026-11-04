@@ -1,0 +1,27 @@
+{
+  "name": "featureslash-workspace",
+  "private": true,
+  "license": "MIT",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "featureslash": "bun packages/cli/src/index.ts",
+    "typecheck": "nx run-many -t typecheck",
+    "lint": "nx run-many -t lint",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "test": "nx run-many -t test"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.4",
+    "nx": "24.0.1",
+    "oxfmt": "0.74.0",
+    "oxlint": "1.89.0",
+    "oxlint-tsgolint": "7.0.2005",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}

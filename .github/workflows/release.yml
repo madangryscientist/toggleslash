@@ -1,0 +1,59 @@
+name: Release
+
+# Publishes the `@hackcove/featureslash` npm package (packages/cli) when a `v*` tag is pushed: the CI
+# gate first (ci.yml, called as it is), then `npm publish --provenance`. There is no NPM_TOKEN
+# anywhere: npm trusted publishing (OIDC) lets this workflow publish with a short-lived token that
+# npm checks against the trusted publisher set on the package's npm settings page (repository,
+# workflow file `release.yml`, environment `npm`). That page, the `npm` environment and the tag are
+# the maintainer's steps; nothing here runs until a tag is pushed. Actions are pinned to a commit;
+# the tag is in the comment.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Gate
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Publish to npm
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: npm
+    permissions:
+      contents: read
+      # The OIDC token npm trusted publishing and the provenance statement are signed with.
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.2"
+      # Trusted publishing needs npm 11.5.1 or newer, which Node 24 ships.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - name: The tag is the package's version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="$(node -p "require('./packages/cli/package.json').version")"
+          if [ "$TAG" != "v$version" ]; then
+            echo "tag $TAG does not match packages/cli version $version" >&2
+            exit 1
+          fi
+      - run: bun install --frozen-lockfile
+      - run: bunx nx build cli
+      - name: Ship the licence files
+        run: cp LICENSE NOTICE packages/cli/
+      - name: Publish
+        run: npm publish ./packages/cli --provenance --access public

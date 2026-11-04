@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "featureslash-site",
+  "compatibility_date": "2025-09-02",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "@tanstack/react-start/server-entry",
+  // The marketing site: every page is prerendered, so the Worker serves static files and holds no
+  // data (no D1, no R2, no secrets). It has no route: the product domain (featureslash.dev) is not
+  // registered yet, so attaching it as a custom domain is the first deploy's job, a human step.
+  "workers_dev": false,
+  "observability": { "enabled": false },
+}
