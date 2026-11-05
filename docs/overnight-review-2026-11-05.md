@@ -84,3 +84,11 @@ Each entry: what · why · ⚠ if unsure · how to undo.
 - **⚠** No-op rows are a judgment call: they record that someone asked, but they add noise to a flag's history. Filtering `before = after` on read would hide them.
 - **⚠** Deleting a segment or an entity leaves its audit rows in place by design, so an unknown flag on the project feed is an empty page, not a 404.
 - **Undo:** in `Audit/AuditLog.cs`, skip the write when before equals after.
+
+### FS-14 SDK read API choices (builder calls, accepted)
+
+- **What:** a new `sdk-key` policy (server or client) gates evaluate. The ETag hashes the exact response bytes, with no version counter or cache. An invalid context is a 400 before any flag is read, an unknown or archived `flagKey` is a 404, and a flag that cannot evaluate reports an ERROR reason in its own entry. Evaluate's CORS allows any origin, without credentials. Seven vectors are excluded from the endpoint test by name.
+- **Why:** hashing the bytes makes the ETag right by construction. A client key is public by design and goes in a header, so no cookie is at risk from any origin. Deferred read transactions keep SDK reads off SQLite's write lock (the skeptical review caught the default taking it).
+- **⚠** Every ruleset request reads and hashes the whole environment, even for a 304. Fine for now; FS-15 streaming and real traffic may want a cached version.
+- **⚠** A client key can evaluate any context and read every non-archived flag's value for it, with no rate limiting. That is the usual client-key trade, and it is worth deciding before anything is public.
+- **Undo:** tighten the origins in `Sdk/SdkEndpoints.cs`.
