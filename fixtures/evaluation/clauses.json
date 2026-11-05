@@ -1,0 +1,5459 @@
+{
+  "vectors": [
+    {
+      "name": "in: string equal",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "in: string different",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "free"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "in: any value may match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["free", "pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "in: case-sensitive",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["PRO"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "in: empty string equals empty string",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": [""]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": ""
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "in: no Unicode normalization, composed is not decomposed",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "name",
+                  "op": "in",
+                  "values": ["é"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "name": "é"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "in: number equal",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "age",
+                  "op": "in",
+                  "values": [30]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "age": 30
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "in: 1 equals 1.0",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "age",
+                  "op": "in",
+                  "values": [1.0]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "age": 1
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "in: -0 equals 0",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "age",
+                  "op": "in",
+                  "values": [0]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "age": -0.0
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "in: numbers are binary64, 2^53+1 reads as 2^53",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "in",
+                  "values": [9007199254740992]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 9007199254740993
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "in: boolean equal",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "beta",
+                  "op": "in",
+                  "values": [true]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "beta": true
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "in: boolean different",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "beta",
+                  "op": "in",
+                  "values": [false]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "beta": true
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "in: number attribute, string value",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "age",
+                  "op": "in",
+                  "values": ["30"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "age": 30
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "in: string attribute, number value",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "age",
+                  "op": "in",
+                  "values": [30]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "age": "30"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "in: boolean attribute, string value",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "beta",
+                  "op": "in",
+                  "values": ["true"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "beta": true
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "in: boolean attribute, number value",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "beta",
+                  "op": "in",
+                  "values": [1]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "beta": true
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "in: 0 is not false",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "in",
+                  "values": [false]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 0
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "in: empty string is not 0",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "in",
+                  "values": [0]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": ""
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "in: no values never matches",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": []
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "in: object attribute never matches",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "o",
+                  "op": "in",
+                  "values": ["a"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "o": {
+            "a": "a"
+          }
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "in: missing attribute",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "in: null attribute is missing",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": null
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "array attribute: any element may match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "tags",
+                  "op": "in",
+                  "values": ["b"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "tags": ["a", "b"]
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "array attribute: no element matches",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "tags",
+                  "op": "in",
+                  "values": ["c"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "tags": ["a", "b"]
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "array attribute: empty array",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "tags",
+                  "op": "in",
+                  "values": ["a"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "tags": []
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "array attribute: nested array is not flattened",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "tags",
+                  "op": "in",
+                  "values": ["a"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "tags": [["a"]]
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "array attribute: null element never matches",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "tags",
+                  "op": "in",
+                  "values": ["a"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "tags": [null]
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "array attribute: mixed types compare by element",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "tags",
+                  "op": "in",
+                  "values": [2]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "tags": ["2", 2]
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "array attribute: ordering op on elements",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "scores",
+                  "op": "gt",
+                  "values": [5]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "scores": [1, 9]
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "array attribute: string op on elements",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "emails",
+                  "op": "endsWith",
+                  "values": ["@a.io"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "emails": ["x@b.io", "y@a.io"]
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "contains: substring",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "email",
+                  "op": "contains",
+                  "values": ["@acme"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "email": "me@acme.io"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "contains: not a substring",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "email",
+                  "op": "contains",
+                  "values": ["@corp"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "email": "me@acme.io"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "contains: any value may match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "email",
+                  "op": "contains",
+                  "values": ["zzz", "acme"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "email": "me@acme.io"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "contains: case-sensitive",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "email",
+                  "op": "contains",
+                  "values": ["ACME"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "email": "me@acme.io"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "contains: empty value matches any string",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "email",
+                  "op": "contains",
+                  "values": [""]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "email": "me@acme.io"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "contains: empty value does not match a number",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "contains",
+                  "values": [""]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 5
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "contains: number attribute is not coerced",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "contains",
+                  "values": ["2"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 123
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "contains: number value is not coerced",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "contains",
+                  "values": [2]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "123"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "contains: comparison is ordinal, a soft hyphen is not ignorable",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "contains",
+                  "values": ["­"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "abc"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "contains: non-BMP substring",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "contains",
+                  "values": ["😀"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "a😀b"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "contains: missing attribute",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "contains",
+                  "values": ["a"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "startsWith: prefix",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "startsWith",
+                  "values": ["ab"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "abc"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "startsWith: not a prefix",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "startsWith",
+                  "values": ["bc"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "abc"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "startsWith: any value may match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "startsWith",
+                  "values": ["x", "a"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "abc"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "startsWith: case-sensitive",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "startsWith",
+                  "values": ["AB"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "abc"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "startsWith: empty value matches any string",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "startsWith",
+                  "values": [""]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "abc"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "startsWith: value longer than the attribute",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "startsWith",
+                  "values": ["abcd"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "abc"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "startsWith: ordinal, a soft hyphen is not ignorable",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "startsWith",
+                  "values": ["­a"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "abc"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "startsWith: number attribute is not coerced",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "startsWith",
+                  "values": ["1"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 123
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "startsWith: missing attribute",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "startsWith",
+                  "values": ["a"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "endsWith: suffix",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "endsWith",
+                  "values": ["bc"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "abc"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "endsWith: not a suffix",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "endsWith",
+                  "values": ["ab"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "abc"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "endsWith: any value may match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "endsWith",
+                  "values": ["x", "c"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "abc"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "endsWith: case-sensitive",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "endsWith",
+                  "values": ["BC"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "abc"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "endsWith: empty value matches any string",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "endsWith",
+                  "values": [""]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "abc"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "endsWith: value longer than the attribute",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "endsWith",
+                  "values": ["0abc"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "abc"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "endsWith: ordinal, a soft hyphen is not ignorable",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "endsWith",
+                  "values": ["c­"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "abc"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "endsWith: boolean attribute is not coerced",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "b",
+                  "op": "endsWith",
+                  "values": ["e"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "b": true
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "endsWith: missing attribute",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "endsWith",
+                  "values": ["a"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "lt: below",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "lt",
+                  "values": [5]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 4
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "lt: equal",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "lt",
+                  "values": [5]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 5
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "lt: above",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "lt",
+                  "values": [5]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 6
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "lte: below",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "lte",
+                  "values": [5]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 4
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "lte: equal",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "lte",
+                  "values": [5]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 5
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "lte: above",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "lte",
+                  "values": [5]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 6
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "gt: below",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "gt",
+                  "values": [5]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 4
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "gt: equal",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "gt",
+                  "values": [5]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 5
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "gt: above",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "gt",
+                  "values": [5]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 6
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "gte: below",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "gte",
+                  "values": [5]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 4
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "gte: equal",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "gte",
+                  "values": [5]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 5
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "gte: above",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "gte",
+                  "values": [5]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 6
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "lt: fractions and negatives",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "lt",
+                  "values": [-1.5]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": -2
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "lte: 1 and 1.0 are equal",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "lte",
+                  "values": [1.0]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 1
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "gte: -0 and 0 are equal",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "gte",
+                  "values": [0]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": -0.0
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "gt: any value may match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "gt",
+                  "values": [100, 1]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 5
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "lt: no values never matches",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "lt",
+                  "values": []
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 5
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "lt: strings order by code unit",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "lt",
+                  "values": ["b"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "a"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "gt: strings order by code unit",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "gt",
+                  "values": ["a"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "b"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "lte: equal strings",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "lte",
+                  "values": ["a"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "a"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "gte: equal strings",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "gte",
+                  "values": ["a"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "a"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "lt: ordinal, uppercase sorts before lowercase",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "lt",
+                  "values": ["a"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "B"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "lt: numeric strings order as text",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "lt",
+                  "values": ["9"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "10"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "gte: ISO-8601 dates order as text",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "date",
+                  "op": "gte",
+                  "values": ["2026-01-01"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "date": "2026-11-05"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "lt: UTF-16 order, a surrogate pair sorts before U+FF5E",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "lt",
+                  "values": ["～"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "😀"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "gt: a prefix sorts first",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "s",
+                  "op": "gt",
+                  "values": ["ab"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "s": "abc"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "lt: number attribute, string value",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "lt",
+                  "values": ["5"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 4
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "lt: string attribute, number value",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "lt",
+                  "values": [5]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": "4"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "lte: boolean attribute, boolean value",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "b",
+                  "op": "lte",
+                  "values": [true]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "b": true
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "gte: number attribute, boolean value",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "gte",
+                  "values": [false]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 1
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "gt: object attribute",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "o",
+                  "op": "gt",
+                  "values": [1]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "o": {
+            "a": 2
+          }
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "lt: missing attribute",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "lt",
+                  "values": [5]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "gte: null attribute is missing",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "gte",
+                  "values": [5]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": null
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "gt: an attribute that overflows binary64 never matches",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "gt",
+                  "values": [5]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 1e999
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "lt: a negative overflow never matches",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "lt",
+                  "values": [5]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": -1e999
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "negate: flips a match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "negate: flips a non-match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "free"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "negate: false leaves a match alone",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"],
+                  "negate": false
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "negate: missing attribute still does not match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "negate: null attribute still does not match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": null
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "negate: type mismatch flips to a match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "in",
+                  "values": ["5"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 5
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "negate: type mismatch on an ordering op flips to a match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "lt",
+                  "values": ["5"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 4
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "negate: type mismatch on a string op flips to a match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "contains",
+                  "values": ["1"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 1
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "negate: no values flips to a match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": [],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "negate: empty array is present, so it flips to a match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "tags",
+                  "op": "in",
+                  "values": ["a"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "tags": []
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "negate: applies after any-element, one match is enough to fail",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "tags",
+                  "op": "in",
+                  "values": ["a"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "tags": ["a", "b"]
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "negate: an overflowing number is a mismatch, so it flips to a match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "n",
+                  "op": "gt",
+                  "values": [5],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "n": 1e999
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "negate: null is the same as absent",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"],
+                  "negate": null
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "attribute: 'key' reads the context key",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "key",
+                  "op": "in",
+                  "values": ["user-1"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "attribute: 'key' ignores an attribute named key",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "key",
+                  "op": "in",
+                  "values": ["shadow"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "key": "shadow"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "attribute: 'key' with negate",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "key",
+                  "op": "in",
+                  "values": ["user-1"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "attribute: a name on the object prototype is missing",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "toString",
+                  "op": "in",
+                  "values": ["x"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "attribute: a prototype name with negate is still missing",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "constructor",
+                  "op": "in",
+                  "values": ["x"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "attribute: __proto__ is an ordinary name",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "__proto__",
+                  "op": "in",
+                  "values": ["x"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "__proto__": "x"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "attribute: a dotted name is literal, not a path",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "a.b",
+                  "op": "in",
+                  "values": ["x"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "a.b": "x"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "attribute: a dotted name does not walk objects",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "a.b",
+                  "op": "in",
+                  "values": ["x"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "a": {
+            "b": "x"
+          }
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "attribute: context with no attributes object",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1"
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "attribute: context with null attributes",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": null
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "clauses: all must match, all do",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "a",
+                  "op": "in",
+                  "values": [1]
+                },
+                {
+                  "attribute": "b",
+                  "op": "in",
+                  "values": [2]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "a": 1,
+          "b": 2
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "clauses: all must match, one fails",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "a",
+                  "op": "in",
+                  "values": [1]
+                },
+                {
+                  "attribute": "b",
+                  "op": "in",
+                  "values": [2]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "a": 1,
+          "b": 3
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "clauses: empty clauses always match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    }
+  ]
+}

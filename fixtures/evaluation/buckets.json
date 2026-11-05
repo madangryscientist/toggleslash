@@ -1,0 +1,102 @@
+{
+  "buckets": [
+    {
+      "flagKey": "f",
+      "salt": "s",
+      "contextKey": "user-1",
+      "uint32": 3482888805,
+      "bucket": 88805
+    },
+    {
+      "flagKey": "f",
+      "salt": "s",
+      "contextKey": "user-2",
+      "uint32": 595443664,
+      "bucket": 43664
+    },
+    {
+      "flagKey": "checkout",
+      "salt": "a1b2c3",
+      "contextKey": "user-123",
+      "uint32": 498645874,
+      "bucket": 45874
+    },
+    {
+      "flagKey": "new-nav",
+      "salt": "salt",
+      "contextKey": "org-42",
+      "uint32": 4100053703,
+      "bucket": 53703
+    },
+    {
+      "flagKey": "f",
+      "salt": "",
+      "contextKey": "user-1",
+      "uint32": 2357448977,
+      "bucket": 48977
+    },
+    {
+      "flagKey": "a.b",
+      "salt": "c",
+      "contextKey": "d",
+      "uint32": 1327824866,
+      "bucket": 24866
+    },
+    {
+      "flagKey": "a",
+      "salt": "b.c",
+      "contextKey": "d",
+      "uint32": 1327824866,
+      "bucket": 24866
+    },
+    {
+      "flagKey": "f",
+      "salt": "s",
+      "contextKey": "üser",
+      "uint32": 3102479544,
+      "bucket": 79544
+    },
+    {
+      "flagKey": "f",
+      "salt": "s",
+      "contextKey": "日本語",
+      "uint32": 550699140,
+      "bucket": 99140
+    },
+    {
+      "flagKey": "f",
+      "salt": "s",
+      "contextKey": "😀",
+      "uint32": 1344893494,
+      "bucket": 93494
+    },
+    {
+      "flagKey": "f",
+      "salt": "s",
+      "contextKey": "user-146458",
+      "uint32": 1568400000,
+      "bucket": 0
+    },
+    {
+      "flagKey": "f",
+      "salt": "s",
+      "contextKey": "user-222376",
+      "uint32": 1224999999,
+      "bucket": 99999
+    },
+    {
+      "flagKey": "très-longtrès-longtrès-longtrès-longtrès-longtrès-longtrès-longtrès-longtrès-longtrès-longtrès-longtrès-longtrès-longtrès-longtrès-longtrès-longtrès-longtrès-longtrès-longtrès-long",
+      "salt": "ssssssssssssssssssssssssssssssssssssssssssssssssss",
+      "contextKey": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+      "uint32": 815830358,
+      "bucket": 30358
+    },
+    {
+      "flagKey": "f",
+      "salt": "s",
+      "contextKey": "high-2",
+      "uint32": 2734137369,
+      "bucket": 37369
+    }
+  ]
+}

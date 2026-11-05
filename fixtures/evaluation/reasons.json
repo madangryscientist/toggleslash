@@ -1,0 +1,946 @@
+{
+  "vectors": [
+    {
+      "name": "OFF: serves the off variation",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": false,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "OFF"
+        }
+      }
+    },
+    {
+      "name": "OFF: serves whichever index offVariation names",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": false,
+          "offVariation": 1,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "OFF"
+        }
+      }
+    },
+    {
+      "name": "OFF: no off variation serves null",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": false,
+          "offVariation": null,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "OFF"
+        }
+      }
+    },
+    {
+      "name": "OFF: absent off variation serves null",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": false,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "OFF"
+        }
+      }
+    },
+    {
+      "name": "OFF: beats a target",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": false,
+          "offVariation": 0,
+          "targets": [
+            {
+              "variation": 1,
+              "contextKeys": ["user-1"]
+            }
+          ],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "OFF"
+        }
+      }
+    },
+    {
+      "name": "OFF: beats a rule",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": false,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "OFF"
+        }
+      }
+    },
+    {
+      "name": "TARGET_MATCH: key is listed",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [
+            {
+              "variation": 1,
+              "contextKeys": ["user-1"]
+            }
+          ],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "TARGET_MATCH"
+        }
+      }
+    },
+    {
+      "name": "TARGET_MATCH: key is not listed",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [
+            {
+              "variation": 1,
+              "contextKeys": ["user-2"]
+            }
+          ],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "TARGET_MATCH: keys are case-sensitive",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [
+            {
+              "variation": 1,
+              "contextKeys": ["USER-1"]
+            }
+          ],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "TARGET_MATCH: first listed target wins",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": ["a", "b", "c"],
+          "on": true,
+          "offVariation": 0,
+          "targets": [
+            {
+              "variation": 2,
+              "contextKeys": ["user-1"]
+            },
+            {
+              "variation": 1,
+              "contextKeys": ["user-1"]
+            }
+          ],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": "c",
+        "variationIndex": 2,
+        "reason": {
+          "kind": "TARGET_MATCH"
+        }
+      }
+    },
+    {
+      "name": "TARGET_MATCH: beats a rule",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": ["a", "b", "c"],
+          "on": true,
+          "offVariation": 0,
+          "targets": [
+            {
+              "variation": 2,
+              "contextKeys": ["user-1"]
+            }
+          ],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": "c",
+        "variationIndex": 2,
+        "reason": {
+          "kind": "TARGET_MATCH"
+        }
+      }
+    },
+    {
+      "name": "RULE_MATCH: first rule",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": ["a", "b", "c"],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [],
+              "variation": 1
+            },
+            {
+              "clauses": [],
+              "variation": 2
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": "b",
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "RULE_MATCH: first that matches, in order",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": ["a", "b", "c"],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "a",
+                  "op": "in",
+                  "values": [1]
+                }
+              ],
+              "variation": 1
+            },
+            {
+              "clauses": [
+                {
+                  "attribute": "b",
+                  "op": "in",
+                  "values": [2]
+                }
+              ],
+              "variation": 2
+            },
+            {
+              "clauses": [],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "b": 2
+        }
+      },
+      "expected": {
+        "value": "c",
+        "variationIndex": 2,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 1
+        }
+      }
+    },
+    {
+      "name": "RULE_MATCH: index counts rules that did not match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": ["a", "b", "c"],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "a",
+                  "op": "in",
+                  "values": [1]
+                }
+              ],
+              "variation": 1
+            },
+            {
+              "clauses": [
+                {
+                  "attribute": "a",
+                  "op": "in",
+                  "values": [2]
+                }
+              ],
+              "variation": 1
+            },
+            {
+              "clauses": [],
+              "variation": 2
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": "c",
+        "variationIndex": 2,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 2
+        }
+      }
+    },
+    {
+      "name": "RULE_MATCH: beats fallthrough",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "FALLTHROUGH: no rules",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "FALLTHROUGH: no rule matched",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "a",
+                  "op": "in",
+                  "values": [1]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "value: a string variation",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": ["x", "y"],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": "y",
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "value: a number variation",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [1, 2.5],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": 2.5,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "value: an object variation",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [
+            {},
+            {
+              "a": [
+                1,
+                {
+                  "b": null
+                }
+              ]
+            }
+          ],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": {
+          "a": [
+            1,
+            {
+              "b": null
+            }
+          ]
+        },
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "value: an array variation",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [[], [1, "2"]],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": [1, "2"],
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "value: a null variation still has its index",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [null, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "indexes: 1.0 is the integer 1",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1.0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "serve: null rollout next to a variation is absent",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1,
+            "rollout": null
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "version: does not affect the result",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 99
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    }
+  ]
+}

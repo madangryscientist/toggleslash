@@ -1,8 +1,12 @@
 /**
- * The FeatureSlash engine: where flag evaluation will live. It is a skeleton for now. It names the
- * package and its version and nothing else, so the CLI, the web app and the site have one place to
- * import from before there is anything to evaluate.
+ * The FeatureSlash engine: flag evaluation for TypeScript, implementing `docs/evaluation.md`. It uses
+ * nothing runtime-specific, so it runs in Workers, Bun, Node and browsers.
  */
+export type { Context } from "./clause.ts";
+export { evaluate } from "./evaluate.ts";
+export type { ErrorCode, EvaluationResult, Reason } from "./result.ts";
+export { createRuleset, type Ruleset } from "./ruleset.ts";
+
 export const ENGINE_NAME = "featureslash-engine";
 
 export const ENGINE_VERSION = "0.0.0";

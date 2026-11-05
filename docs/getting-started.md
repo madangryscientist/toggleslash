@@ -1,6 +1,7 @@
 # Getting started
 
-FeatureSlash is a skeleton: there are no flags to evaluate yet. What you can do today:
+FeatureSlash is early: the engine evaluates flags ([`evaluation.md`](evaluation.md)), but there is no
+server API or SDK to serve them yet, so the CLI does not use it. What you can do today:
 
 ```bash
 bun install

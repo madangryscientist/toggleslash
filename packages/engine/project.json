@@ -9,6 +9,7 @@
       "command": "oxlint --type-aware --deny-warnings packages/engine && bun scripts/check-slop.ts packages/engine"
     },
     "test": {
+      "inputs": ["default", "^default", "{workspaceRoot}/fixtures/evaluation/**/*"],
       "command": "bun --bun vitest run",
       "options": { "cwd": "packages/engine" }
     }

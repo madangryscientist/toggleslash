@@ -4,10 +4,13 @@ FeatureSlash is an open source feature flag service, a LaunchDarkly competitor: 
 engine, manage them from a CLI and a hosted dashboard. The product domain is `featureslash.dev`
 (not registered yet, so nothing is routed to it).
 
-**This repository is a skeleton.** It has the structure, the gate and the CI, and no flag product
-features. The engine exports a name and a version; the dashboard and the site each render one page,
-and the C# server answers `GET /health`. Flag evaluation, storage and the API arrive as their own
-tickets. The design they build on is in [`docs/architecture.md`](docs/architecture.md).
+**This repository is early.** The engine evaluates flags; the dashboard and the site each render one
+page, and the C# server answers `GET /health`. Storage, the API and server-side evaluation arrive as
+their own tickets. The design they build on is in [`docs/architecture.md`](docs/architecture.md).
+
+**Evaluation is specified once and implemented per language.** [`docs/evaluation.md`](docs/evaluation.md)
+is normative and `fixtures/evaluation/` is its executable form. A change to evaluation changes the spec,
+the vectors and every implementation together, and nothing in it may depend on one language's runtime.
 
 This file is the operating agreement for contributors and agents working here: the gate, the landing
 rule and the invariants. Keep it accurate.
@@ -18,7 +21,7 @@ A small Nx workspace on Bun workspaces:
 
 | Project | Path | What it is |
 | --- | --- | --- |
-| `engine` | `packages/engine` | flag evaluation (a stub today) |
+| `engine` | `packages/engine` | flag evaluation, to `docs/evaluation.md`; `test/vectors.test.ts` runs every shared vector |
 | `cli` | `packages/cli` | the `featureslash` bin: argv, stdout and exit codes, over `@hackcove/featureslash-engine` |
 | `web` | `apps/web` | the dashboard: TanStack Start on Cloudflare Workers, D1 via Drizzle (one placeholder table) |
 | `site` | `apps/site` | featureslash.dev: TanStack Start on a Worker, every page prerendered; no D1, no secrets |
@@ -93,7 +96,7 @@ the drizzle migrations. Add a pattern when a new generator appears. `**/*.md` is
 
 ## Cloudflare, domains and publishing are human steps
 
-The skeleton adds no Worker route and no custom domain: `featureslash.dev` is not registered. The
+The repo adds no Worker route and no custom domain: `featureslash.dev` is not registered. The
 `D1` binding in `apps/web/wrangler.jsonc` carries a placeholder id. Creating the D1 database, the
 Worker routes, and the first npm publish each wait for the maintainer's yes.
 `featureslash.dev` is used for canonical URLs and copy only.

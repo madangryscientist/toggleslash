@@ -1,0 +1,6488 @@
+{
+  "vectors": [
+    {
+      "name": "met: proceeds to fallthrough",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "met: proceeds to rules",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 1
+            }
+          ],
+          "rules": [
+            {
+              "clauses": [],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "met: by a target on the prerequisite",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [
+            {
+              "variation": 1,
+              "contextKeys": ["user-1"]
+            }
+          ],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "met: by a rule on the prerequisite",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "met: all of several",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 1
+            },
+            {
+              "flagKey": "q",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "q",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "met: transitively",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "q",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "q",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "met: a diamond is not a cycle",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l",
+              "variation": 1
+            },
+            {
+              "flagKey": "r",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "d",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "d",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "d",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "met: a flag listed twice is not a cycle",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 1
+            },
+            {
+              "flagKey": "p",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "failed: wrong variation serves off",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 0
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "PREREQUISITE_FAILED",
+          "flagKey": "p"
+        }
+      }
+    },
+    {
+      "name": "failed: required variation does not exist",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 7
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "PREREQUISITE_FAILED",
+          "flagKey": "p"
+        }
+      }
+    },
+    {
+      "name": "failed: off prerequisite fails even when its off variation is the required one",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 0
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": false,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "PREREQUISITE_FAILED",
+          "flagKey": "p"
+        }
+      }
+    },
+    {
+      "name": "failed: no off variation serves null",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": null,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 0
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "PREREQUISITE_FAILED",
+          "flagKey": "p"
+        }
+      }
+    },
+    {
+      "name": "failed: names the first failure in order",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 1
+            },
+            {
+              "flagKey": "q",
+              "variation": 0
+            },
+            {
+              "flagKey": "r",
+              "variation": 0
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "q",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "PREREQUISITE_FAILED",
+          "flagKey": "q"
+        }
+      }
+    },
+    {
+      "name": "failed: beats a target",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [
+            {
+              "variation": 1,
+              "contextKeys": ["user-1"]
+            }
+          ],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 0
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "PREREQUISITE_FAILED",
+          "flagKey": "p"
+        }
+      }
+    },
+    {
+      "name": "failed: beats a rule",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 0
+            }
+          ],
+          "rules": [
+            {
+              "clauses": [],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "PREREQUISITE_FAILED",
+          "flagKey": "p"
+        }
+      }
+    },
+    {
+      "name": "failed: nested, names the direct prerequisite",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "q",
+              "variation": 0
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "q",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "PREREQUISITE_FAILED",
+          "flagKey": "p"
+        }
+      }
+    },
+    {
+      "name": "failed: nested failure fails even when the served off variation is the required one",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 0
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "q",
+              "variation": 0
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "q",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "PREREQUISITE_FAILED",
+          "flagKey": "p"
+        }
+      }
+    },
+    {
+      "name": "off: beats a missing prerequisite",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": false,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "gone",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "OFF"
+        }
+      }
+    },
+    {
+      "name": "off: beats a self-cycle",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": false,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "f",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "OFF"
+        }
+      }
+    },
+    {
+      "name": "missing prerequisite is an error",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "gone",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "FLAG_NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "missing nested prerequisite is an error",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "gone",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "FLAG_NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "malformed prerequisite is an error",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p"
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_FLAG"
+        }
+      }
+    },
+    {
+      "name": "cycle: a flag on itself",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "f",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "PREREQUISITE_CYCLE"
+        }
+      }
+    },
+    {
+      "name": "cycle: two flags",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "f",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "PREREQUISITE_CYCLE"
+        }
+      }
+    },
+    {
+      "name": "cycle: three flags",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "q",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "q",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "f",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "PREREQUISITE_CYCLE"
+        }
+      }
+    },
+    {
+      "name": "cycle: below the requested flag",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "q",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "q",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "PREREQUISITE_CYCLE"
+        }
+      }
+    },
+    {
+      "name": "cycle: an off flag breaks it, so it is a failed prerequisite",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": false,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "f",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "PREREQUISITE_FAILED",
+          "flagKey": "p"
+        }
+      }
+    },
+    {
+      "name": "cycle: not reached after an earlier failure",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "p",
+              "variation": 0
+            },
+            {
+              "flagKey": "f",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "p",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "PREREQUISITE_FAILED",
+          "flagKey": "p"
+        }
+      }
+    },
+    {
+      "name": "depth: a chain of exactly 32 links evaluates",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c1",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c1",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c2",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c2",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c3",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c3",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c4",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c4",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c5",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c5",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c6",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c6",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c7",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c7",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c8",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c8",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c9",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c9",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c10",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c10",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c11",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c11",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c12",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c12",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c13",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c13",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c14",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c14",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c15",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c15",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c16",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c16",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c17",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c17",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c18",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c18",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c19",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c19",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c20",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c20",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c21",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c21",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c22",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c22",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c23",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c23",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c24",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c24",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c25",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c25",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c26",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c26",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c27",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c27",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c28",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c28",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c29",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c29",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c30",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c30",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c31",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c31",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c32",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c32",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "depth: 33 links is an error",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c1",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c1",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c2",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c2",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c3",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c3",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c4",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c4",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c5",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c5",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c6",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c6",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c7",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c7",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c8",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c8",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c9",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c9",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c10",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c10",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c11",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c11",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c12",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c12",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c13",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c13",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c14",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c14",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c15",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c15",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c16",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c16",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c17",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c17",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c18",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c18",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c19",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c19",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c20",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c20",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c21",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c21",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c22",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c22",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c23",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c23",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c24",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c24",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c25",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c25",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c26",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c26",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c27",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c27",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c28",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c28",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c29",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c29",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c30",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c30",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c31",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c31",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c32",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c32",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c33",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c33",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "PREREQUISITE_DEPTH_EXCEEDED"
+        }
+      }
+    },
+    {
+      "name": "depth: a cycle longer than the limit reports depth",
+      "flagKey": "c0",
+      "flags": [
+        {
+          "key": "c0",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c1",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c1",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c2",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c2",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c3",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c3",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c4",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c4",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c5",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c5",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c6",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c6",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c7",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c7",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c8",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c8",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c9",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c9",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c10",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c10",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c11",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c11",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c12",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c12",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c13",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c13",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c14",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c14",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c15",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c15",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c16",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c16",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c17",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c17",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c18",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c18",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c19",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c19",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c20",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c20",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c21",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c21",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c22",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c22",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c23",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c23",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c24",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c24",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c25",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c25",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c26",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c26",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c27",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c27",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c28",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c28",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c29",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c29",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c30",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c30",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c31",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c31",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c32",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c32",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c33",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c33",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c34",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c34",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c35",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c35",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c36",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c36",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c37",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c37",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c38",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c38",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c39",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c39",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c0",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "PREREQUISITE_DEPTH_EXCEEDED"
+        }
+      }
+    },
+    {
+      "name": "depth: a result completed shallow is reused at depth 33",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "shared",
+              "variation": 1
+            },
+            {
+              "flagKey": "c1",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "shared",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c1",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c2",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c2",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c3",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c3",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c4",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c4",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c5",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c5",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c6",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c6",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c7",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c7",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c8",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c8",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c9",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c9",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c10",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c10",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c11",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c11",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c12",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c12",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c13",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c13",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c14",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c14",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c15",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c15",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c16",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c16",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c17",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c17",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c18",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c18",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c19",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c19",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c20",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c20",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c21",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c21",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c22",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c22",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c23",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c23",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c24",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c24",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c25",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c25",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c26",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c26",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c27",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c27",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c28",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c28",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c29",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c29",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c30",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c30",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c31",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c31",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c32",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c32",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "shared",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "depth: the same graph in the other order reaches it first at depth 33",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c1",
+              "variation": 1
+            },
+            {
+              "flagKey": "shared",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "shared",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c1",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c2",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c2",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c3",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c3",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c4",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c4",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c5",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c5",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c6",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c6",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c7",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c7",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c8",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c8",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c9",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c9",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c10",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c10",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c11",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c11",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c12",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c12",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c13",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c13",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c14",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c14",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c15",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c15",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c16",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c16",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c17",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c17",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c18",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c18",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c19",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c19",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c20",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c20",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c21",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c21",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c22",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c22",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c23",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c23",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c24",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c24",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c25",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c25",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c26",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c26",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c27",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c27",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c28",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c28",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c29",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c29",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c30",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c30",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c31",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c31",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "c32",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "c32",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "shared",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "PREREQUISITE_DEPTH_EXCEEDED"
+        }
+      }
+    },
+    {
+      "name": "reuse: a 30-level binary ladder finishes because each flag evaluates once",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "l0",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l1",
+              "variation": 1
+            },
+            {
+              "flagKey": "r1",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r0",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l1",
+              "variation": 1
+            },
+            {
+              "flagKey": "r1",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l1",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l2",
+              "variation": 1
+            },
+            {
+              "flagKey": "r2",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r1",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l2",
+              "variation": 1
+            },
+            {
+              "flagKey": "r2",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l2",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l3",
+              "variation": 1
+            },
+            {
+              "flagKey": "r3",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r2",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l3",
+              "variation": 1
+            },
+            {
+              "flagKey": "r3",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l3",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l4",
+              "variation": 1
+            },
+            {
+              "flagKey": "r4",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r3",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l4",
+              "variation": 1
+            },
+            {
+              "flagKey": "r4",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l4",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l5",
+              "variation": 1
+            },
+            {
+              "flagKey": "r5",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r4",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l5",
+              "variation": 1
+            },
+            {
+              "flagKey": "r5",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l5",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l6",
+              "variation": 1
+            },
+            {
+              "flagKey": "r6",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r5",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l6",
+              "variation": 1
+            },
+            {
+              "flagKey": "r6",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l6",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l7",
+              "variation": 1
+            },
+            {
+              "flagKey": "r7",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r6",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l7",
+              "variation": 1
+            },
+            {
+              "flagKey": "r7",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l7",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l8",
+              "variation": 1
+            },
+            {
+              "flagKey": "r8",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r7",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l8",
+              "variation": 1
+            },
+            {
+              "flagKey": "r8",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l8",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l9",
+              "variation": 1
+            },
+            {
+              "flagKey": "r9",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r8",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l9",
+              "variation": 1
+            },
+            {
+              "flagKey": "r9",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l9",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l10",
+              "variation": 1
+            },
+            {
+              "flagKey": "r10",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r9",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l10",
+              "variation": 1
+            },
+            {
+              "flagKey": "r10",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l10",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l11",
+              "variation": 1
+            },
+            {
+              "flagKey": "r11",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r10",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l11",
+              "variation": 1
+            },
+            {
+              "flagKey": "r11",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l11",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l12",
+              "variation": 1
+            },
+            {
+              "flagKey": "r12",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r11",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l12",
+              "variation": 1
+            },
+            {
+              "flagKey": "r12",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l12",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l13",
+              "variation": 1
+            },
+            {
+              "flagKey": "r13",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r12",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l13",
+              "variation": 1
+            },
+            {
+              "flagKey": "r13",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l13",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l14",
+              "variation": 1
+            },
+            {
+              "flagKey": "r14",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r13",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l14",
+              "variation": 1
+            },
+            {
+              "flagKey": "r14",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l14",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l15",
+              "variation": 1
+            },
+            {
+              "flagKey": "r15",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r14",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l15",
+              "variation": 1
+            },
+            {
+              "flagKey": "r15",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l15",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l16",
+              "variation": 1
+            },
+            {
+              "flagKey": "r16",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r15",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l16",
+              "variation": 1
+            },
+            {
+              "flagKey": "r16",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l16",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l17",
+              "variation": 1
+            },
+            {
+              "flagKey": "r17",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r16",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l17",
+              "variation": 1
+            },
+            {
+              "flagKey": "r17",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l17",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l18",
+              "variation": 1
+            },
+            {
+              "flagKey": "r18",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r17",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l18",
+              "variation": 1
+            },
+            {
+              "flagKey": "r18",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l18",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l19",
+              "variation": 1
+            },
+            {
+              "flagKey": "r19",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r18",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l19",
+              "variation": 1
+            },
+            {
+              "flagKey": "r19",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l19",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l20",
+              "variation": 1
+            },
+            {
+              "flagKey": "r20",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r19",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l20",
+              "variation": 1
+            },
+            {
+              "flagKey": "r20",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l20",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l21",
+              "variation": 1
+            },
+            {
+              "flagKey": "r21",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r20",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l21",
+              "variation": 1
+            },
+            {
+              "flagKey": "r21",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l21",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l22",
+              "variation": 1
+            },
+            {
+              "flagKey": "r22",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r21",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l22",
+              "variation": 1
+            },
+            {
+              "flagKey": "r22",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l22",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l23",
+              "variation": 1
+            },
+            {
+              "flagKey": "r23",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r22",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l23",
+              "variation": 1
+            },
+            {
+              "flagKey": "r23",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l23",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l24",
+              "variation": 1
+            },
+            {
+              "flagKey": "r24",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r23",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l24",
+              "variation": 1
+            },
+            {
+              "flagKey": "r24",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l24",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l25",
+              "variation": 1
+            },
+            {
+              "flagKey": "r25",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r24",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l25",
+              "variation": 1
+            },
+            {
+              "flagKey": "r25",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l25",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l26",
+              "variation": 1
+            },
+            {
+              "flagKey": "r26",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r25",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l26",
+              "variation": 1
+            },
+            {
+              "flagKey": "r26",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l26",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l27",
+              "variation": 1
+            },
+            {
+              "flagKey": "r27",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r26",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l27",
+              "variation": 1
+            },
+            {
+              "flagKey": "r27",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l27",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l28",
+              "variation": 1
+            },
+            {
+              "flagKey": "r28",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r27",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l28",
+              "variation": 1
+            },
+            {
+              "flagKey": "r28",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l28",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l29",
+              "variation": 1
+            },
+            {
+              "flagKey": "r29",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r28",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l29",
+              "variation": 1
+            },
+            {
+              "flagKey": "r29",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l29",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l30",
+              "variation": 1
+            },
+            {
+              "flagKey": "r30",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r29",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l30",
+              "variation": 1
+            },
+            {
+              "flagKey": "r30",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "l30",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "r30",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        },
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [
+            {
+              "flagKey": "l0",
+              "variation": 1
+            },
+            {
+              "flagKey": "r0",
+              "variation": 1
+            }
+          ],
+          "rules": [],
+          "fallthrough": {
+            "variation": 1
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    }
+  ]
+}
