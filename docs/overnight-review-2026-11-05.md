@@ -12,6 +12,7 @@ One builder at a time, in this order. FS-2 is held and not in the queue.
 | 2 | FS-4 | simple | stale AGENTS.md line | ✅ gate and CI green (#4, d3a978b) |
 | 3 | FS-3 | simple | root build/test:e2e scripts | ✅ gate and CI green (#5, dd6a9ad) |
 | 4 | FS-6 | medium | C# server skeleton, Nx, CI, architecture doc | ✅ gate, 2 xunit, CI green (#6, c81cc75) |
+| 4a | FS-25 | simple | e2e ports collide with PixelSlash (added tonight) | |
 | 5 | FS-7 | complex | evaluation spec, vectors, TS engine | |
 | 6 | FS-8 | medium | C# evaluator | |
 | 7 | FS-9 | complex | EF Core on SQLite | |
@@ -49,3 +50,6 @@ Each entry: what · why · ⚠ if unsure · how to undo.
 
 - **`ob issue landed` replaced by `git log --grep` for the pre-dispatch check.** What: before each dispatch I check `git log origin/main --grep 'FS-n'` in the FeatureSlash checkout. Why: `ob issue landed FS-1` refuses from this repo ("not the tracker repo") and answering from omnibus would read the wrong history. ⚠ Low risk: squash subjects carry the `(FS-n)` scope, so the grep finds a landed ticket. Undo: nothing to undo; use `ob issue landed` once it reads FeatureSlash.
 - **Watchdog scheduled.** Hourly task bound to this thread, clientRequestId `fs-overnight-watchdog-2026-11-05`. Deleted when the queue is done.
+- **FS-25 added and dispatched ahead of FS-7.** What: new ticket moving FeatureSlash's e2e ports from 4310/4320 to 4410/4420. Why: FS-6's site e2e failed in my gate because PixelSlash's `ps-316` builder held 4310, the port the scaffold inherited. It would keep failing gates overnight. ⚠ Low risk, a two-line change outside the planned queue. Undo: revert the FS-25 PR.
+- **FS-6 builder choices accepted.** What: `scripts/nx.ts` fails rather than skips when `CI` is set and no SDK runs; `setup-dotnet` is in the gate job only; the apps job sets `NX_DOTNET_DISABLE=true` and its filter is now `apps/(web|site)/`, so a server-only PR skips Playwright; `release.yml` also disables dotnet for the CLI build. Why: keeps the server in the gate without giving every job an SDK. ⚠ FS-23's cross-language e2e needs an SDK in whichever job runs it. Undo: edit `.github/workflows/ci.yml`.
+- **xunit tests sit outside `test-tmp-scope.ts`.** What: the FS-6 builder left the Vitest and Playwright temp-dir scope as TypeScript only and documented that. Why: it is a Vitest and Playwright `globalSetup`. ⚠ A later server test that writes scratch must use `$TMPDIR` and clean up itself. Undo: add a test fixture in `apps/server`.
