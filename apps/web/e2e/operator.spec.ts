@@ -87,6 +87,7 @@ test.describe("SDK keys", () => {
     // Leave and come back: the prefix stays, the secret does not.
     await page.getByTestId("nav-segments").click();
     await expect(page).toHaveURL(/\/segments/);
+    await expect(page.getByTestId("segments")).toBeVisible();
     await page.getByTestId("nav-keys").click();
     await expect(page.getByTestId("key-3")).toContainText("fs_srv_00000001");
     await expect(page.getByTestId("new-key")).toHaveCount(0);
