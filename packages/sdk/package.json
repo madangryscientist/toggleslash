@@ -1,0 +1,18 @@
+{
+  "name": "@hackcove/featureslash-sdk",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The FeatureSlash server-side SDK for TypeScript: local evaluation that never throws and never blocks.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@hackcove/featureslash-engine": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.4",
+    "vitest": "5.0.5"
+  }
+}

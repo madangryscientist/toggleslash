@@ -5,7 +5,7 @@ engine, manage them from a CLI and a hosted dashboard. The product domain is `fe
 (not registered yet, so nothing is routed to it).
 
 **This repository is early.** The engine evaluates flags; the dashboard and the site each render one
-page, and the C# server migrates its SQLite database, answers `GET /health`, authenticates (the admin token and hashed SDK keys) and serves the admin API: SDK keys, projects, environments, flags, their per-environment targeting (versioned) and segments, each write recorded in an audit trail you can read back, described by `/openapi/v1.json`. It serves the SDK read API (`GET /sdk/v1/ruleset` with an `ETag`, `GET /sdk/v1/stream` for live updates in one server process, `POST /sdk/v1/evaluate`, through the C# evaluator, and `POST /sdk/v1/events` for usage counts, which store counts and nothing about an end user). No SDK or client calls it yet. The design is in [`docs/architecture.md`](docs/architecture.md).
+page, and the C# server migrates its SQLite database, answers `GET /health`, authenticates (the admin token and hashed SDK keys) and serves the admin API: SDK keys, projects, environments, flags, their per-environment targeting (versioned) and segments, each write recorded in an audit trail you can read back, described by `/openapi/v1.json`. It serves the SDK read API (`GET /sdk/v1/ruleset` with an `ETag`, `GET /sdk/v1/stream` for live updates in one server process, `POST /sdk/v1/evaluate`, through the C# evaluator, and `POST /sdk/v1/events` for usage counts, which store counts and nothing about an end user). The TypeScript server SDK (`packages/sdk`) calls the ruleset, stream and events routes; no browser SDK exists, and no other client calls it. The design is in [`docs/architecture.md`](docs/architecture.md).
 
 **Evaluation is specified once and implemented per language.** [`docs/evaluation.md`](docs/evaluation.md)
 is normative and `fixtures/evaluation/` is its executable form. A change to evaluation changes the spec,
@@ -22,6 +22,7 @@ A small Nx workspace on Bun workspaces:
 | --- | --- | --- |
 | `engine` | `packages/engine` | flag evaluation, to `docs/evaluation.md`; `test/vectors.test.ts` runs every shared vector |
 | `cli` | `packages/cli` | the `featureslash` bin: argv, stdout and exit codes, over `@hackcove/featureslash-engine` |
+| `sdk` | `packages/sdk` | the TypeScript server SDK (`createClient`): ruleset with ETags, the stream with reconnect and a polling fallback, local evaluation with the engine, batched usage counts; it never throws at a caller. Private and unpublished; see `docs/sdk.md` |
 | `web` | `apps/web` | the dashboard: TanStack Start on Cloudflare Workers, D1 via Drizzle (one placeholder table) |
 | `site` | `apps/site` | featureslash.dev: TanStack Start on a Worker, every page prerendered; no D1, no secrets |
 | `server` | `apps/server` | the C# server: ASP.NET Core minimal API on .NET 10 (`FeatureSlash.Server`, xunit in `FeatureSlash.Server.Tests`); owns all flag data and the API. `apps/server/openapi/v1.json` is its generated OpenAPI document |

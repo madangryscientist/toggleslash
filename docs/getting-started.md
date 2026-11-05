@@ -1,7 +1,7 @@
 # Getting started
 
-FeatureSlash is early: the engine evaluates flags ([`evaluation.md`](evaluation.md)), but there is no
-SDK to serve them yet, so the CLI does not use it. What you can do today:
+FeatureSlash is early: the engine evaluates flags ([`evaluation.md`](evaluation.md)), and the TypeScript server SDK
+([`sdk.md`](sdk.md)) evaluates them against a server, but the CLI does not use either. What you can do today:
 
 ```bash
 bun install

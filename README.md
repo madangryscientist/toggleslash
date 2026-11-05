@@ -5,8 +5,8 @@ live yet).
 
 > **Status: early.** The engine (TypeScript) and a C# evaluator evaluate flags, to the spec in
 > [`docs/evaluation.md`](docs/evaluation.md). The server stores flags in SQLite and has an admin API for projects,
-> environments, flags, their targeting and segments, and SDK keys, and records every one of those writes in an audit trail (OpenAPI: [`apps/server/openapi/v1.json`](apps/server/openapi/v1.json)). It also serves the SDK read API (`/sdk/v1`): the ruleset with an `ETag` and a Server-Sent Events stream of its changes for server-side SDKs, and server-side evaluate for clients. It counts how often each flag variation is served per day (counts only, never an end user's context) and reports each flag's `lastEvaluated`. There is no
-> SDK yet, so nothing uses them from outside this repo.
+> environments, flags, their targeting and segments, and SDK keys, and records every one of those writes in an audit trail (OpenAPI: [`apps/server/openapi/v1.json`](apps/server/openapi/v1.json)). It also serves the SDK read API (`/sdk/v1`): the ruleset with an `ETag` and a Server-Sent Events stream of its changes for server-side SDKs, and server-side evaluate for clients. It counts how often each flag variation is served per day (counts only, never an end user's context) and reports each flag's `lastEvaluated`. A TypeScript server SDK
+> (`packages/sdk`, [`docs/sdk.md`](docs/sdk.md)) uses them; it is not published yet.
 
 ## Layout
 
@@ -15,6 +15,7 @@ live yet).
 | `packages/engine` | flag evaluation |
 | `fixtures/evaluation` | the language-neutral test vectors every implementation must pass |
 | `packages/cli` | the `featureslash` command |
+| `packages/sdk` | the TypeScript server SDK |
 | `apps/web` | the dashboard: TanStack Start on Cloudflare Workers, D1 via Drizzle |
 | `apps/site` | the marketing and docs site, prerendered |
 | `apps/server` | the C# server (ASP.NET Core, .NET 10): owns flag data and the API |
