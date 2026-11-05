@@ -228,9 +228,24 @@ Evaluation is specified once, in `docs/evaluation.md`, with shared test vectors 
 
 ## Dashboard
 
-`apps/web` stops being the data owner. It calls the C# server from server functions, so the token
-never reaches the browser. The server's address is `FEATURESLASH_API_URL` and the token is read from
-the environment. The D1 placeholder table in `apps/web` stays and stays unused.
+`apps/web` is not the data owner. It calls the C# server's admin API from server functions
+(`src/api/dashboard.ts`), through a typed client in `src/api/client.server.ts`. The server's address is
+`FEATURESLASH_API_URL` and the admin token is `FEATURESLASH_ADMIN_TOKEN`, both read from the Worker's
+environment in `src/api/env.server.ts` and nowhere else. `.server.ts` files are covered by TanStack
+Start's import protection, a unit test scans the source for the token, and an e2e test scans every
+script the browser loads. The token never reaches the browser.
+
+The page is one route, `/`, with the project and environment in the search (`?project=shop&env=staging`),
+so a view can be linked. It shows the project's active flags with key, name, tags, temporary, on or off
+in the chosen environment and last evaluated; search runs in the browser over the loaded list. Toggle,
+create (boolean flags only) and archive (no restore) are server functions that call the admin API; a
+toggle sends the version the page read, so a flag that moved on answers 409 and the page says so and
+reloads. The server being down, unconfigured or rejecting the token is a page of its own with a retry,
+not a crash. There is no login yet: the dashboard holds the admin token for whoever can reach it, so it
+must not be routed publicly before sign-in exists.
+
+The flag list reads each flag's configuration for the environment (eight at a time) because the API
+has no bulk read of per-environment state. The D1 placeholder table in `apps/web` stays and stays unused.
 
 ## Hosting
 
