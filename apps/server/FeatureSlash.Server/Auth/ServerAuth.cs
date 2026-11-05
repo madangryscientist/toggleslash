@@ -21,11 +21,18 @@ public static class ServerAuth
     /// <summary>The environment an SDK key belongs to: <c>environments.id</c>.</summary>
     public const string EnvironmentClaim = "featureslash:environment";
 
+    /// <summary>The SDK key itself: <c>api_keys.id</c>, for a stream to ask whether it is still live.</summary>
+    public const string KeyClaim = "featureslash:key";
+
     private const string Scheme = "bearer";
 
     /// <summary>The environment an authenticated SDK key belongs to.</summary>
     public static long EnvironmentId(System.Security.Claims.ClaimsPrincipal user) =>
         long.Parse(user.FindFirst(EnvironmentClaim)!.Value, System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>The authenticated SDK key's id.</summary>
+    public static long KeyId(System.Security.Claims.ClaimsPrincipal user) =>
+        long.Parse(user.FindFirst(KeyClaim)!.Value, System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>Null when the variable is unset or blank. The server never makes one up.</summary>
     public static string? AdminToken(IConfiguration configuration) =>

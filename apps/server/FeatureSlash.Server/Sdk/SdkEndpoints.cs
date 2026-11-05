@@ -12,6 +12,7 @@ public static class SdkEndpoints
 {
     private const string RulesetPath = "/sdk/v1/ruleset";
     private const string EvaluatePath = "/sdk/v1/evaluate";
+    private const string StreamPath = "/sdk/v1/stream";
 
     private const string EvaluateCors = "sdk-evaluate";
 
@@ -41,6 +42,8 @@ public static class SdkEndpoints
     public static IServiceCollection AddSdkApi(this IServiceCollection services)
     {
         services.AddScoped<RulesetReader>();
+        services.AddSingleton<RulesetNotifier>();
+        services.AddSingleton<StreamHeartbeat>();
         // A browser calls evaluate with a client key, which is public by design. The key goes in a header and
         // no cookie is involved, so any origin is safe to allow; a credentialed policy would not be.
         services.AddCors(options => options.AddPolicy(EvaluateCors, policy => policy
@@ -59,6 +62,14 @@ public static class SdkEndpoints
             .WithName("getRuleset")
             .Produces<RulesetResponse>()
             .Produces(StatusCodes.Status304NotModified)
+            .Produces<ApiError>(StatusCodes.Status401Unauthorized)
+            .Produces<ApiError>(StatusCodes.Status403Forbidden);
+        routes.MapGet(StreamPath, RulesetStream.Run)
+            .RequireAuthorization(ServerAuth.ServerKeyPolicy)
+            .WithTags("SDK")
+            .WithName("streamRuleset")
+            .WithSummary("Server-Sent Events: a `connected` event, then a `changed` event per change, each carrying the ruleset's ETag; a comment every 25 seconds.")
+            .Produces<string>(StatusCodes.Status200OK, "text/event-stream")
             .Produces<ApiError>(StatusCodes.Status401Unauthorized)
             .Produces<ApiError>(StatusCodes.Status403Forbidden);
         // CORS for this route only: the ruleset holds salts and every rule, and no browser should read it.

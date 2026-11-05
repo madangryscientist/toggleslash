@@ -5,6 +5,7 @@ using FeatureSlash.Server.Audit;
 using FeatureSlash.Server.Auth;
 using FeatureSlash.Server.Catalogue;
 using FeatureSlash.Server.Data;
+using FeatureSlash.Server.Sdk;
 using Microsoft.EntityFrameworkCore;
 
 namespace FeatureSlash.Server.Targeting;
@@ -53,7 +54,7 @@ public static class SegmentEndpoints
             .Produces<ApiError>(StatusCodes.Status409Conflict);
     }
 
-    private static async Task<IResult> Create(string project, string env, CreateSegmentRequest request, FeatureSlashDbContext database, TargetingLock targetingLock)
+    private static async Task<IResult> Create(string project, string env, CreateSegmentRequest request, FeatureSlashDbContext database, TargetingLock targetingLock, RulesetNotifier notifier)
     {
         var problem = Validation.Key(request.Key, "key") ?? Shape(request.Included, request.Excluded, request.Rules);
         if (problem is not null)
@@ -92,6 +93,7 @@ public static class SegmentEndpoints
         {
             return Taken(request.Key!, env);
         }
+        notifier.Changed(scope.Environment.Id);
         return Results.Created(
             $"/api/v1/projects/{scope.Project.Key}/environments/{scope.Environment.Key}/segments/{segment.Key}",
             Describe(segment));
@@ -121,7 +123,7 @@ public static class SegmentEndpoints
         return await Find(database, scope!, segment) is { } found ? Results.Json(Describe(found)) : NoSuchSegment();
     }
 
-    private static async Task<IResult> Put(string project, string env, string segment, PutSegmentRequest request, FeatureSlashDbContext database, TargetingLock targetingLock)
+    private static async Task<IResult> Put(string project, string env, string segment, PutSegmentRequest request, FeatureSlashDbContext database, TargetingLock targetingLock, RulesetNotifier notifier)
     {
         if (Shape(request.Included, request.Excluded, request.Rules) is { } problem)
         {
@@ -152,6 +154,7 @@ public static class SegmentEndpoints
             AuditEntity.Segment, found.Key, AuditAction.Updated, new AuditScope(scope!.Project.Key, scope.Environment.Key), Describe(found), saved);
         await database.SaveChangesAsync();
         await transaction.CommitAsync();
+        notifier.Changed(scope.Environment.Id);
         return Results.Json(saved);
     }
 
@@ -159,7 +162,7 @@ public static class SegmentEndpoints
     /// A segment a rule still names cannot go: the flag would evaluate to <c>SEGMENT_NOT_FOUND</c>. The
     /// 409 says which flags, so the caller knows what to edit first.
     /// </summary>
-    private static async Task<IResult> Delete(string project, string env, string segment, FeatureSlashDbContext database, TargetingLock targetingLock)
+    private static async Task<IResult> Delete(string project, string env, string segment, FeatureSlashDbContext database, TargetingLock targetingLock, RulesetNotifier notifier)
     {
         using var held = await targetingLock.Enter();
         var (scope, missing) = await Scope(database, project, env);
@@ -188,6 +191,7 @@ public static class SegmentEndpoints
             AuditEntity.Segment, found.Key, AuditAction.Deleted, new AuditScope(scope!.Project.Key, scope.Environment.Key), Describe(found), null);
         await database.SaveChangesAsync();
         await transaction.CommitAsync();
+        notifier.Changed(scope.Environment.Id);
         return Results.NoContent();
     }
 

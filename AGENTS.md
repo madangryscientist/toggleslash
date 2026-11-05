@@ -5,7 +5,7 @@ engine, manage them from a CLI and a hosted dashboard. The product domain is `fe
 (not registered yet, so nothing is routed to it).
 
 **This repository is early.** The engine evaluates flags; the dashboard and the site each render one
-page, and the C# server migrates its SQLite database, answers `GET /health`, authenticates (the admin token and hashed SDK keys) and serves the admin API: SDK keys, projects, environments, flags, their per-environment targeting (versioned) and segments, each write recorded in an audit trail you can read back, described by `/openapi/v1.json`. It serves the SDK read API (`GET /sdk/v1/ruleset` with an `ETag`, `POST /sdk/v1/evaluate`, through the C# evaluator). No SDK or client calls it yet. The design is in [`docs/architecture.md`](docs/architecture.md).
+page, and the C# server migrates its SQLite database, answers `GET /health`, authenticates (the admin token and hashed SDK keys) and serves the admin API: SDK keys, projects, environments, flags, their per-environment targeting (versioned) and segments, each write recorded in an audit trail you can read back, described by `/openapi/v1.json`. It serves the SDK read API (`GET /sdk/v1/ruleset` with an `ETag`, `GET /sdk/v1/stream` for live updates in one server process, `POST /sdk/v1/evaluate`, through the C# evaluator). No SDK or client calls it yet. The design is in [`docs/architecture.md`](docs/architecture.md).
 
 **Evaluation is specified once and implemented per language.** [`docs/evaluation.md`](docs/evaluation.md)
 is normative and `fixtures/evaluation/` is its executable form. A change to evaluation changes the spec,
@@ -133,5 +133,5 @@ Worker routes, and the first npm publish each wait for the maintainer's yes.
    `FEATURESLASH_UPDATE_OPENAPI=1 dotnet test apps/server/FeatureSlash.Server.Tests` and commit the
    result. The TypeScript clients generate from or check against this file.
 7. **A client key never reads the ruleset, and `evaluate` never returns rule data.** `GET /sdk/v1/ruleset` is
-   server-key only and carries rules, targets and salts; `POST /sdk/v1/evaluate` (either key, the only route with
+   server-key only and carries rules, targets and salts; `GET /sdk/v1/stream` is server-key only and carries ETags; `POST /sdk/v1/evaluate` (either key, the only route with
    CORS) answers `value`, `variationIndex` and `reason` and nothing it was configured with.

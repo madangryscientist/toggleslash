@@ -51,7 +51,8 @@ public sealed class BearerAuthenticationHandler(
 
         return Success(
             new Claim(ServerAuth.PrincipalClaim, key.Kind == ApiKeyKind.Server ? ServerAuth.ServerKeyPolicy : ServerAuth.ClientKeyPolicy),
-            new Claim(ServerAuth.EnvironmentClaim, key.EnvironmentId.ToString()));
+            new Claim(ServerAuth.EnvironmentClaim, key.EnvironmentId.ToString()),
+            new Claim(ServerAuth.KeyClaim, key.Id.ToString()));
     }
 
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)
