@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using FeatureSlash.Evaluation;
 using FeatureSlash.Server.Auth;
 using FeatureSlash.Server.Catalogue;
+using FeatureSlash.Server.Usage;
 using Microsoft.Net.Http.Headers;
 
 namespace FeatureSlash.Server.Sdk;
@@ -14,7 +15,8 @@ public static class SdkEndpoints
     private const string EvaluatePath = "/sdk/v1/evaluate";
     private const string StreamPath = "/sdk/v1/stream";
 
-    private const string EvaluateCors = "sdk-evaluate";
+    /// <summary>The CORS policy of the routes a browser calls with a client key: <c>evaluate</c> and <c>events</c>.</summary>
+    internal const string ClientCors = "sdk-client";
 
     /// <summary>
     /// <c>context</c> is a context of <c>docs/evaluation.md</c>: <c>{ "key": "user-1", "attributes": { ... } }</c>.
@@ -46,7 +48,7 @@ public static class SdkEndpoints
         services.AddSingleton<StreamHeartbeat>();
         // A browser calls evaluate with a client key, which is public by design. The key goes in a header and
         // no cookie is involved, so any origin is safe to allow; a credentialed policy would not be.
-        services.AddCors(options => options.AddPolicy(EvaluateCors, policy => policy
+        services.AddCors(options => options.AddPolicy(ClientCors, policy => policy
             .AllowAnyOrigin()
             .WithMethods(HttpMethods.Post)
             .WithHeaders(HeaderNames.Authorization, HeaderNames.ContentType)
@@ -72,10 +74,10 @@ public static class SdkEndpoints
             .Produces<string>(StatusCodes.Status200OK, "text/event-stream")
             .Produces<ApiError>(StatusCodes.Status401Unauthorized)
             .Produces<ApiError>(StatusCodes.Status403Forbidden);
-        // CORS for this route only: the ruleset holds salts and every rule, and no browser should read it.
+        // CORS on this route and events only: the ruleset holds salts and every rule, and no browser should read it.
         routes.MapPost(EvaluatePath, Evaluate)
             .RequireAuthorization(ServerAuth.SdkKeyPolicy)
-            .RequireCors(EvaluateCors)
+            .RequireCors(ClientCors)
             .WithTags("SDK")
             .WithName("evaluate")
             .Produces<EvaluateResponse>()
@@ -103,13 +105,14 @@ public static class SdkEndpoints
             : Results.Bytes(snapshot.Body, "application/json");
     }
 
-    private static async Task<IResult> Evaluate(EvaluateRequest request, HttpContext http, RulesetReader reader)
+    private static async Task<IResult> Evaluate(EvaluateRequest request, HttpContext http, RulesetReader reader, UsageRecorder usage)
     {
         if (request.Context is not { } context)
         {
             return Failures.BadRequest("A \"context\" is required: { \"key\": \"user-1\", \"attributes\": { } }.");
         }
-        var snapshot = await reader.Read(ServerAuth.EnvironmentId(http.User), http.RequestAborted);
+        var environmentId = ServerAuth.EnvironmentId(http.User);
+        var snapshot = await reader.Read(environmentId, http.RequestAborted);
 
         var ruleset = snapshot.Load();
         // The spec checks the context before it looks anything up, so any key tells a bad context from a good one.
@@ -129,6 +132,8 @@ public static class SdkEndpoints
         }
 
         var flags = new Dictionary<string, EvaluationResponse>(keys.Count);
+        var served = new List<UsageEntry>(keys.Count);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
         foreach (var key in keys)
         {
             var result = Evaluator.Evaluate(ruleset, key, context);
@@ -136,7 +141,13 @@ public static class SdkEndpoints
                 result.Value,
                 result.VariationIndex,
                 new ReasonResponse(result.Reason.KindName, result.Reason.RuleIndex, result.Reason.FlagKey, result.Reason.CodeName));
+            // An evaluation that served nothing (an error) has no variation to count.
+            if (result.VariationIndex is { } variation)
+            {
+                served.Add(new UsageEntry(key, variation, 1, today));
+            }
         }
+        await usage.RecordEvaluations(environmentId, served, http.RequestAborted);
         return Results.Ok(new EvaluateResponse(flags));
     }
 }

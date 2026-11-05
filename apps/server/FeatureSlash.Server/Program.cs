@@ -6,12 +6,14 @@ using FeatureSlash.Server.Catalogue;
 using FeatureSlash.Server.Data;
 using FeatureSlash.Server.Sdk;
 using FeatureSlash.Server.Targeting;
+using FeatureSlash.Server.Usage;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddServerDatabase();
 builder.Services.AddServerAuth();
 builder.Services.AddServerOpenApi();
 builder.Services.AddSdkApi();
+builder.Services.AddUsage();
 builder.Services.AddSingleton<TargetingLock>();
 // A number is a JSON number: "1" for an index is a 400, and the OpenAPI document says integer, not "integer or string".
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.NumberHandling = JsonNumberHandling.Strict);
@@ -44,6 +46,7 @@ app.MapConfigEndpoints();
 app.MapSegmentEndpoints();
 app.MapAuditEndpoints();
 app.MapSdkEndpoints();
+app.MapUsageEndpoints();
 
 app.Run();
 
