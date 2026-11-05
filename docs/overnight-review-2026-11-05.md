@@ -19,7 +19,7 @@ One builder at a time, in this order. FS-2 is held and not in the queue.
 | 8 | FS-10 | complex | auth | ✅ gate, server 39, CI green (#12, f75c603) |
 | 9 | FS-11 | medium | admin API catalogue | ✅ PR #13, 137 server tests, gate and CI green (#13, b815f65) |
 | 10 | FS-12 | medium | targeting and segments | ✅ PR #14, 275 server tests, gate and CI green (#14, 3b14029) |
-| 11 | FS-13 | medium | audit | |
+| 11 | FS-13 | medium | audit | ✅ PR #15, 311 server tests, gate and CI green (#15, e79e538) |
 | 12 | FS-14 | medium | SDK ruleset and evaluate | |
 | 13 | FS-15 | complex | SSE | |
 | 14 | FS-16 | medium | usage counts | |
