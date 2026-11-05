@@ -40,8 +40,17 @@ bun install                       # FIRST: a fresh worktree has no node_modules
 bun run typecheck                 # nx run-many -t typecheck  (tsc, strict)
 bun run lint                      # nx run-many -t lint  (oxlint --type-aware --deny-warnings + check-slop)
 bun run format:check              # oxfmt --check  (`bun run format` fixes)
+bun run parity:check              # the feature parity matrix matches this tree
 bun run test                      # nx run-many -t test  (Vitest under the Bun runtime)
 ```
+
+`bun run parity:check` validates [`docs/feature-parity.json`](docs/feature-parity.json) against the
+repository: every `yes` or `partial` has evidence, every evidence target exists, and every API route,
+CLI command and dashboard route is claimed by a capability. `bun run parity` regenerates
+[`docs/feature-parity.md`](docs/feature-parity.md); commit both. A `feat` commit must change the JSON,
+and CI enforces that with `bun run parity:check:commits`. Competitor cells are a coarse, dated
+reading of public pages, not a claim of vendor parity; refresh them when a release or comparison
+matters.
 
 **The .NET SDK is needed for `apps/server`.** A change to it needs the SDK to be checked. The root
 scripts (`typecheck`, `lint`, `build`, `test`, `test:e2e`) go through `scripts/nx.ts`, which runs

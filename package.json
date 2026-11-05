@@ -13,6 +13,9 @@
     "lint": "bun scripts/nx.ts run-many -t lint",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
+    "parity": "bun scripts/parity.ts --write",
+    "parity:check": "bun scripts/parity.ts --check",
+    "parity:check:commits": "bun scripts/parity-commits.ts",
     "build": "bun scripts/nx.ts run-many -t build",
     "test": "bun scripts/nx.ts run-many -t test",
     "test:e2e": "bun scripts/nx.ts run-many -t test:e2e"
