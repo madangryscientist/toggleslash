@@ -5,7 +5,7 @@ engine, manage them from a CLI and a hosted dashboard. The product domain is `fe
 (not registered yet, so nothing is routed to it).
 
 **This repository is early.** The engine evaluates flags; the dashboard and the site each render one
-page, and the C# server migrates its SQLite database, answers `GET /health`, authenticates (the admin token and hashed SDK keys) and serves the admin API: SDK keys, projects, environments, flags, their per-environment targeting (versioned) and segments, described by `/openapi/v1.json`. The C# evaluator exists but no endpoint calls it (the server's tests use it to check that a saved config evaluates as expected). The audit log, the SDK read API and server-side evaluation arrive as
+page, and the C# server migrates its SQLite database, answers `GET /health`, authenticates (the admin token and hashed SDK keys) and serves the admin API: SDK keys, projects, environments, flags, their per-environment targeting (versioned) and segments, each write recorded in an audit trail you can read back, described by `/openapi/v1.json`. The C# evaluator exists but no endpoint calls it (the server's tests use it to check that a saved config evaluates as expected). The SDK read API and server-side evaluation arrive as
 their own tickets. The design they build on is in [`docs/architecture.md`](docs/architecture.md).
 
 **Evaluation is specified once and implemented per language.** [`docs/evaluation.md`](docs/evaluation.md)

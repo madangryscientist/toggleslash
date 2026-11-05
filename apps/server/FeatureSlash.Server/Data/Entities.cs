@@ -121,6 +121,12 @@ public sealed class AuditEvent
     public required string EntityId { get; set; }
     public required string Action { get; set; }
 
+    // Where the event belongs, as the keys the API addresses things by. Keys are fixed once created, so they
+    // stay true after the entity is gone, and the audit routes filter on them without a join.
+    public required string ProjectKey { get; set; }
+    public string? EnvironmentKey { get; set; }
+    public string? FlagKey { get; set; }
+
     /// <summary>JSON; null when the entity did not exist before.</summary>
     public string? Before { get; set; }
 

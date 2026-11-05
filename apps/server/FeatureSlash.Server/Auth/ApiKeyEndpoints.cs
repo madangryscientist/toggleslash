@@ -1,3 +1,5 @@
+using System.Globalization;
+using FeatureSlash.Server.Audit;
 using FeatureSlash.Server.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -50,8 +52,14 @@ public static class ApiKeyEndpoints
             Prefix = secret.Prefix,
             CreatedAt = DateTime.UtcNow,
         };
+        // Two saves in one transaction: the event names the key by its id, which exists only once the key is saved.
+        await using var transaction = await database.Database.BeginTransactionAsync();
         database.ApiKeys.Add(key);
         await database.SaveChangesAsync();
+        database.Record(
+            AuditEntity.ApiKey, key.Id.ToString(CultureInfo.InvariantCulture), AuditAction.Created, ScopeOf(project, env), null, Summarise(key));
+        await database.SaveChangesAsync();
+        await transaction.CommitAsync();
 
         // The only place the plain key ever appears. Anonymous, so no named type carries it anywhere else.
         return Results.Json(
@@ -70,7 +78,7 @@ public static class ApiKeyEndpoints
             .Where(k => k.EnvironmentId == environment.Id)
             .OrderBy(k => k.Id)
             .ToListAsync();
-        return Results.Json(keys.Select(k => new KeySummary(k.Id, KindWord(k.Kind), k.Name, k.Prefix, k.CreatedAt, k.RevokedAt)));
+        return Results.Json(keys.Select(Summarise));
     }
 
     /// <summary>Revoking twice is fine and keeps the first time. A key of another environment is not found here.</summary>
@@ -87,7 +95,10 @@ public static class ApiKeyEndpoints
             return ApiError.Result(StatusCodes.Status404NotFound, "not_found", "No such key in this environment.");
         }
 
+        var before = Summarise(key);
         key.RevokedAt ??= DateTime.UtcNow;
+        database.Record(
+            AuditEntity.ApiKey, key.Id.ToString(CultureInfo.InvariantCulture), AuditAction.Revoked, ScopeOf(project, env), before, Summarise(key));
         await database.SaveChangesAsync();
         return Results.NoContent();
     }
@@ -98,6 +109,11 @@ public static class ApiKeyEndpoints
 
     private static IResult EnvironmentNotFound() =>
         ApiError.Result(StatusCodes.Status404NotFound, "not_found", "No such project or environment.");
+
+    private static AuditScope ScopeOf(string project, string env) => new(project, env);
+
+    /// <summary>The audit event's snapshot of a key is the same summary a list returns: no hash, no plain key.</summary>
+    private static KeySummary Summarise(ApiKey k) => new(k.Id, KindWord(k.Kind), k.Name, k.Prefix, k.CreatedAt, k.RevokedAt);
 
     private static string KindWord(ApiKeyKind kind) => kind == ApiKeyKind.Server ? "server" : "client";
 }

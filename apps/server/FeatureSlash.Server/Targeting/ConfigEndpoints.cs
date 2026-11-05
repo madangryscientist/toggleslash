@@ -1,11 +1,13 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using FeatureSlash.Server.Audit;
 using FeatureSlash.Server.Auth;
 using FeatureSlash.Server.Catalogue;
 using FeatureSlash.Server.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace FeatureSlash.Server.Targeting;
 
@@ -122,6 +124,9 @@ public static class ConfigEndpoints
         var prerequisites = Serialize(request.Prerequisites);
         var rules = Serialize(request.Rules);
         var fallthrough = JsonSerializer.Serialize(request.Fallthrough!.Value);
+        // The compare-and-set and its event commit together. The targeting lock keeps `config` (read in Find)
+        // the row's true "before" whenever the compare-and-set succeeds.
+        await using var transaction = await database.Database.BeginTransactionAsync();
         var saved = await database.FlagEnvironmentConfigs
             .Where(c => c.Id == config.Id && c.Version == expected)
             .ExecuteUpdateAsync(set => set
@@ -132,7 +137,7 @@ public static class ConfigEndpoints
                 .SetProperty(c => c.Rules, rules)
                 .SetProperty(c => c.Fallthrough, fallthrough)
                 .SetProperty(c => c.Version, c => c.Version + 1));
-        return await Saved(database, http, config.Id, saved, expected.Value);
+        return await Saved(database, http, found, saved, expected.Value, AuditAction.Updated, transaction);
     }
 
     /// <summary>
@@ -167,20 +172,44 @@ public static class ConfigEndpoints
         }
 
         var config = found.Config!;
+        await using var transaction = await database.Database.BeginTransactionAsync();
         var saved = await database.FlagEnvironmentConfigs
             .Where(c => c.Id == config.Id && (expected == null || c.Version == expected))
             .ExecuteUpdateAsync(set => set
                 .SetProperty(c => c.On, on)
                 .SetProperty(c => c.Version, c => c.Version + 1));
-        return await Saved(database, http, config.Id, saved, expected ?? 0);
+        return await Saved(database, http, found, saved, expected ?? 0, AuditAction.Toggled, transaction);
     }
 
-    private static async Task<IResult> Saved(FeatureSlashDbContext database, HttpContext http, long configId, int rows, long expected)
+    /// <summary>
+    /// A stale version changed no row, so it records nothing and the transaction is dropped. Otherwise the
+    /// event is added and committed with the update.
+    /// </summary>
+    private static async Task<IResult> Saved(
+        FeatureSlashDbContext database,
+        HttpContext http,
+        Found found,
+        int rows,
+        long expected,
+        string action,
+        IDbContextTransaction transaction)
     {
-        var current = await database.FlagEnvironmentConfigs.AsNoTracking().SingleAsync(c => c.Id == configId);
-        return rows == 0
-            ? Failures.Conflict($"The config is at version {current.Version}, not {expected}: it changed since it was read. GET it again and retry.")
-            : Respond(http, current);
+        var current = await database.FlagEnvironmentConfigs.AsNoTracking().SingleAsync(c => c.Id == found.Config!.Id);
+        if (rows == 0)
+        {
+            return Failures.Conflict($"The config is at version {current.Version}, not {expected}: it changed since it was read. GET it again and retry.");
+        }
+
+        database.Record(
+            AuditEntity.FlagConfig,
+            $"{found.Flag!.Key}/{found.Environment!.Key}",
+            action,
+            new AuditScope(found.Project!.Key, found.Environment.Key, found.Flag.Key),
+            Describe(found.Config!),
+            Describe(current));
+        await database.SaveChangesAsync();
+        await transaction.CommitAsync();
+        return Respond(http, current);
     }
 
     private sealed record Found(IResult? Problem, Project? Project, ProjectEnvironment? Environment, Flag? Flag, FlagEnvironmentConfig? Config);
@@ -311,15 +340,17 @@ public static class ConfigEndpoints
     private static IResult Respond(HttpContext http, FlagEnvironmentConfig config)
     {
         http.Response.Headers.ETag = $"\"{config.Version}\"";
-        return Results.Json(new ConfigResponse(
-            config.On,
-            config.OffVariation,
-            Parse(config.Targets),
-            Parse(config.Prerequisites),
-            Parse(config.Rules),
-            Parse(config.Fallthrough),
-            config.Version));
+        return Results.Json(Describe(config));
     }
+
+    private static ConfigResponse Describe(FlagEnvironmentConfig config) => new(
+        config.On,
+        config.OffVariation,
+        Parse(config.Targets),
+        Parse(config.Prerequisites),
+        Parse(config.Rules),
+        Parse(config.Fallthrough),
+        config.Version);
 
     private static JsonElement Parse(string json) => JsonSerializer.Deserialize<JsonElement>(json);
 }

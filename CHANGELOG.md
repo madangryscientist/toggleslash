@@ -21,3 +21,6 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and ver
 - The admin API for a flag's targeting in each environment (targets, prerequisites, rules, fallthrough, on
   and off) with optimistic concurrency (`version`, `ETag`, `If-Match`; a stale save is 409) and a `toggle`
   route, and for segments, validated against `docs/evaluation.md`.
+- An audit trail for the server: every admin write records one `audit_events` row in the same transaction
+  (when, actor, entity, action, before and after, never a key or its hash), read back with
+  `GET /api/v1/projects/{project}/audit` and a flag's `.../history`, filtered and paged by cursor.
