@@ -139,3 +139,11 @@ Each entry: what · why · ⚠ if unsure · how to undo.
 
 - **What:** exit 1 is a server or network failure, 2 stays usage. No `--token` flag and `config set-token` reads stdin, so the token stays out of shell history and `ps`. Output goes through a writer that masks a known secret of 8 or more characters. Redirects are refused so the token cannot follow one to another host. **Why:** the ticket asked to pick the exit code and keep the token out of output. **⚠** masking is a backstop only for secrets of 8+ characters; a shorter token would not be masked, though error messages never carry the request. **Undo:** `packages/cli/src/errors.ts`, `command.ts`.
 - **What:** the builder kept three things the ticket did not name: `--url`, `--json` on writes, `flags show --env`. **Why:** `keys create --json` is how a script captures a key shown once. **Undo:** remove from `packages/cli/src/commands/`.
+
+### FS-19 choices (dashboard list)
+
+- **Needs your feel-review in the morning:** layout, the toggle button, the header switchers (`apps/web/src/routes/index.tsx`, `apps/web/src/components/FlagList.tsx`). Run with `bunx nx test:e2e web` or the dev server.
+- **What:** no login, as the ticket said, so the dashboard holds the admin token for whoever can reach it. **Why:** ticket. **⚠** it must not be routed publicly until auth exists; documented in `docs/architecture.md`. **Undo:** nothing to undo; do not add a route.
+- **What:** the flag list reads each flag's config, 8 at a time, because the API has no bulk read. **Why:** no bulk endpoint. **⚠** N+1 on every list load; the builder filed FS-27 (not in tonight's queue, left for you). **Undo:** FS-27.
+- **What:** toggle is a pressed `Button` because `@hackcove/ui-react` has no Switch (filed HC-214). Create makes boolean flags only. Archive hides with no restore. Search is client-side. **Undo:** `FlagList.tsx`, `NewFlagDialog.tsx`.
+- **What:** I checked the token by hand: the name appears in the client bundle only inside the "check FEATURESLASH_ADMIN_TOKEN" error text, no env read reaches the client. **⚠** this ticket's skeptical review ran on a free model (glm) because Opus hit its usage limit and the opencode-go account is out of funds. **Undo:** n/a.
