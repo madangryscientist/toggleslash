@@ -20,7 +20,9 @@ describe("the admin token stays on the server", () => {
       "api/detail.server.ts",
       "api/env.server.ts",
       "api/http.server.ts",
+      "api/result.server.ts",
       "api/dashboard.ts",
+      "api/operator.ts",
     ]);
     const touching = files.filter((file) => {
       if (!/\.(ts|tsx)$/.test(file) || /\.test\.|routeTree\.gen/.test(file)) return false;

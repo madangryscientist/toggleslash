@@ -1,10 +1,8 @@
 import { Button, Checkbox, Dialog, Field, Input, Stack } from "@hackcove/ui-react";
 import { useState, type FormEvent } from "react";
-import { parseTags } from "./text";
+import { KEY, parseTags } from "./text";
 import { createFlag } from "#/api/dashboard";
 import type { Project } from "#/api/types";
-
-const KEY = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
 interface Props {
   project: Project;

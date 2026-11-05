@@ -19,3 +19,17 @@ export function strings(value: unknown): string[] {
 export function recordOf(value: unknown): Json {
   return isRecord(value) ? value : {};
 }
+
+export interface Selection {
+  project?: string | undefined;
+  env?: string | undefined;
+}
+
+/** The project and environment a server function was asked about, when it was asked. */
+export function selection(data: unknown): Selection {
+  const d = recordOf(data);
+  return {
+    project: typeof d["project"] === "string" ? d["project"] : undefined,
+    env: typeof d["env"] === "string" ? d["env"] : undefined,
+  };
+}

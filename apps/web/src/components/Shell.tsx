@@ -1,4 +1,5 @@
-import { AppShell, AppShellBrand, Avatar, ErrorPage, Select } from "@hackcove/ui-react";
+import { AppShell, AppShellBrand, Avatar, ErrorPage, Select, Tabs } from "@hackcove/ui-react";
+import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import type { Environment, Failure, Project } from "#/api/types";
 
@@ -40,6 +41,8 @@ interface SwitcherProps {
   environment: Environment | null;
   /** A page about one project's flag fixes the project: the picker shows it and is disabled. */
   projectLocked?: boolean;
+  /** The audit log filters by environment itself, so it has no environment picker. */
+  hideEnvironment?: boolean;
   onProject: (key: string) => void;
   onEnvironment: (key: string) => void;
 }
@@ -63,25 +66,83 @@ export function Switchers(props: SwitcherProps) {
           </option>
         ))}
       </Select>
-      <Select
-        aria-label="Environment"
-        width="auto"
-        value={environment?.key ?? ""}
-        disabled={environments.length === 0}
-        onChange={(event) => props.onEnvironment(event.currentTarget.value)}
-      >
-        {environments.length === 0 && <option value="">No environments</option>}
-        {environments.map((e) => (
-          <option key={e.key} value={e.key}>
-            {e.name}
-          </option>
-        ))}
-      </Select>
+      {props.hideEnvironment !== true && (
+        <Select
+          aria-label="Environment"
+          width="auto"
+          value={environment?.key ?? ""}
+          disabled={environments.length === 0}
+          onChange={(event) => props.onEnvironment(event.currentTarget.value)}
+        >
+          {environments.length === 0 && <option value="">No environments</option>}
+          {environments.map((e) => (
+            <option key={e.key} value={e.key}>
+              {e.name}
+            </option>
+          ))}
+        </Select>
+      )}
     </>
   );
 }
 
-export function Shell({ controls, children }: { controls?: ReactNode; children: ReactNode }) {
+type Page = "flags" | "environments" | "keys" | "segments" | "audit";
+
+interface NavScope {
+  /** Which page is showing, so its tab is current. */
+  active?: Page | undefined;
+  /** The project and environment the other pages open on. */
+  project?: string | undefined;
+  env?: string | undefined;
+}
+
+/** The dashboard's sections, each a link that carries the project and environment along. */
+function Nav({ active, project, env }: NavScope) {
+  const scope = { project, env };
+  return (
+    <Tabs
+      variant="pill"
+      size="sm"
+      label="Sections"
+      items={[
+        {
+          label: "Flags",
+          active: active === "flags",
+          render: (p) => <Link to="/" search={scope} {...p} data-testid="nav-flags" />,
+        },
+        {
+          label: "Environments",
+          active: active === "environments",
+          render: (p) => (
+            <Link to="/environments" search={scope} {...p} data-testid="nav-environments" />
+          ),
+        },
+        {
+          label: "SDK keys",
+          active: active === "keys",
+          render: (p) => <Link to="/keys" search={scope} {...p} data-testid="nav-keys" />,
+        },
+        {
+          label: "Segments",
+          active: active === "segments",
+          render: (p) => <Link to="/segments" search={scope} {...p} data-testid="nav-segments" />,
+        },
+        {
+          label: "Audit log",
+          active: active === "audit",
+          render: (p) => <Link to="/audit" search={scope} {...p} data-testid="nav-audit" />,
+        },
+      ]}
+    />
+  );
+}
+
+interface ShellProps extends NavScope {
+  controls?: ReactNode;
+  children: ReactNode;
+}
+
+export function Shell({ controls, children, ...nav }: ShellProps) {
   return (
     <AppShell
       brand={
@@ -91,6 +152,7 @@ export function Shell({ controls, children }: { controls?: ReactNode; children: 
           href="/"
         />
       }
+      nav={<Nav {...nav} />}
       controls={controls}
     >
       {children}

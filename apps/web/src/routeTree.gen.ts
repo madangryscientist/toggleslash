@@ -10,11 +10,35 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuditRouteImport } from './routes/audit'
+import { Route as EnvironmentsRouteImport } from './routes/environments'
+import { Route as KeysRouteImport } from './routes/keys'
+import { Route as SegmentsRouteImport } from './routes/segments'
 import { Route as FlagsFlagRouteImport } from './routes/flags.$flag'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuditRoute = AuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EnvironmentsRoute = EnvironmentsRouteImport.update({
+  id: '/environments',
+  path: '/environments',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KeysRoute = KeysRouteImport.update({
+  id: '/keys',
+  path: '/keys',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SegmentsRoute = SegmentsRouteImport.update({
+  id: '/segments',
+  path: '/segments',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FlagsFlagRoute = FlagsFlagRouteImport.update({
@@ -25,27 +49,51 @@ const FlagsFlagRoute = FlagsFlagRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/audit': typeof AuditRoute
+  '/environments': typeof EnvironmentsRoute
+  '/keys': typeof KeysRoute
+  '/segments': typeof SegmentsRoute
   '/flags/$flag': typeof FlagsFlagRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/audit': typeof AuditRoute
+  '/environments': typeof EnvironmentsRoute
+  '/keys': typeof KeysRoute
+  '/segments': typeof SegmentsRoute
   '/flags/$flag': typeof FlagsFlagRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/audit': typeof AuditRoute
+  '/environments': typeof EnvironmentsRoute
+  '/keys': typeof KeysRoute
+  '/segments': typeof SegmentsRoute
   '/flags/$flag': typeof FlagsFlagRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/flags/$flag'
+  fullPaths:
+    '/' | '/audit' | '/environments' | '/keys' | '/segments' | '/flags/$flag'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/flags/$flag'
-  id: '__root__' | '/' | '/flags/$flag'
+  to: '/' | '/audit' | '/environments' | '/keys' | '/segments' | '/flags/$flag'
+  id:
+    | '__root__'
+    | '/'
+    | '/audit'
+    | '/environments'
+    | '/keys'
+    | '/segments'
+    | '/flags/$flag'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuditRoute: typeof AuditRoute
+  EnvironmentsRoute: typeof EnvironmentsRoute
+  KeysRoute: typeof KeysRoute
+  SegmentsRoute: typeof SegmentsRoute
   FlagsFlagRoute: typeof FlagsFlagRoute
 }
 
@@ -56,6 +104,34 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/audit': {
+      id: '/audit'
+      path: '/audit'
+      fullPath: '/audit'
+      preLoaderRoute: typeof AuditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/environments': {
+      id: '/environments'
+      path: '/environments'
+      fullPath: '/environments'
+      preLoaderRoute: typeof EnvironmentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/keys': {
+      id: '/keys'
+      path: '/keys'
+      fullPath: '/keys'
+      preLoaderRoute: typeof KeysRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/segments': {
+      id: '/segments'
+      path: '/segments'
+      fullPath: '/segments'
+      preLoaderRoute: typeof SegmentsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/flags/$flag': {
@@ -70,6 +146,10 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuditRoute: AuditRoute,
+  EnvironmentsRoute: EnvironmentsRoute,
+  KeysRoute: KeysRoute,
+  SegmentsRoute: SegmentsRoute,
   FlagsFlagRoute: FlagsFlagRoute,
 }
 export const routeTree = rootRouteImport

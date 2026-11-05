@@ -14,6 +14,7 @@ import {
   type Call,
 } from "./http.server.ts";
 import { createDetailApi } from "./detail.server.ts";
+import { createOperatorApi, toEnvironment } from "./operator.server.ts";
 import type { Environment, FlagRow, NewFlag, Project } from "./types.ts";
 
 export { ApiFailure, apiPath };
@@ -85,6 +86,7 @@ export function createAdminApi(connection: Connection, doFetch: Fetch) {
 
   return {
     ...createDetailApi(call),
+    ...createOperatorApi(call),
     async projects(): Promise<Project[]> {
       return (await list(call, apiPath("projects"))).map((p) => ({
         key: str(p["key"]),
@@ -93,10 +95,7 @@ export function createAdminApi(connection: Connection, doFetch: Fetch) {
     },
 
     async environments(project: string): Promise<Environment[]> {
-      return (await list(call, apiPath("projects", project, "environments"))).map((e) => ({
-        key: str(e["key"]),
-        name: str(e["name"], str(e["key"])),
-      }));
+      return (await list(call, apiPath("projects", project, "environments"))).map(toEnvironment);
     },
 
     /** The project's active flags with each one's on/off in `env`. A config that cannot be read leaves `on` null. */
