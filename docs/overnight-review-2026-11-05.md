@@ -12,7 +12,7 @@ One builder at a time, in this order. FS-2 is held and not in the queue.
 | 2 | FS-4 | simple | stale AGENTS.md line | ✅ gate and CI green (#4, d3a978b) |
 | 3 | FS-3 | simple | root build/test:e2e scripts | ✅ gate and CI green (#5, dd6a9ad) |
 | 4 | FS-6 | medium | C# server skeleton, Nx, CI, architecture doc | ✅ gate, 2 xunit, CI green (#6, c81cc75) |
-| 4a | FS-25 | simple | e2e ports collide with PixelSlash (added tonight) | |
+| 4a | FS-25 | simple | e2e ports collide with PixelSlash (added tonight) | ✅ gate and CI green (#7, bc6d4cb) |
 | 5 | FS-7 | complex | evaluation spec, vectors, TS engine | |
 | 6 | FS-8 | medium | C# evaluator | |
 | 7 | FS-9 | complex | EF Core on SQLite | |
