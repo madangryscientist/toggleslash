@@ -66,6 +66,7 @@ app.MapSegmentEndpoints();
 app.MapAuditEndpoints();
 app.MapSdkEndpoints();
 app.MapDiagnoseEndpoint();
+app.MapRuntimeEndpoint();
 app.MapUsageEndpoints();
 
 app.Run();

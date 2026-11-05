@@ -64,6 +64,7 @@ featureslash tokens list --project <project>
 featureslash tokens revoke <id> --project <project>
 
 featureslash diagnose <flag> --project <project> --env <env> (--context '<json>' | --context-file <path>)
+featureslash runtime --project <project> --env <env>
 ```
 
 `featureslash --help` prints the same list; `--version` prints the version.
@@ -77,7 +78,7 @@ featureslash diagnose <flag> --project <project> --env <env> (--context '<json>'
 - **Scoped API tokens** (`tokens create`) are for Terraform and CI: one project, `read` or `write`, always with an
   expiry. Like a key, the plain token prints **once**, and `tokens list` shows prefixes, expired and revoked ones
   too. Managing them takes the root admin token. A scoped token can be used as this CLI's token for its own
-  project, except for `projects create` and `tokens`: a `read` token may run `diagnose` and every read, and a
+  project, except for `projects create` and `tokens`: a `read` token may run `diagnose`, `runtime` and every read, and a
   `write` token everything else too, including creating and revoking the project's SDK keys.
 - **`diagnose`** asks the server why a flag has the value it has for one context: it evaluates the flag in
   that environment (the admin route `POST /api/v1/projects/{project}/environments/{env}/evaluate`, so no SDK
@@ -87,6 +88,12 @@ featureslash diagnose <flag> --project <project> --env <env> (--context '<json>'
   answers 200, **including when the reason is an error** (`ERROR FLAG_NOT_FOUND` is an answer, not a
   failure). A diagnosis counts no usage, writes no audit event, and the server neither stores nor logs the
   context.
+- **`runtime`** asks what the server is serving for one environment (`GET /api/v1/projects/{project}/environments/{env}/runtime`)
+  and prints `etag` (the `ETag` of that environment's ruleset, quotes included, as `GET /sdk/v1/ruleset` gives a server
+  key), `flagCount` (flags in that ruleset, so archived ones are not counted), `generatedAt` (the server's time) and
+  `lastChange` (time, actor, action, entity type and id of the newest write that could change the ruleset, or `-`).
+  It is the server's side only: it says nothing about what any SDK has loaded. A `read` token may run it, and it
+  writes no audit event.
 - This is the admin surface only. Targeting rules, segments and usage are not in the CLI yet.
 
 ## Exit codes
