@@ -92,3 +92,11 @@ Each entry: what · why · ⚠ if unsure · how to undo.
 - **⚠** Every ruleset request reads and hashes the whole environment, even for a 304. Fine for now; FS-15 streaming and real traffic may want a cached version.
 - **⚠** A client key can evaluate any context and read every non-archived flag's value for it, with no rate limiting. That is the usual client-key trade, and it is worth deciding before anything is public.
 - **Undo:** tighten the origins in `Sdk/SdkEndpoints.cs`.
+
+### FS-15 stalled on a permission prompt (planner call)
+
+- **What:** the builder sat from 03:45 to 04:45 UTC on a permission prompt for a scripted mutation check (back up three source files, sed-edit them, run the stream tests, restore). The hourly watchdog found it. I could not approve it and did not try to. I interrupted the run and sent it on without that step, telling it not to retry the check in another form and to say in the commit body that it was not run.
+- **Why:** the prompt was waiting for a human, and the check is the builder's own extra proof, not an acceptance criterion. An hour lost is the cost; the alternative was waiting for morning with the queue stopped. Not re-dispatched at a higher tier: it already runs on Opus and its work was intact (26 stream tests passing, no mutation left in the tree).
+- **⚠** Nothing has shown the revocation and after-commit tests fail on a broken build. I will read them at the gate; a mutation run is worth doing by hand in the morning.
+- **⚠** Runs in `full-access` mode can still stop on a prompt, and nothing tells the planner except the watchdog. The tell is `pendingRequestCount` on the thread. Worth an `ob` ticket if it recurs.
+- **Undo:** nothing to undo; to run the check, flip `KeyIsLive` to always true in `Sdk/RulesetStream.cs` and run `SdkStreamTests`.
