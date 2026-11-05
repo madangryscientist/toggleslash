@@ -16,7 +16,9 @@ import {
   TableHeaderCell,
   TableRow,
   Text,
+  TextLink,
 } from "@hackcove/ui-react";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { archiveFlag, toggleFlag } from "#/api/dashboard";
 import type { Environment, FlagRow, MutationResult, Project } from "#/api/types";
@@ -84,7 +86,21 @@ function FlagRowView(props: RowProps) {
           </Text>
         }
       >
-        {flag.name}
+        <TextLink
+          render={({ className, children }) => (
+            <Link
+              to="/flags/$flag"
+              params={{ flag: flag.key }}
+              search={{ project: props.project.key, env: props.environment.key }}
+              className={className}
+              data-testid={`open-${flag.key}`}
+            >
+              {children}
+            </Link>
+          )}
+        >
+          {flag.name}
+        </TextLink>
       </TableCell>
       <TableCell>
         <Cluster wrap>

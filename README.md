@@ -16,7 +16,7 @@ live yet).
 | `fixtures/evaluation` | the language-neutral test vectors every implementation must pass |
 | `packages/cli` | the `featureslash` command: manage projects, environments, flags and SDK keys over the admin API |
 | `packages/sdk` | the TypeScript server SDK |
-| `apps/web` | the dashboard: TanStack Start on Cloudflare Workers; flag list, toggle, create and archive over the server's admin API |
+| `apps/web` | the dashboard: TanStack Start on Cloudflare Workers; flag list, toggle, create and archive, and a flag detail page (metadata, targeting editor, history, usage), over the server's admin API |
 | `apps/site` | the marketing and docs site, prerendered |
 | `apps/server` | the C# server (ASP.NET Core, .NET 10): owns flag data and the API |
 | `apps/server/FeatureSlash.Evaluation` | flag evaluation in C#, to the same spec and vectors as the engine; no endpoint uses it yet |
