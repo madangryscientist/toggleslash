@@ -195,7 +195,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Edge SDKs | — | — |
 | OpenFeature providers | — | — |
 | Streaming updates | ✅ | `api:/sdk/v1/ruleset`<br>`api:/sdk/v1/stream`<br>`path:packages/sdk`<br>`doc:docs/sdk.md`<br>SSE carries the ETag only and the SDK refetches; one server process only. |
-| Polling fallback | ✅ | `path:packages/sdk`<br>`doc:docs/sdk.md` |
+| Polling fallback | ✅ | `path:packages/sdk`<br>`doc:docs/sdk.md`<br>`test:packages/sdk/test/status.test.ts` |
 | Bootstrap and offline mode | 🟡 | `path:packages/sdk`<br>`doc:docs/sdk.md`<br>The SDK keeps the last ruleset in memory but has no explicit bootstrap input. |
 | Relay or persistent store | — | — |
 | Server-side evaluation API | ✅ | `api:/sdk/v1/evaluate`<br>`api:/api/v1/projects/{project}/environments/{env}/evaluate`<br>`api:/api/v1/projects/{project}/environments/{env}/runtime`<br>`cli:diagnose`<br>`cli:runtime`<br>`path:apps/server/FeatureSlash.Evaluation` |

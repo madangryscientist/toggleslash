@@ -1093,10 +1093,14 @@
       "id": "polling-fallback",
       "category": "SDKs and delivery",
       "name": "Polling fallback",
-      "description": "Keep working when streaming is blocked or unavailable.",
+      "description": "Keep working when streaming is blocked or unavailable, and let the application read the SDK's sync state.",
       "featureslash": {
         "status": "yes",
-        "evidence": ["path:packages/sdk", "doc:docs/sdk.md"]
+        "evidence": [
+          "path:packages/sdk",
+          "doc:docs/sdk.md",
+          "test:packages/sdk/test/status.test.ts"
+        ]
       },
       "competitors": {
         "launchdarkly": "yes",

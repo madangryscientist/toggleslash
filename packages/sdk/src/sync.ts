@@ -1,7 +1,38 @@
 import { createRuleset, type Ruleset } from "@hackcove/featureslash-engine";
 import { type Clock, startTimer } from "./clock.ts";
-import { type Fetch, linkedController, retryAfterMs, withTimeout } from "./http.ts";
+import { type Fetch, linkedController, retryAfterMs, TimeoutError, withTimeout } from "./http.ts";
 import { SseParser } from "./sse.ts";
+
+/** `off`: `stream: false`. `connecting`: opening it, or the first load. `connected`: the server's `connected` event arrived. `disconnected`: down, waiting to retry (polling meanwhile). `closed`: after `close()`. */
+export type StreamState = "off" | "connecting" | "connected" | "disconnected" | "closed";
+export type SyncErrorCode = `http_${number}` | "timeout" | "bad_ruleset" | "network";
+export interface ClientStatus {
+  /** The ETag of the ruleset held; null before the first load. */
+  etag: string | null;
+  /** When the SDK last confirmed its ruleset matches the server, as epoch milliseconds from the clock; null if never. */
+  lastSyncAt: number | null;
+  stream: StreamState;
+  /** Why the most recent ruleset or stream attempt failed; null if it did not. */
+  lastError: SyncErrorCode | null;
+}
+
+class HttpStatusError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+class BadRulesetError extends Error {}
+
+function errorCode(error: unknown): SyncErrorCode {
+  if (error instanceof HttpStatusError) return `http_${error.status}`;
+  if (error instanceof TimeoutError) return "timeout";
+  if (error instanceof BadRulesetError || error instanceof SyntaxError) return "bad_ruleset";
+  return "network";
+}
 
 export interface SyncOptions {
   baseUrl: string;
@@ -40,11 +71,32 @@ export class RulesetSync {
   /** The server's 429 asked for nothing to reach it before this time. */
   private retryAt = 0;
   private readonly lifetime = new AbortController();
+  private lastSyncAt: number | null = null;
+  private lastError: SyncErrorCode | null = null;
+  private streamState: StreamState;
 
-  constructor(private readonly options: SyncOptions) {}
+  constructor(private readonly options: SyncOptions) {
+    this.streamState = options.stream ? "connecting" : "off";
+  }
 
   get current(): Ruleset | null {
     return this.ruleset;
+  }
+
+  /** Local state only: what this SDK has loaded and how its stream is doing. The server never sees it. */
+  get status(): ClientStatus {
+    return {
+      etag: this.etag,
+      lastSyncAt: this.lastSyncAt,
+      stream: this.lifetime.signal.aborted ? "closed" : this.streamState,
+      lastError: this.lastError,
+    };
+  }
+
+  /** The ruleset is confirmed current as of now. */
+  private synced(): void {
+    this.lastSyncAt = this.options.clock.now();
+    this.lastError = null;
   }
 
   stop(): void {
@@ -105,17 +157,24 @@ export class RulesetSync {
         if (response.status !== 200) {
           this.honourRetryAfter(response);
           await response.body?.cancel();
-          throw new Error(`GET /sdk/v1/ruleset answered ${response.status}`);
+          throw new HttpStatusError(
+            response.status,
+            `GET /sdk/v1/ruleset answered ${response.status}`,
+          );
         }
         const body: unknown = await response.json();
         if (!hasRulesetShape(body))
-          throw new Error("GET /sdk/v1/ruleset sent no flags and segments");
+          throw new BadRulesetError("GET /sdk/v1/ruleset sent no flags and segments");
         this.ruleset = createRuleset(body);
         this.etag = response.headers.get("ETag");
       });
+      this.synced();
       return true;
     } catch (error) {
-      if (!this.lifetime.signal.aborted) onError(error);
+      if (!this.lifetime.signal.aborted) {
+        this.lastError = errorCode(error);
+        onError(error);
+      }
       return false;
     }
   }
@@ -130,6 +189,7 @@ export class RulesetSync {
     const watchdog = new Watchdog(clock, controller);
     watchdog.arm(requestTimeoutMs, "the stream did not open");
     const state = { connected: false };
+    this.streamState = "connecting";
     try {
       const response = await fetch(`${baseUrl}/sdk/v1/stream`, {
         headers: { Authorization: `Bearer ${sdkKey}`, Accept: "text/event-stream" },
@@ -138,15 +198,22 @@ export class RulesetSync {
       if (response.status !== 200 || response.body === null) {
         this.honourRetryAfter(response);
         await response.body?.cancel();
-        throw new Error(`GET /sdk/v1/stream answered ${response.status}`);
+        throw new HttpStatusError(
+          response.status,
+          `GET /sdk/v1/stream answered ${response.status}`,
+        );
       }
       await this.pump(response.body.getReader(), watchdog, state);
     } catch (error) {
-      if (!this.lifetime.signal.aborted) onError(error);
+      if (!this.lifetime.signal.aborted) {
+        this.lastError = errorCode(error);
+        onError(error);
+      }
     } finally {
       watchdog.disarm();
       controller.abort();
       dispose();
+      this.streamState = "disconnected";
     }
     return state.connected;
   }
@@ -165,7 +232,11 @@ export class RulesetSync {
       if (done) return;
       for (const event of parser.feed(decoder.decode(value, { stream: true }))) {
         if (event.event !== "changed" && event.event !== "connected") continue;
-        if (event.event === "connected") state.connected = true;
+        if (event.event === "connected") {
+          state.connected = true;
+          this.streamState = "connected";
+          this.lastError = null;
+        }
         if (!(await this.onTag(event.data))) {
           // The fetch the stream asked for failed, and a stream that stays up would never retry it.
           // End it and count it as not connected, so the backoff and the poll take over.
@@ -178,7 +249,11 @@ export class RulesetSync {
 
   /** The stream names the ruleset's ETag; fetch only when it is not the one held. */
   private async onTag(tag: string): Promise<boolean> {
-    return this.ruleset !== null && tag === this.etag ? true : this.refresh();
+    if (this.ruleset !== null && tag === this.etag) {
+      this.synced();
+      return true;
+    }
+    return this.refresh();
   }
 }
 
@@ -194,7 +269,7 @@ class Watchdog {
   arm(ms: number, reason: string): void {
     this.cancel();
     this.cancel = startTimer(this.clock, ms, () => {
-      this.controller.abort(new Error(reason));
+      this.controller.abort(new TimeoutError(reason));
     });
   }
 
