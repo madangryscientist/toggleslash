@@ -76,3 +76,11 @@ Each entry: what · why · ⚠ if unsure · how to undo.
 - **⚠** Two editors of one segment overwrite each other silently, unlike flag configs. Worth a version when the dashboard edits segments (FS-20/FS-21).
 - **⚠ Small known mismatch:** the OpenAPI schema marks `offVariation` required on the PUT body while the server tolerates its absence, so a generated client is stricter than the server.
 - **Undo:** the lock is `Targeting/TargetingLock.cs`; a segment version needs an additive column and a generated migration.
+
+### FS-13 audit choices (builder calls, accepted)
+
+- **What:** added scope columns (`project_key`, `environment_key`, `flag_key`) by additive migration. Before and after are the API's response shapes. Actor is always `admin`. A no-op write still writes a row, with before equal to after. A new flag or environment is one row, not one per default config. The environment filter drops flag-level events. Flag PATCH, archive and restore now take `TargetingLock`. `IsUniqueViolation` narrowed to the unique and primary-key codes, so a failed audit write is a 500 rather than a false 409.
+- **Why:** keys outlive deleted entities where ids would not. Response shapes cannot carry a secret, and a test checks every column.
+- **⚠** No-op rows are a judgment call: they record that someone asked, but they add noise to a flag's history. Filtering `before = after` on read would hide them.
+- **⚠** Deleting a segment or an entity leaves its audit rows in place by design, so an unknown flag on the project feed is an empty page, not a 404.
+- **Undo:** in `Audit/AuditLog.cs`, skip the write when before equals after.
