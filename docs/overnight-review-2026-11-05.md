@@ -166,3 +166,8 @@ Each entry: what · why · ⚠ if unsure · how to undo.
 ### FS-22 dispatch: no local Docker
 
 - **What:** the ticket wants `docker build` and `docker compose up` run locally. `jacobus` is not in the `docker` group and sudo needs a password, so neither can run here. I did not add the group, use sudo or install rootless Docker. The proof moves to a CI job that runs the same build and compose commands and curls `/health`, with no push and no registry login. Tier raised from simple to medium. **Why:** granting Docker access is root-equivalent and is your call, while CI proves the same commands. **⚠** nothing has been run on this machine, so a local-only difference would not show. **Undo / finish:** `sudo usermod -aG docker jacobus`, log in again, then run the two commands from `docs/self-hosting.md`.
+
+### FS-22 choices (self-hosting)
+
+- **⚠ Not run on this machine:** `docker build` and `docker compose up` were proven by the CI container job only (build, compose up, `/health`, UID 1654, token enforced, restart, backup and restore). I read the job and its result. **To finish it yourself:** with Docker access, run `docker build -f apps/server/Dockerfile -t featureslash-server:local .`, then `FEATURESLASH_ADMIN_TOKEN=local-test docker compose up -d --no-build --wait && curl http://127.0.0.1:8080/health; docker compose down -v`.
+- **What:** digests read over HTTP from mcr.microsoft.com; runtime aspnet 10.0.14; port bound to 127.0.0.1 because the server speaks plain HTTP; volume has a fixed name, `featureslash-data`. **⚠** a fixed name means two checkouts on one host share one database. **Undo:** `compose.yaml`.
