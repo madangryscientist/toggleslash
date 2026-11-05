@@ -31,7 +31,7 @@ One builder at a time, in this order. FS-2 is held and not in the queue.
 | 19 | FS-21 | medium | operator pages (feel-review) | ✅ PR #24, full gate and CI green; needs your feel-review (#24, ff8ce39) |
 | 20 | FS-22 | medium (raised) | Dockerfile and compose, local only | ✅ PR #25, full gate and CI green; docker run proven in CI only, not locally (#25, 7436970) |
 | 21 | FS-23 | medium | cross-language e2e | ✅ PR #26, full gate, e2e target 6/6 three times, CI green (#26, 59e37c0) |
-| 22 | FS-24 | simple | README and quickstart | |
+| 22 | FS-24 | simple | README and quickstart | full gate, CI 5/5; quickstart run by builder (#27, 80a68be) |
 
 ## Decision log
 
