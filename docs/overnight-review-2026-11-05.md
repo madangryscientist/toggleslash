@@ -118,3 +118,18 @@ Each entry: what · why · ⚠ if unsure · how to undo.
 - **A bad entry rejects the whole batch (400); an unknown flag does not** (ignored, counted in `unknownFlags`). Why: an SDK can outlive a deleted flag, while a malformed entry is a bug. Archived flags still count.
 - **Limits:** 128 KiB and 1000 events (413), count 1 to 1e9, day from 366 back to one ahead of UTC today. The numbers are the builder's. Undo: constants in `Usage/UsageEndpoints.cs`.
 - **`lastEvaluated` is a UTC day, the latest across environments,** and is left out of audit snapshots so a usage count does not read as a change. The usage read breaks each day down by variation, more than the ticket asked; kept because the table is keyed that way and the later work needs it.
+
+### FS-17 SDK choices (builder calls, accepted)
+
+- **One loop is both the reconnect and the poll cadence.** After a stream ends or fails it waits 1 s, doubling up to 30 s, polls once, then tries the stream again. A stream that is up needs no poll. `stream: false` polls only.
+- **A stream silent for 60 s is dropped** (the server keeps alive every 25 s), and every request has a 10 s timeout, so `ready()` and `close()` cannot hang.
+- **A value of the wrong JSON type returns the fallback** with `TYPE_MISMATCH` and counts nothing. A `null` fallback accepts any type.
+- **⚠ Backoff resets once a stream connects,** so a server that says `connected` and then hangs up is retried every second. The builder kept it: one ETag read each, and a deploy reconnects quickly. Undo: reset only after a stream has lived a while.
+- **The package stays private.** Publishing waits for you, per the floor.
+
+### FS-26 added by the planner: the site's cached build
+
+- **What:** a new one-line ticket, dispatched next, ahead of FS-18. `apps/site` declares only `dist` as its build output, but `vite preview` and `wrangler` also read `.wrangler/deploy/config.json`, so a fresh worktree with a cached build fails site e2e and the dry run.
+- **Why now:** FS-19 to FS-21 run this gate, and it would be red on each one for a reason unrelated to the work. It first went red gating FS-17; the same head passed with `--skip-nx-cache`, and CI's apps job passed.
+- **⚠** I landed FS-17 on that evidence, not on a clean run of my gate script.
+- **Undo:** revert the outputs line.
