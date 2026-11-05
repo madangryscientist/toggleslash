@@ -13,7 +13,9 @@ function Docs() {
   return (
     <div className="space-y-4">
       <h1 className="text-3xl font-bold">Docs</h1>
-      <p>The documentation arrives with the first feature. Nothing to configure yet.</p>
+      <p>
+        The documentation is not published yet. It lives in the repository, which is not public yet.
+      </p>
     </div>
   );
 }
