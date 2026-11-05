@@ -18,7 +18,8 @@
     "parity:check:commits": "bun scripts/parity-commits.ts",
     "build": "bun scripts/nx.ts run-many -t build",
     "test": "bun scripts/nx.ts run-many -t test",
-    "test:e2e": "bun scripts/nx.ts run-many -t test:e2e"
+    "test:e2e": "bun scripts/nx.ts run-many -t test:e2e",
+    "stack": "bun packages/e2e/src/stack-cli.ts"
   },
   "devDependencies": {
     "@nx/dotnet": "24.0.1",

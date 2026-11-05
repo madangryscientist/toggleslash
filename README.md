@@ -37,7 +37,10 @@ live yet).
 bun install
 bun run featureslash --version
 bun run typecheck && bun run lint && bun run format:check && bun run test
+bun run stack
 ```
+
+`bun run stack` starts the real server, a seeded shop, the dashboard and a small example app on your machine, on loopback, with throwaway secrets, and stays up until Ctrl-C. It needs the .NET SDK. See [`apps/example`](apps/example/README.md).
 
 `apps/server` needs the .NET SDK (10.0.402, `global.json`); without one the root scripts skip it and say so.
 
