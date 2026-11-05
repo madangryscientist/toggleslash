@@ -1,7 +1,9 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using FeatureSlash.Server.Audit;
 using FeatureSlash.Server.Auth;
 using FeatureSlash.Server.Data;
+using FeatureSlash.Server.Targeting;
 using Microsoft.EntityFrameworkCore;
 
 namespace FeatureSlash.Server.Catalogue;
@@ -133,6 +135,8 @@ public static class FlagEndpoints
             id,
             request.OffVariation ?? FlagDefaults.OffVariation,
             request.FallthroughVariation ?? FlagDefaults.FallthroughVariation)));
+        // One event for the write, however many default configs it brought with it.
+        database.Record(AuditEntity.Flag, flag.Key, AuditAction.Created, new AuditScope(owner.Key, Flag: flag.Key), null, Describe(flag));
         await database.SaveChangesAsync();
         await transaction.CommitAsync();
 
@@ -169,7 +173,7 @@ public static class FlagEndpoints
         return found is not null ? Results.Json(Describe(found)) : NotFound(owner);
     }
 
-    private static async Task<IResult> Update(string project, string flag, UpdateFlagRequest request, FeatureSlashDbContext database)
+    private static async Task<IResult> Update(string project, string flag, UpdateFlagRequest request, FeatureSlashDbContext database, TargetingLock targetingLock)
     {
         var problem = (request.Name is null ? null : Validation.Name(request.Name))
             ?? Validation.Tags(request.Tags)
@@ -179,12 +183,15 @@ public static class FlagEndpoints
         {
             return Failures.BadRequest(problem);
         }
+        // Under the lock so that the event's before and after are the row as it was and as it became.
+        using var held = await targetingLock.Enter();
         var (owner, found) = await Find(database, project, flag, tracked: true);
         if (found is null)
         {
             return NotFound(owner);
         }
 
+        var before = Describe(found);
         found.Name = request.Name?.Trim() ?? found.Name;
         found.Description = request.Description ?? found.Description;
         found.Temporary = request.Temporary ?? found.Temporary;
@@ -196,26 +203,40 @@ public static class FlagEndpoints
         {
             found.Tags = JsonSerializer.Serialize(Validation.DistinctTags(request.Tags));
         }
+        database.Record(AuditEntity.Flag, found.Key, AuditAction.Updated, new AuditScope(owner!.Key, Flag: found.Key), before, Describe(found));
         await database.SaveChangesAsync();
         return Results.Json(Describe(found));
     }
 
-    /// <summary>Archiving twice is fine and keeps the first time. An archived flag keeps its key and its configs.</summary>
-    private static Task<IResult> Archive(string project, string flag, FeatureSlashDbContext database) =>
-        SetArchived(project, flag, database, archived: true);
+    /// <summary>
+    /// Archiving twice is fine and keeps the first time. Like a restore of a flag that is not archived, it
+    /// changes nothing but is still a write that succeeded, so it still records one event (before equals after).
+    /// An archived flag keeps its key and its configs.
+    /// </summary>
+    private static Task<IResult> Archive(string project, string flag, FeatureSlashDbContext database, TargetingLock targetingLock) =>
+        SetArchived(project, flag, database, targetingLock, archived: true);
 
-    private static Task<IResult> Restore(string project, string flag, FeatureSlashDbContext database) =>
-        SetArchived(project, flag, database, archived: false);
+    private static Task<IResult> Restore(string project, string flag, FeatureSlashDbContext database, TargetingLock targetingLock) =>
+        SetArchived(project, flag, database, targetingLock, archived: false);
 
-    private static async Task<IResult> SetArchived(string project, string flag, FeatureSlashDbContext database, bool archived)
+    private static async Task<IResult> SetArchived(string project, string flag, FeatureSlashDbContext database, TargetingLock targetingLock, bool archived)
     {
+        using var held = await targetingLock.Enter();
         var (owner, found) = await Find(database, project, flag, tracked: true);
         if (found is null)
         {
             return NotFound(owner);
         }
 
+        var before = Describe(found);
         found.ArchivedAt = archived ? found.ArchivedAt ?? DateTime.UtcNow : null;
+        database.Record(
+            AuditEntity.Flag,
+            found.Key,
+            archived ? AuditAction.Archived : AuditAction.Restored,
+            new AuditScope(owner!.Key, Flag: found.Key),
+            before,
+            Describe(found));
         await database.SaveChangesAsync();
         return Results.Json(Describe(found));
     }

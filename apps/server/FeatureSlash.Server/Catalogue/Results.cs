@@ -26,9 +26,11 @@ internal static class Failures
     /// <summary>
     /// A unique index refused the write: the key was free when checked and taken before the insert. The
     /// pre-check gives the friendly message; this catches the race, so it is still a 409 and not a 500.
+    /// Only a unique or primary-key violation (extended codes 2067 and 1555): any other constraint failure,
+    /// such as the audit event refusing to write, is the server's fault and stays a 500.
     /// </summary>
     public static bool IsUniqueViolation(DbUpdateException exception) =>
-        exception.InnerException is SqliteException { SqliteErrorCode: 19 };
+        exception.InnerException is SqliteException { SqliteExtendedErrorCode: 2067 or 1555 };
 }
 
 internal static class Lookups

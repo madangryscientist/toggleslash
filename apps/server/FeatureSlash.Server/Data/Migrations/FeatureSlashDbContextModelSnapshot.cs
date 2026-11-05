@@ -104,11 +104,28 @@ namespace FeatureSlash.Server.Data.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("entity_type");
 
+                    b.Property<string>("EnvironmentKey")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("environment_key");
+
+                    b.Property<string>("FlagKey")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("flag_key");
+
                     b.Property<DateTime>("OccurredAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("occurred_at");
 
+                    b.Property<string>("ProjectKey")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("project_key");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("ProjectKey", "Id");
+
+                    b.HasIndex("ProjectKey", "FlagKey", "Id");
 
                     b.ToTable("audit_events", (string)null);
                 });

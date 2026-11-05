@@ -1,3 +1,4 @@
+using FeatureSlash.Server.Audit;
 using FeatureSlash.Server.Auth;
 using FeatureSlash.Server.Data;
 using Microsoft.EntityFrameworkCore;
@@ -66,6 +67,9 @@ public static class EnvironmentEndpoints
             var flagIds = await database.Flags.Where(f => f.ProjectId == owner.Id).Select(f => f.Id).ToListAsync();
             database.FlagEnvironmentConfigs.AddRange(flagIds.Select(id =>
                 FlagDefaults.NewConfig(id, environment.Id, FlagDefaults.OffVariation, FlagDefaults.FallthroughVariation)));
+            // One event for the write, however many default configs it brought with it.
+            database.Record(
+                AuditEntity.Environment, environment.Key, AuditAction.Created, new AuditScope(owner.Key, environment.Key), null, Describe(environment));
             await database.SaveChangesAsync();
             await transaction.CommitAsync();
         }

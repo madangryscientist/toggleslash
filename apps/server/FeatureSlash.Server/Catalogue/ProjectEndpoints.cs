@@ -1,3 +1,4 @@
+using FeatureSlash.Server.Audit;
 using FeatureSlash.Server.Auth;
 using FeatureSlash.Server.Data;
 using Microsoft.EntityFrameworkCore;
@@ -43,6 +44,7 @@ public static class ProjectEndpoints
 
         var project = new Project { Key = request.Key!, Name = request.Name!.Trim(), CreatedAt = DateTime.UtcNow };
         database.Projects.Add(project);
+        database.Record(AuditEntity.Project, project.Key, AuditAction.Created, new AuditScope(project.Key), null, Describe(project));
         try
         {
             await database.SaveChangesAsync();

@@ -106,9 +106,54 @@ public sealed class ApiServer : IDisposable
         return (string)command.ExecuteScalar()!;
     }
 
+    public Task<HttpResponseMessage> Patch(string path, object body) => AsAdmin(HttpMethod.Patch, path, body);
+
+    public Task<HttpResponseMessage> Delete(string path) => AsAdmin(HttpMethod.Delete, path);
+
+    /// <summary>A connection that bypasses the server, for a test that changes or reads the file as anything else could.</summary>
+    public Microsoft.Data.Sqlite.SqliteConnection OpenDatabase() => database.Open();
+
+    /// <summary>Every audit row, oldest first, read straight from the file.</summary>
+    public List<AuditRow> AuditRows()
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, occurred_at, actor, entity_type, entity_id, action, project_key, environment_key, flag_key, "before", "after"
+            FROM audit_events ORDER BY id
+            """;
+        using var reader = command.ExecuteReader();
+        var rows = new List<AuditRow>();
+        while (reader.Read())
+        {
+            string? Text(int i) => reader.IsDBNull(i) ? null : reader.GetString(i);
+            rows.Add(new AuditRow(
+                reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4),
+                reader.GetString(5), reader.GetString(6), Text(7), Text(8), Text(9), Text(10)));
+        }
+        return rows;
+    }
+
     public void Dispose()
     {
         Server.Dispose();
         database.Dispose();
     }
+}
+
+public sealed record AuditRow(
+    long Id,
+    string OccurredAt,
+    string Actor,
+    string EntityType,
+    string EntityId,
+    string Action,
+    string Project,
+    string? Environment,
+    string? Flag,
+    string? Before,
+    string? After)
+{
+    /// <summary>Every column joined: what a leak anywhere in the row would show up in.</summary>
+    public string Everything => string.Join('\n', new[] { OccurredAt, Actor, EntityType, EntityId, Action, Project, Environment, Flag, Before, After });
 }

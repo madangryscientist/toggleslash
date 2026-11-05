@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
+using FeatureSlash.Server.Audit;
 using FeatureSlash.Server.Auth;
 using FeatureSlash.Server.Catalogue;
 using FeatureSlash.Server.Data;
@@ -37,6 +38,7 @@ app.MapFlagEndpoints();
 app.MapApiKeyEndpoints();
 app.MapConfigEndpoints();
 app.MapSegmentEndpoints();
+app.MapAuditEndpoints();
 
 app.Run();
 

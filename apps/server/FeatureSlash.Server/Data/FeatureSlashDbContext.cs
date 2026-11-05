@@ -71,7 +71,13 @@ public sealed partial class FeatureSlashDbContext(DbContextOptions<FeatureSlashD
             key.HasIndex(k => k.Hash).IsUnique();
         });
 
-        modelBuilder.Entity<AuditEvent>().ToTable("audit_events");
+        modelBuilder.Entity<AuditEvent>(audit =>
+        {
+            audit.ToTable("audit_events");
+            // The audit routes page newest first within a project, and a flag's history within that.
+            audit.HasIndex(a => new { a.ProjectKey, a.Id });
+            audit.HasIndex(a => new { a.ProjectKey, a.FlagKey, a.Id });
+        });
 
         modelBuilder.Entity<FlagUsageDaily>(usage =>
         {

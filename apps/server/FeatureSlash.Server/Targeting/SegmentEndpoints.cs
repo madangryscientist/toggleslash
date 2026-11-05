@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using FeatureSlash.Server.Audit;
 using FeatureSlash.Server.Auth;
 using FeatureSlash.Server.Catalogue;
 using FeatureSlash.Server.Data;
@@ -81,6 +82,8 @@ public static class SegmentEndpoints
             Rules = JsonSerializer.Serialize(request.Rules!.Value),
         };
         database.Segments.Add(segment);
+        database.Record(
+            AuditEntity.Segment, segment.Key, AuditAction.Created, new AuditScope(scope.Project.Key, scope.Environment.Key), null, Describe(segment));
         try
         {
             await database.SaveChangesAsync();
@@ -138,11 +141,18 @@ public static class SegmentEndpoints
         var included = JsonSerializer.Serialize(request.Included);
         var excluded = JsonSerializer.Serialize(request.Excluded);
         var rules = JsonSerializer.Serialize(request.Rules!.Value);
+        // The update and its event commit together; the targeting lock keeps `found` the row's true "before".
+        await using var transaction = await database.Database.BeginTransactionAsync();
         await database.Segments.Where(s => s.Id == found.Id).ExecuteUpdateAsync(set => set
             .SetProperty(s => s.Included, included)
             .SetProperty(s => s.Excluded, excluded)
             .SetProperty(s => s.Rules, rules));
-        return Results.Json(Describe(await database.Segments.AsNoTracking().SingleAsync(s => s.Id == found.Id)));
+        var saved = Describe(await database.Segments.AsNoTracking().SingleAsync(s => s.Id == found.Id));
+        database.Record(
+            AuditEntity.Segment, found.Key, AuditAction.Updated, new AuditScope(scope!.Project.Key, scope.Environment.Key), Describe(found), saved);
+        await database.SaveChangesAsync();
+        await transaction.CommitAsync();
+        return Results.Json(saved);
     }
 
     /// <summary>
@@ -172,7 +182,12 @@ public static class SegmentEndpoints
             return Failures.Conflict($"Segment \"{found.Key}\" is still used by the rules of: {string.Join(", ", users)}. Remove those rules first.");
         }
 
+        await using var transaction = await database.Database.BeginTransactionAsync();
         await database.Segments.Where(s => s.Id == found.Id).ExecuteDeleteAsync();
+        database.Record(
+            AuditEntity.Segment, found.Key, AuditAction.Deleted, new AuditScope(scope!.Project.Key, scope.Environment.Key), Describe(found), null);
+        await database.SaveChangesAsync();
+        await transaction.CommitAsync();
         return Results.NoContent();
     }
 
