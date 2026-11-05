@@ -21,7 +21,7 @@ One builder at a time, in this order. FS-2 is held and not in the queue.
 | 10 | FS-12 | medium | targeting and segments | ✅ PR #14, 275 server tests, gate and CI green (#14, 3b14029) |
 | 11 | FS-13 | medium | audit | ✅ PR #15, 311 server tests, gate and CI green (#15, e79e538) |
 | 12 | FS-14 | medium | SDK ruleset and evaluate | ✅ PR #16, 586 server tests, gate and CI green (#16, 86b1cee) |
-| 13 | FS-15 | complex | SSE | ✅ `pending` #17, 607 server tests, mutation check not run (#17, 595417a) |
+| 13 | FS-15 | complex | SSE | ✅ PR #17, 607 server tests twice, gate and CI green, mutation check not run (#17, 595417a) |
 | 14 | FS-16 | medium | usage counts | |
 | 15 | FS-17 | medium | TS SDK | |
 | 16 | FS-18 | medium | CLI | |
@@ -100,3 +100,12 @@ Each entry: what · why · ⚠ if unsure · how to undo.
 - **⚠** Nothing has shown the revocation and after-commit tests fail on a broken build. I will read them at the gate; a mutation run is worth doing by hand in the morning.
 - **⚠** Runs in `full-access` mode can still stop on a prompt, and nothing tells the planner except the watchdog. The tell is `pendingRequestCount` on the thread. Worth an `ob` ticket if it recurs.
 - **Undo:** nothing to undo; to run the check, flip `KeyIsLive` to always true in `Sdk/RulesetStream.cs` and run `SdkStreamTests`.
+
+### FS-15 SDK stream choices (builder calls, accepted)
+
+- **One server process only.** What: the notifier is in-process, per environment; `docs/architecture.md` says a multi-instance deployment needs another bus. Why: the ticket asks for this and the server is SQLite on one host. **⚠** The same assumption as `TargetingLock` (FS-12). Undo: put a bus behind `RulesetNotifier`.
+- **Revoking does not wake a stream.** What: a revoked key's stream ends at its next event or keep-alive, so up to 25 seconds later, and it sends nothing in between. Why: the ticket says so. Undo: raise a signal from the revoke route.
+- **The key is read from the database before every event and keep-alive**, and each subscriber costs one ruleset read per wake. Why: a stream outlives any one read; bursts coalesce to one wake-up. **⚠** Cost grows with subscribers times writes. Fine for now.
+- **No signal for flag PATCH.** Checked at the gate: `UpdateFlagRequest` is metadata only (name, description, temporary, owner, tags). I did not read every field the ruleset query selects.
+- **The mutation check was not run (see the stall entry above).** I read the tests instead. `A_key_revoked_*` assert the stream ends with no further line, so a broken key check would surface a keep-alive or `changed` line and fail. `Each_ruleset_write_signals_after_its_commit_and_only_then` makes each of the eight writes fail at commit and asserts no signal, then succeed and asserts one, so it catches both an early signal and a missing one. **⚠** That is reading, not a run. `StreamHeartbeat.Next`, the real 25-second delay, is run by no test; only the constant is asserted.
+- **⚠ Thread left unsettled.** `ob close` could not settle the FS-15 thread because the old permission prompt is still pending on it; it auto-settles in 3 days. Do not approve that prompt: it would sed-edit files in the `featureslash.fs-15` worktree. The landed code is not affected.
