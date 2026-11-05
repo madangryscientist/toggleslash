@@ -16,6 +16,8 @@ against someone else's deployment or data.
 
 - **The CLI** (`packages/cli`, the `@hackcove/featureslash` npm package) and **the engine** it runs
   (`packages/engine`).
+- **The server** (`apps/server`): its admin token and SDK key handling. A key or token reaching a
+  log, a client key reading a ruleset, and a revoked key still working are all in scope.
 - **The dashboard** (`apps/web`) once it has sign-in, flags and an API; today it is a skeleton with
   no authentication and no user data.
 
@@ -26,5 +28,6 @@ already control.
 ## The threat model, short
 
 The code is public, so assume an attacker has read it. Nothing here depends on the code being
-secret: every secret is read from the environment, never from the tree. This section grows as the
-product does.
+secret: every secret is read from the environment, never from the tree. The server's database holds
+only hashes of SDK keys, so reading the file does not yield a working key. A client key is assumed
+public. This section grows as the product does.

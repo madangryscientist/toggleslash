@@ -5,7 +5,7 @@ engine, manage them from a CLI and a hosted dashboard. The product domain is `fe
 (not registered yet, so nothing is routed to it).
 
 **This repository is early.** The engine evaluates flags; the dashboard and the site each render one
-page, and the C# server migrates its SQLite database and answers `GET /health`. The C# evaluator and the storage exist but no endpoint calls them. The API and server-side evaluation arrive as
+page, and the C# server migrates its SQLite database, answers `GET /health` and authenticates: the admin token and hashed SDK keys, with an admin API for the keys. The C# evaluator exists but no endpoint calls it. The rest of the API and server-side evaluation arrive as
 their own tickets. The design they build on is in [`docs/architecture.md`](docs/architecture.md).
 
 **Evaluation is specified once and implemented per language.** [`docs/evaluation.md`](docs/evaluation.md)
@@ -119,7 +119,8 @@ Worker routes, and the first npm publish each wait for the maintainer's yes.
 3. **UI is composed from `@hackcove/ui-react`.** A custom style or component is a flag, not a fix; a
    reusable gap is filed against the hackcove repo. Keep the Catppuccin credit comment in each
    `styles.css`.
-4. **A secret is read from the environment, never from the tree.** The site holds none.
+4. **A secret is read from the environment, never from the tree.** The site holds none. The server
+   never generates, stores or logs the admin token, and stores an SDK key only as a hash and a prefix.
 5. **Migrations are additive and generated; never hand-write one.** In `apps/web`, `drizzle-kit
    generate` writes the `.sql` and its `meta/` snapshot together (`bun run db:generate`). In
    `apps/server`, `dotnet ef` writes the migration, its designer file and the model snapshot in
