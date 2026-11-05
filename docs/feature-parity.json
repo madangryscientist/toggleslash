@@ -1266,6 +1266,26 @@
       }
     },
     {
+      "id": "http-hardening",
+      "category": "Operations",
+      "name": "Security headers, body limits and timeouts",
+      "description": "Response headers on every answer from the server and the dashboard, a content security policy with a per-request nonce, a request body cap, request and header timeouts, and CORS on exactly two routes.",
+      "featureslash": {
+        "status": "yes",
+        "evidence": [
+          "path:apps/server/FeatureSlash.Server/Hardening/SecurityHeaders.cs",
+          "path:apps/server/FeatureSlash.Server/Hardening/RequestLimits.cs",
+          "path:apps/web/src/api/security-headers.server.ts",
+          "test:apps/server/FeatureSlash.Server.Tests/HardeningTests.cs",
+          "test:apps/server/FeatureSlash.Server.Tests/CorsTests.cs",
+          "test:apps/web/e2e/security-headers.spec.ts",
+          "doc:docs/self-hosting.md"
+        ],
+        "note": "No HSTS from either: terminate TLS in front and set it there. Request timeouts are cooperative: a handler that ignores its cancellation token runs to completion. Not compared with other vendors."
+      },
+      "competitors": {}
+    },
+    {
       "id": "terraform",
       "category": "Operations",
       "name": "Terraform provider",

@@ -143,6 +143,40 @@ limits all follow from that:
 - The volume is local to one Docker host. Back it up as above.
 - Postgres is a later option, not part of this version.
 
+## Headers, body size and timeouts
+
+The server and the dashboard set these themselves; there is nothing to configure.
+
+**Response headers.** Every answer from the server, errors and the event stream included, carries
+`X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and `X-Frame-Options: DENY`. Admin API answers
+(`/api/...`) also carry `Cache-Control: no-store`. The ruleset keeps its `ETag` and its `304`. The dashboard sends the
+same three on every answer, redirects and the sign-in page included, `Cache-Control: no-store` on everything but its
+hashed static files, and a `Content-Security-Policy`: `default-src 'self'`, scripts and styles from the page itself
+plus a nonce made fresh for each response, and `frame-ancestors 'none'`, `base-uri 'self'`, `form-action 'self'`,
+`object-src 'none'`. No inline script or style runs without that nonce.
+
+**HSTS is yours to set.** Neither the server nor the dashboard sends `Strict-Transport-Security`, because neither
+terminates TLS. Set it at the proxy or on the Cloudflare zone, once you are sure the host will serve HTTPS for good.
+
+**Body size.** A request body over 1 MiB is refused with a `413` and the usual error body, before the route sees it.
+`POST /sdk/v1/events` is held to 128 KiB. A chunked body is counted as it arrives, so it cannot get past the cap.
+
+**Timeouts.**
+
+| What | Limit | When it is hit |
+| --- | --- | --- |
+| a request, from routing to the end of its handler | 30 seconds | `504` with code `request_timeout` |
+| reading the request headers | 30 seconds | `408`, and the connection is closed |
+| an idle keep-alive connection | 2 minutes | the connection is closed |
+
+`GET /sdk/v1/stream` has **no** request timeout: it is open for hours and says nothing between changes except a
+keep-alive comment every 25 seconds. The data-rate floor for a request body is ASP.NET's default (240 bytes a second
+after a five second grace).
+
+A request timeout is cooperative. It cancels the request's token, and a handler that does not look at it runs to
+completion and answers as it would have: no `504` is sent. The SDK routes pass the token to the database; most admin
+routes do not yet, so a slow admin query is not cut off at 30 seconds.
+
 ## Rate limits
 
 The limits are always on, and there is no setting that turns them off. A variable takes a positive integer; anything

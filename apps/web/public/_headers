@@ -1,0 +1,6 @@
+# Static files are answered by the assets layer before the Worker runs, so src/server.ts never sees them.
+# The hashed files keep the caching they get; this only adds the headers the Worker puts on everything else.
+/assets/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  X-Frame-Options: DENY

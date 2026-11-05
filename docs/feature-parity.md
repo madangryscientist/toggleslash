@@ -13,9 +13,9 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 
 | Metric | FS | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| ✅ yes | 20 | 63 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
+| ✅ yes | 21 | 63 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
 | 🟡 partial | 8 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
-| — no | 37 | 2 | 8 | 6 | 5 | 6 | 6 | 8 | 16 |
+| — no | 37 | 3 | 9 | 7 | 6 | 7 | 7 | 9 | 17 |
 
 ## Matrix
 
@@ -106,6 +106,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Open source | ✅ | — | ✅ | ✅ | ✅ | — | — | ✅ | — |
 | HA and shared database | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Rate limits | ✅ | ✅ | — | — | — | — | — | — | — |
+| Security headers, body limits and timeouts | ✅ | — | — | — | — | — | — | — | — |
 | Terraform provider | — | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ |
 | MCP server | — | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ | 🟡 |
 | CLI | 🟡 | ✅ | ✅ | ✅ | 🟡 | ✅ | 🟡 | ✅ | ✅ |
@@ -208,6 +209,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Open source | ✅ | `path:LICENSE` |
 | HA and shared database | — | SQLite and one process per database; the in-memory lock and notifier do not cross processes. |
 | Rate limits | ✅ | `path:apps/server/FeatureSlash.Server/Limits/RequestLimiter.cs`<br>`doc:docs/self-hosting.md`<br>`test:apps/server/FeatureSlash.Server.Tests/RateLimitTests.cs`<br>`test:packages/sdk/test/rate-limit.test.ts`<br>In memory, one process; a restart resets the counts. No per-route admin limits or per-plan quotas. Only LaunchDarkly was read for this row; the other vendors' cells are not assessed. |
+| Security headers, body limits and timeouts | ✅ | `path:apps/server/FeatureSlash.Server/Hardening/SecurityHeaders.cs`<br>`path:apps/server/FeatureSlash.Server/Hardening/RequestLimits.cs`<br>`path:apps/web/src/api/security-headers.server.ts`<br>`test:apps/server/FeatureSlash.Server.Tests/HardeningTests.cs`<br>`test:apps/server/FeatureSlash.Server.Tests/CorsTests.cs`<br>`test:apps/web/e2e/security-headers.spec.ts`<br>`doc:docs/self-hosting.md`<br>No HSTS from either: terminate TLS in front and set it there. Request timeouts are cooperative: a handler that ignores its cancellation token runs to completion. Not compared with other vendors. |
 | Terraform provider | — | — |
 | MCP server | — | — |
 | CLI | 🟡 | `path:packages/cli`<br>`cli:config set-url`<br>`cli:config set-token`<br>Projects, environments, flags (no targeting edit) and keys; no segments, audit or usage commands. |
