@@ -67,3 +67,12 @@ Each entry: what · why · ⚠ if unsure · how to undo.
 - **⚠** Null variations are narrower than `docs/evaluation.md` allows, so the API cannot author a flag the evaluator accepts. A new environment cannot copy a flag's chosen indexes, because they are not stored per flag. The in-memory tag filter is fine at this size and will need a real query later.
 - **⚠** The builder did not run a skeptical review (its brief's AGENTS.md has no such gate). I gated it locally and in CI; I did not read all 2,588 lines.
 - **Undo:** allow null in `Catalogue/Validation.cs`; require a token by moving `/openapi` behind the admin policy in `Catalogue/OpenApiSetup.cs`.
+
+### FS-12 targeting choices (builder calls, accepted)
+
+- **What:** the version travels in the body or `If-Match`, and a save is one SQL compare-and-set. An in-process lock (`TargetingLock`) serialises config and segment writes and the segment-delete check. Stricter than the spec on purpose: unknown fields, a lone surrogate, and a prerequisite variation out of that flag's range are all 400. Toggle takes an optional version. A segment PUT has no version, so last write wins. I told the builder to refuse references across projects or environments, which closes the FS-9 ⚠; tests cover both.
+- **Why:** the checks read other rows before writing, and SQLite would let two such checks both pass. Client input must never be a 500.
+- **⚠ The lock assumes one server process per database file.** A second server on the same file could save a cycle or delete a segment still in use. That fits SQLite today and has to change if hosting (still undecided) ever runs more than one instance.
+- **⚠** Two editors of one segment overwrite each other silently, unlike flag configs. Worth a version when the dashboard edits segments (FS-20/FS-21).
+- **⚠ Small known mismatch:** the OpenAPI schema marks `offVariation` required on the PUT body while the server tolerates its absence, so a generated client is stricter than the server.
+- **Undo:** the lock is `Targeting/TargetingLock.cs`; a segment version needs an additive column and a generated migration.
