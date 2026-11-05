@@ -47,6 +47,7 @@ app.MapFlagStateEndpoints();
 app.MapSegmentEndpoints();
 app.MapAuditEndpoints();
 app.MapSdkEndpoints();
+app.MapDiagnoseEndpoint();
 app.MapUsageEndpoints();
 
 app.Run();

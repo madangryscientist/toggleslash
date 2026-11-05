@@ -58,6 +58,8 @@ featureslash flags history <flag> --project <project> [--env <env>] [--since <ti
 featureslash keys create --project <project> --env <env> --kind server|client --name <name>
 featureslash keys list --project <project> --env <env>
 featureslash keys revoke <id> --project <project> --env <env>
+
+featureslash diagnose <flag> --project <project> --env <env> (--context '<json>' | --context-file <path>)
 ```
 
 `featureslash --help` prints the same list; `--version` prints the version.
@@ -68,6 +70,14 @@ featureslash keys revoke <id> --project <project> --env <env>
   prints a page, newest first; when there is another page it ends with `more: add --cursor <cursor>`.
 - **SDK keys** (`keys create`) print the plain key **once**. The server keeps only a hash and a prefix, so
   `keys list` shows prefixes and `keys revoke` takes the id from that list.
+- **`diagnose`** asks the server why a flag has the value it has for one context: it evaluates the flag in
+  that environment (the admin route `POST /api/v1/projects/{project}/environments/{env}/evaluate`, so no SDK
+  key) and prints `value`, `variationIndex` and `reason`, with `ruleIndex`, `flagKey` (the prerequisite that
+  failed) and `code` (an error's) when the reason has them. The context is a JSON object, `{"key": "user-1",
+  "attributes": {}}`, from exactly one of `--context` and `--context-file`. It exits 0 whenever the server
+  answers 200, **including when the reason is an error** (`ERROR FLAG_NOT_FOUND` is an answer, not a
+  failure). A diagnosis counts no usage, writes no audit event, and the server neither stores nor logs the
+  context.
 - This is the admin surface only. Targeting rules, segments and usage are not in the CLI yet.
 
 ## Exit codes
@@ -76,7 +86,7 @@ featureslash keys revoke <id> --project <project> --env <env>
 | --- | --- |
 | `0` | success |
 | `1` | the server or the network failed: it could not be reached, it answered a 4xx or 5xx (including a rejected token, 401), or its reply was not what the API documents |
-| `2` | a usage error: an unknown command, a missing or invalid argument or option, or no URL or token configured |
+| `2` | a usage error: an unknown command, a missing or invalid argument or option (for `diagnose`, no flag, both or neither of `--context` and `--context-file`, a file that cannot be read, or text that is not JSON), or no URL or token configured |
 
 A failure prints one line on stderr, `featureslash: ...`, with the status and the server's own error
 code and message (`the server answered 404 not_found: No such flag.`). Output goes through

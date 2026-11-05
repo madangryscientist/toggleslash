@@ -75,6 +75,12 @@ public sealed class AuditWriteTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// POST routes that read and write nothing. <c>diagnoseEvaluation</c> is a POST only because it takes a body;
+    /// <c>DiagnoseApiTests</c> proves it records no audit event.
+    /// </summary>
+    private static readonly string[] ReadOnlyPosts = ["POST /api/v1/projects/{project}/environments/{env}/evaluate"];
+
     [Fact]
     public void The_steps_cover_every_write_route_the_server_has()
     {
@@ -85,6 +91,7 @@ public sealed class AuditWriteTests : IDisposable
                 .Where(method => method != "GET")
                 .Select(method => $"{method} {e.RoutePattern.RawText}"))
             .Select(route => route.TrimEnd('/'))
+            .Where(route => !ReadOnlyPosts.Contains(route))
             .Order()
             .ToList();
 

@@ -107,18 +107,40 @@ public static class SdkEndpoints
 
     private static async Task<IResult> Evaluate(EvaluateRequest request, HttpContext http, RulesetReader reader, UsageRecorder usage)
     {
+        var environmentId = ServerAuth.EnvironmentId(http.User);
+        var outcome = await EvaluateAll(request, () => reader.Read(environmentId, http.RequestAborted));
+        if (outcome.Failure is not null)
+        {
+            return outcome.Failure;
+        }
+        await usage.RecordEvaluations(environmentId, outcome.Served, http.RequestAborted);
+        return Results.Ok(outcome.Response);
+    }
+
+    /// <summary>
+    /// What <see cref="EvaluateAll"/> found: a <see cref="Failure"/> to send, or the <see cref="Response"/> and the
+    /// <see cref="Served"/> evaluations a caller may count. Counting is the caller's choice, not this method's.
+    /// </summary>
+    internal sealed record EvaluationOutcome(IResult? Failure, EvaluateResponse? Response, IReadOnlyList<UsageEntry> Served);
+
+    /// <summary>
+    /// Validates the request and evaluates one flag, or every flag that is not archived, against the ruleset.
+    /// Both <c>POST /sdk/v1/evaluate</c> and the admin diagnostic route call it. It records nothing: the ruleset is
+    /// read only after the context is known to be present, so a bad request costs no read.
+    /// </summary>
+    internal static async Task<EvaluationOutcome> EvaluateAll(EvaluateRequest request, Func<Task<RulesetSnapshot>> readSnapshot)
+    {
         if (request.Context is not { } context)
         {
-            return Failures.BadRequest("A \"context\" is required: { \"key\": \"user-1\", \"attributes\": { } }.");
+            return Rejected(Failures.BadRequest("A \"context\" is required: { \"key\": \"user-1\", \"attributes\": { } }."));
         }
-        var environmentId = ServerAuth.EnvironmentId(http.User);
-        var snapshot = await reader.Read(environmentId, http.RequestAborted);
+        var snapshot = await readSnapshot();
 
         var ruleset = snapshot.Load();
         // The spec checks the context before it looks anything up, so any key tells a bad context from a good one.
         if (Evaluator.Evaluate(ruleset, "", context).Reason.Code == ErrorCode.InvalidContext)
         {
-            return Failures.BadRequest("The context needs a non-empty string \"key\", and \"attributes\", if sent, must be an object.");
+            return Rejected(Failures.BadRequest("The context needs a non-empty string \"key\", and \"attributes\", if sent, must be an object."));
         }
 
         IReadOnlyList<string> keys = snapshot.FlagKeys;
@@ -126,7 +148,7 @@ public static class SdkEndpoints
         {
             if (!keys.Contains(request.FlagKey))
             {
-                return Failures.FlagNotFound();
+                return Rejected(Failures.FlagNotFound());
             }
             keys = [request.FlagKey];
         }
@@ -147,7 +169,8 @@ public static class SdkEndpoints
                 served.Add(new UsageEntry(key, variation, 1, today));
             }
         }
-        await usage.RecordEvaluations(environmentId, served, http.RequestAborted);
-        return Results.Ok(new EvaluateResponse(flags));
+        return new EvaluationOutcome(null, new EvaluateResponse(flags), served);
     }
+
+    private static EvaluationOutcome Rejected(IResult failure) => new(failure, null, []);
 }
