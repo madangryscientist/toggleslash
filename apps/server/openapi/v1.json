@@ -2,7 +2,7 @@
   "openapi": "3.1.1",
   "info": {
     "title": "FeatureSlash API",
-    "description": "The FeatureSlash server\u0027s admin API and SDK read API. Every route under /api/v1 takes \u0060Authorization: Bearer \u003Cadmin token\u003E\u0060. GET /sdk/v1/ruleset and GET /sdk/v1/stream take a server SDK key; POST /sdk/v1/evaluate takes a server or a client SDK key.",
+    "description": "The FeatureSlash server\u0027s admin API and SDK read API. Every route under /api/v1 takes \u0060Authorization: Bearer \u003Cadmin token\u003E\u0060, or a scoped token where its project and permission allow it. GET /sdk/v1/ruleset and GET /sdk/v1/stream take a server SDK key; POST /sdk/v1/evaluate takes a server or a client SDK key.",
     "version": "v1"
   },
   "paths": {
@@ -1670,6 +1670,211 @@
         ]
       }
     },
+    "/api/v1/projects/{project}/tokens": {
+      "post": {
+        "tags": [
+          "Tokens"
+        ],
+        "operationId": "createAdminToken",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "get": {
+        "tags": [
+          "Tokens"
+        ],
+        "operationId": "listAdminTokens",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TokenSummary"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project}/tokens/{id}": {
+      "delete": {
+        "tags": [
+          "Tokens"
+        ],
+        "operationId": "revokeAdminToken",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/projects/{project}/flags/{flag}/environments/{env}": {
       "get": {
         "tags": [
@@ -2970,6 +3175,35 @@
         },
         "additionalProperties": false
       },
+      "CreateTokenRequest": {
+        "required": [
+          "name",
+          "permission",
+          "expiresInDays"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "permission": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "expiresInDays": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "Detail": {
         "required": [
           "code",
@@ -3543,6 +3777,48 @@
         },
         "additionalProperties": false
       },
+      "TokenSummary": {
+        "required": [
+          "id",
+          "name",
+          "permission",
+          "prefix",
+          "createdAt",
+          "expiresAt",
+          "revokedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permission": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revokedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
       "UpdateFlagRequest": {
         "type": "object",
         "properties": {
@@ -3715,7 +3991,7 @@
     "securitySchemes": {
       "bearer": {
         "type": "http",
-        "description": "The admin token (read from FEATURESLASH_ADMIN_TOKEN) on /api/v1, or an SDK key on /sdk/v1.",
+        "description": "The admin token (read from FEATURESLASH_ADMIN_TOKEN) or a scoped token on /api/v1, or an SDK key on /sdk/v1.",
         "scheme": "bearer"
       }
     }
@@ -3744,6 +4020,9 @@
     },
     {
       "name": "ApiKeyEndpoints"
+    },
+    {
+      "name": "Tokens"
     },
     {
       "name": "Segments"

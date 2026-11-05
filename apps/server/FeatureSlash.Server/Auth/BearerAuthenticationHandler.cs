@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
+using FeatureSlash.Server.Audit;
 using FeatureSlash.Server.Data;
 using FeatureSlash.Server.Limits;
 using Microsoft.AspNetCore.Authentication;
@@ -12,8 +13,8 @@ using Microsoft.Extensions.Options;
 namespace FeatureSlash.Server.Auth;
 
 /// <summary>
-/// Resolves <c>Authorization: Bearer &lt;token&gt;</c> to the admin or to an SDK key's environment and kind.
-/// One scheme for both, so a valid credential on the wrong route is a 403 and only a bad one is a 401.
+/// Resolves <c>Authorization: Bearer &lt;token&gt;</c> to the admin, to an SDK key's environment and kind, or to a
+/// scoped admin token's project and permission. One scheme for all of them, so a valid credential on the wrong route is a 403 and only a bad one is a 401.
 /// Nothing here logs the token, and a failure message never quotes it.
 /// </summary>
 public sealed class BearerAuthenticationHandler(
@@ -64,16 +65,30 @@ public sealed class BearerAuthenticationHandler(
         var hash = ApiKeySecret.HashOf(token);
         var key = await database.ApiKeys.AsNoTracking()
             .SingleOrDefaultAsync(k => k.Hash == hash && k.RevokedAt == null, Context.RequestAborted);
-        if (key is null)
+        if (key is not null)
+        {
+            return Success(
+                new Claim(ServerAuth.PrincipalClaim, key.Kind == ApiKeyKind.Server ? ServerAuth.ServerKeyPolicy : ServerAuth.ClientKeyPolicy),
+                new Claim(ServerAuth.EnvironmentClaim, key.EnvironmentId.ToString()),
+                new Claim(ServerAuth.KeyClaim, key.Id.ToString()));
+        }
+
+        var scoped = await database.AdminTokens.AsNoTracking()
+            .Where(t => t.Hash == hash)
+            .Join(database.Projects, t => t.ProjectId, p => p.Id, (t, p) => new { t.Id, t.Permission, t.ExpiresAt, t.RevokedAt, Project = p.Key })
+            .SingleOrDefaultAsync(Context.RequestAborted);
+        if (scoped is null || scoped.RevokedAt is not null || scoped.ExpiresAt <= DateTime.UtcNow)
         {
             limiter.RecordAuthFailure(ip);
             return AuthenticateResult.Fail("The token is not a valid admin token or a live SDK key.");
         }
 
+        database.AuditActor = AuditLog.ScopedToken(scoped.Id);
         return Success(
-            new Claim(ServerAuth.PrincipalClaim, key.Kind == ApiKeyKind.Server ? ServerAuth.ServerKeyPolicy : ServerAuth.ClientKeyPolicy),
-            new Claim(ServerAuth.EnvironmentClaim, key.EnvironmentId.ToString()),
-            new Claim(ServerAuth.KeyClaim, key.Id.ToString()));
+            new Claim(ServerAuth.PrincipalClaim, ServerAuth.ScopedTokenPrincipal),
+            new Claim(ServerAuth.TokenClaim, scoped.Id.ToString()),
+            new Claim(ServerAuth.TokenProjectClaim, scoped.Project),
+            new Claim(ServerAuth.TokenPermissionClaim, ServerAuth.PermissionWord(scoped.Permission)));
     }
 
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)

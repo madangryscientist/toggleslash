@@ -14,8 +14,8 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Metric | FS | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | ✅ yes | 21 | 63 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
-| 🟡 partial | 8 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
-| — no | 37 | 3 | 9 | 7 | 6 | 7 | 7 | 9 | 17 |
+| 🟡 partial | 9 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
+| — no | 36 | 3 | 9 | 7 | 6 | 7 | 7 | 9 | 17 |
 
 ## Matrix
 
@@ -68,7 +68,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Dashboard sign-in and sessions | 🟡 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Role-based access control | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | SSO and SCIM | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ |
-| Scoped API tokens | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Scoped API tokens | 🟡 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | SDK keys | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Private attributes | — | ✅ | — | — | — | — | — | — | — |
 | Secure mode and signed contexts | — | ✅ | — | — | — | — | — | — | — |
@@ -171,7 +171,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Dashboard sign-in and sessions | 🟡 | `dashboard:/sign-in`<br>`path:apps/web/src/api/auth.server.ts`<br>`path:apps/web/src/api/session-middleware.ts`<br>`test:apps/web/e2e/sign-in.spec.ts`<br>`doc:docs/self-hosting.md` |
 | Role-based access control | — | — |
 | SSO and SCIM | — | — |
-| Scoped API tokens | — | — |
+| Scoped API tokens | 🟡 | `api:/api/v1/projects/{project}/tokens`<br>`api:/api/v1/projects/{project}/tokens/{id}`<br>`cli:tokens create`<br>`cli:tokens list`<br>`cli:tokens revoke`<br>`doc:docs/architecture.md`<br>A token is limited to one project and to read or write, and always expires; there are no per-environment scopes or custom permissions. |
 | SDK keys | ✅ | `api:/api/v1/projects/{project}/environments/{env}/keys`<br>`api:/api/v1/projects/{project}/environments/{env}/keys/{id}`<br>`cli:keys list`<br>`cli:keys create`<br>`cli:keys revoke`<br>`dashboard:/keys` |
 | Private attributes | — | — |
 | Secure mode and signed contexts | — | — |

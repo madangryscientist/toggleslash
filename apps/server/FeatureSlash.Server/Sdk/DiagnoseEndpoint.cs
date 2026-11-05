@@ -16,6 +16,7 @@ public static class DiagnoseEndpoint
     {
         routes.MapPost("/api/v1/projects/{project}/environments/{env}/evaluate", Diagnose)
             .RequireAuthorization(ServerAuth.AdminPolicy)
+            .WithMetadata(new ReadOnlyRoute())
             .WithTags("Diagnostics")
             .WithName("diagnoseEvaluation")
             .Produces<EvaluateResponse>()

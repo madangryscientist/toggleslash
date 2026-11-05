@@ -20,7 +20,7 @@ public static class OpenApiSetup
                 {
                     Title = "FeatureSlash API",
                     Version = "v1",
-                    Description = "The FeatureSlash server's admin API and SDK read API. Every route under /api/v1 takes `Authorization: Bearer <admin token>`. " +
+                    Description = "The FeatureSlash server's admin API and SDK read API. Every route under /api/v1 takes `Authorization: Bearer <admin token>`, or a scoped token where its project and permission allow it. " +
                         "GET /sdk/v1/ruleset and GET /sdk/v1/stream take a server SDK key; POST /sdk/v1/evaluate takes a server or a client SDK key.",
                 };
                 // MapOpenApi fills this from the request's host, so the same server would give a different file per caller.
@@ -31,7 +31,7 @@ public static class OpenApiSetup
                 {
                     Type = SecuritySchemeType.Http,
                     Scheme = "bearer",
-                    Description = "The admin token (read from FEATURESLASH_ADMIN_TOKEN) on /api/v1, or an SDK key on /sdk/v1.",
+                    Description = "The admin token (read from FEATURESLASH_ADMIN_TOKEN) or a scoped token on /api/v1, or an SDK key on /sdk/v1.",
                 };
                 return Task.CompletedTask;
             });

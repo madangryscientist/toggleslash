@@ -114,6 +114,34 @@ public sealed class ApiKey
     public DateTime? RevokedAt { get; set; }
 }
 
+public enum AdminTokenPermission
+{
+    Read,
+    Write,
+}
+
+/// <summary>
+/// A scoped admin API credential: one project, read or write, always with an expiry. Only its hash is stored; the
+/// plain token is shown once, when it is created.
+/// </summary>
+public sealed class AdminToken
+{
+    public long Id { get; set; }
+    public required long ProjectId { get; set; }
+    public required string Name { get; set; }
+    public required AdminTokenPermission Permission { get; set; }
+
+    /// <summary>SHA-256 of the plain token, lowercase hex.</summary>
+    public required string Hash { get; set; }
+
+    /// <summary>The token's first characters, for display.</summary>
+    public required string Prefix { get; set; }
+
+    public required DateTime CreatedAt { get; set; }
+    public required DateTime ExpiresAt { get; set; }
+    public DateTime? RevokedAt { get; set; }
+}
+
 /// <summary>Who changed what. No foreign keys: an event outlives the entity it describes.</summary>
 public sealed class AuditEvent
 {

@@ -23,8 +23,14 @@ curl http://127.0.0.1:8080/health                            # {"status":"ok","v
 
 `compose.yaml` refuses to start without `FEATURESLASH_ADMIN_TOKEN`. Instead of exporting it you can
 put `FEATURESLASH_ADMIN_TOKEN=...` in a `.env` file next to `compose.yaml`; `.env` is git-ignored.
-The server never generates, stores or logs the token. Without it the admin API answers 503
-`admin_token_unset`.
+The server never generates, stores or logs the token. Without it the whole admin API answers 503
+`admin_token_unset`, and that includes scoped tokens that are otherwise live.
+
+Terraform and CI should not hold that token. Give each one a scoped token instead: one project, `read` or `write`,
+expiring in 1 to 365 days (`featureslash tokens create`, which takes the root token; see
+[the architecture](architecture.md#auth) for what each may reach). A `write` token can create and revoke its project's SDK
+keys, and a `read` token can list them, so treat both as you would the admin token, within that project. The server stores
+only a hash and a prefix; the plain token is shown once. There is no rotation: create a new one, then revoke the old.
 
 Compose publishes the port on `127.0.0.1` only, because the server speaks plain HTTP and the admin
 token and SDK keys travel in headers. To expose it, put a TLS-terminating reverse proxy in front and
@@ -42,7 +48,7 @@ every `*.db` file and the other apps out of it.
 
 | Setting | Where | Meaning |
 | --- | --- | --- |
-| `FEATURESLASH_ADMIN_TOKEN` | environment, required by `compose.yaml` | the admin token for `/api/v1` |
+| `FEATURESLASH_ADMIN_TOKEN` | environment, required by `compose.yaml` | the root admin token for `/api/v1`; scoped tokens are created through the API and live in the database |
 | `FEATURESLASH_DB_PATH` | environment, `/data/featureslash.db` in the image | the SQLite file; keep it on the `/data` volume |
 
 To set anything else, such as the rate limits below, add a line under `environment:` in `compose.yaml`.
@@ -196,8 +202,8 @@ back evenly.
 
 Once an IP has used its failures, it gets the `429` before its credential is looked at, even a correct one, on the
 admin routes too. A request with no `Authorization` header is not a failure, and neither is the `503` for an unset
-admin token. `GET /health` is never limited. A service still sending a revoked key counts as failing, so it can lock
-out everything else on its IP: replace the key.
+admin token. `GET /health` is never limited. A service still sending a revoked key, or a revoked or expired scoped
+token, counts as failing, so it can lock out everything else on its IP: replace the credential before it expires.
 
 Counts live in the server's memory and a restart resets them. The server tracks up to 100,000 IPs and 10,000 keys per
 limit and forgets the stalest first, so rotating addresses cannot grow its memory without limit, though an address
