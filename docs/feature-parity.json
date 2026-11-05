@@ -1,0 +1,1389 @@
+{
+  "updated": "2026-11-05",
+  "note": "Competitor cells are coarse and were read from public product and documentation pages on 2026-11-05. yes = documented first-class capability; partial = limited, plan-gated, adjacent, or not a core strength; no = not documented. Verify before using this in sales material. FeatureSlash cells are backed by evidence in this repository and are checked by scripts/parity.ts.",
+  "competitors": [
+    {
+      "id": "launchdarkly",
+      "name": "LaunchDarkly",
+      "short": "LD",
+      "url": "https://launchdarkly.com/"
+    },
+    {
+      "id": "unleash",
+      "name": "Unleash",
+      "short": "Unleash",
+      "url": "https://www.getunleash.io/"
+    },
+    {
+      "id": "flagsmith",
+      "name": "Flagsmith",
+      "short": "Flagsmith",
+      "url": "https://www.flagsmith.com/"
+    },
+    {
+      "id": "growthbook",
+      "name": "GrowthBook",
+      "short": "GrowthBook",
+      "url": "https://www.growthbook.io/"
+    },
+    {
+      "id": "split",
+      "name": "Split (Harness)",
+      "short": "Split",
+      "url": "https://www.split.io/"
+    },
+    {
+      "id": "optimizely",
+      "name": "Optimizely",
+      "short": "Optimizely",
+      "url": "https://www.optimizely.com/"
+    },
+    {
+      "id": "posthog",
+      "name": "PostHog",
+      "short": "PostHog",
+      "url": "https://posthog.com/"
+    },
+    {
+      "id": "configcat",
+      "name": "ConfigCat",
+      "short": "ConfigCat",
+      "url": "https://configcat.com/"
+    }
+  ],
+  "features": [
+    {
+      "id": "boolean-flags",
+      "category": "Core flags",
+      "name": "Boolean flags",
+      "description": "On/off flags with an off variation and a fallthrough.",
+      "featureslash": {
+        "status": "yes",
+        "evidence": [
+          "api:/api/v1/projects/{project}/flags",
+          "api:/api/v1/projects/{project}/flags/{flag}",
+          "api:/api/v1/projects/{project}/flags/{flag}/environments/{env}/toggle",
+          "cli:flags create",
+          "cli:flags show",
+          "cli:flags on",
+          "cli:flags off",
+          "dashboard:/"
+        ]
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "multivariate-flags",
+      "category": "Core flags",
+      "name": "Multivariate flags",
+      "description": "String, number and JSON variations, not only booleans.",
+      "featureslash": {
+        "status": "partial",
+        "evidence": [
+          "api:/api/v1/projects/{project}/flags",
+          "cli:flags create",
+          "doc:docs/evaluation.md"
+        ],
+        "note": "The API takes 2–100 variations of one JSON type, but the dashboard only creates boolean flags."
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "per-environment-config",
+      "category": "Core flags",
+      "name": "Per-environment configuration",
+      "description": "Each environment gets its own targeting and on/off state.",
+      "featureslash": {
+        "status": "yes",
+        "evidence": [
+          "api:/api/v1/projects/{project}/flags/{flag}/environments/{env}",
+          "doc:docs/architecture.md"
+        ]
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "projects-environments",
+      "category": "Core flags",
+      "name": "Projects and environments",
+      "description": "Organise flags into projects and environments.",
+      "featureslash": {
+        "status": "yes",
+        "evidence": [
+          "api:/api/v1/projects",
+          "api:/api/v1/projects/{project}",
+          "api:/api/v1/projects/{project}/environments",
+          "api:/api/v1/projects/{project}/environments/{env}",
+          "cli:projects list",
+          "cli:projects create",
+          "cli:envs list",
+          "cli:envs create",
+          "dashboard:/environments"
+        ]
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "archive-restore",
+      "category": "Core flags",
+      "name": "Archive and restore",
+      "description": "Take a flag out of service without deleting its history.",
+      "featureslash": {
+        "status": "yes",
+        "evidence": [
+          "api:/api/v1/projects/{project}/flags/{flag}/archive",
+          "api:/api/v1/projects/{project}/flags/{flag}/restore",
+          "cli:flags archive"
+        ]
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "partial"
+      }
+    },
+    {
+      "id": "permanent-delete",
+      "category": "Core flags",
+      "name": "Permanent delete",
+      "description": "Remove an archived flag completely.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "flag-lifecycle-status",
+      "category": "Core flags",
+      "name": "Flag lifecycle and stale detection",
+      "description": "Compute whether a flag is new, active, launched, stale or ready to archive.",
+      "featureslash": {
+        "status": "partial",
+        "evidence": [
+          "api:/api/v1/projects/{project}/flags/{flag}/usage",
+          "doc:docs/architecture.md"
+        ],
+        "note": "Only lastEvaluated (the latest day with a count) exists; there is no computed lifecycle stage."
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "partial",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "partial",
+        "configcat": "partial"
+      }
+    },
+    {
+      "id": "code-references",
+      "category": "Core flags",
+      "name": "Code references",
+      "description": "Find where a flag is used in source control and flag stale references.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "flagsmith": "yes",
+        "split": "yes",
+        "configcat": "yes",
+        "optimizely": "partial"
+      }
+    },
+    {
+      "id": "change-history-restore",
+      "category": "Core flags",
+      "name": "Change history and restore",
+      "description": "See previous flag versions and roll back to one.",
+      "featureslash": {
+        "status": "partial",
+        "evidence": ["api:/api/v1/projects/{project}/flags/{flag}/history", "cli:flags history"],
+        "note": "History is readable but there is no restore action."
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "partial",
+        "configcat": "partial"
+      }
+    },
+    {
+      "id": "clone-compare-copy",
+      "category": "Core flags",
+      "name": "Clone, compare and copy",
+      "description": "Clone a flag, or compare and copy its settings between environments.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "partial",
+        "flagsmith": "partial",
+        "growthbook": "partial",
+        "split": "partial",
+        "optimizely": "partial",
+        "posthog": "partial",
+        "configcat": "partial"
+      }
+    },
+    {
+      "id": "bulk-targeting",
+      "category": "Core flags",
+      "name": "Bulk targeting",
+      "description": "Edit many individual targets or import a large audience at once.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "partial",
+        "flagsmith": "yes",
+        "growthbook": "partial",
+        "split": "yes",
+        "optimizely": "partial",
+        "posthog": "partial",
+        "configcat": "partial"
+      }
+    },
+    {
+      "id": "tags",
+      "category": "Core flags",
+      "name": "Tags",
+      "description": "Tag flags for search, ownership and automation.",
+      "featureslash": {
+        "status": "yes",
+        "evidence": ["api:/api/v1/projects/{project}/flags", "cli:flags list"]
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "scheduled-changes",
+      "category": "Core flags",
+      "name": "Scheduled changes",
+      "description": "Schedule a flag or segment change for a future time.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "partial"
+      }
+    },
+    {
+      "id": "flag-templates",
+      "category": "Core flags",
+      "name": "Flag templates",
+      "description": "Release, kill-switch, experiment, migration and custom flag templates.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "partial",
+        "growthbook": "partial",
+        "split": "partial",
+        "optimizely": "partial"
+      }
+    },
+    {
+      "id": "individual-targeting",
+      "category": "Targeting",
+      "name": "Individual targeting",
+      "description": "Serve a variation to named context keys.",
+      "featureslash": {
+        "status": "yes",
+        "evidence": [
+          "api:/api/v1/projects/{project}/flags/{flag}/environments/{env}",
+          "dashboard:/flags/$flag",
+          "doc:docs/evaluation.md"
+        ]
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "rule-targeting",
+      "category": "Targeting",
+      "name": "Rule-based targeting",
+      "description": "Attribute clauses that serve a variation or rollout.",
+      "featureslash": {
+        "status": "yes",
+        "evidence": [
+          "api:/api/v1/projects/{project}/flags/{flag}/environments/{env}",
+          "dashboard:/flags/$flag",
+          "doc:docs/evaluation.md"
+        ]
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "reusable-segments",
+      "category": "Targeting",
+      "name": "Reusable segments",
+      "description": "Named groups of contexts reused across flags.",
+      "featureslash": {
+        "status": "yes",
+        "evidence": [
+          "api:/api/v1/projects/{project}/environments/{env}/segments",
+          "api:/api/v1/projects/{project}/environments/{env}/segments/{segment}",
+          "dashboard:/segments",
+          "doc:docs/evaluation.md"
+        ]
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "segment-versioning",
+      "category": "Targeting",
+      "name": "Segment versioning",
+      "description": "Compare-and-set or version history for segment edits.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "partial",
+        "flagsmith": "partial",
+        "growthbook": "partial",
+        "split": "partial",
+        "optimizely": "partial"
+      }
+    },
+    {
+      "id": "large-or-synced-segments",
+      "category": "Targeting",
+      "name": "Large or synced segments",
+      "description": "CSV/warehouse-sized audiences and segments synced from external tools.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "partial",
+        "flagsmith": "partial",
+        "growthbook": "partial",
+        "split": "yes",
+        "optimizely": "partial",
+        "posthog": "partial"
+      }
+    },
+    {
+      "id": "prerequisites",
+      "category": "Targeting",
+      "name": "Prerequisites and dependencies",
+      "description": "A flag only applies when another flag serves a required variation.",
+      "featureslash": {
+        "status": "yes",
+        "evidence": [
+          "api:/api/v1/projects/{project}/flags/{flag}/environments/{env}",
+          "doc:docs/evaluation.md"
+        ]
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "split": "yes",
+        "optimizely": "partial"
+      }
+    },
+    {
+      "id": "multi-context",
+      "category": "Targeting",
+      "name": "Multi-context and context kinds",
+      "description": "Combine user, organisation, device and custom context kinds in one evaluation.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "partial",
+        "flagsmith": "partial",
+        "growthbook": "partial",
+        "split": "partial",
+        "optimizely": "partial",
+        "posthog": "partial",
+        "configcat": "partial"
+      }
+    },
+    {
+      "id": "attribute-paths",
+      "category": "Targeting",
+      "name": "Nested attribute paths",
+      "description": "Target a field inside an object, such as /address/city.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "growthbook": "partial",
+        "posthog": "partial"
+      }
+    },
+    {
+      "id": "regex-operator",
+      "category": "Targeting",
+      "name": "Regex operator",
+      "description": "Match an attribute against a regular expression.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "partial",
+        "growthbook": "yes",
+        "split": "partial",
+        "optimizely": "partial",
+        "posthog": "yes",
+        "configcat": "partial"
+      }
+    },
+    {
+      "id": "semver-operator",
+      "category": "Targeting",
+      "name": "Semantic-version operator",
+      "description": "Compare versions such as 1.2.3 without writing string logic.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "partial",
+        "growthbook": "partial",
+        "split": "partial",
+        "optimizely": "partial"
+      }
+    },
+    {
+      "id": "date-operator",
+      "category": "Targeting",
+      "name": "Date and time operator",
+      "description": "Target before or after a point in time.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "partial",
+        "growthbook": "partial",
+        "split": "partial",
+        "optimizely": "partial",
+        "posthog": "partial",
+        "configcat": "partial"
+      }
+    },
+    {
+      "id": "percentage-rollout",
+      "category": "Targeting",
+      "name": "Percentage rollouts",
+      "description": "Serve a consistent percentage of contexts.",
+      "featureslash": {
+        "status": "yes",
+        "evidence": ["doc:docs/evaluation.md", "test:fixtures/evaluation/rollouts.json"]
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "attribute-rollout",
+      "category": "Targeting",
+      "name": "Attribute-based rollouts",
+      "description": "Bucket on an attribute such as company or region, not only the context key.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "partial"
+      }
+    },
+    {
+      "id": "progressive-rollout",
+      "category": "Targeting",
+      "name": "Progressive rollouts",
+      "description": "Increase a rollout percentage automatically over time.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "partial",
+        "configcat": "partial"
+      }
+    },
+    {
+      "id": "guarded-rollout",
+      "category": "Targeting",
+      "name": "Guarded rollouts",
+      "description": "Watch metrics during a rollout and pause or roll back on a regression.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "partial",
+        "flagsmith": "partial",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "partial"
+      }
+    },
+    {
+      "id": "approvals",
+      "category": "Release",
+      "name": "Approvals and change requests",
+      "description": "Require one or more reviewers before a change applies.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "partial",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "partial",
+        "configcat": "partial"
+      }
+    },
+    {
+      "id": "required-comments-confirmation",
+      "category": "Release",
+      "name": "Required comments and confirmation",
+      "description": "Force a comment or an explicit confirmation on a production change.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "partial",
+        "flagsmith": "partial",
+        "growthbook": "partial",
+        "split": "yes",
+        "optimizely": "partial",
+        "posthog": "partial",
+        "configcat": "partial"
+      }
+    },
+    {
+      "id": "audit-log",
+      "category": "Release",
+      "name": "Audit log",
+      "description": "Record every write with an actor and the before and after state.",
+      "featureslash": {
+        "status": "yes",
+        "evidence": [
+          "api:/api/v1/projects/{project}/audit",
+          "api:/api/v1/projects/{project}/flags/{flag}/history",
+          "cli:flags history",
+          "dashboard:/audit"
+        ]
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "rbac",
+      "category": "Release",
+      "name": "Role-based access control",
+      "description": "Roles, teams and project/environment scoped permissions.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "sso-scim",
+      "category": "Release",
+      "name": "SSO and SCIM",
+      "description": "SAML/OIDC sign-in and directory provisioning.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "partial",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "scoped-api-tokens",
+      "category": "Release",
+      "name": "Scoped API tokens",
+      "description": "Create tokens limited to a project, environment or action.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "sdk-keys",
+      "category": "Release",
+      "name": "SDK keys",
+      "description": "Server and client keys, shown once, stored hashed and revocable.",
+      "featureslash": {
+        "status": "yes",
+        "evidence": [
+          "api:/api/v1/projects/{project}/environments/{env}/keys",
+          "api:/api/v1/projects/{project}/environments/{env}/keys/{id}",
+          "cli:keys list",
+          "cli:keys create",
+          "cli:keys revoke",
+          "dashboard:/keys"
+        ]
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "private-attributes",
+      "category": "Release",
+      "name": "Private attributes",
+      "description": "Mark context attributes so they are not stored or sent in events.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes"
+      }
+    },
+    {
+      "id": "secure-mode",
+      "category": "Release",
+      "name": "Secure mode and signed contexts",
+      "description": "Sign client-side contexts so a user cannot evaluate as another user.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes"
+      }
+    },
+    {
+      "id": "experiments",
+      "category": "Experimentation",
+      "name": "Experiments",
+      "description": "Randomise into variations and measure which performs best.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "partial",
+        "flagsmith": "partial",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "partial"
+      }
+    },
+    {
+      "id": "holdouts-bandits",
+      "category": "Experimentation",
+      "name": "Holdouts and multi-armed bandits",
+      "description": "Keep a control holdout or shift traffic toward the best variation.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "growthbook": "yes",
+        "split": "partial",
+        "optimizely": "partial",
+        "posthog": "partial"
+      }
+    },
+    {
+      "id": "metrics-analytics",
+      "category": "Experimentation",
+      "name": "Metrics and analytics",
+      "description": "Count evaluations and attach business or performance metrics.",
+      "featureslash": {
+        "status": "partial",
+        "evidence": [
+          "api:/api/v1/projects/{project}/flags/{flag}/usage",
+          "api:/sdk/v1/events",
+          "path:apps/server/FeatureSlash.Server/Usage",
+          "doc:docs/architecture.md"
+        ],
+        "note": "Only daily counts per flag, variation and environment; no custom events or metrics."
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "partial",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "partial"
+      }
+    },
+    {
+      "id": "warehouse-native",
+      "category": "Experimentation",
+      "name": "Warehouse-native experiments",
+      "description": "Compute experiment metrics from Snowflake, BigQuery, Redshift or another warehouse.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "growthbook": "yes",
+        "split": "partial",
+        "optimizely": "partial",
+        "posthog": "yes"
+      }
+    },
+    {
+      "id": "server-sdks",
+      "category": "SDKs and delivery",
+      "name": "Server SDKs",
+      "description": "Native server-side SDKs across common languages.",
+      "featureslash": {
+        "status": "partial",
+        "evidence": ["path:packages/sdk", "path:packages/engine", "doc:docs/sdk.md"],
+        "note": "One TypeScript server SDK. The C# evaluator is internal to the server, not a public SDK."
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "browser-sdks",
+      "category": "SDKs and delivery",
+      "name": "Browser SDKs",
+      "description": "JavaScript, React and other client-side SDKs.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "mobile-sdks",
+      "category": "SDKs and delivery",
+      "name": "Mobile SDKs",
+      "description": "iOS, Android, React Native and Flutter SDKs.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "edge-sdks",
+      "category": "SDKs and delivery",
+      "name": "Edge SDKs",
+      "description": "Evaluate at Cloudflare, Fastly, Akamai, Vercel or another edge.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "partial",
+        "optimizely": "yes",
+        "posthog": "partial",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "openfeature",
+      "category": "SDKs and delivery",
+      "name": "OpenFeature providers",
+      "description": "Use the CNCF OpenFeature API through a provider.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "partial",
+        "posthog": "partial",
+        "configcat": "partial"
+      }
+    },
+    {
+      "id": "streaming-updates",
+      "category": "SDKs and delivery",
+      "name": "Streaming updates",
+      "description": "Push flag changes to SDKs instead of waiting for a poll.",
+      "featureslash": {
+        "status": "yes",
+        "evidence": [
+          "api:/sdk/v1/ruleset",
+          "api:/sdk/v1/stream",
+          "path:packages/sdk",
+          "doc:docs/sdk.md"
+        ],
+        "note": "SSE carries the ETag only and the SDK refetches; one server process only."
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "partial",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "partial"
+      }
+    },
+    {
+      "id": "polling-fallback",
+      "category": "SDKs and delivery",
+      "name": "Polling fallback",
+      "description": "Keep working when streaming is blocked or unavailable.",
+      "featureslash": {
+        "status": "yes",
+        "evidence": ["path:packages/sdk", "doc:docs/sdk.md"]
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "bootstrap-offline",
+      "category": "SDKs and delivery",
+      "name": "Bootstrap and offline mode",
+      "description": "Start from a known payload or keep serving the last one with no network.",
+      "featureslash": {
+        "status": "partial",
+        "evidence": ["path:packages/sdk", "doc:docs/sdk.md"],
+        "note": "The SDK keeps the last ruleset in memory but has no explicit bootstrap input."
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "partial",
+        "flagsmith": "partial",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "relay-persistent-store",
+      "category": "SDKs and delivery",
+      "name": "Relay or persistent store",
+      "description": "Fan out a local stream, or keep the ruleset in Redis, DynamoDB or another store.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "partial",
+        "split": "yes",
+        "optimizely": "partial",
+        "posthog": "partial",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "server-evaluation",
+      "category": "SDKs and delivery",
+      "name": "Server-side evaluation API",
+      "description": "Evaluate flags for a context without shipping the ruleset.",
+      "featureslash": {
+        "status": "yes",
+        "evidence": ["api:/sdk/v1/evaluate", "path:apps/server/FeatureSlash.Evaluation"]
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "usage-counts",
+      "category": "SDKs and delivery",
+      "name": "Usage counts",
+      "description": "Count which variation was served, per flag and environment.",
+      "featureslash": {
+        "status": "yes",
+        "evidence": [
+          "api:/sdk/v1/events",
+          "api:/api/v1/projects/{project}/flags/{flag}/usage",
+          "path:apps/server/FeatureSlash.Server/Usage"
+        ],
+        "note": "Counts only; no context, context key or attribute is stored."
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "partial",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "partial"
+      }
+    },
+    {
+      "id": "self-hosted",
+      "category": "Operations",
+      "name": "Self-hosted",
+      "description": "Run the whole product on your own infrastructure.",
+      "featureslash": {
+        "status": "yes",
+        "evidence": ["path:apps/server/Dockerfile", "path:compose.yaml", "doc:docs/self-hosting.md"]
+      },
+      "competitors": {
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "open-source",
+      "category": "Operations",
+      "name": "Open source",
+      "description": "The product's source is available under an open-source licence.",
+      "featureslash": {
+        "status": "yes",
+        "evidence": ["path:LICENSE"]
+      },
+      "competitors": {
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "posthog": "yes"
+      }
+    },
+    {
+      "id": "ha-shared-database",
+      "category": "Operations",
+      "name": "HA and shared database",
+      "description": "Run several instances against a shared relational or managed database.",
+      "featureslash": {
+        "status": "no",
+        "evidence": [],
+        "note": "SQLite and one process per database; the in-memory lock and notifier do not cross processes."
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "terraform",
+      "category": "Operations",
+      "name": "Terraform provider",
+      "description": "Manage flags and environments as infrastructure-as-code.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "partial",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "mcp-server",
+      "category": "Operations",
+      "name": "MCP server",
+      "description": "Manage flags from an AI client through the Model Context Protocol.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "partial",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "partial"
+      }
+    },
+    {
+      "id": "cli",
+      "category": "Operations",
+      "name": "CLI",
+      "description": "Manage projects, environments, flags and keys from a terminal.",
+      "featureslash": {
+        "status": "partial",
+        "evidence": ["path:packages/cli", "cli:config set-url", "cli:config set-token"],
+        "note": "Projects, environments, flags (no targeting edit) and keys; no segments, audit or usage commands."
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "partial",
+        "split": "yes",
+        "optimizely": "partial",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
+      "id": "observability",
+      "category": "Platform",
+      "name": "Observability",
+      "description": "Session replay, errors, logs, traces, metrics and alerts.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "flagsmith": "partial",
+        "growthbook": "partial",
+        "split": "yes",
+        "optimizely": "partial",
+        "posthog": "yes"
+      }
+    },
+    {
+      "id": "ai-configs",
+      "category": "Platform",
+      "name": "AI configs and prompt management",
+      "description": "Manage prompts, model settings and agent behaviour as a runtime config.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "partial",
+        "flagsmith": "partial",
+        "growthbook": "partial",
+        "split": "yes",
+        "optimizely": "partial",
+        "posthog": "partial"
+      }
+    },
+    {
+      "id": "release-automation",
+      "category": "Platform",
+      "name": "Release automation",
+      "description": "Automatically flag PRs, plan releases, ramp, monitor and clean up.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "partial",
+        "flagsmith": "partial",
+        "growthbook": "partial",
+        "split": "partial",
+        "optimizely": "partial",
+        "posthog": "partial"
+      }
+    },
+    {
+      "id": "compliance",
+      "category": "Platform",
+      "name": "Compliance certifications",
+      "description": "SOC 2, ISO 27001, FedRAMP or equivalent attestations.",
+      "featureslash": {
+        "status": "no",
+        "evidence": []
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    }
+  ],
+  "sources": [
+    {
+      "name": "LaunchDarkly docs",
+      "url": "https://launchdarkly.com/docs/home"
+    },
+    {
+      "name": "LaunchDarkly pricing and plan gating",
+      "url": "https://launchdarkly.com/pricing/"
+    },
+    {
+      "name": "Unleash docs",
+      "url": "https://docs.getunleash.io/"
+    },
+    {
+      "name": "Flagsmith docs",
+      "url": "https://docs.flagsmith.com/"
+    },
+    {
+      "name": "GrowthBook docs",
+      "url": "https://docs.growthbook.io/"
+    },
+    {
+      "name": "Split by Harness feature management",
+      "url": "https://www.harness.io/products/feature-management-experimentation/feature-management"
+    },
+    {
+      "name": "Optimizely Feature Experimentation",
+      "url": "https://www.optimizely.com/products/feature-experimentation/"
+    },
+    {
+      "name": "PostHog feature flags and experiments",
+      "url": "https://posthog.com/docs/feature-flags"
+    },
+    {
+      "name": "ConfigCat features and pricing",
+      "url": "https://configcat.com/"
+    }
+  ]
+}

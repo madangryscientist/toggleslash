@@ -12,6 +12,7 @@ live yet).
 > package yet.
 
 - [Quickstart](docs/quickstart.md): start the server, create a flag with the CLI, read it from the SDK. About five minutes.
+- [Feature parity](docs/feature-parity.md): what FeatureSlash and the main competing products offer, capability by capability.
 - [API overview](docs/api.md): the routes and who may call them. The OpenAPI document is [`apps/server/openapi/v1.json`](apps/server/openapi/v1.json).
 - [Getting started](docs/getting-started.md): the parts the quickstart leaves out, including the dashboard.
 - [Self-hosting](docs/self-hosting.md): the server as a container, with backups and upgrades.
