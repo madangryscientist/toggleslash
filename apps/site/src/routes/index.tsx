@@ -15,8 +15,8 @@ function Home() {
       <h1 className="text-3xl font-bold">FeatureSlash</h1>
       <p>Open source feature flags you can run yourself. MIT licensed.</p>
       <p>
-        FeatureSlash is in early development: the engine evaluates flags, but there is no server API
-        or SDK to use them yet.
+        FeatureSlash is in early development and nothing is published yet. The server, the CLI and
+        the TypeScript server SDK work; the code is not yet open to the public.
       </p>
     </div>
   );

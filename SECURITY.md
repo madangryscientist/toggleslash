@@ -18,8 +18,9 @@ against someone else's deployment or data.
   (`packages/engine`).
 - **The server** (`apps/server`): its admin token and SDK key handling. A key or token reaching a
   log, a client key reading a ruleset, and a revoked key still working are all in scope.
-- **The dashboard** (`apps/web`) once it has sign-in, flags and an API; today it is a skeleton with
-  no authentication and no user data.
+- **The dashboard** (`apps/web`): it lists and changes flags over the server's admin API. It has no
+  sign-in of its own, so anyone who can reach it can act with the admin token it was given; how it
+  handles that token is in scope.
 
 Out of scope: a deployment you configured weakly, a vulnerability in a dependency that does not
 affect FeatureSlash (report it upstream), and findings that need a stolen token or a machine you
