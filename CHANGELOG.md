@@ -16,3 +16,5 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and ver
 - The server's storage: EF Core on SQLite, migrated at startup.
 - Server auth: the admin token (`FEATURESLASH_ADMIN_TOKEN`), hashed server and client SDK keys per
   environment, and the admin API that creates, lists and revokes them.
+- The admin API for projects, environments and flags (create, list, read; update, archive and restore
+  for flags), and the OpenAPI document at `/openapi/v1.json`, committed as `apps/server/openapi/v1.json`.
