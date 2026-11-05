@@ -5,6 +5,7 @@ using FeatureSlash.Server.Audit;
 using FeatureSlash.Server.Auth;
 using FeatureSlash.Server.Catalogue;
 using FeatureSlash.Server.Data;
+using FeatureSlash.Server.Sdk;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -87,7 +88,8 @@ public static class ConfigEndpoints
         [FromHeader(Name = "If-Match")] string? ifMatch,
         HttpContext http,
         FeatureSlashDbContext database,
-        TargetingLock targetingLock)
+        TargetingLock targetingLock,
+        RulesetNotifier notifier)
     {
         using var held = await targetingLock.Enter();
         var found = await Find(database, project, flag, env);
@@ -137,7 +139,7 @@ public static class ConfigEndpoints
                 .SetProperty(c => c.Rules, rules)
                 .SetProperty(c => c.Fallthrough, fallthrough)
                 .SetProperty(c => c.Version, c => c.Version + 1));
-        return await Saved(database, http, found, saved, expected.Value, AuditAction.Updated, transaction);
+        return await Saved(database, http, found, saved, expected.Value, AuditAction.Updated, transaction, notifier);
     }
 
     /// <summary>
@@ -153,7 +155,8 @@ public static class ConfigEndpoints
         [FromHeader(Name = "If-Match")] string? ifMatch,
         HttpContext http,
         FeatureSlashDbContext database,
-        TargetingLock targetingLock)
+        TargetingLock targetingLock,
+        RulesetNotifier notifier)
     {
         if (request.On is not { } on)
         {
@@ -178,7 +181,7 @@ public static class ConfigEndpoints
             .ExecuteUpdateAsync(set => set
                 .SetProperty(c => c.On, on)
                 .SetProperty(c => c.Version, c => c.Version + 1));
-        return await Saved(database, http, found, saved, expected ?? 0, AuditAction.Toggled, transaction);
+        return await Saved(database, http, found, saved, expected ?? 0, AuditAction.Toggled, transaction, notifier);
     }
 
     /// <summary>
@@ -192,7 +195,8 @@ public static class ConfigEndpoints
         int rows,
         long expected,
         string action,
-        IDbContextTransaction transaction)
+        IDbContextTransaction transaction,
+        RulesetNotifier notifier)
     {
         var current = await database.FlagEnvironmentConfigs.AsNoTracking().SingleAsync(c => c.Id == found.Config!.Id);
         if (rows == 0)
@@ -209,6 +213,7 @@ public static class ConfigEndpoints
             Describe(current));
         await database.SaveChangesAsync();
         await transaction.CommitAsync();
+        notifier.Changed(found.Environment.Id);
         return Respond(http, current);
     }
 

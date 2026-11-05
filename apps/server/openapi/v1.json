@@ -2,7 +2,7 @@
   "openapi": "3.1.1",
   "info": {
     "title": "FeatureSlash API",
-    "description": "The FeatureSlash server\u0027s admin API and SDK read API. Every route under /api/v1 takes \u0060Authorization: Bearer \u003Cadmin token\u003E\u0060. GET /sdk/v1/ruleset takes a server SDK key; POST /sdk/v1/evaluate takes a server or a client SDK key.",
+    "description": "The FeatureSlash server\u0027s admin API and SDK read API. Every route under /api/v1 takes \u0060Authorization: Bearer \u003Cadmin token\u003E\u0060. GET /sdk/v1/ruleset and GET /sdk/v1/stream take a server SDK key; POST /sdk/v1/evaluate takes a server or a client SDK key.",
     "version": "v1"
   },
   "paths": {
@@ -44,6 +44,52 @@
           },
           "304": {
             "description": "Not Modified"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/sdk/v1/stream": {
+      "get": {
+        "tags": [
+          "SDK"
+        ],
+        "summary": "Server-Sent Events: a \u0060connected\u0060 event, then a \u0060changed\u0060 event per change, each carrying the ruleset\u0027s ETag; a comment every 25 seconds.",
+        "operationId": "streamRuleset",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized",

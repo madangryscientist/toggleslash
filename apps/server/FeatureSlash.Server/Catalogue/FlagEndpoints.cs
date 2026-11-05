@@ -3,6 +3,7 @@ using System.Text.Json;
 using FeatureSlash.Server.Audit;
 using FeatureSlash.Server.Auth;
 using FeatureSlash.Server.Data;
+using FeatureSlash.Server.Sdk;
 using FeatureSlash.Server.Targeting;
 using Microsoft.EntityFrameworkCore;
 
@@ -83,7 +84,7 @@ public static class FlagEndpoints
     /// The flag and its config row in every environment of the project are written together, or not at
     /// all. Every config starts off, serving <c>OffVariation</c> when off and <c>FallthroughVariation</c> when on.
     /// </summary>
-    private static async Task<IResult> Create(string project, CreateFlagRequest request, FeatureSlashDbContext database)
+    private static async Task<IResult> Create(string project, CreateFlagRequest request, FeatureSlashDbContext database, RulesetNotifier notifier)
     {
         var problem = Validation.Key(request.Key, "key")
             ?? Validation.Name(request.Name)
@@ -139,6 +140,7 @@ public static class FlagEndpoints
         database.Record(AuditEntity.Flag, flag.Key, AuditAction.Created, new AuditScope(owner.Key, Flag: flag.Key), null, Describe(flag));
         await database.SaveChangesAsync();
         await transaction.CommitAsync();
+        environmentIds.ForEach(notifier.Changed);
 
         return Results.Created($"/api/v1/projects/{owner.Key}/flags/{flag.Key}", Describe(flag));
     }
@@ -213,13 +215,13 @@ public static class FlagEndpoints
     /// changes nothing but is still a write that succeeded, so it still records one event (before equals after).
     /// An archived flag keeps its key and its configs.
     /// </summary>
-    private static Task<IResult> Archive(string project, string flag, FeatureSlashDbContext database, TargetingLock targetingLock) =>
-        SetArchived(project, flag, database, targetingLock, archived: true);
+    private static Task<IResult> Archive(string project, string flag, FeatureSlashDbContext database, TargetingLock targetingLock, RulesetNotifier notifier) =>
+        SetArchived(project, flag, database, targetingLock, notifier, archived: true);
 
-    private static Task<IResult> Restore(string project, string flag, FeatureSlashDbContext database, TargetingLock targetingLock) =>
-        SetArchived(project, flag, database, targetingLock, archived: false);
+    private static Task<IResult> Restore(string project, string flag, FeatureSlashDbContext database, TargetingLock targetingLock, RulesetNotifier notifier) =>
+        SetArchived(project, flag, database, targetingLock, notifier, archived: false);
 
-    private static async Task<IResult> SetArchived(string project, string flag, FeatureSlashDbContext database, TargetingLock targetingLock, bool archived)
+    private static async Task<IResult> SetArchived(string project, string flag, FeatureSlashDbContext database, TargetingLock targetingLock, RulesetNotifier notifier, bool archived)
     {
         using var held = await targetingLock.Enter();
         var (owner, found) = await Find(database, project, flag, tracked: true);
@@ -237,7 +239,10 @@ public static class FlagEndpoints
             new AuditScope(owner!.Key, Flag: found.Key),
             before,
             Describe(found));
+        // Read before the save: once the write has committed, nothing should be able to fail before the signal.
+        var environmentIds = await database.Environments.Where(e => e.ProjectId == owner.Id).Select(e => e.Id).ToListAsync();
         await database.SaveChangesAsync();
+        environmentIds.ForEach(notifier.Changed);
         return Results.Json(Describe(found));
     }
 

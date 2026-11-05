@@ -1,7 +1,7 @@
 # Architecture
 
 This page records the design the later tickets build on. It is a decision record, not a description
-of what exists: today `apps/server` migrates its database, answers `GET /health` and serves the admin API (SDK keys, projects, environments, flags, targeting, segments and the audit trail) and the SDK read API (the ruleset and server-side evaluate), and nothing else. Where a section says
+of what exists: today `apps/server` migrates its database, answers `GET /health` and serves the admin API (SDK keys, projects, environments, flags, targeting, segments and the audit trail) and the SDK read API (the ruleset, its live-update stream and server-side evaluate), and nothing else. Where a section says
 "will", the code arrives in its own ticket.
 
 ## Who owns what
@@ -53,11 +53,11 @@ The two kinds of SDK key:
 
 | Kind | Looks like | Policy | Who holds it | What it may do |
 | --- | --- | --- | --- | --- |
-| server | `fs_server_<64 hex>` | `server-key` | a backend you run | read the ruleset and evaluate locally |
-| client | `fs_client_<64 hex>` | `client-key` | a browser or a mobile app, so assume it is public | ask the server to evaluate; **never** read the ruleset |
+| server | `fs_server_<64 hex>` | `server-key` | a backend you run | read the ruleset, follow its stream and evaluate locally |
+| client | `fs_client_<64 hex>` | `client-key` | a browser or a mobile app, so assume it is public | ask the server to evaluate; **never** read the ruleset or its stream |
 
 The kind that counts is the one stored with the key; the text in front is for people and secret
-scanners. The ruleset route is gated on `server-key`; the evaluate route on `sdk-key`, which is either kind.
+scanners. The ruleset and stream routes are gated on `server-key`; the evaluate route on `sdk-key`, which is either kind.
 
 The policies are `admin`, `server-key` and `client-key`, and none includes another: the admin token
 is not an SDK key, and neither kind of key passes for the other. (`sdk-key` is not a third kind of key:
@@ -108,6 +108,21 @@ Admin only, under `/api/v1`, every route behind the `admin` policy. Keys (`proje
     (a write to another environment, or a read, leaves it alone). `If-None-Match` (an exact tag, a weak
     one, a list, or `*`) gets a `304` with no body. The answer is `Cache-Control: private, no-cache`: a
     cache may keep it but must ask again, and a `304` still needs a valid key.
+  - `GET /sdk/v1/stream` (server key only; a client key is 403) is Server-Sent Events for the key's environment.
+    It sends `event: connected` with the current ruleset's `ETag`, then `event: changed` with the new one on each
+    change, and the client re-fetches the ruleset. The `data` is the tag exactly as the ruleset route's header
+    gives it, quotes included, and is all an event carries. A `: keep-alive` comment goes out every 25 seconds.
+    - **One server process only.** A write raises `RulesetNotifier`, in this process's memory, after it commits.
+      A second instance would not hear it, so a multi-instance deployment needs another bus in its place.
+    - The signal carries no tag: each stream holds at most one pending signal, and reads the ruleset when it wakes,
+      so a burst or a slow client coalesces to the latest ETag and a writer never waits on a stream. A wake that
+      leaves the tag as it was sends nothing. Each stream pays for one ruleset read per wake.
+    - A key is checked again before every event and keep-alive, so one revoked mid-stream ends the stream there
+      and is told nothing more. Revoking does not itself wake a stream, so that is at most one keep-alive later.
+    - A stream ends when the client leaves or the host starts stopping, since Kestrel otherwise waits on open
+      requests at shutdown. Either way its subscriber is removed.
+    - Writes that signal are the ones the ruleset can see: config, toggle, segment, flag create, archive and restore.
+      A flag `PATCH` (its name and description are not in the ruleset) and a new environment (no keys yet) do not.
   - `POST /sdk/v1/evaluate` (server or client key) takes `{ "context": { "key", "attributes" }, "flagKey"? }`
     and returns `{ "flags": { "<key>": { "value", "variationIndex", "reason" } } }`, from the same
     `FeatureSlash.Evaluation` the vectors run against, for the key's environment: every flag that is
@@ -119,7 +134,7 @@ Admin only, under `/api/v1`, every route behind the `admin` policy. Keys (`proje
     or is archived is a `404`.
   - **CORS is on `evaluate` only**: any origin, `POST`, the `Authorization` and `Content-Type` headers, a ten-minute
     preflight, and no credentials (the key travels in a header, never a cookie). The preflight is answered without
-    a token. The ruleset and the admin API send no CORS headers, so a browser cannot read them.
+    a token. The ruleset, the stream and the admin API send no CORS headers, so a browser cannot read them.
   - Each request reads the environment in one transaction, so a ruleset (and its ETag) is one consistent
     snapshot, and there is no cache in the server to go stale: a write is visible on the next read.
 - **Audit trail.** Every admin write (project, environment, flag, config, segment and SDK key, each route

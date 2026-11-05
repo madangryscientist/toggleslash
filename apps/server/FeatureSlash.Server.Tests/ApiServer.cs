@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FeatureSlash.Server.Auth;
+using Microsoft.AspNetCore.Hosting;
 
 /// <summary>The real server on a temp database, driven through its own admin API.</summary>
 public sealed class ApiServer : IDisposable
@@ -12,8 +13,20 @@ public sealed class ApiServer : IDisposable
 
     public ServerOn Server { get; }
 
-    public ApiServer() =>
-        Server = new ServerOn(database.Path, builder => builder.UseSetting(ServerAuth.AdminTokenSetting, AdminToken));
+    public ApiServer()
+        : this(null)
+    {
+    }
+
+    private ApiServer(Action<IWebHostBuilder>? configure) =>
+        Server = new ServerOn(database.Path, builder =>
+        {
+            builder.UseSetting(ServerAuth.AdminTokenSetting, AdminToken);
+            configure?.Invoke(builder);
+        });
+
+    /// <summary>A factory, not a second public constructor: xunit refuses a class fixture that has two.</summary>
+    public static ApiServer With(Action<IWebHostBuilder> configure) => new(configure);
 
     /// <summary>Sends the Authorization header exactly as given; null sends none.</summary>
     public async Task<HttpResponseMessage> Send(HttpMethod method, string path, string? authorization, object? body = null)
