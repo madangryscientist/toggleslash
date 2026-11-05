@@ -74,6 +74,25 @@ describe("GET /state", () => {
     expect(unknown.status).toBe(400);
   });
 
+  it("reads one more flag when asked with ?flag=, once, and refuses what is not a key", async () => {
+    const { client, asked } = fakeClient({ "journey-flag": true });
+    const handler = app(client);
+    const state = JSON.parse(await get(handler, "/state?flag=journey-flag").text());
+    expect(state.flags.map((f: { key: string }) => f.key)).toEqual([
+      ...FLAGS.map((f) => f.key),
+      "journey-flag",
+    ]);
+    expect(state.flags.at(-1)).toMatchObject({ key: "journey-flag", value: true });
+
+    asked.length = 0;
+    await get(handler, "/state?flag=new-checkout").text();
+    expect(asked).toHaveLength(FLAGS.length); // a flag the shop already reads is not read twice
+
+    for (const bad of ["Not A Key", "a/b", "x".repeat(65), ""]) {
+      expect(get(handler, `/state?flag=${encodeURIComponent(bad)}`).status).toBe(400);
+    }
+  });
+
   it("only answers GET, and only its two routes", () => {
     const handler = app(fakeClient().client);
     expect(handler(new Request("http://example.test/state", { method: "POST" })).status).toBe(405);
@@ -103,6 +122,14 @@ describe("GET /", () => {
     expect(html).toContain(
       'data-testid="status-stream" data-path="status.stream" data-format="plain">connected<',
     );
+  });
+
+  it("keeps ?flag= across the picker and the page's refresh", async () => {
+    const html = await get(app(fakeClient().client), "/?flag=journey-flag").text();
+    expect(html).toContain('<input type="hidden" name="flag" value="journey-flag">');
+    expect(html).toContain('data-testid="flag-journey-flag-value"');
+    expect(html).toContain('"flag":"journey-flag"');
+    expect(await get(app(fakeClient().client), "/").text()).not.toContain('name="flag"');
   });
 
   it("escapes what a flag serves", async () => {

@@ -18,6 +18,9 @@ packages/cli/*.tgz
 *.db-shm
 *.db-wal
 
+# Playwright's failure output (the stack journey in packages/e2e)
+packages/e2e/test-results/
+
 # the C# server's build output
 apps/server/**/bin/
 apps/server/**/obj/

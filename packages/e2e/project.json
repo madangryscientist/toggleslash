@@ -4,13 +4,24 @@
   "sourceRoot": "packages/e2e/src",
   "projectType": "library",
   "targets": {
-    "typecheck": { "command": "tsc -p packages/e2e/tsconfig.json" },
+    "typecheck": {
+      "command": "tsc -p packages/e2e/tsconfig.json"
+    },
     "lint": {
       "command": "oxlint --type-aware --deny-warnings packages/e2e && bun scripts/check-slop.ts packages/e2e"
     },
     "test:e2e": {
       "command": "bun --bun vitest run",
-      "options": { "cwd": "packages/e2e" },
+      "options": {
+        "cwd": "packages/e2e"
+      },
+      "cache": false
+    },
+    "test:stack": {
+      "command": "bun --bun playwright test",
+      "options": {
+        "cwd": "packages/e2e"
+      },
       "cache": false
     }
   }
