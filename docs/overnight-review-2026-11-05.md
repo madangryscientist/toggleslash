@@ -171,3 +171,9 @@ Each entry: what · why · ⚠ if unsure · how to undo.
 
 - **⚠ Not run on this machine:** `docker build` and `docker compose up` were proven by the CI container job only (build, compose up, `/health`, UID 1654, token enforced, restart, backup and restore). I read the job and its result. **To finish it yourself:** with Docker access, run `docker build -f apps/server/Dockerfile -t featureslash-server:local .`, then `FEATURESLASH_ADMIN_TOKEN=local-test docker compose up -d --no-build --wait && curl http://127.0.0.1:8080/health; docker compose down -v`.
 - **What:** digests read over HTTP from mcr.microsoft.com; runtime aspnet 10.0.14; port bound to 127.0.0.1 because the server speaks plain HTTP; volume has a fixed name, `featureslash-data`. **⚠** a fixed name means two checkouts on one host share one database. **Undo:** `compose.yaml`.
+
+### FS-23 choices (cross-language e2e)
+
+- **What:** the test lives in `packages/e2e` under `test:e2e`, not `test`, with its own CI job. No dotnet prints a skip line; with `CI` set a missing SDK fails. **Why:** it builds .NET and spawns processes. **Undo:** `packages/e2e/project.json`.
+- **What:** targeting and segments are written through the admin API in this test, because the CLI has no command for them. **⚠** the CLI cannot yet set targeting or segments, a gap for anyone without the dashboard. **Undo:** a follow-up ticket.
+- **What:** I ran the new target myself three times (6 of 6, not skipped, no process left), since my gate script covers only the web and site e2e. The builder found no integration bug, so nothing was fixed or ticketed.
