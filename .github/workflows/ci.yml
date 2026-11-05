@@ -103,3 +103,60 @@ jobs:
       - name: Site deploy dry run
         working-directory: apps/site
         run: bunx wrangler deploy --dry-run --outdir "$RUNNER_TEMP/fs-site-dry"
+
+  # Self-hosting proof (FS-22): the server's image builds and the compose stack answers /health.
+  # Nothing is pushed and there is no registry login; the token is a throwaway for this job's
+  # container, not a repository secret.
+  container:
+    name: Container (docker build, compose up, /health)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FEATURESLASH_ADMIN_TOKEN: ci-throwaway-token-not-a-secret
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the image (not pushed)
+        run: docker build -f apps/server/Dockerfile -t featureslash-server:local .
+      - name: Start the compose stack and wait for the image's health check
+        run: docker compose up -d --no-build --wait --wait-timeout 90
+      - name: /health answers ok
+        run: |
+          body=$(curl -fsS http://127.0.0.1:8080/health)
+          echo "$body"
+          case "$body" in *'"status":"ok"'*) ;; *) echo "/health is not ok" >&2; exit 1 ;; esac
+      - name: Not root, and the admin token is enforced
+        run: |
+          uid=$(docker compose exec -T server id -u)
+          echo "uid: $uid"
+          [ "$uid" != 0 ]
+          docker compose exec -T server ls -l /data
+          [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/v1/projects)" = 401 ]
+          [ "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $FEATURESLASH_ADMIN_TOKEN" http://127.0.0.1:8080/api/v1/projects)" = 200 ]
+      - name: Data survives a restart, a backup and a restore (docs/self-hosting.md)
+        run: |
+          auth="Authorization: Bearer $FEATURESLASH_ADMIN_TOKEN"
+          curl -fsS -X POST -H "$auth" -H 'Content-Type: application/json' \
+            -d '{"key":"ci-proof","name":"CI proof"}' http://127.0.0.1:8080/api/v1/projects
+          # Restart keeps the volume.
+          docker compose down
+          docker compose up -d --no-build --wait --wait-timeout 90
+          curl -fsS -H "$auth" http://127.0.0.1:8080/api/v1/projects/ci-proof
+          # Backup, as the guide says.
+          docker compose stop server
+          docker compose cp server:/data/. ./featureslash-backup
+          ls -l featureslash-backup
+          # Lose the volume, then restore, as the guide says.
+          docker compose down -v
+          docker compose run --rm --no-deps --user 0 --entrypoint bash \
+            -v "$PWD/featureslash-backup:/backup:ro" server \
+            -c 'cp -a /backup/. /data/ && chown -R 1654 /data'
+          docker compose up -d --no-build --wait --wait-timeout 90
+          curl -fsS -H "$auth" http://127.0.0.1:8080/api/v1/projects/ci-proof
+      - name: Server logs
+        if: failure()
+        run: docker compose logs server
+      - name: Stop the stack and remove its volume
+        if: always()
+        run: docker compose down -v

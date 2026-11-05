@@ -25,3 +25,4 @@ The dashboard reads `FEATURESLASH_API_URL` (the C# server's address) and `FEATUR
 The C# server (`apps/server`) needs the .NET SDK: `dotnet run --project apps/server/FeatureSlash.Server`, then `GET /health`.
 Set `FEATURESLASH_ADMIN_TOKEN` to use the admin API (projects, environments, flags, their targeting, segments and SDK keys under `/api/v1`);
 its OpenAPI document is at `/openapi/v1.json`, and committed as `apps/server/openapi/v1.json`.
+To run the server in a container instead, see [`self-hosting.md`](self-hosting.md) (`docker compose up -d --build`).

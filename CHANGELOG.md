@@ -8,6 +8,8 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and ver
 
 ### Added
 
+- Self-hosting the server: `apps/server/Dockerfile`, a root `compose.yaml` and `docs/self-hosting.md`; a CI job builds
+  the image and brings the stack up (nothing is pushed).
 - CLI commands over the admin API: `config set-url|set-token`, `projects list|create`, `envs list|create`,
   `flags list|show|create|archive|on|off|history`, `keys create|list|revoke`, with `--json` on reads. The
   admin token comes from `FEATURESLASH_TOKEN` or a mode-600 file under the XDG config dir and never appears in
