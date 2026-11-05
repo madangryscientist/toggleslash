@@ -154,3 +154,11 @@ Each entry: what · why · ⚠ if unsure · how to undo.
 - **What:** a 409 discards the draft and loads the latest version; no field-level merge. **Why:** safe and simple. **⚠** the person loses unsaved edits. **Undo:** `apps/web/src/routes/flags.$flag.tsx`, `TargetingEditor.tsx`.
 - **What:** rollouts typed as percents with up to three decimals; a zero entry is left off the wire; the server judges the sum. Individual targets are a textarea of keys per variation, not a picker. **Undo:** `apps/web/src/targeting/`.
 - **⚠** the detail page can write targeting and the dashboard has no login, so "do not route it publicly" (`docs/architecture.md`) matters more now.
+
+### FS-21 choices (operator pages)
+
+- **Needs your feel-review in the morning:** the keys, environments, segments and audit pages, and the shell nav.
+- **What:** segment rules are edited as JSON text; the browser checks only that it is an array and shows the server's message otherwise. **Why:** a full rule editor for segments was out of scope. **⚠** a raw JSON box is the least friendly part of the dashboard. **Undo:** `apps/web/src/components/SegmentsPanel.tsx`.
+- **What:** environments are list and create only (the server has no edit or delete); segments are list and edit only, so the dashboard cannot create or delete a segment yet. **⚠** a gap against what an operator expects; the CLI has no segment commands either. **Undo:** a follow-up ticket.
+- **What:** the key plaintext lives only in component state, not a loader, router cache or URL; e2e proves it is gone after leaving the page. **Undo:** n/a.
+- **What:** I filed the Dialog gap the builder named (no internal scroll, tall dialog hides its footer) against hackcove, because it was not filed. **Undo:** close that ticket.
