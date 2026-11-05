@@ -59,6 +59,7 @@ app.MapProjectEndpoints();
 app.MapEnvironmentEndpoints();
 app.MapFlagEndpoints();
 app.MapApiKeyEndpoints();
+app.MapAdminTokenEndpoints();
 app.MapConfigEndpoints();
 app.MapFlagStateEndpoints();
 app.MapSegmentEndpoints();

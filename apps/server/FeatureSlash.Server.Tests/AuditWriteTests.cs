@@ -57,6 +57,14 @@ public sealed class AuditWriteTests : IDisposable
             return response;
         }, HttpStatusCode.Created, "api_key", "created");
         yield return new("DELETE /api/v1/projects/{project}/environments/{env}/keys/{id:long}", () => server.Delete($"{Keys}/{keyId}"), HttpStatusCode.NoContent, "api_key", "revoked");
+        long tokenId = 0;
+        yield return new("POST /api/v1/projects/{project}/tokens", async () =>
+        {
+            var response = await server.Post($"{Shop}/tokens", new { name = "ci", permission = "read", expiresInDays = 30 });
+            tokenId = (await ApiServer.Json(response)).GetProperty("id").GetInt64();
+            return response;
+        }, HttpStatusCode.Created, "admin_token", "created");
+        yield return new("DELETE /api/v1/projects/{project}/tokens/{id:long}", () => server.Delete($"{Shop}/tokens/{tokenId}"), HttpStatusCode.NoContent, "admin_token", "revoked");
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using FeatureSlash.Server.Audit;
 using FeatureSlash.Server.Auth;
 using FeatureSlash.Server.Data;
@@ -18,11 +19,13 @@ public static class ProjectEndpoints
             .WithTags("Projects");
 
         projects.MapPost("", Create)
+            .WithMetadata(new RootOnlyRoute())
             .WithName("createProject")
             .Produces<ProjectResponse>(StatusCodes.Status201Created)
             .Produces<ApiError>(StatusCodes.Status400BadRequest)
             .Produces<ApiError>(StatusCodes.Status409Conflict);
         projects.MapGet("", List)
+            .WithMetadata(new OwnProjectListRoute())
             .WithName("listProjects")
             .Produces<ProjectResponse[]>();
         projects.MapGet("{project}", Read)
@@ -56,9 +59,15 @@ public static class ProjectEndpoints
         return Results.Created($"/api/v1/projects/{project.Key}", Describe(project));
     }
 
-    private static async Task<IResult> List(FeatureSlashDbContext database)
+    /// <summary>Every project for the root token; a scoped token sees only its own.</summary>
+    private static async Task<IResult> List(ClaimsPrincipal user, FeatureSlashDbContext database)
     {
-        var projects = await database.Projects.AsNoTracking().OrderBy(p => p.Id).ToListAsync();
+        var visible = database.Projects.AsNoTracking();
+        if (ServerAuth.TokenProject(user) is { } own)
+        {
+            visible = visible.Where(p => p.Key == own);
+        }
+        var projects = await visible.OrderBy(p => p.Id).ToListAsync();
         return Results.Json(projects.Select(Describe));
     }
 

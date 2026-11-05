@@ -1,7 +1,7 @@
 # Architecture
 
 This page records the design the later tickets build on. It is a decision record, not a description
-of what exists: today `apps/server` migrates its database, answers `GET /health` and serves the admin API (SDK keys, projects, environments, flags, targeting, segments and the audit trail) and the SDK read API (the ruleset, its live-update stream and server-side evaluate), and usage counts (`POST /sdk/v1/events`, the per-flag usage read and `lastEvaluated`), and nothing else. Where a section says
+of what exists: today `apps/server` migrates its database, answers `GET /health` and serves the admin API (SDK keys, scoped API tokens, projects, environments, flags, targeting, segments and the audit trail) and the SDK read API (the ruleset, its live-update stream and server-side evaluate), and usage counts (`POST /sdk/v1/events`, the per-flag usage read and `lastEvaluated`), and nothing else. Where a section says
 "will", the code arrives in its own ticket.
 
 ## Who owns what
@@ -14,7 +14,7 @@ on .NET 10. TypeScript stays for the engine, the SDKs, the CLI, the dashboard an
 | `apps/server` | C# | flag data, the HTTP API, auth, evaluation for clients that ask the server |
 | `packages/engine` | TypeScript | flag evaluation, for TypeScript SDKs |
 | `packages/sdk` | TypeScript | the server-side SDK: ruleset, stream, local evaluation, usage counts (see [`sdk.md`](sdk.md)) |
-| `packages/cli` | TypeScript | the `featureslash` command; calls the admin API (`config`, `projects`, `envs`, `flags`, `keys`) |
+| `packages/cli` | TypeScript | the `featureslash` command; calls the admin API (`config`, `projects`, `envs`, `flags`, `keys`, `tokens`) |
 | `apps/web` | TypeScript | the dashboard; calls the server |
 | `apps/site` | TypeScript | featureslash.dev, prerendered |
 
@@ -31,7 +31,7 @@ EF takes no migration lock inside that transaction; SQLite's write lock does the
 starting on the same file waits for the first, then finds nothing pending.
 
 The tables are `projects`, `environments`, `flags`, `flag_environment_configs`, `segments`,
-`api_keys`, `audit_events` and `flag_usage_daily`. JSON from `docs/evaluation.md` (variations, targets,
+`api_keys`, `admin_tokens`, `audit_events` and `flag_usage_daily`. JSON from `docs/evaluation.md` (variations, targets,
 rules and so on) is stored as text. A flag's `salt` is on `flags`, because the spec does not list it as
 per-environment. `segments` and `flag_environment_configs` do not stop a row pointing across projects
 or environments; that is the API's check to make, and the targeting routes make it (below).
@@ -48,6 +48,12 @@ or environments; that is the API's check to make, and the targeting routes make 
   `/api/v1/projects/{project}/environments/{env}/keys` (`POST` creates, `GET` lists, `DELETE .../{id}`
   revokes). The server stores only the SHA-256 hash of a key and a display prefix; the plain key is
   returned once, by the `POST`. A key is 32 bytes from a CSPRNG, so a plain hash is enough.
+- **Scoped API tokens:** for Terraform and CI, which should not hold the root token. A token belongs to one
+  project, is `read` or `write`, and always expires (1 to 365 days from creation; there is no other choice). It looks like
+  `fs_admin_<64 hex>` and is stored like an SDK key: the SHA-256 hash and a display prefix, the plain token returned
+  once. The root token manages them at `/api/v1/projects/{project}/tokens` (`POST` creates, `GET` lists all of them,
+  expired and revoked too, `DELETE .../{id}` revokes). An expired or revoked token is the same 401 as an unknown one
+  and counts as an auth failure.
 - There are no user accounts yet.
 
 The two kinds of SDK key:
@@ -60,13 +66,33 @@ The two kinds of SDK key:
 The kind that counts is the one stored with the key; the text in front is for people and secret
 scanners. The ruleset and stream routes are gated on `server-key`; the evaluate and events routes on `sdk-key`, which is either kind.
 
-The policies are `admin`, `server-key` and `client-key`, and none includes another: the admin token
+The policies are `admin`, `server-key` and `client-key`, and none includes another: an admin credential
 is not an SDK key, and neither kind of key passes for the other. (`sdk-key` is not a third kind of key:
-it is the policy of a route that takes a server or a client key.) All three credentials go through one
+it is the policy of a route that takes a server or a client key.) All these credentials go through one
 authentication scheme, so **401** means the token is missing, malformed, wrong or revoked and **403**
 means it is valid but not for this route. A 401 does not say which of those it was. **429** means a limit,
 [below](#rate-limits). **413** is a body over 1 MiB (128 KiB on `events`), and **504** (`request_timeout`) a request
 that ran past 30 seconds; both are in [`self-hosting.md`](self-hosting.md#headers-body-size-and-timeouts).
+
+**What a scoped token may reach** is decided in one place, the `admin` policy (`ServerAuth.MayUseAdminRoute`), and every
+admin route stays on that policy. The root token passes everywhere. A scoped token passes only when all of these hold:
+
+- The route's `{project}` equals the token's project, compared ordinally. Any other project is the same 403 whether or
+  not it exists, so a token cannot probe for names.
+- A `read` token: the method is `GET` or `HEAD`, or the route says it is read-only (`ReadOnlyRoute`, which only
+  `POST .../environments/{env}/evaluate` carries). A `write` token: any method.
+- The route is not root-only (`RootOnlyRoute`): `POST /api/v1/projects` and the three token routes.
+
+`GET /api/v1/projects` is the one route without a `{project}` that a scoped token may call (`OwnProjectListRoute`), and it
+returns only that token's project. Any other route without a `{project}` is root-only by that rule. **A new route under
+`{project}` is not**: it is open to a write token, and to a read token if it is a `GET`, unless it is marked `RootOnlyRoute`. What
+stops one landing unconsidered is a test: `AdminTokenTests` compares every `admin` route with a table of what each token may do, and
+fails until the new route is added.
+
+SDK keys are inside that scope on purpose: a write token may create and revoke its project's SDK keys and a read token may
+list them (prefixes only). With `FEATURESLASH_ADMIN_TOKEN` unset the whole admin API is 503, and that includes live scoped
+tokens. A scoped token is 403 on every SDK route; an SDK key is 403 on every admin route. The token routes are root-only, but a
+token's create and revoke events are in the project's audit trail, so a scoped token can read their name, permission, prefix and expiry there.
 
 Every error body has one shape, from the framework's own 404 and 405 to an unhandled 500:
 
@@ -117,7 +143,7 @@ Static files are answered by the Workers assets layer before the Worker runs, so
 
 ## Admin API and OpenAPI
 
-Admin only, under `/api/v1`, every route behind the `admin` policy. Keys (`projects/{project}`,
+Under `/api/v1`, every route behind the `admin` policy, so for the root token and, [as above](#auth), scoped tokens. Keys (`projects/{project}`,
 `environments/{env}`, `flags/{flag}`) match `^[a-z0-9][a-z0-9_-]{0,63}$` and are fixed once created.
 
 | Route | |
@@ -129,6 +155,7 @@ Admin only, under `/api/v1`, every route behind the `admin` policy. Keys (`proje
 | `GET`, `PUT .../flags/{flag}/environments/{env}` | read and replace a flag's config in one environment |
 | `POST .../flags/{flag}/environments/{env}/toggle` | set `on` and nothing else |
 | `POST`, `GET /projects/{project}/environments/{env}/segments`; `GET`, `PUT`, `DELETE .../segments/{segment}` | segment CRUD |
+| `POST`, `GET /projects/{project}/tokens`; `DELETE .../tokens/{id}` | scoped API tokens, root token only ([Auth](#auth)) |
 | `GET /projects/{project}/audit`; `GET .../flags/{flag}/history` | the audit trail of a project, and of one flag (below) |
 
 - **Errors** are the single shape above: 400 (`bad_request`) for invalid input, 404 (`not_found`) for an
@@ -199,30 +226,30 @@ Admin only, under `/api/v1`, every route behind the `admin` policy. Keys (`proje
   - `POST /sdk/v1/evaluate` counts for itself: one for the variation each flag it evaluated served, in the key's
     environment, on today's UTC day. A flag that errored serves no variation and counts nothing. A failure to
     count is logged and never fails the evaluation.
-  - `GET /api/v1/projects/{project}/flags/{flag}/usage` (admin only) returns daily totals for every environment of
+  - `GET /api/v1/projects/{project}/flags/{flag}/usage` (the `admin` policy) returns daily totals for every environment of
     the project, each day with its per-variation counts. `since` and `until` (`yyyy-MM-dd`, inclusive) default to the last 30
     days and may span at most 366.
   - A flag read carries `lastEvaluated`: the latest UTC day with a count in any environment, or `null`. It is a day, not a
     timestamp. It is on the flag read, the list and the flag writes; the audit trail's snapshots leave it out, since it is not part of
     what an admin wrote.
   - Whether a flag is safe to remove is a judgement on top of these numbers and is not computed here.
-- **Audit trail.** Every admin write (project, environment, flag, config, segment and SDK key, each route
+- **Audit trail.** Every admin write (project, environment, flag, config, segment, SDK key and scoped token, each route
   above that is not a `GET`) adds exactly one `audit_events` row **in the same transaction as the write**: both
   happen or neither does, so a rejected write (400, 404, 409) records nothing and an audit row that cannot be
   written takes its write with it (a 500). A test lists the server's write routes and fails for one without a
   proof, so a new write route cannot skip this. A row holds `occurredAt` (UTC), `actor`, `entityType`
-  (`project`, `environment`, `flag`, `flag_config`, `segment`, `api_key`), `entityId` (the entity's key; a
-  config's is `<flag>/<env>`; an SDK key's is its numeric id), `action` (`created`, `updated`, `toggled`,
+  (`project`, `environment`, `flag`, `flag_config`, `segment`, `api_key`, `admin_token`), `entityId` (the entity's key; a
+  config's is `<flag>/<env>`; an SDK key's or a scoped token's is its numeric id), `action` (`created`, `updated`, `toggled`,
   `archived`, `restored`, `revoked`, `deleted`), the `project`, `environment` and `flag` keys it belongs to
   (null when it does not concern one) and `before` and `after`, the entity as the API shows it
   (null before a create and after a delete). The rows carry keys, not ids, so a deleted segment's history
   stays readable. **Nothing private is stored:** the snapshots are the API's own response shapes, so no plain
-  SDK key, no key hash and no salt (an SDK key shows as its prefix); a test checks every column of every row
-  for them. The `actor` is `admin`: only the admin token passes the `admin` policy that every write route sits
-  behind, so there is no other actor yet; the column can hold a key prefix later. **One row per successful
+  SDK key or token, no hash and no salt (a key or a token shows as its prefix); a test checks every column of every row
+  for them. The `actor` is `admin` for the root token and `token:<id>` for a scoped one, set by the auth handler on
+  the request's database context. **One row per successful
   write request**, even when it changes nothing (archiving an archived flag, revoking a revoked key): `before`
   equals `after` then. Creating an environment or a flag is one row, not one per default config it writes.
-- **Reading the trail** is admin only. `GET /projects/{project}/audit` lists a project's events newest first;
+- **Reading the trail** takes the `admin` policy, so a scoped token reads its own project's. `GET /projects/{project}/audit` lists a project's events newest first;
   `GET /projects/{project}/flags/{flag}/history` lists one flag's (its metadata, archive state and every
   environment's config). Both take `?environment=` (an environment key; flag-level events have none, so they
   drop out), `?since=` (an ISO 8601 time, inclusive; no zone means UTC), `?limit=` (1 to 200, default 50) and

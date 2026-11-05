@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using FeatureSlash.Server.Data;
 
@@ -15,6 +16,7 @@ internal static class AuditEntity
 
     public const string Segment = "segment";
     public const string ApiKey = "api_key";
+    public const string AdminToken = "admin_token";
 }
 
 internal static class AuditAction
@@ -40,11 +42,11 @@ internal readonly record struct AuditScope(string Project, string? Environment =
 /// </summary>
 internal static class AuditLog
 {
-    /// <summary>
-    /// Who made the change. Only the admin token reaches a write route today (SDK keys are read-only and
-    /// every route here sits behind the <c>admin</c> policy), so this is the only actor there is.
-    /// </summary>
+    /// <summary>The actor of a write made with the root admin token.</summary>
     public const string Admin = "admin";
+
+    /// <summary>The actor of a write made with a scoped token: the id says which one, and never anything secret.</summary>
+    public static string ScopedToken(long id) => $"token:{id.ToString(CultureInfo.InvariantCulture)}";
 
     private static readonly JsonSerializerOptions SnapshotOptions = new(JsonSerializerDefaults.Web);
 
@@ -64,7 +66,7 @@ internal static class AuditLog
         database.AuditEvents.Add(new AuditEvent
         {
             OccurredAt = DateTime.UtcNow,
-            Actor = Admin,
+            Actor = database.AuditActor,
             EntityType = entityType,
             EntityId = entityId,
             Action = action,

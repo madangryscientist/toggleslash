@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using FeatureSlash.Server.Audit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
@@ -13,8 +14,12 @@ public sealed partial class FeatureSlashDbContext(DbContextOptions<FeatureSlashD
     public DbSet<FlagEnvironmentConfig> FlagEnvironmentConfigs => Set<FlagEnvironmentConfig>();
     public DbSet<Segment> Segments => Set<Segment>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
+    public DbSet<AdminToken> AdminTokens => Set<AdminToken>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<FlagUsageDaily> FlagUsageDaily => Set<FlagUsageDaily>();
+
+    /// <summary>Who this request's audit events name. The context is per request, and the auth handler sets this on success.</summary>
+    public string AuditActor { get; set; } = AuditLog.Admin;
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -71,6 +76,17 @@ public sealed partial class FeatureSlashDbContext(DbContextOptions<FeatureSlashD
                 kind => kind == ApiKeyKind.Server ? "server" : "client",
                 kind => kind == "server" ? ApiKeyKind.Server : ApiKeyKind.Client);
             key.HasIndex(k => k.Hash).IsUnique();
+        });
+
+        modelBuilder.Entity<AdminToken>(token =>
+        {
+            token.ToTable("admin_tokens", table =>
+                table.HasCheckConstraint("ck_admin_tokens_permission", "permission IN ('read', 'write')"));
+            token.HasOne<Project>().WithMany().HasForeignKey(t => t.ProjectId);
+            token.Property(t => t.Permission).HasConversion(
+                permission => permission == AdminTokenPermission.Write ? "write" : "read",
+                permission => permission == "write" ? AdminTokenPermission.Write : AdminTokenPermission.Read);
+            token.HasIndex(t => t.Hash).IsUnique();
         });
 
         modelBuilder.Entity<AuditEvent>(audit =>

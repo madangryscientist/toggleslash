@@ -1,6 +1,6 @@
 # featureslash
 
-The FeatureSlash command line: manage projects, environments, flags and SDK keys on a FeatureSlash
+The FeatureSlash command line: manage projects, environments, flags, SDK keys and scoped API tokens on a FeatureSlash
 server from the terminal, over the admin API (`/api/v1`). It is not published yet; from a checkout, run
 it with `bun run featureslash <command>`.
 
@@ -59,6 +59,10 @@ featureslash keys create --project <project> --env <env> --kind server|client --
 featureslash keys list --project <project> --env <env>
 featureslash keys revoke <id> --project <project> --env <env>
 
+featureslash tokens create --project <project> --name <name> --permission read|write --expires-in-days <1-365>
+featureslash tokens list --project <project>
+featureslash tokens revoke <id> --project <project>
+
 featureslash diagnose <flag> --project <project> --env <env> (--context '<json>' | --context-file <path>)
 ```
 
@@ -70,6 +74,11 @@ featureslash diagnose <flag> --project <project> --env <env> (--context '<json>'
   prints a page, newest first; when there is another page it ends with `more: add --cursor <cursor>`.
 - **SDK keys** (`keys create`) print the plain key **once**. The server keeps only a hash and a prefix, so
   `keys list` shows prefixes and `keys revoke` takes the id from that list.
+- **Scoped API tokens** (`tokens create`) are for Terraform and CI: one project, `read` or `write`, always with an
+  expiry. Like a key, the plain token prints **once**, and `tokens list` shows prefixes, expired and revoked ones
+  too. Managing them takes the root admin token. A scoped token can be used as this CLI's token for its own
+  project, except for `projects create` and `tokens`: a `read` token may run `diagnose` and every read, and a
+  `write` token everything else too, including creating and revoking the project's SDK keys.
 - **`diagnose`** asks the server why a flag has the value it has for one context: it evaluates the flag in
   that environment (the admin route `POST /api/v1/projects/{project}/environments/{env}/evaluate`, so no SDK
   key) and prints `value`, `variationIndex` and `reason`, with `ruleIndex`, `flagKey` (the prerequisite that

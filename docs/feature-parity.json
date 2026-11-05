@@ -807,8 +807,16 @@
       "name": "Scoped API tokens",
       "description": "Create tokens limited to a project, environment or action.",
       "featureslash": {
-        "status": "no",
-        "evidence": []
+        "status": "partial",
+        "evidence": [
+          "api:/api/v1/projects/{project}/tokens",
+          "api:/api/v1/projects/{project}/tokens/{id}",
+          "cli:tokens create",
+          "cli:tokens list",
+          "cli:tokens revoke",
+          "doc:docs/architecture.md"
+        ],
+        "note": "A token is limited to one project and to read or write, and always expires; there are no per-environment scopes or custom permissions."
       },
       "competitors": {
         "launchdarkly": "yes",

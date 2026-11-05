@@ -17,6 +17,62 @@ namespace FeatureSlash.Server.Data.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.14");
 
+            modelBuilder.Entity("FeatureSlash.Server.Data.AdminToken", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("Hash")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("hash");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Permission")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("permission");
+
+                    b.Property<string>("Prefix")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("prefix");
+
+                    b.Property<long>("ProjectId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("project_id");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("revoked_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Hash")
+                        .IsUnique();
+
+                    b.HasIndex("ProjectId");
+
+                    b.ToTable("admin_tokens", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_admin_tokens_permission", "permission IN ('read', 'write')");
+                        });
+                });
+
             modelBuilder.Entity("FeatureSlash.Server.Data.ApiKey", b =>
                 {
                     b.Property<long>("Id")
@@ -397,6 +453,15 @@ namespace FeatureSlash.Server.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("segments", (string)null);
+                });
+
+            modelBuilder.Entity("FeatureSlash.Server.Data.AdminToken", b =>
+                {
+                    b.HasOne("FeatureSlash.Server.Data.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("FeatureSlash.Server.Data.ApiKey", b =>
