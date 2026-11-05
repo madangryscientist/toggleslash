@@ -21,7 +21,7 @@ One builder at a time, in this order. FS-2 is held and not in the queue.
 | 10 | FS-12 | medium | targeting and segments | ✅ PR #14, 275 server tests, gate and CI green (#14, 3b14029) |
 | 11 | FS-13 | medium | audit | ✅ PR #15, 311 server tests, gate and CI green (#15, e79e538) |
 | 12 | FS-14 | medium | SDK ruleset and evaluate | ✅ PR #16, 586 server tests, gate and CI green (#16, 86b1cee) |
-| 13 | FS-15 | complex | SSE | |
+| 13 | FS-15 | complex | SSE | ✅ `pending` #17, 607 server tests, mutation check not run (#17, 595417a) |
 | 14 | FS-16 | medium | usage counts | |
 | 15 | FS-17 | medium | TS SDK | |
 | 16 | FS-18 | medium | CLI | |
