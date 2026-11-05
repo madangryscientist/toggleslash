@@ -27,6 +27,9 @@ bun run test            # Vitest under Bun
 A change to `apps/web` or `apps/site` also runs `bunx nx build <app>` and `bunx nx test:e2e <app>`
 (Playwright; `bunx playwright install chromium-headless-shell` once per machine).
 
+A change to the server, the CLI, the SDK or the engine also runs `bun run test:e2e` (or `bunx nx test:e2e e2e` with the SDK): the cross-language
+end-to-end test (the real server, CLI and SDK on localhost; it needs the .NET SDK and skips with a printed line without one).
+
 A change to `apps/server` needs the .NET SDK (10.0.402, see `global.json`; `mise install` gets it).
 Without an SDK the root scripts skip the server and print that they did.
 

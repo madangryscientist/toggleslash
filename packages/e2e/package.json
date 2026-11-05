@@ -1,0 +1,15 @@
+{
+  "name": "@hackcove/featureslash-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The cross-language end-to-end test: the real C# server, the real CLI and the real TypeScript SDK.",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@hackcove/featureslash-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.4",
+    "vitest": "5.0.5"
+  }
+}

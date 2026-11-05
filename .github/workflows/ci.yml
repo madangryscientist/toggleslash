@@ -104,6 +104,25 @@ jobs:
         working-directory: apps/site
         run: bunx wrangler deploy --dry-run --outdir "$RUNNER_TEMP/fs-site-dry"
 
+  # Cross-language proof (FS-23): the real server, CLI and SDK on loopback. CI is set, so a missing
+  # .NET SDK fails the job instead of skipping it.
+  e2e:
+    name: End to end (server, CLI, SDK)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - run: bun install --frozen-lockfile
+      - run: bunx nx run e2e:test:e2e
+
   # Self-hosting proof (FS-22): the server's image builds and the compose stack answers /health.
   # Nothing is pushed and there is no registry login; the token is a throwaway for this job's
   # container, not a repository secret.

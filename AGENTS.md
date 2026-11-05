@@ -27,6 +27,7 @@ A small Nx workspace on Bun workspaces:
 | `site` | `apps/site` | featureslash.dev: TanStack Start on a Worker, every page prerendered; no D1, no secrets |
 | `server` | `apps/server` | the C# server: ASP.NET Core minimal API on .NET 10 (`FeatureSlash.Server`, xunit in `FeatureSlash.Server.Tests`); owns all flag data and the API. `apps/server/openapi/v1.json` is its generated OpenAPI document; `apps/server/Dockerfile` and the root `compose.yaml` containerise it (below) |
 | `evaluation` | `apps/server/FeatureSlash.Evaluation` | the C# implementation of `docs/evaluation.md`: a class library with no ASP.NET or database dependency (xunit in `FeatureSlash.Evaluation.Tests`, which runs every vector); only the server's tests reference it |
+| `e2e` | `packages/e2e` | the cross-language end-to-end test (`test:e2e`, not `test`): builds and starts the real C# server on a port the OS picks with a SQLite file under `$TMPDIR`, drives it with the real CLI (a subprocess) and the real TS SDK, and checks a CLI flip arrives through the stream and that `POST /sdk/v1/evaluate` and the SDK's local evaluation agree over a set of contexts. Loopback only; skips with a printed line when no `dotnet` runs (in CI, where `CI` is set, a missing SDK fails instead). Private |
 | `scripts` | `scripts` | `check-slop.ts`, `test-tmp-scope.ts`, `nx.ts` (typecheck + lint only) |
 
 `bunfig.toml` sets `[install] linker = "isolated"` and `globalStore = true` (the shared package store that
@@ -72,13 +73,13 @@ A change to `apps/web` or `apps/site` also runs their builds, Playwright and Wor
 worktree root). `test:e2e` runs before `build`: web's e2e run leaves its own build behind, and `build` replaces it.
 
 ```bash
-bun run test:e2e                  # nx run-many -t test:e2e  (Playwright: web and site; web builds with the e2e env on a fresh local D1)
+bun run test:e2e                  # nx run-many -t test:e2e  (Playwright: web and site; web builds with the e2e env on a fresh local D1; and the `e2e` project, which needs the .NET SDK)
 bun run build                     # nx run-many -t build  (every project's build target: web, site, cli, and the C# projects)
 (cd apps/web && bunx wrangler deploy --dry-run --outdir "$TMPDIR/fs-web-dry")
 (cd apps/site && bunx wrangler deploy --dry-run --outdir "$TMPDIR/fs-site-dry")
 ```
 
-One app: `bunx nx test:e2e web`, `bunx nx build site`.
+One app: `bunx nx test:e2e web`, `bunx nx build site`. The cross-language test alone: `bunx nx test:e2e e2e` (with the SDK on the machine; `bun run test:e2e` runs it too and skips it without one; a `dotnet build` of the server, then about five seconds). Any change to the server, the CLI, the SDK or the engine can break it, so run it then; CI has its own `e2e` job.
 
 First time on a machine: `bunx playwright install chromium-headless-shell`.
 
