@@ -14,6 +14,9 @@ internal static class Failures
     public static IResult Conflict(string message) =>
         ApiError.Result(StatusCodes.Status409Conflict, "conflict", message);
 
+    public static IResult VersionConflict(string message) =>
+        ApiError.Result(StatusCodes.Status409Conflict, "version_conflict", message);
+
     public static IResult ProjectNotFound() =>
         ApiError.Result(StatusCodes.Status404NotFound, "not_found", "No such project.");
 

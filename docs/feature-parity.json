@@ -442,8 +442,12 @@
       "name": "Segment versioning",
       "description": "Compare-and-set or version history for segment edits.",
       "featureslash": {
-        "status": "no",
-        "evidence": []
+        "status": "yes",
+        "evidence": [
+          "api:/api/v1/projects/{project}/environments/{env}/segments/{segment}",
+          "dashboard:/segments",
+          "doc:docs/architecture.md"
+        ]
       },
       "competitors": {
         "launchdarkly": "yes",

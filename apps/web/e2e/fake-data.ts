@@ -53,6 +53,7 @@ export interface SegmentRow {
   included: string[];
   excluded: string[];
   rules: unknown[];
+  version: number;
 }
 
 /** A project audit event, as `GET /projects/<p>/audit` returns it. */
@@ -242,8 +243,9 @@ export function fixture(): Store {
           included: ["alice", "bob"],
           excluded: ["mallory"],
           rules: [{ clauses: [{ op: "in", attribute: "country", values: ["NL"] }] }],
+          version: 1,
         },
-        { key: "staff", included: [], excluded: [], rules: [] },
+        { key: "staff", included: [], excluded: [], rules: [], version: 1 },
       ],
     },
     audit: { shop: shopAudit() },

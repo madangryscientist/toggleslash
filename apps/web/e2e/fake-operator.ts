@@ -91,15 +91,8 @@ function names(value: unknown): string[] | null {
   return Array.isArray(value) && value.every((v) => typeof v === "string") ? value : null;
 }
 
-/** `.../environments/<env>/segments[/<segment>]`: list, and replace one (the server's own message for a bad body). */
-export function onSegments({ project, env, method, rest, body }: Call): Reply {
-  const segments = segmentsOf(project, env);
-  if (segments === null) return failure(404, "environment_not_found", `No environment ${env}.`);
-  const [key] = rest;
-  if (key === undefined && method === "GET") return [200, segments];
-  const found = segments.find((s) => s.key === key);
-  if (found === undefined) return failure(404, "segment_not_found", `No segment ${key}.`);
-  if (method !== "PUT") return failure(404, "not_found", "No such route.");
+/** Validation, then the version check, then the write. */
+function putSegment(found: SegmentRow, body: Body): Reply {
   const included = names(body["included"]);
   const excluded = names(body["excluded"]);
   if (included === null || excluded === null) {
@@ -110,10 +103,30 @@ export function onSegments({ project, env, method, rest, body }: Call): Reply {
   }
   const bad = body["rules"].findIndex((r) => !Array.isArray(asBody(r)["clauses"]));
   if (bad >= 0) return failure(400, "invalid_request", `rules[${bad}].clauses must be a list.`);
+  if (body["version"] !== found.version) {
+    return failure(
+      409,
+      "version_conflict",
+      `The segment is at version ${found.version}, not ${String(body["version"])}.`,
+    );
+  }
   found.included = included;
   found.excluded = excluded;
   found.rules = body["rules"];
+  found.version += 1;
   return [200, found];
+}
+
+/** `.../environments/<env>/segments[/<segment>]`: list, and replace one (the server's own message for a bad body). */
+export function onSegments({ project, env, method, rest, body }: Call): Reply {
+  const segments = segmentsOf(project, env);
+  if (segments === null) return failure(404, "environment_not_found", `No environment ${env}.`);
+  const [key] = rest;
+  if (key === undefined && method === "GET") return [200, segments];
+  const found = segments.find((s) => s.key === key);
+  if (found === undefined) return failure(404, "segment_not_found", `No segment ${key}.`);
+  if (method !== "PUT") return failure(404, "not_found", "No such route.");
+  return putSegment(found, body);
 }
 
 /** `GET .../audit?flag=&environment=&since=&limit=&cursor=`: newest first, a cursor being the last id returned. */

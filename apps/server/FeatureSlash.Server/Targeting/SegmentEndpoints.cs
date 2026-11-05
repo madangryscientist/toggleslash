@@ -6,21 +6,28 @@ using FeatureSlash.Server.Auth;
 using FeatureSlash.Server.Catalogue;
 using FeatureSlash.Server.Data;
 using FeatureSlash.Server.Sdk;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace FeatureSlash.Server.Targeting;
 
 public static class SegmentEndpoints
 {
-    /// <summary>A segment of one environment: the context keys always in or out, and rules that bring in the rest.</summary>
-    public sealed record SegmentResponse(string Key, string[] Included, string[] Excluded, JsonElement Rules);
+    /// <summary>
+    /// A segment of one environment: the context keys always in or out, and rules that bring in the rest.
+    /// <c>version</c> starts at 1 and goes up by one on every save, and is also the <c>ETag</c> of a single segment (<c>"3"</c>).
+    /// </summary>
+    public sealed record SegmentResponse(string Key, string[] Included, string[] Excluded, JsonElement Rules, long Version);
 
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
     public sealed record CreateSegmentRequest(string? Key, string[]? Included, string[]? Excluded, JsonElement? Rules);
 
-    /// <summary>A PUT replaces the segment's members and rules; send all three (an empty array clears one).</summary>
+    /// <summary>
+    /// A PUT replaces the segment's members and rules; send all three (an empty array clears one).
+    /// The version being replaced goes in <c>version</c> or in <c>If-Match</c>; one is required.
+    /// </summary>
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-    public sealed record PutSegmentRequest(string[]? Included, string[]? Excluded, JsonElement? Rules);
+    public sealed record PutSegmentRequest(string[]? Included, string[]? Excluded, JsonElement? Rules, long? Version = null);
 
     public static void MapSegmentEndpoints(this IEndpointRouteBuilder routes)
     {
@@ -46,7 +53,8 @@ public static class SegmentEndpoints
             .WithName("putSegment")
             .Produces<SegmentResponse>()
             .Produces<ApiError>(StatusCodes.Status400BadRequest)
-            .Produces<ApiError>(StatusCodes.Status404NotFound);
+            .Produces<ApiError>(StatusCodes.Status404NotFound)
+            .Produces<ApiError>(StatusCodes.Status409Conflict);
         segments.MapDelete("{segment}", Delete)
             .WithName("deleteSegment")
             .Produces(StatusCodes.Status204NoContent)
@@ -81,6 +89,7 @@ public static class SegmentEndpoints
             Included = JsonSerializer.Serialize(request.Included),
             Excluded = JsonSerializer.Serialize(request.Excluded),
             Rules = JsonSerializer.Serialize(request.Rules!.Value),
+            Version = 1,
         };
         database.Segments.Add(segment);
         database.Record(
@@ -113,17 +122,26 @@ public static class SegmentEndpoints
         return Results.Json(segments.Select(Describe).ToArray());
     }
 
-    private static async Task<IResult> Read(string project, string env, string segment, FeatureSlashDbContext database)
+    private static async Task<IResult> Read(string project, string env, string segment, HttpContext http, FeatureSlashDbContext database)
     {
         var (scope, missing) = await Scope(database, project, env);
         if (missing is not null)
         {
             return missing;
         }
-        return await Find(database, scope!, segment) is { } found ? Results.Json(Describe(found)) : NoSuchSegment();
+        return await Find(database, scope!, segment) is { } found ? Respond(http, Describe(found)) : NoSuchSegment();
     }
 
-    private static async Task<IResult> Put(string project, string env, string segment, PutSegmentRequest request, FeatureSlashDbContext database, TargetingLock targetingLock, RulesetNotifier notifier)
+    private static async Task<IResult> Put(
+        string project,
+        string env,
+        string segment,
+        PutSegmentRequest request,
+        [FromHeader(Name = "If-Match")] string? ifMatch,
+        HttpContext http,
+        FeatureSlashDbContext database,
+        TargetingLock targetingLock,
+        RulesetNotifier notifier)
     {
         if (Shape(request.Included, request.Excluded, request.Rules) is { } problem)
         {
@@ -139,23 +157,40 @@ public static class SegmentEndpoints
         {
             return NoSuchSegment();
         }
+        var (expected, versionProblem) = ConfigEndpoints.ExpectedVersion(ifMatch, request.Version);
+        if (versionProblem is not null)
+        {
+            return Failures.BadRequest(versionProblem);
+        }
+        if (expected is null)
+        {
+            return Failures.BadRequest("A PUT needs the version it replaces: send it in the If-Match header or a \"version\" field.");
+        }
 
         var included = JsonSerializer.Serialize(request.Included);
         var excluded = JsonSerializer.Serialize(request.Excluded);
         var rules = JsonSerializer.Serialize(request.Rules!.Value);
-        // The update and its event commit together; the targeting lock keeps `found` the row's true "before".
+        // The compare-and-set and its event commit together. The targeting lock keeps `found` the row's true
+        // "before" whenever the compare-and-set succeeds; a stale version changed no row, so it records nothing.
         await using var transaction = await database.Database.BeginTransactionAsync();
-        await database.Segments.Where(s => s.Id == found.Id).ExecuteUpdateAsync(set => set
-            .SetProperty(s => s.Included, included)
-            .SetProperty(s => s.Excluded, excluded)
-            .SetProperty(s => s.Rules, rules));
+        var rows = await database.Segments
+            .Where(s => s.Id == found.Id && s.Version == expected)
+            .ExecuteUpdateAsync(set => set
+                .SetProperty(s => s.Included, included)
+                .SetProperty(s => s.Excluded, excluded)
+                .SetProperty(s => s.Rules, rules)
+                .SetProperty(s => s.Version, s => s.Version + 1));
         var saved = Describe(await database.Segments.AsNoTracking().SingleAsync(s => s.Id == found.Id));
+        if (rows == 0)
+        {
+            return Failures.VersionConflict($"The segment is at version {saved.Version}, not {expected}: it changed since it was read. GET it again and retry.");
+        }
         database.Record(
             AuditEntity.Segment, found.Key, AuditAction.Updated, new AuditScope(scope!.Project.Key, scope.Environment.Key), Describe(found), saved);
         await database.SaveChangesAsync();
         await transaction.CommitAsync();
         notifier.Changed(scope.Environment.Id);
-        return Results.Json(saved);
+        return Respond(http, saved);
     }
 
     /// <summary>
@@ -255,9 +290,16 @@ public static class SegmentEndpoints
 
     private static IResult Taken(string key, string env) => Failures.Conflict($"Segment \"{key}\" already exists in environment \"{env}\".");
 
+    private static IResult Respond(HttpContext http, SegmentResponse segment)
+    {
+        http.Response.Headers.ETag = $"\"{segment.Version}\"";
+        return Results.Json(segment);
+    }
+
     private static SegmentResponse Describe(Segment segment) => new(
         segment.Key,
         JsonSerializer.Deserialize<string[]>(segment.Included)!,
         JsonSerializer.Deserialize<string[]>(segment.Excluded)!,
-        JsonSerializer.Deserialize<JsonElement>(segment.Rules));
+        JsonSerializer.Deserialize<JsonElement>(segment.Rules),
+        segment.Version);
 }

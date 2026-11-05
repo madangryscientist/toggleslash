@@ -207,7 +207,9 @@ Admin only, under `/api/v1`, every route behind the `admin` policy. Keys (`proje
 - **Segments** belong to one environment: `included`, `excluded` and `rules` (attribute clauses only, so no
   `segmentMatch` inside a segment), replaced whole by `PUT`. Their salt is generated and not exposed, like a
   flag's. A segment `DELETE` is a 409 while any flag's rules in that environment still name it, and says
-  which flags. Segment writes have no version: the last `PUT` wins.
+  which flags. Segment writes are compare-and-set like config writes: a `PUT` names the version it read (in
+  the body or as `If-Match`), starts at 1 and adds 1, and a stale one is a 409 that changes and records nothing. The
+  error code is `version_conflict` here and `conflict` on a config write.
 - **Writes take turns.** Config and segment writes hold one in-process lock (`TargetingLock`), because they
   check other rows (flags, segments, the prerequisite graph) before writing and SQLite would let two such
   checks both pass. One process owns one database file, so this is enough; a second server on the same file
@@ -259,6 +261,8 @@ the project and environment.
 - **`/segments`**: the environment's segments with member and rule counts; edit replaces a segment's
   included and excluded contexts (one per line) and its rules. Rules are edited as JSON text: the browser
   checks only that it is an array, and the server's own validation message is shown for anything else.
+  The save carries the version the page read; a stale one (409) keeps the dialog open with the typing in it
+  and says to copy what is needed and reload. There is no merge.
   The ticket asked for list and edit, so the page has no create or delete; the admin API has both.
 - **`/audit`**: the project's audit log, newest first, 25 events a page, filtered by flag, environment and
   a day (sent as midnight UTC). Paging is by the server's cursor ("Older events", "Back to the newest"),
@@ -281,8 +285,9 @@ has three parts:
   text: a bare `12` or `true` is a number or boolean and `"12"` is the string.
 - **History and usage**: read-only, from the audit and usage endpoints.
 
-The `PUT` carries the version the page read. A stale one answers 409: the page says someone else changed
-the flag, discards the draft and loads the latest. A 400 from the server's validation is shown at the
+The `PUT` carries the version the page read. A stale one answers 409: the editor keeps the draft and the
+version it read, says someone else changed the flag and says to copy what is needed and reload the page. A
+details save on the same page does not replace it, and there is no merge or retry. A 400 from the server's validation is shown at the
 field: the server's messages open with the path to the field (`rules[0].rollout ...`), and the editor
 matches that opening to its inputs; one with no path shows as a message above the form. A percentage that
 is not a number is caught in the browser first.

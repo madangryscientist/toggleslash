@@ -18,14 +18,14 @@ interface Props {
   siblings: Sibling[];
   /** The config was saved; the page reloads it. */
   onSaved: () => Promise<void>;
-  /** The version was stale; the page says so and reloads, which discards this editor's edits. */
-  onConflict: (message: string) => Promise<void>;
+  /** The version was stale. This editor keeps its draft and says to reload; the page must not replace it. */
+  onConflict: () => void;
 }
 
 /** What a save came to, for the editor to show or hand to the page. */
 type Outcome =
   | { kind: "saved" }
-  | { kind: "conflict"; message: string }
+  | { kind: "conflict" }
   | { kind: "rejected"; problems: FieldProblem[]; message: string };
 
 async function submit(props: Props, draft: Draft): Promise<Outcome> {
@@ -47,8 +47,8 @@ async function submit(props: Props, draft: Draft): Promise<Outcome> {
     },
   });
   if (result.ok) return { kind: "saved" };
+  if (result.conflict === true) return { kind: "conflict" };
   const message = result.detail ?? result.failure.message;
-  if (result.conflict === true) return { kind: "conflict", message };
   const field = result.detail === undefined ? null : configFieldOf(result.detail);
   return field === null
     ? { kind: "rejected", problems: [], message }
@@ -65,6 +65,8 @@ export function TargetingEditor(props: Props) {
   const [draft, setDraft] = useState<Draft>(initial);
   const [problems, setProblems] = useState<FieldProblem[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
+  // Not cleared by an edit: typing does not make the record any less changed. A reload does.
+  const [conflict, setConflict] = useState(false);
   const [saving, setSaving] = useState(false);
   const dirty = isDirty(draft, initial);
 
@@ -82,8 +84,10 @@ export function TargetingEditor(props: Props) {
     try {
       const outcome = await submit(props, draft);
       if (outcome.kind === "saved") await onSaved();
-      else if (outcome.kind === "conflict") await onConflict(outcome.message);
-      else {
+      else if (outcome.kind === "conflict") {
+        setConflict(true);
+        onConflict();
+      } else {
         setProblems(outcome.problems);
         setFormError(outcome.message);
       }
@@ -102,6 +106,17 @@ export function TargetingEditor(props: Props) {
       <PrerequisitesSection {...shared} siblings={siblings} />
       <RulesSection {...shared} />
       <FallthroughSection {...shared} />
+      {conflict && (
+        <Callout
+          tone="warn"
+          title="Someone else changed this flag"
+          data-testid="config-conflict"
+          role="alert"
+        >
+          This was not saved. Your edits are still here: copy what you need, then reload the page to
+          get the latest version.
+        </Callout>
+      )}
       {formError !== null && (
         <Callout tone="danger" title="Not saved" data-testid="config-error" role="alert">
           {formError}

@@ -1,9 +1,10 @@
 /**
  * A small stand-in for the C# server's admin API, for the Playwright run: `bun e2e/fake-api.ts`.
- * It speaks only the routes the dashboard calls, keeps its data in memory, and has three control routes
+ * It speaks only the routes the dashboard calls, keeps its data in memory, and has four control routes
  * the specs use: `POST /__reset` (back to the fixture data, server up), `POST /__down` (answer
  * every API request by dropping the connection, as a stopped server would) and
- * `POST /__bump/<project>/<env>/<flag>` (another editor saved: the config's version moves on).
+ * `POST /__bump/<project>/<env>/<flag>` and `POST /__bump-segment/<project>/<env>/<segment>` (another
+ * editor saved: the config's or the segment's version moves on).
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
@@ -206,6 +207,16 @@ function bump(res: ServerResponse, path: string) {
   return send(res, 200, cfg);
 }
 
+/** `POST /__bump-segment/<project>/<env>/<segment>`: someone else saved that segment. */
+function bumpSegment(res: ServerResponse, path: string) {
+  const [, , project = "", env = "", key = ""] = path.split("/");
+  const found = db.data.segments[`${project}/${env}`]?.find((s) => s.key === key);
+  if (found === undefined) return problem(res, 404, "not_found", "No such segment.");
+  found.included = ["someone-else"];
+  found.version += 1;
+  return send(res, 200, found);
+}
+
 createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://fake");
   if (url.pathname === "/__reset") {
@@ -213,6 +224,7 @@ createServer((req, res) => {
     return send(res, 200, { ok: true });
   }
   if (url.pathname.startsWith("/__bump/")) return bump(res, url.pathname);
+  if (url.pathname.startsWith("/__bump-segment/")) return bumpSegment(res, url.pathname);
   if (url.pathname === "/__down") {
     db.down = true;
     return send(res, 200, { ok: true });

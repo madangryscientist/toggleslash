@@ -7,6 +7,7 @@ import { History, UsagePanel } from "#/components/Activity";
 import { MetaForm } from "#/components/MetaForm";
 import { ServerDown, Shell, Switchers } from "#/components/Shell";
 import { TargetingEditor } from "#/components/TargetingEditor";
+import type { Config } from "#/targeting/model";
 
 interface Search {
   project?: string | undefined;
@@ -70,7 +71,11 @@ function Header({ loaded, search }: { loaded: Ready; search: Search }) {
 type Reload = (next: Notice | null) => Promise<void>;
 
 function Targeting({ loaded, reload }: { loaded: Ready; reload: Reload }) {
-  const { project, environment, flag, config, siblings } = loaded;
+  const { project, environment, flag, config: latest, siblings } = loaded;
+  // After a 409 the editor stays on the config it read: its draft and its version. A later reload of
+  // this page's data (a details save) must neither wipe the typing nor let the old draft save over the newer one.
+  const [held, setHeld] = useState<Config | null>(null);
+  const config = held ?? latest;
   if (environment === null) {
     return (
       <Callout tone="info" title={`${project.name} has no environments`}>
@@ -100,13 +105,7 @@ function Targeting({ loaded, reload }: { loaded: Ready; reload: Reload }) {
       onSaved={() =>
         reload({ tone: "info", title: "Targeting saved", text: `Saved in ${environment.name}.` })
       }
-      onConflict={() =>
-        reload({
-          tone: "warn",
-          title: "Someone else changed this flag",
-          text: "Your edits were not saved; the latest version is loaded.",
-        })
-      }
+      onConflict={() => setHeld(config)}
     />
   );
 }
@@ -138,7 +137,7 @@ function Body({ loaded, search }: { loaded: Ready; search: Search }) {
           reload({ tone: "info", title: "Details saved", text: "The flag's details were saved." })
         }
       />
-      <Targeting loaded={loaded} reload={reload} />
+      <Targeting key={flag.key} loaded={loaded} reload={reload} />
       <History events={history} />
       <UsagePanel usage={usage} flag={flag} environment={environment?.key ?? null} />
     </Stack>

@@ -1626,6 +1626,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -1661,6 +1668,16 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -2587,6 +2604,13 @@
                 "$ref": "#/components/schemas/JsonElement"
               }
             ]
+          },
+          "version": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
           }
         },
         "additionalProperties": false
@@ -2735,7 +2759,8 @@
           "key",
           "included",
           "excluded",
-          "rules"
+          "rules",
+          "version"
         ],
         "type": "object",
         "properties": {
@@ -2756,6 +2781,10 @@
           },
           "rules": {
             "$ref": "#/components/schemas/JsonElement"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },

@@ -383,6 +383,12 @@ namespace FeatureSlash.Server.Data.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("salt");
 
+                    b.Property<long>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(1L)
+                        .HasColumnName("version");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ProjectId");

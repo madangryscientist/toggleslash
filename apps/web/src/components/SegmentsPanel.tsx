@@ -88,6 +88,9 @@ function SegmentFields({ draft, onChange, rulesError }: FieldsProps) {
   );
 }
 
+const CONFLICT =
+  "Someone else changed this segment, so this was not saved. Your edits are still here: copy what you need, then reload the page to get the latest version.";
+
 function EditSegmentDialog({ project, environment, segment, onClose, onSaved }: EditProps) {
   const [draft, setDraft] = useState<Draft>({
     included: segment.included.join("\n"),
@@ -116,9 +119,11 @@ function EditSegmentDialog({ project, environment, segment, onClose, onSaved }: 
           included: parseMembers(draft.included),
           excluded: parseMembers(draft.excluded),
           rules: draft.rules,
+          version: segment.version,
         },
       });
       if (result.ok) await onSaved();
+      else if (result.conflict === true) setError(CONFLICT);
       else setError(result.detail ?? result.failure.message);
     } catch {
       setError("The dashboard could not reach its own server. Reload the page.");

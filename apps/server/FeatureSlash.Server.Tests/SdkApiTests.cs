@@ -222,7 +222,7 @@ public sealed class SdkApiTests : IDisposable
         seen.Add(await ETagOf(token));
         await ApiServer.Expect(HttpStatusCode.Created, await server.Post("/api/v1/projects/shop/environments/prod/segments", new { key = "testers", included = new[] { "u1" }, excluded = Array.Empty<string>(), rules = Array.Empty<object>() }));
         seen.Add(await ETagOf(token));
-        await ApiServer.Expect(HttpStatusCode.OK, await server.Put("/api/v1/projects/shop/environments/prod/segments/testers", new { included = new[] { "u1", "u2" }, excluded = Array.Empty<string>(), rules = Array.Empty<object>() }));
+        await ApiServer.Expect(HttpStatusCode.OK, await server.Put("/api/v1/projects/shop/environments/prod/segments/testers", new { included = new[] { "u1", "u2" }, excluded = Array.Empty<string>(), rules = Array.Empty<object>(), version = 1 }));
         seen.Add(await ETagOf(token));
         await ApiServer.Expect(HttpStatusCode.OK, await server.Post("/api/v1/projects/shop/flags/dark-mode/archive"));
         seen.Add(await ETagOf(token));

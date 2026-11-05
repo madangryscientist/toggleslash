@@ -85,6 +85,9 @@ public sealed class Segment
 
     /// <summary>JSON array of segment rules.</summary>
     public string Rules { get; set; } = "[]";
+
+    /// <summary>Starts at 1 and goes up by one on every save. Never served in the ruleset.</summary>
+    public long Version { get; set; }
 }
 
 public enum ApiKeyKind
