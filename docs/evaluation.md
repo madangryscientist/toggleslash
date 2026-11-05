@@ -1,7 +1,7 @@
 # Flag evaluation
 
 This page is normative. It defines what a flag evaluates to, for every implementation:
-`packages/engine` (TypeScript) today and `apps/server` (C#) next. The shared vectors in
+`packages/engine` (TypeScript) and `apps/server/FeatureSlash.Evaluation` (C#). The shared vectors in
 [`fixtures/evaluation/`](../fixtures/evaluation) are the executable form of it. If an implementation
 and this page disagree, the implementation is wrong; if this page and a vector disagree, that is a
 bug in the spec, and both change together.
@@ -276,9 +276,12 @@ Edge cases:
 - **The dots are not escaped.** `a.b` + `c` hashes the same as `a` + `b.c`. That only matters if
   someone picks keys and salts to collide, and then it only moves their own buckets, so the format stays
   trivial to implement.
-- **A lone surrogate** in a string is encoded as U+FFFD, the default of both JavaScript's `TextEncoder`
-  and .NET's `UTF8Encoding`. JSON that holds one is not well-formed and `System.Text.Json` rejects it,
-  so the shared vectors leave it out and the TypeScript tests pin it.
+- **A lone surrogate** in a string (JSON `"\ud800"`) is valid to a JSON parser. It is kept as it is
+  in context keys, attribute values and clause values, and so compares equal only to the same lone
+  surrogate, never to U+FFFD. Only hashing replaces it: the bytes hashed are the UTF-8 encoding, in
+  which it becomes U+FFFD, the default of both JavaScript's `TextEncoder` and .NET's `UTF8Encoding`.
+  An implementation whose string accessor throws on one (`JsonElement.GetString()` does) must read
+  the string another way, since evaluation never throws.
 
 ### Why evaluation is synchronous
 
@@ -287,7 +290,7 @@ Web Crypto's `digest` is the only hash every JavaScript platform has, and it ret
 make a request's flag reads interleave. So the engine carries a small pure-JavaScript SHA-256
 (`packages/engine/src/sha256.ts`) with no Node-only import, and `evaluate` stays synchronous. It hashes
 at most a few short strings per call. Its output is tested against the FIPS 180-4 examples and against
-`node:crypto` over every padding boundary; a C# implementation uses `SHA256.HashData`.
+`node:crypto` over every padding boundary; the C# implementation uses `SHA256.HashData`.
 
 ## The vectors
 

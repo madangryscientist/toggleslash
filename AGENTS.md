@@ -5,7 +5,7 @@ engine, manage them from a CLI and a hosted dashboard. The product domain is `fe
 (not registered yet, so nothing is routed to it).
 
 **This repository is early.** The engine evaluates flags; the dashboard and the site each render one
-page, and the C# server answers `GET /health`. Storage, the API and server-side evaluation arrive as
+page, and the C# server answers `GET /health`. The C# evaluator exists but no endpoint calls it. Storage, the API and server-side evaluation arrive as
 their own tickets. The design they build on is in [`docs/architecture.md`](docs/architecture.md).
 
 **Evaluation is specified once and implemented per language.** [`docs/evaluation.md`](docs/evaluation.md)
@@ -26,6 +26,7 @@ A small Nx workspace on Bun workspaces:
 | `web` | `apps/web` | the dashboard: TanStack Start on Cloudflare Workers, D1 via Drizzle (one placeholder table) |
 | `site` | `apps/site` | featureslash.dev: TanStack Start on a Worker, every page prerendered; no D1, no secrets |
 | `server` | `apps/server` | the C# server: ASP.NET Core minimal API on .NET 10 (`FeatureSlash.Server`, xunit in `FeatureSlash.Server.Tests`); owns all flag data and the API |
+| `evaluation` | `apps/server/FeatureSlash.Evaluation` | the C# implementation of `docs/evaluation.md`: a class library with no ASP.NET or database dependency (xunit in `FeatureSlash.Evaluation.Tests`, which runs every vector); nothing references it yet |
 | `scripts` | `scripts` | `check-slop.ts`, `test-tmp-scope.ts`, `nx.ts` (typecheck + lint only) |
 
 `bunfig.toml` sets `[install] linker = "isolated"` and `globalStore = true` (the shared package store that
@@ -51,7 +52,7 @@ scripts (`typecheck`, `lint`, `build`, `test`, `test:e2e`) go through `scripts/n
   activates it here; `mise install` installs it) and in `global.json` (what `dotnet` itself reads).
   The first restore fetches NuGet packages, so it needs the network once.
 - **Without one**: the wrapper sets `NX_DOTNET_DISABLE=true` and prints
-  `dotnet SDK not found: skipping apps/server`; the TS projects run as before and the two dotnet
+  `dotnet SDK not found: skipping apps/server`; the TS projects run as before and the dotnet
   projects are not in the graph. Setting `NX_DOTNET_DISABLE` yourself skips the check and the line.
 
 The reason for the wrapper: the `@nx/dotnet` plugin in `nx.json` reads the .NET projects when Nx
@@ -72,7 +73,7 @@ worktree root). `test:e2e` runs before `build`: web's e2e run leaves its own bui
 
 ```bash
 bun run test:e2e                  # nx run-many -t test:e2e  (Playwright: web and site; web builds with the e2e env on a fresh local D1)
-bun run build                     # nx run-many -t build  (every project's build target: web, site, cli, and the two C# projects)
+bun run build                     # nx run-many -t build  (every project's build target: web, site, cli, and the C# projects)
 (cd apps/web && bunx wrangler deploy --dry-run --outdir "$TMPDIR/fs-web-dry")
 (cd apps/site && bunx wrangler deploy --dry-run --outdir "$TMPDIR/fs-site-dry")
 ```
