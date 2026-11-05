@@ -1,9 +1,7 @@
 using System.Net;
 using System.Text.Json;
-using Microsoft.AspNetCore.Mvc.Testing;
 
-public sealed class HealthTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public sealed class HealthTests(TempDatabaseServer factory) : IClassFixture<TempDatabaseServer>
 {
     [Fact]
     public async Task Health_returns_ok_and_the_version()

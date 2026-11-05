@@ -5,7 +5,7 @@ engine, manage them from a CLI and a hosted dashboard. The product domain is `fe
 (not registered yet, so nothing is routed to it).
 
 **This repository is early.** The engine evaluates flags; the dashboard and the site each render one
-page, and the C# server answers `GET /health`. The C# evaluator exists but no endpoint calls it. Storage, the API and server-side evaluation arrive as
+page, and the C# server migrates its SQLite database and answers `GET /health`. The C# evaluator and the storage exist but no endpoint calls them. The API and server-side evaluation arrive as
 their own tickets. The design they build on is in [`docs/architecture.md`](docs/architecture.md).
 
 **Evaluation is specified once and implemented per language.** [`docs/evaluation.md`](docs/evaluation.md)
@@ -83,8 +83,8 @@ One app: `bunx nx test:e2e web`, `bunx nx build site`.
 First time on a machine: `bunx playwright install chromium-headless-shell`.
 
 **Generated files are not formatted.** `oxfmt` rewrites what it is given, so anything a tool writes
-is excluded in `.oxfmtrc.json`'s `ignorePatterns`: the route tree, `worker-configuration.d.ts` and
-the drizzle migrations. Add a pattern when a new generator appears. `**/*.md` is ignored too.
+is excluded in `.oxfmtrc.json`'s `ignorePatterns`: the route tree, `worker-configuration.d.ts`,
+the drizzle migrations and the `dotnet-tools.json` manifest. Add a pattern when a new generator appears. `**/*.md` is ignored too.
 
 **/tmp is a quota'd tmpfs; do not fill it.**
 
@@ -120,5 +120,11 @@ Worker routes, and the first npm publish each wait for the maintainer's yes.
    reusable gap is filed against the hackcove repo. Keep the Catppuccin credit comment in each
    `styles.css`.
 4. **A secret is read from the environment, never from the tree.** The site holds none.
-5. **Migrations are additive.** `drizzle-kit generate` writes the `.sql` and its `meta/` snapshot
-   together (`bun run db:generate` in `apps/web`); never hand-write one.
+5. **Migrations are additive and generated; never hand-write one.** In `apps/web`, `drizzle-kit
+   generate` writes the `.sql` and its `meta/` snapshot together (`bun run db:generate`). In
+   `apps/server`, `dotnet ef` writes the migration, its designer file and the model snapshot in
+   `FeatureSlash.Server/Data/Migrations`, from the worktree root:
+   `dotnet tool restore`, then `dotnet ef migrations add <Name> --project apps/server/FeatureSlash.Server`.
+   The tool is pinned in `.config/dotnet-tools.json`. The server applies them at startup in one
+   transaction, so a change SQLite cannot make inside one (a table rebuild) fails there, which is one
+   more reason to stay additive. A model change with no migration fails startup.

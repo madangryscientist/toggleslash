@@ -1,7 +1,11 @@
 using System.Reflection;
+using FeatureSlash.Server.Data;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddServerDatabase();
 var app = builder.Build();
+
+app.Services.MigrateServerDatabase();
 
 app.MapGet("/health", () => new HealthResponse("ok", ServerVersion.Current));
 
