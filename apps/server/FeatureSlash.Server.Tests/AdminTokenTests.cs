@@ -25,6 +25,7 @@ public sealed class AdminTokenTests : IDisposable
         ["POST /api/v1/projects/{project}/environments/{env}/evaluate"] = (true, true),
         ["GET /api/v1/projects/{project}/environments/{env}/flag-states"] = (true, true),
         ["GET /api/v1/projects/{project}/environments/{env}/keys"] = (true, true),
+        ["GET /api/v1/projects/{project}/environments/{env}/runtime"] = (true, true),
         ["POST /api/v1/projects/{project}/environments/{env}/keys"] = (false, true),
         ["DELETE /api/v1/projects/{project}/environments/{env}/keys/{id:long}"] = (false, true),
         ["GET /api/v1/projects/{project}/environments/{env}/segments"] = (true, true),

@@ -4,6 +4,7 @@ import { CONFIG } from "./config.ts";
 import { DIAGNOSE } from "./diagnose.ts";
 import { FLAGS } from "./flags.ts";
 import { KEYS } from "./keys.ts";
+import { RUNTIME } from "./runtime.ts";
 import { TOKENS } from "./tokens.ts";
 
 export const COMMANDS: readonly Command[] = [
@@ -13,4 +14,5 @@ export const COMMANDS: readonly Command[] = [
   ...KEYS,
   ...TOKENS,
   ...DIAGNOSE,
+  ...RUNTIME,
 ];

@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { COMMANDS } from "../src/commands/index.ts";
 import { cases as otherCases } from "./cases.ts";
+import { runtimeCases } from "./runtime-cases.ts";
 import { tokenCases } from "./token-cases.ts";
 import { apiError, fakeServer } from "./fake-server.ts";
 import { CONNECTED, TOKEN, URL_BASE, cli } from "./harness.ts";
 
-const cases = [...otherCases, ...tokenCases];
+const cases = [...otherCases, ...tokenCases, ...runtimeCases];
 
 describe("every command that calls the server", () => {
   it.each(cases)("$command: sends the request and prints the result", async (c) => {
