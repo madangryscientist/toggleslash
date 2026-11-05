@@ -115,6 +115,7 @@
         "status": "yes",
         "evidence": [
           "api:/api/v1/projects/{project}/flags/{flag}/environments/{env}",
+          "api:/api/v1/projects/{project}/environments/{env}/flag-states",
           "doc:docs/architecture.md"
         ]
       },

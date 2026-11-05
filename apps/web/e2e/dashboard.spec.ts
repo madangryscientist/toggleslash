@@ -32,6 +32,19 @@ test("switches environment and project", async ({ page }) => {
   await expect(page.getByTestId("flag-checkout-v2")).toHaveCount(0);
 });
 
+test("the last evaluated column follows the selected environment", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByTestId("flag-checkout-v2")).toContainText("2026-11-04");
+  await expect(page.getByTestId("flag-search-boost")).toContainText("2026-10-30");
+
+  await page.getByLabel("Environment").selectOption("staging");
+  await expect(page).toHaveURL(/env=staging/);
+  await expect(page.getByTestId("flag-checkout-v2")).toContainText("2026-11-02");
+  await expect(page.getByTestId("flag-checkout-v2")).not.toContainText("2026-11-04");
+  await expect(page.getByTestId("flag-search-boost")).toContainText("2026-10-28");
+  await expect(page.getByTestId("flag-dark-mode")).toContainText("never");
+});
+
 test("search narrows the list by key, name and tag", async ({ page }) => {
   await page.goto("/");
   const search = page.getByLabel("Search flags");

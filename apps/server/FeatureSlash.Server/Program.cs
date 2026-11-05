@@ -43,6 +43,7 @@ app.MapEnvironmentEndpoints();
 app.MapFlagEndpoints();
 app.MapApiKeyEndpoints();
 app.MapConfigEndpoints();
+app.MapFlagStateEndpoints();
 app.MapSegmentEndpoints();
 app.MapAuditEndpoints();
 app.MapSdkEndpoints();

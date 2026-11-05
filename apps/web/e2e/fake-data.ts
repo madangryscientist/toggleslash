@@ -75,6 +75,8 @@ export interface Store {
   flags: Record<string, Flag[]>;
   /** `project/env/flag` -> config */
   configs: Record<string, Config>;
+  /** `project/env/flag` -> the latest day that environment counted an evaluation; no entry means never */
+  lastEvaluated: Record<string, string>;
   /** `project/flag` -> newest first */
   history: Record<string, AuditEvent[]>;
   /** `project/env` -> keys, oldest first */
@@ -181,6 +183,16 @@ function shopAudit(): ProjectEvent[] {
   return events.toReversed();
 }
 
+/** Production's days are the flags' own `last` (the latest in any environment); staging's are older. */
+function lastDays(): Record<string, string> {
+  return {
+    "shop/production/checkout-v2": "2026-11-04",
+    "shop/production/search-boost": "2026-10-30",
+    "shop/staging/checkout-v2": "2026-11-02",
+    "shop/staging/search-boost": "2026-10-28",
+  };
+}
+
 export function fixture(): Store {
   return {
     projects: [named("shop", "Shop"), named("docs", "Docs")],
@@ -216,6 +228,7 @@ export function fixture(): Store {
       "shop/staging/search-boost": plain(true, 1),
       "docs/live/docs-search": plain(false, 1),
     },
+    lastEvaluated: lastDays(),
     keys: {
       "shop/production": [
         {

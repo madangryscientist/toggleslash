@@ -156,8 +156,25 @@ function onFlags(ctx: Ctx, rest: string[]) {
   );
 }
 
+/** `.../environments/<env>/flag-states`: every active flag's on/off, version and last day in that environment. */
+function flagStates(res: ServerResponse, project: string, env: string) {
+  if (!(db.data.environments[project] ?? []).some((e) => e.key === env)) {
+    return problem(res, 404, "environment_not_found", `No environment ${env}.`);
+  }
+  const states = activeFlags(project)
+    .filter((f) => f.archivedAt === null)
+    .flatMap((f) => {
+      const cfg = db.data.configs[`${project}/${env}/${f.key}`];
+      if (cfg === undefined) return [];
+      const last = db.data.lastEvaluated[`${project}/${env}/${f.key}`] ?? null;
+      return [{ flag: f.key, on: cfg.on, version: cfg.version, lastEvaluated: last }];
+    });
+  return send(res, 200, states);
+}
+
 /** `.../environments/<env>/keys|segments/...`: the operator routes under one environment. */
 async function onEnvironment({ req, res, project }: Ctx, [env = "", what, ...more]: string[]) {
+  if (what === "flag-states") return flagStates(res, project, env);
   const method = req.method ?? "GET";
   const body = method === "PUT" || method === "POST" ? await readBody(req) : {};
   const call = { project, env, method, rest: more, body };
