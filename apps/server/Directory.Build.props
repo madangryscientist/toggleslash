@@ -1,0 +1,6 @@
+<Project>
+  <!-- No compiler server left running after a build: the gate runs in many worktrees on one desktop. -->
+  <PropertyGroup>
+    <UseSharedCompilation>false</UseSharedCompilation>
+  </PropertyGroup>
+</Project>

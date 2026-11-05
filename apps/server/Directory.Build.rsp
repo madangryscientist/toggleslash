@@ -1,0 +1,2 @@
+# No MSBuild worker nodes left running after a build, for the same reason as Directory.Build.props.
+-nodeReuse:false

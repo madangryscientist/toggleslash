@@ -52,7 +52,10 @@ jobs:
             exit 1
           fi
       - run: bun install --frozen-lockfile
+      # The package is TypeScript only: take apps/server out of the graph rather than install an SDK.
       - run: bunx nx build cli
+        env:
+          NX_DOTNET_DISABLE: "true"
       - name: Ship the licence files
         run: cp LICENSE NOTICE packages/cli/
       - name: Publish

@@ -11,3 +11,8 @@ packages/cli/*.tgz
 *.pem
 .env
 .dev.vars
+
+# the C# server's build output
+apps/server/**/bin/
+apps/server/**/obj/
+apps/server/**/TestResults/
