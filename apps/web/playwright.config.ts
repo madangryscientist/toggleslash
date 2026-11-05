@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const PORT = 4320;
+const PORT = 4420;
 
 // Happy paths only, against a local production build on an empty local D1 (`.wrangler/e2e`).
 export default defineConfig({
