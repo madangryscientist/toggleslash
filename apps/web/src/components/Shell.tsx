@@ -1,6 +1,15 @@
-import { AppShell, AppShellBrand, Avatar, ErrorPage, Select, Tabs } from "@hackcove/ui-react";
+import {
+  AppShell,
+  AppShellBrand,
+  Avatar,
+  Button,
+  ErrorPage,
+  Select,
+  Tabs,
+} from "@hackcove/ui-react";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { signOut } from "#/api/session";
 import type { Environment, Failure, Project } from "#/api/types";
 
 const FAILURE_TITLES: Record<Failure["kind"], string> = {
@@ -137,6 +146,20 @@ function Nav({ active, project, env }: NavScope) {
   );
 }
 
+/** A whole-page load afterwards, so nothing of the signed-in page stays in memory. */
+async function leave(): Promise<void> {
+  await signOut();
+  window.location.assign("/sign-in");
+}
+
+function SignOut() {
+  return (
+    <Button variant="outline" size="sm" data-testid="sign-out" onClick={() => void leave()}>
+      Sign out
+    </Button>
+  );
+}
+
 interface ShellProps extends NavScope {
   controls?: ReactNode;
   children: ReactNode;
@@ -153,7 +176,12 @@ export function Shell({ controls, children, ...nav }: ShellProps) {
         />
       }
       nav={<Nav {...nav} />}
-      controls={controls}
+      controls={
+        <>
+          {controls}
+          <SignOut />
+        </>
+      }
     >
       {children}
     </AppShell>

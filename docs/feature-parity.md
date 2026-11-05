@@ -13,8 +13,8 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 
 | Metric | FS | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| ✅ yes | 19 | 61 | 43 | 43 | 41 | 46 | 37 | 37 | 29 |
-| 🟡 partial | 7 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
+| ✅ yes | 19 | 62 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
+| 🟡 partial | 8 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
 | — no | 37 | 2 | 7 | 5 | 4 | 5 | 5 | 7 | 15 |
 
 ## Matrix
@@ -65,6 +65,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Approvals and change requests | — | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ | 🟡 | 🟡 |
 | Required comments and confirmation | — | ✅ | 🟡 | 🟡 | 🟡 | ✅ | 🟡 | 🟡 | 🟡 |
 | Audit log | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Dashboard sign-in and sessions | 🟡 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Role-based access control | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | SSO and SCIM | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ |
 | Scoped API tokens | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -165,6 +166,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Approvals and change requests | — | — |
 | Required comments and confirmation | — | — |
 | Audit log | ✅ | `api:/api/v1/projects/{project}/audit`<br>`api:/api/v1/projects/{project}/flags/{flag}/history`<br>`cli:flags history`<br>`dashboard:/audit` |
+| Dashboard sign-in and sessions | 🟡 | `dashboard:/sign-in`<br>`path:apps/web/src/api/auth.server.ts`<br>`path:apps/web/src/api/session-middleware.ts`<br>`test:apps/web/e2e/sign-in.spec.ts`<br>`doc:docs/self-hosting.md` |
 | Role-based access control | — | — |
 | SSO and SCIM | — | — |
 | Scoped API tokens | — | — |

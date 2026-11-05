@@ -14,6 +14,7 @@ import { Route as AuditRouteImport } from './routes/audit'
 import { Route as EnvironmentsRouteImport } from './routes/environments'
 import { Route as KeysRouteImport } from './routes/keys'
 import { Route as SegmentsRouteImport } from './routes/segments'
+import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as FlagsFlagRouteImport } from './routes/flags.$flag'
 
 const IndexRoute = IndexRouteImport.update({
@@ -41,6 +42,11 @@ const SegmentsRoute = SegmentsRouteImport.update({
   path: '/segments',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SignInRoute = SignInRouteImport.update({
+  id: '/sign-in',
+  path: '/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FlagsFlagRoute = FlagsFlagRouteImport.update({
   id: '/flags/$flag',
   path: '/flags/$flag',
@@ -53,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/environments': typeof EnvironmentsRoute
   '/keys': typeof KeysRoute
   '/segments': typeof SegmentsRoute
+  '/sign-in': typeof SignInRoute
   '/flags/$flag': typeof FlagsFlagRoute
 }
 export interface FileRoutesByTo {
@@ -61,6 +68,7 @@ export interface FileRoutesByTo {
   '/environments': typeof EnvironmentsRoute
   '/keys': typeof KeysRoute
   '/segments': typeof SegmentsRoute
+  '/sign-in': typeof SignInRoute
   '/flags/$flag': typeof FlagsFlagRoute
 }
 export interface FileRoutesById {
@@ -70,14 +78,28 @@ export interface FileRoutesById {
   '/environments': typeof EnvironmentsRoute
   '/keys': typeof KeysRoute
   '/segments': typeof SegmentsRoute
+  '/sign-in': typeof SignInRoute
   '/flags/$flag': typeof FlagsFlagRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/audit' | '/environments' | '/keys' | '/segments' | '/flags/$flag'
+    | '/'
+    | '/audit'
+    | '/environments'
+    | '/keys'
+    | '/segments'
+    | '/sign-in'
+    | '/flags/$flag'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/audit' | '/environments' | '/keys' | '/segments' | '/flags/$flag'
+  to:
+    | '/'
+    | '/audit'
+    | '/environments'
+    | '/keys'
+    | '/segments'
+    | '/sign-in'
+    | '/flags/$flag'
   id:
     | '__root__'
     | '/'
@@ -85,6 +107,7 @@ export interface FileRouteTypes {
     | '/environments'
     | '/keys'
     | '/segments'
+    | '/sign-in'
     | '/flags/$flag'
   fileRoutesById: FileRoutesById
 }
@@ -94,6 +117,7 @@ export interface RootRouteChildren {
   EnvironmentsRoute: typeof EnvironmentsRoute
   KeysRoute: typeof KeysRoute
   SegmentsRoute: typeof SegmentsRoute
+  SignInRoute: typeof SignInRoute
   FlagsFlagRoute: typeof FlagsFlagRoute
 }
 
@@ -134,6 +158,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SegmentsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sign-in': {
+      id: '/sign-in'
+      path: '/sign-in'
+      fullPath: '/sign-in'
+      preLoaderRoute: typeof SignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/flags/$flag': {
       id: '/flags/$flag'
       path: '/flags/$flag'
@@ -150,6 +181,7 @@ const rootRouteChildren: RootRouteChildren = {
   EnvironmentsRoute: EnvironmentsRoute,
   KeysRoute: KeysRoute,
   SegmentsRoute: SegmentsRoute,
+  SignInRoute: SignInRoute,
   FlagsFlagRoute: FlagsFlagRoute,
 }
 export const routeTree = rootRouteImport
@@ -157,10 +189,11 @@ export const routeTree = rootRouteImport
   ._addFileTypes<FileRouteTypes>()
 
 import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
+import type { startInstance } from './start.ts'
 declare module '@tanstack/react-start' {
   interface Register {
     ssr: true
     router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
   }
 }

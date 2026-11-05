@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { API_PORT, E2E_ADMIN_TOKEN } from "./constants.ts";
+import {
+  API_PORT,
+  E2E_ADMIN_TOKEN,
+  E2E_OPERATOR_PASSWORD,
+  E2E_SESSION_SECRET,
+} from "./constants.ts";
 
 const API = `http://127.0.0.1:${API_PORT}`;
 
@@ -178,6 +183,8 @@ test("the admin token is not in the page or any script the browser loads", async
   expect(bodies.length).toBeGreaterThan(2);
   for (const body of bodies) {
     expect(body).not.toContain(E2E_ADMIN_TOKEN);
+    expect(body).not.toContain(E2E_OPERATOR_PASSWORD);
+    expect(body).not.toContain(E2E_SESSION_SECRET);
     // The client never builds the Authorization header or reads the Worker's env.
     expect(body).not.toContain("Bearer ");
     expect(body).not.toContain("cloudflare:workers");

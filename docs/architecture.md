@@ -243,8 +243,30 @@ in the chosen environment and last evaluated; search runs in the browser over th
 create (boolean flags only) and archive (no restore) are server functions that call the admin API; a
 toggle sends the version the page read, so a flag that moved on answers 409 and the page says so and
 reloads. The server being down, unconfigured or rejecting the token is a page of its own with a retry,
-not a crash. There is no login yet: the dashboard holds the admin token for whoever can reach it, so it
-must not be routed publicly before sign-in exists.
+not a crash.
+
+### Sign-in
+
+The dashboard holds the admin token, so nothing in it answers without a session. There is one operator
+and no user table: the password is the Worker secret `FEATURESLASH_OPERATOR_PASSWORD`, and a session is a
+stateless cookie, an expiry 12 hours ahead signed with `FEATURESLASH_SESSION_SECRET` (HMAC-SHA256 through
+WebCrypto, verified in constant time, `src/api/auth.server.ts`). With either secret unset or too short,
+nobody can sign in and the sign-in page names the variable. Setting them is in
+[`self-hosting.md`](self-hosting.md#dashboard-sign-in).
+
+Two layers, and only the second is the security boundary for data:
+
+- **Server functions: refused.** `requireSession` (`src/api/session-middleware.ts`) is registered once, as
+  global function middleware in `src/start.ts`, so a server function added later is protected without
+  asking. A signed-out call gets a 401 and no data; in a browser its client half then goes to `/sign-in`.
+- **Pages: redirected.** The Worker entry (`src/server.ts`, `gate` in `auth.server.ts`) sends a signed-out
+  page to `/sign-in?returnTo=...` before anything renders. `returnTo` is untrusted, and only a same-origin
+  relative path passes (`src/api/return-path.ts`).
+
+Signing in is a plain form `POST /sign-in` handled in that same Worker entry, not a server function, so no
+server function has to be exempt from the middleware. Signing out is a server function, so it needs a
+session. A unit test fails if the middleware is not registered on the one Start instance; e2e calls every
+server function in the built manifest, signed out, and expects a 401.
 
 ### Environments, SDK keys, segments and the audit log
 
