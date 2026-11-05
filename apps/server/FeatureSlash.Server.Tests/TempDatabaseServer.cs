@@ -26,10 +26,13 @@ public sealed class TempDatabase : IDisposable
 }
 
 /// <summary>The real server, startup included, on a database file of its own.</summary>
-public sealed class ServerOn(string databasePath) : WebApplicationFactory<Program>
+public sealed class ServerOn(string databasePath, Action<IWebHostBuilder>? configure = null) : WebApplicationFactory<Program>
 {
-    protected override void ConfigureWebHost(IWebHostBuilder builder) =>
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
         builder.UseSetting(ServerDatabase.PathSetting, databasePath);
+        configure?.Invoke(builder);
+    }
 
     /// <summary>Runs the startup path, which ends once the host is up.</summary>
     public void Start() => _ = Services;

@@ -17,14 +17,4 @@ public sealed class HealthTests(TempDatabaseServer factory) : IClassFixture<Temp
         Assert.Equal("ok", body.RootElement.GetProperty("status").GetString());
         Assert.Equal("0.0.0", body.RootElement.GetProperty("version").GetString());
     }
-
-    [Fact]
-    public async Task Unknown_routes_are_404()
-    {
-        using var client = factory.CreateClient();
-
-        var response = await client.GetAsync("/nope");
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-    }
 }

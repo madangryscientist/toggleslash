@@ -1,7 +1,7 @@
 # Architecture
 
 This page records the design the later tickets build on. It is a decision record, not a description
-of what exists: today `apps/server` migrates its database and answers `GET /health`, and nothing else. Where a section says
+of what exists: today `apps/server` migrates its database, answers `GET /health` and manages SDK keys, and nothing else. Where a section says
 "will", the code arrives in its own ticket.
 
 ## Who owns what
@@ -40,10 +40,36 @@ that is the API's check to make.
 `Authorization: Bearer <token>` on every request that is not `/health`.
 
 - **Admin:** a bootstrap admin token is read from the `FEATURESLASH_ADMIN_TOKEN` environment
-  variable. It is never stored in the database or the tree.
-- **SDK keys:** one set per environment. The server stores only the SHA-256 hash of a key; the
-  plain key is shown once, when it is created.
+  variable and compared in constant time. It is never stored in the database or the tree, and the
+  server never generates one. Unset or blank, every admin route answers 503 and names the variable,
+  whatever the request sent; the rest of the server runs as usual.
+- **SDK keys:** one set per environment, managed by the admin at
+  `/api/v1/projects/{project}/environments/{env}/keys` (`POST` creates, `GET` lists, `DELETE .../{id}`
+  revokes). The server stores only the SHA-256 hash of a key and a display prefix; the plain key is
+  returned once, by the `POST`. A key is 32 bytes from a CSPRNG, so a plain hash is enough.
 - There are no user accounts yet.
+
+The two kinds of SDK key:
+
+| Kind | Looks like | Policy | Who holds it | What it may do |
+| --- | --- | --- | --- | --- |
+| server | `fs_server_<64 hex>` | `server-key` | a backend you run | read the ruleset and evaluate locally |
+| client | `fs_client_<64 hex>` | `client-key` | a browser or a mobile app, so assume it is public | ask the server to evaluate; **never** read the ruleset |
+
+The kind that counts is the one stored with the key; the text in front is for people and secret
+scanners. The ruleset and evaluation routes themselves arrive in their own tickets, each gated on one
+of these policies.
+
+The policies are `admin`, `server-key` and `client-key`, and none includes another: the admin token
+is not an SDK key, and neither kind of key passes for the other. All three credentials go through one
+authentication scheme, so **401** means the token is missing, malformed, wrong or revoked and **403**
+means it is valid but not for this route. A 401 does not say which of those it was.
+
+Every error body has one shape, from the framework's own 404 and 405 to an unhandled 500:
+
+```json
+{ "error": { "code": "forbidden", "message": "This token is valid but may not use this route." } }
+```
 
 ## Evaluation
 
