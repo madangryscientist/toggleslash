@@ -1,8 +1,44 @@
-import { type Context, type ErrorCode, evaluate, type Reason } from "@hackcove/featureslash-engine";
+import {
+  type Context,
+  type ErrorCode,
+  evaluate,
+  type Reason,
+  type Ruleset,
+} from "@hackcove/featureslash-engine";
 import { type Clock, systemClock } from "./clock.ts";
 import type { Fetch } from "./http.ts";
 import { type ClientStatus, RulesetSync } from "./sync.ts";
 import { UsageReporter } from "./usage.ts";
+
+/**
+ * What one evaluation did, handed to `hooks.afterEvaluation`. It carries the context the caller passed, so
+ * a hook that sends it anywhere is the caller's decision (the SDK itself sends none of it).
+ */
+export interface EvaluationEvent {
+  flagKey: string;
+  context: Context;
+  /** What the caller got: the served value, or its fallback. */
+  value: unknown;
+  /** The variation served, or null when `value` is the fallback or the flag serves nothing. */
+  variationIndex: number | null;
+  reason: DetailReason;
+  /**
+   * The ETag of the ruleset held at this evaluation, quoted as the server sent it (the same string as
+   * `status().etag`), or null before the first load.
+   */
+  etag: string | null;
+  /** The flag's `version` in that ruleset, or null when the flag is not in it or is malformed. */
+  flagVersion: number | null;
+}
+
+export interface Hooks {
+  /**
+   * Called synchronously after every `variation` and `variationDetail`, a fallback included, with what the
+   * caller is about to get. Its return value is ignored. An error it throws (or a promise it rejects) goes
+   * to `onError` and never reaches the caller, and the caller gets the same answer with or without it.
+   */
+  afterEvaluation?: (event: EvaluationEvent) => void | PromiseLike<void>;
+}
 
 export interface ClientOptions {
   /** The server's base URL, e.g. `https://flags.example.com`. */
@@ -23,6 +59,8 @@ export interface ClientOptions {
   flushIntervalMs?: number;
   /** The longest any one request may take, and so the longest `ready()` and `close()` wait (default 10 s). */
   requestTimeoutMs?: number;
+  /** Optional observers of each evaluation; see {@link Hooks}. The SDK has no OpenTelemetry dependency. */
+  hooks?: Hooks;
   /** Told about every failure the SDK absorbs. It is never needed for correctness; an error it throws is ignored. */
   onError?: (error: unknown) => void;
 }
@@ -72,6 +110,21 @@ function sameKind<T>(value: unknown, fallback: T): value is T {
   return typeof value === typeof fallback && Array.isArray(value) === Array.isArray(fallback);
 }
 
+function readHook(hooks: Hooks | undefined): Hooks["afterEvaluation"] {
+  const hook = hooks?.afterEvaluation;
+  return typeof hook === "function" ? (event) => hook.call(hooks, event) : undefined;
+}
+
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return typeof value === "object" && value !== null && "then" in value;
+}
+
+/** The flag's version, when the ruleset has the flag and it validated far enough to carry one. */
+function versionOf(ruleset: Ruleset | null, flagKey: string): number | null {
+  const entry = ruleset?.flags.get(flagKey);
+  return entry?.status === "ready" ? entry.flag.version : null;
+}
+
 function fallbackDetail<T>(fallback: T, code: SdkErrorCode): VariationDetail<T> {
   return { value: fallback, variationIndex: null, reason: { kind: "ERROR", code } };
 }
@@ -81,6 +134,7 @@ class FeatureSlashClient implements Client {
   private readonly usage: UsageReporter;
   private readonly clock: Clock;
   private readonly onError: (error: unknown) => void;
+  private readonly afterEvaluation: Hooks["afterEvaluation"];
   private readonly firstLoad = Promise.withResolvers<boolean>();
   private readonly flushLoop = new AbortController();
   private closing: Promise<void> | null = null;
@@ -97,6 +151,7 @@ class FeatureSlashClient implements Client {
         // A faulty error hook must not break the SDK.
       }
     };
+    this.afterEvaluation = readHook(options.hooks);
     const baseUrl = typeof options.url === "string" ? options.url.replace(/\/+$/, "") : "";
     const shared = {
       baseUrl,
@@ -128,11 +183,31 @@ class FeatureSlashClient implements Client {
   }
 
   variationDetail<T>(flagKey: string, context: Context, fallback: T): VariationDetail<T> {
+    const ruleset = this.sync.current;
+    let detail: VariationDetail<T>;
     try {
-      return this.detail(flagKey, context, fallback);
+      detail = this.detail(ruleset, flagKey, context, fallback);
     } catch (error) {
       this.onError(error);
-      return fallbackDetail(fallback, "EVALUATION_FAILED");
+      detail = fallbackDetail(fallback, "EVALUATION_FAILED");
+    }
+    if (this.afterEvaluation !== undefined) {
+      const etag = this.sync.status.etag;
+      this.runHook({ flagKey, context, etag, flagVersion: versionOf(ruleset, flagKey) }, detail);
+    }
+    return detail;
+  }
+
+  private runHook(
+    event: Pick<EvaluationEvent, "flagKey" | "context" | "etag" | "flagVersion">,
+    detail: VariationDetail<unknown>,
+  ): void {
+    try {
+      const { value, variationIndex, reason } = detail;
+      const result: unknown = this.afterEvaluation?.({ ...event, value, variationIndex, reason });
+      if (isThenable(result)) Promise.resolve(result).catch(this.onError);
+    } catch (error) {
+      this.onError(error);
     }
   }
 
@@ -145,8 +220,12 @@ class FeatureSlashClient implements Client {
     return this.closing;
   }
 
-  private detail<T>(flagKey: string, context: Context, fallback: T): VariationDetail<T> {
-    const ruleset = this.sync.current;
+  private detail<T>(
+    ruleset: Ruleset | null,
+    flagKey: string,
+    context: Context,
+    fallback: T,
+  ): VariationDetail<T> {
     if (ruleset === null) return fallbackDetail(fallback, "NOT_READY");
     const result = evaluate(ruleset, flagKey, context);
     const { value, variationIndex, reason } = result;

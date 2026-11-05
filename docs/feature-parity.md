@@ -14,8 +14,8 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Metric | FS | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | ✅ yes | 21 | 63 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
-| 🟡 partial | 9 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
-| — no | 36 | 3 | 9 | 7 | 6 | 7 | 7 | 9 | 17 |
+| 🟡 partial | 10 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
+| — no | 35 | 3 | 9 | 7 | 6 | 7 | 7 | 9 | 17 |
 
 ## Matrix
 
@@ -115,7 +115,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 
 | Capability | FS | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| Observability | — | ✅ | — | 🟡 | 🟡 | ✅ | 🟡 | ✅ | — |
+| Observability | 🟡 | ✅ | — | 🟡 | 🟡 | ✅ | 🟡 | ✅ | — |
 | AI configs and prompt management | — | ✅ | 🟡 | 🟡 | 🟡 | ✅ | 🟡 | 🟡 | — |
 | Release automation | — | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | — |
 | Compliance certifications | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -218,7 +218,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 
 | Capability | Status | Evidence and note |
 | --- | :---: | --- |
-| Observability | — | — |
+| Observability | 🟡 | `path:packages/sdk-otel`<br>`doc:docs/tracing.md`<br>`test:packages/sdk-otel/test/hooks.test.ts`<br>`test:packages/sdk/test/hooks.test.ts`<br>`test:packages/e2e/test/tracing.test.ts`<br>Only traces: an SDK hook puts each evaluation and the ruleset hash on the active OpenTelemetry span, and the hash answers on the lookup route. No session replay, error tracking, metrics or alerts. |
 | AI configs and prompt management | — | — |
 | Release automation | — | — |
 | Compliance certifications | — | — |

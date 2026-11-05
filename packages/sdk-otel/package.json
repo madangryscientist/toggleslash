@@ -1,0 +1,21 @@
+{
+  "name": "@hackcove/featureslash-sdk-otel",
+  "version": "0.0.0",
+  "private": true,
+  "description": "An evaluation hook for the FeatureSlash TypeScript SDK that puts the flag result and the ruleset hash on the active OpenTelemetry span.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@hackcove/featureslash-sdk": "workspace:*",
+    "@opentelemetry/api": "1.9.1"
+  },
+  "devDependencies": {
+    "@opentelemetry/context-async-hooks": "2.12.0",
+    "@opentelemetry/sdk-trace-base": "2.12.0",
+    "@types/bun": "1.4.4",
+    "vitest": "5.0.5"
+  }
+}
