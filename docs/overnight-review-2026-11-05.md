@@ -16,7 +16,7 @@ One builder at a time, in this order. FS-2 is held and not in the queue.
 | 5 | FS-7 | complex | evaluation spec, vectors, TS engine | ✅ full gate, engine 316, 294 vectors, CI green (#9, d3cdf11) |
 | 6 | FS-8 | medium | C# evaluator | ✅ full gate, C# 310 cases, CI green (#10, 544fa9e) |
 | 7 | FS-9 | complex | EF Core on SQLite | ✅ gate, server 11, CI green (#11, dc4cb4c) |
-| 8 | FS-10 | complex | auth | |
+| 8 | FS-10 | complex | auth | ✅ gate, server 39, CI green (#12, f75c603) |
 | 9 | FS-11 | medium | admin API catalogue | |
 | 10 | FS-12 | medium | targeting and segments | |
 | 11 | FS-13 | medium | audit | |
