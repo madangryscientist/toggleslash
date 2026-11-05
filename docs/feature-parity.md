@@ -198,7 +198,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Polling fallback | ✅ | `path:packages/sdk`<br>`doc:docs/sdk.md`<br>`test:packages/sdk/test/status.test.ts` |
 | Bootstrap and offline mode | 🟡 | `path:packages/sdk`<br>`doc:docs/sdk.md`<br>The SDK keeps the last ruleset in memory but has no explicit bootstrap input. |
 | Relay or persistent store | — | — |
-| Server-side evaluation API | ✅ | `api:/sdk/v1/evaluate`<br>`api:/api/v1/projects/{project}/environments/{env}/evaluate`<br>`api:/api/v1/projects/{project}/environments/{env}/runtime`<br>`cli:diagnose`<br>`cli:runtime`<br>`path:apps/server/FeatureSlash.Evaluation` |
+| Server-side evaluation API | ✅ | `api:/sdk/v1/evaluate`<br>`api:/api/v1/projects/{project}/environments/{env}/evaluate`<br>`api:/api/v1/projects/{project}/environments/{env}/runtime`<br>`api:/api/v1/projects/{project}/environments/{env}/rulesets/{hash}`<br>`cli:diagnose`<br>`cli:runtime`<br>`cli:rulesets show`<br>`path:apps/server/FeatureSlash.Evaluation` |
 | Usage counts | ✅ | `api:/sdk/v1/events`<br>`api:/api/v1/projects/{project}/flags/{flag}/usage`<br>`path:apps/server/FeatureSlash.Server/Usage`<br>Counts only; no context, context key or attribute is stored. |
 
 ### Operations

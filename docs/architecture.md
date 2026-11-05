@@ -31,7 +31,7 @@ EF takes no migration lock inside that transaction; SQLite's write lock does the
 starting on the same file waits for the first, then finds nothing pending.
 
 The tables are `projects`, `environments`, `flags`, `flag_environment_configs`, `segments`,
-`api_keys`, `admin_tokens`, `audit_events` and `flag_usage_daily`. JSON from `docs/evaluation.md` (variations, targets,
+`api_keys`, `admin_tokens`, `audit_events`, `flag_usage_daily` and `ruleset_snapshots`. JSON from `docs/evaluation.md` (variations, targets,
 rules and so on) is stored as text. A flag's `salt` is on `flags`, because the spec does not list it as
 per-environment. `segments` and `flag_environment_configs` do not stop a row pointing across projects
 or environments; that is the API's check to make, and the targeting routes make it (below).
@@ -157,6 +157,7 @@ Under `/api/v1`, every route behind the `admin` policy, so for the root token an
 | `POST`, `GET /projects/{project}/environments/{env}/segments`; `GET`, `PUT`, `DELETE .../segments/{segment}` | segment CRUD |
 | `POST`, `GET /projects/{project}/tokens`; `DELETE .../tokens/{id}` | scoped API tokens, root token only ([Auth](#auth)) |
 | `GET /projects/{project}/environments/{env}/runtime` | what the server serves for the environment: the ruleset's `etag` (the one `GET /sdk/v1/ruleset` gives a server key), `flagCount`, `generatedAt` and `lastChange` (below); nothing about what an SDK has loaded |
+| `GET /projects/{project}/environments/{env}/rulesets/{hash}` | what the flags were under a ruleset hash the environment served: `etag`, `firstServedAt`, the flags and segments, no salt; `?flag=<key>` narrows it (below) |
 | `GET /projects/{project}/audit`; `GET .../flags/{flag}/history` | the audit trail of a project, and of one flag (below) |
 
 - **Errors** are the single shape above: 400 (`bad_request`) for invalid input, 404 (`not_found`) for an
@@ -180,6 +181,18 @@ Under `/api/v1`, every route behind the `admin` policy, so for the root token an
   though the tag does not move. It returns the actor, type, id and action of the
   event and no snapshot. The audit read and the ruleset read are not one transaction; the audit is read first, so
   the tag is never older than `lastChange`.
+- **Ruleset lookup** (`GET /projects/{project}/environments/{env}/rulesets/{hash}`, a read, so a `read` or `write` token
+  of the project may call it; no SDK key can, and it has no CORS). Anything holding the ruleset's `ETag`, such as a trace an application wrote it into, can ask, and this answers
+  "what were the flags under that hash". `{hash}` is the tag's lowercase hex without its quotes; anything else is a 404.
+  `GET /sdk/v1/ruleset` keeps the exact bytes in `ruleset_snapshots`, keyed by environment and hash, the first time it
+  answers 200 with them: it looks first, so a ruleset already kept takes no write lock, and a concurrent first read
+  cannot move `firstServedAt` or fail. A failure to keep them is logged and the SDK still gets its flags, so that hash answers 404 until a later 200 of the same body keeps it; an SDK now holding the tag only gets 304s, so a later 200 has to come from another reader. A `304` and a
+  flag write store nothing, so a tag `runtime` or the stream has named is a 404 until something read it with a 200, and so
+  is the tag of an SDK that has held it since before snapshots existed and only ever gets 304s. The same bytes in two
+  environments are two rows; a hash served only in one is a 404 in the other. **Snapshots are kept: there is no
+  pruning or retention**, so the table grows by one ruleset body per distinct ruleset served. The answer is parsed from those bytes and
+  leaves out every salt, though the stored bytes hold them. `?flag=<key>` narrows it to that flag and the segments its own
+  rules name, not those of its prerequisites; a flag not in that ruleset is a 404.
 - **SDK read API** (`/sdk/v1`, in the OpenAPI document under the `SDK` tag). A key belongs to one
   environment, and the environment is the one it reads; nothing in the URL or body names it.
   - `GET /sdk/v1/ruleset` (server key only; a client key is 403) returns `{ "flags": [...], "segments": [...] }` in

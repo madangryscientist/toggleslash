@@ -26,6 +26,7 @@ public sealed class AdminTokenTests : IDisposable
         ["GET /api/v1/projects/{project}/environments/{env}/flag-states"] = (true, true),
         ["GET /api/v1/projects/{project}/environments/{env}/keys"] = (true, true),
         ["GET /api/v1/projects/{project}/environments/{env}/runtime"] = (true, true),
+        ["GET /api/v1/projects/{project}/environments/{env}/rulesets/{hash}"] = (true, true),
         ["POST /api/v1/projects/{project}/environments/{env}/keys"] = (false, true),
         ["DELETE /api/v1/projects/{project}/environments/{env}/keys/{id:long}"] = (false, true),
         ["GET /api/v1/projects/{project}/environments/{env}/segments"] = (true, true),
@@ -83,6 +84,7 @@ public sealed class AdminTokenTests : IDisposable
             .Replace("{env}", "prod")
             .Replace("{flag}", "absent")
             .Replace("{segment}", "absent")
+            .Replace("{hash}", "absent")
             .Replace("{id:long}", "999999");
         return (new HttpMethod(parts[0]), path, parts[0] is "POST" or "PUT" or "PATCH" ? new { } : null);
     }

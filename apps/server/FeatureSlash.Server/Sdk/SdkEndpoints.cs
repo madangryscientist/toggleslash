@@ -99,16 +99,20 @@ public static class SdkEndpoints
     /// </summary>
     private static async Task<IResult> Ruleset(HttpContext http, RulesetReader reader)
     {
-        var snapshot = await reader.Read(ServerAuth.EnvironmentId(http.User), http.RequestAborted);
+        var environmentId = ServerAuth.EnvironmentId(http.User);
+        var snapshot = await reader.Read(environmentId, http.RequestAborted);
 
         // Revalidate on every use: the cache may keep the body, but must ask before reusing it.
         http.Response.Headers.CacheControl = "private, no-cache";
         http.Response.Headers.ETag = snapshot.ETag;
         var tag = new EntityTagHeaderValue(snapshot.ETag);
         var sent = http.Request.GetTypedHeaders().IfNoneMatch;
-        return sent.Any(candidate => candidate == EntityTagHeaderValue.Any || candidate.Compare(tag, useStrongComparison: false))
-            ? Results.StatusCode(StatusCodes.Status304NotModified)
-            : Results.Bytes(snapshot.Body, "application/json");
+        if (sent.Any(candidate => candidate == EntityTagHeaderValue.Any || candidate.Compare(tag, useStrongComparison: false)))
+        {
+            return Results.StatusCode(StatusCodes.Status304NotModified);
+        }
+        await reader.RecordServed(environmentId, snapshot, http.RequestAborted);
+        return Results.Bytes(snapshot.Body, "application/json");
     }
 
     private static async Task<IResult> Evaluate(EvaluateRequest request, HttpContext http, RulesetReader reader, UsageRecorder usage)

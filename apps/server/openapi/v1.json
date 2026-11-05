@@ -484,6 +484,93 @@
         ]
       }
     },
+    "/api/v1/projects/{project}/environments/{env}/rulesets/{hash}": {
+      "get": {
+        "tags": [
+          "Diagnostics"
+        ],
+        "summary": "A ruleset this environment served, by the lowercase hex of its ETag. \u0060?flag=\u0060 narrows it to that flag and the segments its rules name.",
+        "operationId": "getRulesetByHash",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "env",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "flag",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RulesetLookupResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/sdk/v1/events": {
       "post": {
         "tags": [
@@ -3763,6 +3850,113 @@
           "version": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "RulesetLookupFlag": {
+        "required": [
+          "key",
+          "variations",
+          "on",
+          "offVariation",
+          "targets",
+          "prerequisites",
+          "rules",
+          "fallthrough",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "variations": {
+            "$ref": "#/components/schemas/JsonElement"
+          },
+          "on": {
+            "type": "boolean"
+          },
+          "offVariation": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "targets": {
+            "$ref": "#/components/schemas/JsonElement"
+          },
+          "prerequisites": {
+            "$ref": "#/components/schemas/JsonElement"
+          },
+          "rules": {
+            "$ref": "#/components/schemas/JsonElement"
+          },
+          "fallthrough": {
+            "$ref": "#/components/schemas/JsonElement"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "RulesetLookupResponse": {
+        "required": [
+          "etag",
+          "firstServedAt",
+          "flags",
+          "segments"
+        ],
+        "type": "object",
+        "properties": {
+          "etag": {
+            "type": "string"
+          },
+          "firstServedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "flags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RulesetLookupFlag"
+            }
+          },
+          "segments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RulesetLookupSegment"
+            }
+          }
+        }
+      },
+      "RulesetLookupSegment": {
+        "required": [
+          "key",
+          "included",
+          "excluded",
+          "rules"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "included": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "excluded": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rules": {
+            "$ref": "#/components/schemas/JsonElement"
           }
         }
       },

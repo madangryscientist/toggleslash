@@ -65,6 +65,7 @@ featureslash tokens revoke <id> --project <project>
 
 featureslash diagnose <flag> --project <project> --env <env> (--context '<json>' | --context-file <path>)
 featureslash runtime --project <project> --env <env>
+featureslash rulesets show <hash> --project <project> --env <env> [--flag <flag>]
 ```
 
 `featureslash --help` prints the same list; `--version` prints the version.
@@ -78,7 +79,7 @@ featureslash runtime --project <project> --env <env>
 - **Scoped API tokens** (`tokens create`) are for Terraform and CI: one project, `read` or `write`, always with an
   expiry. Like a key, the plain token prints **once**, and `tokens list` shows prefixes, expired and revoked ones
   too. Managing them takes the root admin token. A scoped token can be used as this CLI's token for its own
-  project, except for `projects create` and `tokens`: a `read` token may run `diagnose`, `runtime` and every read, and a
+  project, except for `projects create` and `tokens`: a `read` token may run `diagnose`, `runtime`, `rulesets show` and every read, and a
   `write` token everything else too, including creating and revoking the project's SDK keys.
 - **`diagnose`** asks the server why a flag has the value it has for one context: it evaluates the flag in
   that environment (the admin route `POST /api/v1/projects/{project}/environments/{env}/evaluate`, so no SDK
@@ -95,6 +96,11 @@ featureslash runtime --project <project> --env <env>
   It is the server's side only: it says nothing about what any SDK has loaded. A `read` token may run it, and it
   writes no audit event.
 - This is the admin surface only. Targeting rules, segments and usage are not in the CLI yet.
+- **`rulesets show`** answers what the flags were under a ruleset hash this environment served
+  (`GET /api/v1/projects/{project}/environments/{env}/rulesets/{hash}`). The hash is the `ETag` as 64 lowercase hex
+  characters without its quotes; anything else is a usage error (exit 2). The table gives the `etag`, `firstServedAt`, and
+  the flags and segments with their lists as counts; `--json` has the whole thing, and no salt in either. `--flag` narrows it
+  to that flag and the segments its rules name. A hash the environment never served, or a flag not in that ruleset, exits 1.
 
 ## Exit codes
 

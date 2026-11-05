@@ -173,3 +173,18 @@ public sealed class FlagUsageDaily
     public required DateOnly Day { get; set; }
     public long Count { get; set; }
 }
+
+/// <summary>
+/// A ruleset as it was served: the exact bytes whose SHA-256 is <see cref="Hash"/>, salts included, so a past hash
+/// can be looked up. Written the first time a body is served and never changed or removed.
+/// </summary>
+public sealed class StoredRuleset
+{
+    public required long EnvironmentId { get; set; }
+
+    /// <summary>SHA-256 of <see cref="Body"/>, lowercase hex: the ruleset's <c>ETag</c> without its quotes.</summary>
+    public required string Hash { get; set; }
+
+    public required byte[] Body { get; set; }
+    public required DateTime FirstServedAt { get; set; }
+}

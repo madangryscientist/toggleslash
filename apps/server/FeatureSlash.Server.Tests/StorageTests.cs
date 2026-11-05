@@ -27,7 +27,7 @@ public sealed class StorageTests : IDisposable
         }
 
         Assert.Equal(
-            ["admin_tokens", "api_keys", "audit_events", "environments", "flag_environment_configs", "flag_usage_daily", "flags", "projects", "segments"],
+            ["admin_tokens", "api_keys", "audit_events", "environments", "flag_environment_configs", "flag_usage_daily", "flags", "projects", "ruleset_snapshots", "segments"],
             Tables());
         Assert.Equal(AllMigrations(), AppliedMigrations());
         Assert.Equal("wal", Scalar("PRAGMA journal_mode"));
