@@ -37,7 +37,7 @@ process owns one file. Postgres is a later option, not a goal of the first versi
 
 Evaluation is specified once, in `docs/evaluation.md`, with shared test vectors in
 `fixtures/evaluation/`. It is implemented twice, in TypeScript (`packages/engine`) and in C#
-(`apps/server`), and both implementations must pass the same vectors.
+(`apps/server/FeatureSlash.Evaluation`), and both implementations must pass the same vectors.
 
 - **Server-side SDKs** fetch the ruleset from the server and evaluate locally.
 - **Other clients** (browsers, mobile, anything without an SDK) ask the server, which evaluates.
@@ -56,8 +56,9 @@ steps in `AGENTS.md` (domain, routes, D1, publishing) still apply.
 
 ## Build and gate
 
-`apps/server` is two projects, `FeatureSlash.Server` and `FeatureSlash.Server.Tests` (xunit,
-`WebApplicationFactory`), wired into Nx with the `@nx/dotnet` plugin. The SDK is pinned to .NET
+`apps/server` is four projects: `FeatureSlash.Server` and `FeatureSlash.Server.Tests` (xunit,
+`WebApplicationFactory`), and `FeatureSlash.Evaluation` with `FeatureSlash.Evaluation.Tests`. The evaluator is a
+class library with no ASP.NET or database dependency; the server does not reference it yet. They are wired into Nx with the `@nx/dotnet` plugin. The SDK is pinned to .NET
 10.0.402 in `global.json` and `.tool-versions`. `scripts/nx.ts` skips the server, and says so, when
 no SDK runs, so a TypeScript-only contributor can still run the gate. A change to `apps/server` needs
 the SDK. See `AGENTS.md`.

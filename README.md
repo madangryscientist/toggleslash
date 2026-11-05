@@ -3,7 +3,7 @@
 Open source feature flags you can run yourself. MIT licensed. Site: https://featureslash.dev (not
 live yet).
 
-> **Status: early.** The engine evaluates flags, to the spec in
+> **Status: early.** The engine (TypeScript) and a C# evaluator evaluate flags, to the spec in
 > [`docs/evaluation.md`](docs/evaluation.md). There is no storage, API or SDK yet, so nothing can use it
 > from outside this repo.
 
@@ -17,6 +17,7 @@ live yet).
 | `apps/web` | the dashboard: TanStack Start on Cloudflare Workers, D1 via Drizzle |
 | `apps/site` | the marketing and docs site, prerendered |
 | `apps/server` | the C# server (ASP.NET Core, .NET 10): owns flag data and the API |
+| `apps/server/FeatureSlash.Evaluation` | flag evaluation in C#, to the same spec and vectors as the engine; no endpoint uses it yet |
 
 ## Develop
 

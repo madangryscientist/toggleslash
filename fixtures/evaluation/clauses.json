@@ -5454,6 +5454,88 @@
           "ruleIndex": 0
         }
       }
+    },
+    {
+      "name": "strings: a lone surrogate in a context key is kept, not replaced",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [
+            {
+              "variation": 1,
+              "contextKeys": ["\ud800"]
+            }
+          ],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "\ud800",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "TARGET_MATCH"
+        }
+      }
+    },
+    {
+      "name": "in: a lone surrogate is not U+FFFD",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "tag",
+                  "op": "in",
+                  "values": ["\ufffd"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "tag": "\ud800"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
     }
   ]
 }
