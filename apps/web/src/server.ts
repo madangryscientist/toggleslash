@@ -1,6 +1,15 @@
 import handler from "@tanstack/react-start/server-entry";
+import { gate, type RequestContext } from "./api/auth.server.ts";
+import { authSecrets } from "./api/env.server.ts";
 
-/** The Worker's entry: TanStack Start's `fetch`. */
+declare module "@tanstack/react-start" {
+  interface Register {
+    server: { requestContext: RequestContext };
+  }
+}
+
+/** The Worker's entry: the sign-in gate, then TanStack Start's `fetch`. */
 export default {
-  fetch: (request: Request): Response | Promise<Response> => handler.fetch(request),
+  fetch: (request: Request): Promise<Response> =>
+    gate(request, authSecrets(), Date.now(), (context) => handler.fetch(request, { context })),
 };

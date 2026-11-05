@@ -23,6 +23,8 @@ describe("the admin token stays on the server", () => {
       "api/result.server.ts",
       "api/dashboard.ts",
       "api/operator.ts",
+      "api/session-middleware.ts",
+      "server.ts",
     ]);
     const touching = files.filter((file) => {
       if (!/\.(ts|tsx)$/.test(file) || /\.test\.|routeTree\.gen/.test(file)) return false;
@@ -56,3 +58,40 @@ describe("the admin token stays on the server", () => {
     expect(readers.toSorted()).toEqual(["api/client.server.ts", "api/env.server.ts"]);
   });
 });
+
+describe("the sign-in secrets stay on the server", () => {
+  test("they are named only in server-side files and the type declaration", () => {
+    const readers = files.filter(
+      (file) =>
+        /\.(ts|tsx)$/.test(file) &&
+        !/\.test\./.test(file) &&
+        /FEATURESLASH_(OPERATOR_PASSWORD|SESSION_SECRET)|\.sessionSecret|authSecrets/.test(
+          readFileSync(join(SRC, file), "utf8"),
+        ),
+    );
+    expect(readers.toSorted()).toEqual([
+      "api/auth.server.ts",
+      "api/env.server.ts",
+      "api/session-middleware.ts",
+      "server.ts",
+      "worker-env.d.ts",
+    ]);
+  });
+});
+
+const source = (file: string): string => readFileSync(join(SRC, file), "utf8");
+
+describe("every server function is behind the session middleware", () => {
+  test("it is the first function middleware, on the one Start instance", () => {
+    const start = source("start.ts");
+    expect(start).toMatch(/functionMiddleware:\s*\[\s*requireSession\b/);
+    expect(start).toMatch(/import \{ requireSession \} from "\.\/api\/session-middleware\.ts"/);
+    expect(files.filter((f) => /\bcreateStart\(/.test(source(f))).filter(isCode)).toEqual([
+      "start.ts",
+    ]);
+  });
+});
+
+function isCode(file: string): boolean {
+  return /\.(ts|tsx)$/.test(file) && !/\.test\.|routeTree\.gen/.test(file);
+}

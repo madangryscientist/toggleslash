@@ -3,7 +3,8 @@
 The C# server (`apps/server`) ships as a container image you build yourself. Nothing is published:
 there is no image on any registry, and `featureslash.dev` is not routed to anything. The dashboard
 (`apps/web`) is not containerised; it runs on Cloudflare Workers and its hosting is undecided
-(see [`architecture.md`](architecture.md#hosting)). This page is about the server alone.
+(see [`architecture.md`](architecture.md#hosting)). This page is about the server, plus
+[what the dashboard needs before anyone can sign in](#dashboard-sign-in).
 
 What you get: one container running one process, a SQLite file in a Docker volume, and the admin
 API and SDK routes on port 8080. The image runs as a non-root user (the base image's `app`, UID
@@ -90,6 +91,41 @@ curl http://127.0.0.1:8080/health
 ```
 
 If an upgrade has to be undone, restore the backup (above) and start the previous version of the code.
+
+## Dashboard sign-in
+
+The dashboard has one operator and no user table. It keeps nothing about a session: sign-in needs two
+Worker secrets, set by hand on the Worker.
+
+```bash
+cd apps/web
+password="$(openssl rand -base64 24)"
+echo "$password"                                             # keep it; it is what you type at sign-in
+printf '%s' "$password" | bunx wrangler secret put FEATURESLASH_OPERATOR_PASSWORD
+openssl rand -hex 32 | bunx wrangler secret put FEATURESLASH_SESSION_SECRET
+```
+
+| Secret | Minimum length | Meaning |
+| --- | --- | --- |
+| `FEATURESLASH_OPERATOR_PASSWORD` | 16 characters | the password on the sign-in page |
+| `FEATURESLASH_SESSION_SECRET` | 32 characters | signs the session cookie (HMAC-SHA256) |
+
+**It fails closed.** With either one unset or too short, nobody can sign in: the sign-in page names the
+variable (never its value), every other page redirects to it, and every server function answers 401.
+
+**A session lasts 12 hours**, then you sign in again. The cookie holds an expiry and a signature, is
+`HttpOnly` and `SameSite=Lax`, and is `Secure` everywhere except a loopback host.
+
+- **Signing out** clears the cookie in that browser. A copy of the cookie taken earlier stays valid until
+  it expires, because the server keeps no list of sessions.
+- **Rotating `FEATURESLASH_SESSION_SECRET` ends every session at once.** That is the way to cut off a
+  cookie you think has leaked. Changing the password alone does not end a session.
+
+**Nothing counts failed attempts**, so sign-in itself does not slow down someone guessing. Two things
+stand against that: the 16-character minimum (a long random password, as above, is out of reach of
+guessing), and a rate limit you add yourself. When you route the dashboard publicly, add a
+[Cloudflare rate limiting rule](https://developers.cloudflare.com/waf/rate-limiting-rules/) on `POST`
+requests to the path `/sign-in`. It is an operator step: this repository creates no Cloudflare resource.
 
 ## Limits
 

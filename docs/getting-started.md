@@ -16,7 +16,9 @@ It reads `FEATURESLASH_API_URL` (the C# server's address) and `FEATURESLASH_ADMI
 token the server was started with) For `dev`, put them in `apps/web/.dev.vars`,
 which is git-ignored. Without them it shows a "The dashboard is not configured" page.
 
-The dashboard has no sign-in. Anyone who can reach it can act with the admin token it was given, so run it
-on your own machine or behind something you trust.
+Sign-in needs two more in the same file: `FEATURESLASH_OPERATOR_PASSWORD` (at least 16 characters, what you
+type at sign-in) and `FEATURESLASH_SESSION_SECRET` (at least 32). Without them nobody can sign in, and the
+sign-in page names what is missing. There is one operator and no accounts; see
+[`self-hosting.md`](self-hosting.md#dashboard-sign-in).
 
 The site (`apps/site`) also has a `dev` script (port 3100). It has no configuration.

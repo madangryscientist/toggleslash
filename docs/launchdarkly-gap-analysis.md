@@ -325,7 +325,7 @@ alternative", it is a second product.
 | Capability | LaunchDarkly | FeatureSlash |
 | --- | --- | --- |
 | User accounts | Yes | No |
-| Login | Email/password, 2FA, SSO/SAML on Enterprise | No dashboard login |
+| Login | Email/password, 2FA, SSO/SAML on Enterprise | One operator password, 12-hour signed session; no 2FA, no SSO |
 | SCIM / IdP team sync | Enterprise | No |
 | RBAC | Base roles, project roles, custom roles with resource/action policies, teams | One admin token; no roles |
 | API tokens | Scoped, expiring, service tokens | One bootstrap admin token; SDK keys hashed |
@@ -339,11 +339,11 @@ alternative", it is a second product.
 | Data residency | US, EU, federal | Self-hosted, so wherever you run it |
 
 Our audit trail is genuinely good: atomic with the write, no secret leakage, tested for every write
-route. It is also the only governance feature we have. The single admin token is the hard blocker:
-the dashboard must not be exposed until there is real authentication and authorization.
+route. It is also the only governance feature we have. Sign-in now keeps strangers out of the dashboard,
+but everyone who holds the password is the same operator: without users, every audit row still says `admin`.
 
-**What is left:** users, sessions, roles, project scoping, scoped API tokens, SSO/SCIM, approval
-policy, audit export/retention. Authentication is Phase 0, not a later nicety.
+**What is left:** users, per-user sessions, roles, project scoping, scoped API tokens, SSO/SCIM, approval
+policy, audit export/retention, and a limit on sign-in attempts inside the product.
 
 ---
 
@@ -415,7 +415,6 @@ experienced engineer. They are planning aids, not commitments.
 
 | Item | Why | Size |
 | --- | --- | --- |
-| Dashboard authentication and sessions | The dashboard holds the admin token; it cannot be routed publicly | M |
 | Users, roles and project scoping | One admin token cannot serve a team; every audit row says `admin` | L |
 | Scoped, expiring API tokens | Terraform/CI need credentials that are not the root token | M |
 | Rate limiting and request quotas | Public evaluate/events can be abused today | M |

@@ -736,6 +736,32 @@
       }
     },
     {
+      "id": "dashboard-sign-in",
+      "category": "Release",
+      "name": "Dashboard sign-in and sessions",
+      "description": "Sign in to the dashboard and hold a session; every dashboard call refused without one.",
+      "featureslash": {
+        "status": "partial",
+        "evidence": [
+          "dashboard:/sign-in",
+          "path:apps/web/src/api/auth.server.ts",
+          "path:apps/web/src/api/session-middleware.ts",
+          "test:apps/web/e2e/sign-in.spec.ts",
+          "doc:docs/self-hosting.md"
+        ]
+      },
+      "competitors": {
+        "launchdarkly": "yes",
+        "unleash": "yes",
+        "flagsmith": "yes",
+        "growthbook": "yes",
+        "split": "yes",
+        "optimizely": "yes",
+        "posthog": "yes",
+        "configcat": "yes"
+      }
+    },
+    {
       "id": "rbac",
       "category": "Release",
       "name": "Role-based access control",
