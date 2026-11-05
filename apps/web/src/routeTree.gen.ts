@@ -16,6 +16,7 @@ import { Route as KeysRouteImport } from './routes/keys'
 import { Route as SegmentsRouteImport } from './routes/segments'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as FlagsFlagRouteImport } from './routes/flags.$flag'
+import { Route as RulesetsHashRouteImport } from './routes/rulesets.$hash'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -52,6 +53,11 @@ const FlagsFlagRoute = FlagsFlagRouteImport.update({
   path: '/flags/$flag',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RulesetsHashRoute = RulesetsHashRouteImport.update({
+  id: '/rulesets/$hash',
+  path: '/rulesets/$hash',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -61,6 +67,7 @@ export interface FileRoutesByFullPath {
   '/segments': typeof SegmentsRoute
   '/sign-in': typeof SignInRoute
   '/flags/$flag': typeof FlagsFlagRoute
+  '/rulesets/$hash': typeof RulesetsHashRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -70,6 +77,7 @@ export interface FileRoutesByTo {
   '/segments': typeof SegmentsRoute
   '/sign-in': typeof SignInRoute
   '/flags/$flag': typeof FlagsFlagRoute
+  '/rulesets/$hash': typeof RulesetsHashRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -80,6 +88,7 @@ export interface FileRoutesById {
   '/segments': typeof SegmentsRoute
   '/sign-in': typeof SignInRoute
   '/flags/$flag': typeof FlagsFlagRoute
+  '/rulesets/$hash': typeof RulesetsHashRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -91,6 +100,7 @@ export interface FileRouteTypes {
     | '/segments'
     | '/sign-in'
     | '/flags/$flag'
+    | '/rulesets/$hash'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -100,6 +110,7 @@ export interface FileRouteTypes {
     | '/segments'
     | '/sign-in'
     | '/flags/$flag'
+    | '/rulesets/$hash'
   id:
     | '__root__'
     | '/'
@@ -109,6 +120,7 @@ export interface FileRouteTypes {
     | '/segments'
     | '/sign-in'
     | '/flags/$flag'
+    | '/rulesets/$hash'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -119,6 +131,7 @@ export interface RootRouteChildren {
   SegmentsRoute: typeof SegmentsRoute
   SignInRoute: typeof SignInRoute
   FlagsFlagRoute: typeof FlagsFlagRoute
+  RulesetsHashRoute: typeof RulesetsHashRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -172,6 +185,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FlagsFlagRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/rulesets/$hash': {
+      id: '/rulesets/$hash'
+      path: '/rulesets/$hash'
+      fullPath: '/rulesets/$hash'
+      preLoaderRoute: typeof RulesetsHashRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -183,6 +203,7 @@ const rootRouteChildren: RootRouteChildren = {
   SegmentsRoute: SegmentsRoute,
   SignInRoute: SignInRoute,
   FlagsFlagRoute: FlagsFlagRoute,
+  RulesetsHashRoute: RulesetsHashRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

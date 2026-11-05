@@ -174,6 +174,124 @@ public sealed class DiagnoseApiTests : IDisposable
         Assert.Equal("OFF", staging.GetProperty("flags").GetProperty("dark-mode").GetProperty("reason").GetProperty("kind").GetString());
     }
 
+    // --- at a past hash ------------------------------------------------------------------------------------
+
+    private async Task<string> ServeRuleset(string env = "prod")
+    {
+        var response = await server.Send(HttpMethod.Get, "/sdk/v1/ruleset", $"Bearer {await KeyIn(env, "server")}");
+        await ApiServer.Expect(HttpStatusCode.OK, response);
+        return response.Headers.ETag!.Tag.Trim('"');
+    }
+
+    private async Task<string> KeyIn(string env, string kind)
+    {
+        var created = await server.Post($"/api/v1/projects/shop/environments/{env}/keys", new { kind, name = $"{kind}-{env}" });
+        await ApiServer.Expect(HttpStatusCode.Created, created);
+        return (await ApiServer.Json(created)).GetProperty("key").GetString()!;
+    }
+
+    [Fact]
+    public async Task With_an_old_etag_it_gives_the_old_answer_and_reason_and_without_one_the_new()
+    {
+        await Seed();
+        var context = new { key = "u1" };
+        var oldHash = await ServeRuleset();
+        var before = await ApiServer.Json(await Admin(new { flagKey = "beta-ui", context }));
+        Assert.Equal("""{"value":true,"variationIndex":0,"reason":{"kind":"FALLTHROUGH"}}""", before.GetProperty("flags").GetProperty("beta-ui").GetRawText());
+
+        await ApiServer.Expect(HttpStatusCode.OK, await server.Post("/api/v1/projects/shop/flags/beta-ui/environments/prod/toggle", new { on = false }));
+        var newHash = await ServeRuleset();
+        Assert.NotEqual(oldHash, newHash);
+
+        var old = await ApiServer.Json(await Admin(new { flagKey = "beta-ui", context, etag = oldHash }));
+        var current = await ApiServer.Json(await Admin(new { flagKey = "beta-ui", context }));
+        var atNew = await ApiServer.Json(await Admin(new { flagKey = "beta-ui", context, etag = newHash }));
+
+        Assert.Equal(before.GetRawText(), old.GetRawText());
+        Assert.Equal("OFF", current.GetProperty("flags").GetProperty("beta-ui").GetProperty("reason").GetProperty("kind").GetString());
+        Assert.Equal(current.GetRawText(), atNew.GetRawText());
+    }
+
+    [Fact]
+    public async Task With_an_etag_and_no_flag_it_answers_every_flag_the_old_ruleset_had()
+    {
+        await Seed();
+        var oldHash = await ServeRuleset();
+        await ApiServer.Expect(HttpStatusCode.OK, await server.Post("/api/v1/projects/shop/flags/dark-mode/archive"));
+
+        var old = await ApiServer.Json(await Admin(new { context = new { key = "u1" }, etag = oldHash }));
+        var current = await ApiServer.Json(await Admin(new { context = new { key = "u1" } }));
+
+        Assert.Equal(["beta-ui", "dark-mode"], old.GetProperty("flags").EnumerateObject().Select(p => p.Name));
+        Assert.Equal(["beta-ui"], current.GetProperty("flags").EnumerateObject().Select(p => p.Name));
+        await ApiServer.ExpectError(HttpStatusCode.NotFound, "not_found", await Admin(new { flagKey = "old-flag", context = new { key = "u1" }, etag = oldHash }));
+    }
+
+    [Fact]
+    public async Task A_hash_never_served_or_from_another_environment_is_404_and_a_bad_context_is_still_400()
+    {
+        await Seed();
+        var staging = await ServeRuleset("staging");
+        var prod = await ServeRuleset();
+        var context = new { key = "u1" };
+
+        var neverServed = await Admin(new { context, etag = new string('0', 64) });
+        var other = await Admin(new { context, etag = staging });
+
+        await ApiServer.ExpectError(HttpStatusCode.NotFound, "not_found", neverServed);
+        await ApiServer.ExpectError(HttpStatusCode.NotFound, "not_found", other);
+        Assert.Contains("never served a ruleset", (await ApiServer.Json(neverServed)).GetProperty("error").GetProperty("message").GetString());
+        await ApiServer.ExpectError(HttpStatusCode.NotFound, "not_found", await Admin(new { context, etag = $"\"{prod}\"" }));
+        await ApiServer.ExpectError(HttpStatusCode.NotFound, "not_found", await Admin(new { context, etag = "" }));
+        await ApiServer.ExpectError(HttpStatusCode.BadRequest, "bad_request", await Admin(new { context = new { key = "" }, etag = prod }));
+        await ApiServer.ExpectError(HttpStatusCode.NotFound, "not_found", await Admin(new { flagKey = "nope", context, etag = prod }));
+    }
+
+    [Fact]
+    public async Task A_read_token_may_use_an_etag_and_the_SDK_route_still_refuses_the_field()
+    {
+        await Seed();
+        var hash = await ServeRuleset();
+        var token = (await ApiServer.Json(await server.Post("/api/v1/projects/shop/tokens", new { name = "r", permission = "read", expiresInDays = 30 })))
+            .GetProperty("token").GetString()!;
+        var body = new { context = new { key = "u1" }, etag = hash };
+
+        var read = await server.Send(HttpMethod.Post, Diagnose, $"Bearer {token}", body);
+        var sdk = await Sdk(await Key("client"), body);
+
+        await ApiServer.Expect(HttpStatusCode.OK, read);
+        await ApiServer.ExpectError(HttpStatusCode.BadRequest, "bad_request", sdk);
+    }
+
+    [Fact]
+    public async Task An_etag_answer_records_nothing_and_carries_no_rule_data_or_salt()
+    {
+        await Seed();
+        var hash = await ServeRuleset();
+        var audit = server.AuditRows().Count;
+        var snapshots = Snapshots();
+
+        var response = await Admin(new { context = new { key = "vip-secret-user" }, etag = hash });
+        await ApiServer.Expect(HttpStatusCode.OK, response);
+        var text = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(0, UsageRows());
+        Assert.Equal(audit, server.AuditRows().Count);
+        Assert.Equal(snapshots, Snapshots());
+        foreach (var secret in new[] { "vip-secret-user", "internal-attribute", "hidden-value", server.Salt("flags", "shop", "dark-mode"), "targets", "rules", "clauses", "salt" })
+        {
+            Assert.DoesNotContain(secret, text);
+        }
+    }
+
+    private long Snapshots()
+    {
+        using var connection = server.OpenDatabase();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM ruleset_snapshots";
+        return (long)command.ExecuteScalar()!;
+    }
+
     // --- it records nothing --------------------------------------------------------------------------------
 
     [Fact]

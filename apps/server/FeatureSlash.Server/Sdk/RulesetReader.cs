@@ -56,6 +56,9 @@ internal sealed class RulesetSnapshot(RulesetResponse ruleset, byte[] body)
     public static RulesetSnapshot Of(RulesetResponse ruleset) =>
         new(ruleset, JsonSerializer.SerializeToUtf8Bytes(ruleset, WireOptions));
 
+    /// <summary>A snapshot of bytes that were served and kept, so its hash is the hash they were stored under.</summary>
+    public static RulesetSnapshot FromStored(byte[] body) => new(Parse(body), body);
+
     /// <summary>A body this class serialized, read back.</summary>
     public static RulesetResponse Parse(byte[] body) => JsonSerializer.Deserialize<RulesetResponse>(body, WireOptions)!;
 }

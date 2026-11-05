@@ -52,7 +52,7 @@ conventions (status *Development*; its attributes are *Release Candidate*).
   be large or private, so each is off until the option turns it on. A context's other attributes are never
   recorded. Both options are about *your* trace backend's retention, not FeatureSlash's: the server never
   receives them.
-- `feature_flag.version` is the flag's version,. The conventions describe it as "the version of the ruleset",
+- `feature_flag.version` is the flag's version. The conventions describe it as "the version of the ruleset",
   which is `featureslash.ruleset.etag` here.
 - `featureslash.ruleset.etag` is the ETag the SDK held at that evaluation, the same value as `client.status().etag`
   without its quotes. It is also what `GET /sdk/v1/ruleset` sent as `ETag` and what the `runtime` read reports.
@@ -114,7 +114,12 @@ The same with the CLI: `featureslash rulesets show <hash> --project shop --env p
 Jaeger shows a span event as a log entry whose fields are the event's attributes. Its UI configuration
 (`linkPatterns`, [Jaeger frontend UI](https://www.jaegertracing.io/docs/latest/deployment/frontend-ui/)) can
 turn one field into a link, and a `#{...}` placeholder may name **any attribute of the same entry**; Jaeger
-URL-encodes the value, and skips the link when a placeholder has no value:
+URL-encodes the value, and skips the link when a placeholder has no value.
+
+**The link cannot carry the token, so point it at the dashboard.** A browser follows a link with a plain `GET` and no
+`Authorization` header, and the server's own lookup route answers `401` to that. Do not put a token in the URL. The
+dashboard has a page for a hash, behind its normal sign-in, and it reads the server with its own token on the server
+side, so the token never reaches the browser or the link:
 
 ```json
 {
@@ -122,18 +127,24 @@ URL-encodes the value, and skips the link when a placeholder has no value:
     {
       "type": "logs",
       "key": "featureslash.ruleset.etag",
-      "url": "https://flag-lookup.internal.example.com/api/v1/projects/#{featureslash.project}/environments/#{featureslash.environment}/rulesets/#{featureslash.ruleset.etag}",
+      "url": "https://dashboard.internal.example.com/rulesets/#{featureslash.ruleset.etag}?project=#{featureslash.project}&env=#{featureslash.environment}",
       "text": "What were the flags under #{featureslash.ruleset.etag}?"
     }
   ]
 }
 ```
 
-**The link cannot carry the token.** A browser follows it with a plain `GET` and no `Authorization` header, and the
-server answers `401`. Do not put a token in the URL. Point `url` at something you run (a small internal proxy, or a
-page) that adds `Authorization: Bearer <read token>` and forwards to the server; the path above is the server's own,
-so the proxy can pass it through unchanged. FeatureSlash ships no such proxy and the dashboard has no page for a
-hash yet.
+`/rulesets/$hash?project=&env=` shows the flags as they were under that hash, each with its on state and rules; add
+`&flag=<key>` to narrow it to one flag. A signed-out visitor is sent to `/sign-in` and, once signed in, returns to
+the same URL; the sign-in is the dashboard's one operator password, not a token. A hash the environment never
+served shows a not-found page. A `url` that points at the server's own lookup route (`/api/v1/projects/.../rulesets/<hash>`)
+needs a token the link cannot carry, so it only works through a proxy of your own that adds
+`Authorization: Bearer <read token>`; the dashboard page needs none.
+
+To ask why, not only what, `featureslash diagnose <flag> --project shop --env production --context '{"key":"u1"}' --etag <hash>`
+evaluates a context against that ruleset, as the server evaluated it then. It is the admin route
+`POST /api/v1/projects/{project}/environments/{env}/evaluate` with `"etag": "<hash>"` in the body, it records nothing,
+and a hash the environment never served is a 404.
 
 ## Grafana (Tempo)
 
@@ -141,9 +152,9 @@ In Grafana's Tempo data source, *Trace correlations* can add a link in the span 
 an **External URL**; its variables include `tags` (span attributes) and `logs` (span events), both objects that
 "must be parsed into a value variable with a regular expression transformation"
 ([trace correlations](https://grafana.com/docs/grafana/latest/datasources/tempo/configure-tempo-data-source/trace-correlations/)).
-So the same lookup URL as above, with a transformation for each of the three `featureslash.*` values, is the way to
-go. It has the same limit: the link carries no token, so it must also go through something that adds one. No
-FeatureSlash-specific Grafana configuration is shipped.
+So the dashboard URL above, with a transformation for each of the three `featureslash.*` values, is the way to go. The
+link carries no token, and the dashboard's own sign-in is what protects the page. No FeatureSlash-specific Grafana
+configuration is shipped.
 
 ## What was checked, and what was not
 
@@ -165,5 +176,5 @@ Run against a real server built from this tree:
   Jaeger that does not show an OpenTelemetry span event's attributes as the log fields of that event would not
   produce the link. Newer Jaeger UIs call this type `events`; `logs` is still accepted there.
 - Grafana. The Tempo correlation steps are from its documentation, with no regular expression written or tested.
-- The proxy that adds the token.
+- A proxy that adds a token to the server's lookup route: none is shipped and none was run.
 - Any trace backend: the e2e test reads spans from an in-memory exporter.

@@ -327,6 +327,7 @@
         "tags": [
           "Diagnostics"
         ],
+        "summary": "Evaluates a context for any environment and records nothing. \u0060etag\u0060 (a hash the environment served) evaluates against that ruleset instead of the current one.",
         "operationId": "diagnoseEvaluation",
         "parameters": [
           {
@@ -350,7 +351,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/EvaluateRequest"
+                "$ref": "#/components/schemas/DiagnoseRequest"
               }
             }
           },
@@ -3376,6 +3377,37 @@
             "type": "string"
           }
         }
+      },
+      "DiagnoseRequest": {
+        "required": [
+          "context"
+        ],
+        "type": "object",
+        "properties": {
+          "context": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonElement"
+              }
+            ]
+          },
+          "flagKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "etag": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "EnvironmentResponse": {
         "required": [

@@ -12,6 +12,7 @@ import {
 } from "../command.ts";
 import { FailureError, UsageError } from "../errors.ts";
 import { cell, details, expectObject, isObject } from "../render.ts";
+import { checkHash } from "./rulesets.ts";
 
 /** The context to evaluate, from exactly one of `--context` and `--context-file`. Reads and parses before any request. */
 function readContext(values: Values): unknown {
@@ -40,13 +41,16 @@ function readContext(values: Values): unknown {
 
 const diagnose: Command = {
   name: "diagnose",
-  usage: "<flag> --project <project> --env <env> (--context '<json>' | --context-file <path>)",
-  summary: "evaluate a flag for a context on the server, and say why (counts no usage)",
+  usage:
+    "<flag> --project <project> --env <env> (--context '<json>' | --context-file <path>) [--etag <hash>]",
+  summary:
+    "evaluate a flag for a context on the server, and say why (counts no usage); --etag asks as of a past ruleset",
   options: {
     project: PROJECT,
     env: ENV,
     context: { type: "string" },
     "context-file": { type: "string" },
+    etag: { type: "string" },
   },
   required: ["the flag key"],
   api: true,
@@ -54,12 +58,15 @@ const diagnose: Command = {
     const project = need(values, "project");
     const env = need(values, "env");
     const flag = first(positionals, "the flag key");
+    const etag = str(values, "etag");
+    if (etag !== undefined) checkHash(etag);
     const context = readContext(values);
     const body = await ctx
       .api(str(values, "url"))
       .post(apiPath("projects", project, "environments", env, "evaluate"), {
         flagKey: flag,
         context,
+        ...(etag === undefined ? {} : { etag }),
       });
     if (printJson(values, ctx, body)) return;
     const flags = expectObject(expectObject(body)["flags"]);

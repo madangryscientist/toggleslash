@@ -144,4 +144,43 @@ describe.skipIf(skip)("a span's ruleset hash against the real server", () => {
     expect(String(flag["version"])).toBe(pro["feature_flag.version"]);
     expect(sdkErrors).toEqual([]);
   });
+
+  it("diagnoses at a past hash the answer the SDK served under it, after the flag has changed", async () => {
+    const sdk = client;
+    if (sdk === null) throw new Error("the SDK client is not created yet");
+    const served = serveBoth(sdk);
+    const hash = sdk.status().etag?.replaceAll('"', "") ?? "";
+    expect(hash).toMatch(/^[0-9a-f]{64}$/);
+
+    const diagnose = async (who: typeof PRO, extra: string[]) => {
+      const answer = await cli.json([
+        "diagnose",
+        FLAG,
+        "--project",
+        SEED_PROJECT,
+        "--env",
+        SEED_ENV,
+        "--context",
+        JSON.stringify(who),
+        ...extra,
+      ]);
+      const flags = record(record(answer)["flags"]);
+      const { value, variationIndex, reason } = record(flags[FLAG]);
+      return { value, variationIndex, reason };
+    };
+    const as = (detail: typeof served.pro) => ({
+      value: detail.value,
+      variationIndex: detail.variationIndex,
+      reason: detail.reason,
+    });
+
+    await cli.json(["flags", "off", FLAG, "--project", SEED_PROJECT, "--env", SEED_ENV]);
+
+    // With the hash: what the SDK served under it, for both shoppers, though the flag is now off.
+    expect(await diagnose(PRO, ["--etag", hash])).toEqual(as(served.pro));
+    expect(await diagnose(FREE, ["--etag", hash])).toEqual(as(served.free));
+    // Without it: the flag as it is now.
+    expect((await diagnose(PRO, [])).reason).toMatchObject({ kind: "OFF" });
+    expect(sdkErrors).toEqual([]);
+  });
 });

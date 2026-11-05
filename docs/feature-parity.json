@@ -1158,7 +1158,7 @@
       "id": "server-evaluation",
       "category": "SDKs and delivery",
       "name": "Server-side evaluation API",
-      "description": "Evaluate flags for a context without shipping the ruleset, including an admin diagnostic that says why a flag has its value an admin read of the ruleset tag, flag count and last change an environment is served, and an admin lookup of what the flags were under a ruleset hash it served.",
+      "description": "Evaluate flags for a context without shipping the ruleset. Includes an admin diagnostic that says why a flag has its value, now or under a past ruleset hash; an admin read of the ruleset tag, flag count and last change an environment is served; an admin lookup of what the flags were under a ruleset hash it served; and a dashboard page for that hash.",
       "featureslash": {
         "status": "yes",
         "evidence": [
@@ -1169,6 +1169,7 @@
           "cli:diagnose",
           "cli:runtime",
           "cli:rulesets show",
+          "dashboard:/rulesets/$hash",
           "path:apps/server/FeatureSlash.Evaluation"
         ]
       },

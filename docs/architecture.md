@@ -159,6 +159,7 @@ Under `/api/v1`, every route behind the `admin` policy, so for the root token an
 | `POST`, `GET /projects/{project}/tokens`; `DELETE .../tokens/{id}` | scoped API tokens, root token only ([Auth](#auth)) |
 | `GET /projects/{project}/environments/{env}/runtime` | what the server serves for the environment: the ruleset's `etag` (the one `GET /sdk/v1/ruleset` gives a server key), `flagCount`, `generatedAt` and `lastChange` (below); nothing about what an SDK has loaded |
 | `GET /projects/{project}/environments/{env}/rulesets/{hash}` | what the flags were under a ruleset hash the environment served: `etag`, `firstServedAt`, the flags and segments, no salt; `?flag=<key>` narrows it (below) |
+| `POST /projects/{project}/environments/{env}/evaluate` | evaluate a context for any environment, as `POST /sdk/v1/evaluate` does, with no SDK key and nothing recorded; an optional `etag` (a hash the environment served) evaluates against that stored ruleset instead of the current one (below) |
 | `GET /projects/{project}/audit`; `GET .../flags/{flag}/history` | the audit trail of a project, and of one flag (below) |
 
 - **Errors** are the single shape above: 400 (`bad_request`) for invalid input, 404 (`not_found`) for an
@@ -194,6 +195,13 @@ Under `/api/v1`, every route behind the `admin` policy, so for the root token an
   pruning or retention**, so the table grows by one ruleset body per distinct ruleset served. The answer is parsed from those bytes and
   leaves out every salt, though the stored bytes hold them. `?flag=<key>` narrows it to that flag and the segments its own
   rules name, not those of its prerequisites; a flag not in that ruleset is a 404.
+- **Diagnose at a past hash** (`POST .../environments/{env}/evaluate` with `"etag": "<hash>"`, a read: a `read` or `write` token may call it). It is the
+  diagnostic route with a different ruleset: the context is evaluated by the same C# evaluator against the bytes
+  `ruleset_snapshots` kept for that hash (`RulesetSnapshot.FromStored`), so the value and reason are what the flag gave
+  then, and with no `etag` the current ruleset is read as before. The `etag` is the lookup route's `{hash}`: lowercase
+  hex, no quotes. A hash this environment never served, including one from another environment, is a 404; the lookup is
+  scoped to the environment in the path. It records nothing: no usage, no audit event, no new snapshot, and the answer
+  carries no rules, targets or salt. The SDK's `POST /sdk/v1/evaluate` has no such field and still refuses it with a 400.
 - **SDK read API** (`/sdk/v1`, in the OpenAPI document under the `SDK` tag). A key belongs to one
   environment, and the environment is the one it reads; nothing in the URL or body names it.
   - `GET /sdk/v1/ruleset` (server key only; a client key is 403) returns `{ "flags": [...], "segments": [...] }` in
@@ -386,6 +394,16 @@ the project and environment.
 - **`/audit`**: the project's audit log, newest first, 25 events a page, filtered by flag, environment and
   a day (sent as midnight UTC). Paging is by the server's cursor ("Older events", "Back to the newest"),
   kept in the URL so a view can be linked.
+
+### A past ruleset
+
+`/rulesets/$hash?project=&env=` (optional `flag=`) shows what the flags were under a ruleset hash the environment served:
+for each flag its on state, off variation, variations, targets, prerequisites, rules and fallthrough, and the segments
+its rules name. It is the page a trace backend's link opens (see [`tracing.md`](tracing.md)), so it is behind the normal
+sign-in: a signed-out request is redirected to `/sign-in?returnTo=...` before anything renders, and signing in returns
+to the same URL. One server function reads `GET .../rulesets/{hash}` with the dashboard's own token, so no token is
+in the URL or the browser. A hash the environment never served (or a flag not in it) is a not-found state on the page,
+not a crash. The server's answer has no salt and the page shows none.
 
 ### Flag detail
 
