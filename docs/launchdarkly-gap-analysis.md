@@ -52,7 +52,7 @@ Maturity: 0 none, 1 minimal, 2 usable for a small team, 3 strong, 4 LaunchDarkly
 | Integrations and automation | 1 | 4 | OpenAPI and a partial CLI; no Terraform, MCP, GitHub app, chat, data export or warehouse |
 | Observability | 0 | 4 | None; LaunchDarkly has session replay, errors, logs, traces, metrics and alerts |
 | AI / AgentControl | 0 | 4 | None; LaunchDarkly configures prompts, models, evals and agent graphs |
-| Operations and scale | 1.5 | 4 | SQLite, one process, no rate limits, no HA, no multi-region; LaunchDarkly sells global delivery as the product |
+| Operations and scale | 1.5 | 4 | SQLite, one process, in-memory rate limits, no HA, no multi-region; LaunchDarkly sells global delivery as the product |
 | Openness / self-hosting | 4 | 1 | MIT and self-hosted, which LaunchDarkly is not (its Relay Proxy is open source; the platform is not) |
 
 Rough overall: **~65% of the core flag primitive, ~15–20% of the product surface** a LaunchDarkly
@@ -388,8 +388,8 @@ prompt/model config as JSON. That is already possible with a JSON flag; it is no
 | Horizontal scale | Yes | No: one process owns one file |
 | Cross-process stream | Yes | No: in-memory notifier |
 | Cross-process write lock | N/A | No: in-process `TargetingLock` only |
-| Rate limiting | Yes (service-level) | **None** |
-| Quotas / abuse controls | Yes | None |
+| Rate limiting | Yes (service-level) | Per key and per IP, in one process's memory |
+| Quotas / abuse controls | Yes | Failed-auth lockout per IP, streams per key; no per-plan quotas |
 | HA / failover | Yes, 99.99% claimed | None |
 | Backups | Managed | Documented SQLite backup |
 | Upgrades | Managed | Apply migrations at startup |
@@ -401,7 +401,7 @@ The single-process design was the right MVP trade. It becomes a liability the mo
 run behind a load balancer, and the code already documents why (`TargetingLock`, `RulesetNotifier`).
 
 **What is left:** Postgres (or another shared store), a database-backed lock/version check, a
-cross-process change bus (Postgres `LISTEN/NOTIFY`, Redis, NATS), a relay/cache tier, rate limiting,
+cross-process change bus (Postgres `LISTEN/NOTIFY`, Redis, NATS), a relay/cache tier, rate limits that cross processes,
 and an HA deployment recipe.
 
 ---
@@ -417,7 +417,6 @@ experienced engineer. They are planning aids, not commitments.
 | --- | --- | --- |
 | Users, roles and project scoping | One admin token cannot serve a team; every audit row says `admin` | L |
 | Scoped, expiring API tokens | Terraform/CI need credentials that are not the root token | M |
-| Rate limiting and request quotas | Public evaluate/events can be abused today | M |
 | Security headers, CORS review, body/time limits | Basic hardening before exposure | S |
 | Audit actor from the authenticated principal | The audit trail is only useful with real actors | S |
 
@@ -593,7 +592,7 @@ Legend: **Yes** = shipped; **Partial** = some of it; **No** = absent.
 | Secure mode | Yes | No |
 | Private attributes | Yes | No |
 | Hooks / OpenTelemetry | Yes | No |
-| Rate limiting | Yes | No |
+| Rate limiting | Yes | Yes, in memory |
 | Multi-instance | Yes | No |
 | Postgres/HA | Yes | No |
 | Users / roles / SSO / SCIM | Yes | No |

@@ -64,13 +64,36 @@ The policies are `admin`, `server-key` and `client-key`, and none includes anoth
 is not an SDK key, and neither kind of key passes for the other. (`sdk-key` is not a third kind of key:
 it is the policy of a route that takes a server or a client key.) All three credentials go through one
 authentication scheme, so **401** means the token is missing, malformed, wrong or revoked and **403**
-means it is valid but not for this route. A 401 does not say which of those it was.
+means it is valid but not for this route. A 401 does not say which of those it was. **429** means a limit,
+[below](#rate-limits).
 
 Every error body has one shape, from the framework's own 404 and 405 to an unhandled 500:
 
 ```json
 { "error": { "code": "forbidden", "message": "This token is valid but may not use this route." } }
 ```
+
+## Rate limits
+
+`RequestLimiter` (`apps/server/FeatureSlash.Server/Limits`) holds every limit, **in this process's memory**, in one
+small class with an injected `TimeProvider`, because the built-in ASP.NET limiter's timers cannot use a fake clock. The
+server is one process per database, so that is enough, and **a restart resets the counts**. There is no table and no
+shared store. Defaults, variables and proxies are in [`self-hosting.md`](self-hosting.md#rate-limits).
+
+- **Per key:** token buckets on `POST /sdk/v1/evaluate` and `POST /sdk/v1/events`, keyed on the key's id, checked after
+  authorization and before the body is read.
+- **Failed authentication, per IP:** the authentication handler counts a presented credential that is wrong, and checks
+  the count first, so a locked-out IP cannot have a guess confirmed. A missing header and the `503` for an unset admin
+  token do not count.
+- **Streams, per key:** a slot taken at the top of the route and released by a `using` on every way out.
+- **Client IP:** `RemoteIpAddress`. ASP.NET's forwarded headers middleware is installed only when
+  `FEATURESLASH_TRUSTED_PROXIES` lists something, because with an empty list it trusts everyone. IPv6 is grouped by /64.
+- **Bounded:** each table has a cap and drops its least recently used entry. Open stream slots cannot be dropped, so past
+  the cap a key with no open stream is refused instead. The limiter stores a key's id and a grouped IP in memory, and
+  writes neither to the database or a log.
+
+Each answer is a `429` with `Retry-After` in whole seconds, rounded up, and the one error shape. A refused stream has no
+refill to compute, so it always says 30 seconds. `Retry-After` is exposed to browsers on the two CORS routes.
 
 ## Admin API and OpenAPI
 

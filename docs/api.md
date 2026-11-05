@@ -23,6 +23,10 @@ so a lost key cannot be shown again; create a new one and revoke the old one. Th
 A client key never reads the ruleset or the stream, and `evaluate` returns only each flag's value, its
 variation index and its reason, never the rules, targets or salts behind them.
 
+Any route that takes a credential can answer `429` with `Retry-After` in whole seconds and the error code `rate_limited`: an
+IP has sent too many wrong credentials, or a key has reached its limit on evaluate, events or open streams. The numbers
+are in [`self-hosting.md`](self-hosting.md#rate-limits).
+
 ## SDK read API (`/sdk/v1`)
 
 | Method and path | What it does |

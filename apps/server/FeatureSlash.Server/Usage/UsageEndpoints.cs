@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using FeatureSlash.Server.Auth;
 using FeatureSlash.Server.Catalogue;
 using FeatureSlash.Server.Data;
+using FeatureSlash.Server.Limits;
 using FeatureSlash.Server.Sdk;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.EntityFrameworkCore;
@@ -67,6 +68,7 @@ public static class UsageEndpoints
         routes.MapPost("/sdk/v1/events", Events)
             .RequireAuthorization(ServerAuth.SdkKeyPolicy)
             .RequireCors(SdkEndpoints.ClientCors)
+            .LimitedPerKey(KeyLimit.Events)
             .WithTags("SDK")
             .WithName("postEvents")
             .WithSummary("Adds a batch of usage counts to the key's own environment. Counts only.")

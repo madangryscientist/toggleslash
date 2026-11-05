@@ -39,6 +39,9 @@ await client.close(); // stops the loops and sends the last usage counts
 3. When the stream ends or will not open, the client waits (1 s, doubling, capped at `pollIntervalMs`, jittered),
    polls once, and tries the stream again. So a server without a stream is polled at about `pollIntervalMs`. A proxy that
    buffers the stream is noticed only when the 60 s watchdog drops it, so such a deployment should set `stream: false`. `stream: false` polls only.
+4. A `429` on the ruleset or the stream with a `Retry-After` of whole seconds holds both until it has passed, capped at
+   5 minutes, or for the wait above if that is longer. With the header missing or anything else in it, the wait above is all there is. Evaluation keeps answering
+   from the last ruleset, and the `429` goes to `onError`.
 
 ## Usage counts
 
@@ -48,6 +51,8 @@ await client.close(); // stops the loops and sends the last usage counts
 value from is counted (not a fallback, a type mismatch or an unknown flag), and nothing is counted after
 `close()`. Batches are at most 500 entries (the server takes 1000). A `5xx`, `408`, `429` or network failure keeps
 the counts for the next flush; any other `4xx` drops them, since the server would refuse them again.
+After a `429` with a valid `Retry-After` (capped at 5 minutes) no flush sends anything until it has passed. `close()` does not wait it
+out and does not ignore it: counts still held back then are lost, and `onError` says so.
 
 ## Options
 

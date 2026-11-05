@@ -72,6 +72,24 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -120,6 +138,24 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -159,6 +195,24 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -241,6 +295,24 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -307,6 +379,24 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -383,6 +473,24 @@
           },
           "413": {
             "description": "Payload Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -468,6 +576,24 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -523,6 +649,24 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -546,6 +690,24 @@
                   "items": {
                     "$ref": "#/components/schemas/ProjectResponse"
                   }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
                 }
               }
             }
@@ -587,6 +749,24 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -669,6 +849,24 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -708,6 +906,24 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -761,6 +977,24 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -843,6 +1077,24 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -913,6 +1165,24 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -959,6 +1229,24 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1037,6 +1325,24 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1083,6 +1389,24 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1143,6 +1467,24 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1188,6 +1530,24 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1221,6 +1581,24 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1265,6 +1643,24 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1319,6 +1715,24 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1415,6 +1829,24 @@
           },
           "409": {
             "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1520,6 +1952,24 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1603,6 +2053,24 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1650,6 +2118,24 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1711,6 +2197,24 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1814,6 +2318,24 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1869,6 +2391,24 @@
           },
           "409": {
             "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -1967,6 +2507,24 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -2052,6 +2610,24 @@
           },
           "404": {
             "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {

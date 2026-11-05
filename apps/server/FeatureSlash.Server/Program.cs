@@ -4,6 +4,7 @@ using FeatureSlash.Server.Audit;
 using FeatureSlash.Server.Auth;
 using FeatureSlash.Server.Catalogue;
 using FeatureSlash.Server.Data;
+using FeatureSlash.Server.Limits;
 using FeatureSlash.Server.Sdk;
 using FeatureSlash.Server.Targeting;
 using FeatureSlash.Server.Usage;
@@ -11,6 +12,9 @@ using FeatureSlash.Server.Usage;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddServerDatabase();
 builder.Services.AddServerAuth();
+builder.Services.AddRateLimits();
+// This middleware names an unlisted proxy's address at Debug, and no client IP goes in a log at any level.
+builder.Logging.AddFilter("Microsoft.AspNetCore.HttpOverrides", LogLevel.None);
 builder.Services.AddServerOpenApi();
 builder.Services.AddSdkApi();
 builder.Services.AddUsage();
@@ -20,6 +24,11 @@ builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.N
 // An unreadable body is the client's 400 in every environment, not a Development-only exception.
 builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
 var app = builder.Build();
+
+// Before the migration, so a bad limit or proxy list stops the server without touching the database. Trusted
+// proxies go first in the pipeline, so everything after them sees the client's address.
+_ = app.Services.GetRequiredService<RequestLimiter>();
+app.UseTrustedProxies();
 
 app.Services.MigrateServerDatabase();
 
@@ -34,6 +43,7 @@ app.UseStatusCodePages(context => ApiError.WriteForStatus(context.HttpContext));
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseKeyRateLimits();
 
 app.MapGet("/health", () => new HealthResponse("ok", ServerVersion.Current));
 // The OpenAPI document describes the API and holds nothing private, so like /health it takes no token.

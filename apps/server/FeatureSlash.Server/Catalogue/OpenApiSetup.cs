@@ -42,6 +42,23 @@ public static class OpenApiSetup
                     .Any(data => data.Policy is ServerAuth.AdminPolicy or ServerAuth.ServerKeyPolicy or ServerAuth.SdkKeyPolicy);
                 if (gated)
                 {
+                    operation.Responses ??= [];
+                    operation.Responses["429"] = new OpenApiResponse
+                    {
+                        Description = "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+                        Headers = new Dictionary<string, IOpenApiHeader>
+                        {
+                            ["Retry-After"] = new OpenApiHeader
+                            {
+                                Description = "Whole seconds to wait, rounded up.",
+                                Schema = new OpenApiSchema { Type = JsonSchemaType.Integer },
+                            },
+                        },
+                        Content = new Dictionary<string, OpenApiMediaType>
+                        {
+                            ["application/json"] = new OpenApiMediaType { Schema = new OpenApiSchemaReference(nameof(ApiError), context.Document) },
+                        },
+                    };
                     operation.Security ??= [];
                     operation.Security.Add(new OpenApiSecurityRequirement
                     {

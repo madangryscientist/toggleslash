@@ -13,9 +13,9 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 
 | Metric | FS | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| ✅ yes | 19 | 62 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
+| ✅ yes | 20 | 63 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
 | 🟡 partial | 8 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
-| — no | 37 | 2 | 7 | 5 | 4 | 5 | 5 | 7 | 15 |
+| — no | 37 | 2 | 8 | 6 | 5 | 6 | 6 | 8 | 16 |
 
 ## Matrix
 
@@ -105,6 +105,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Self-hosted | ✅ | — | ✅ | ✅ | ✅ | — | — | ✅ | ✅ |
 | Open source | ✅ | — | ✅ | ✅ | ✅ | — | — | ✅ | — |
 | HA and shared database | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Rate limits | ✅ | ✅ | — | — | — | — | — | — | — |
 | Terraform provider | — | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ |
 | MCP server | — | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ | 🟡 |
 | CLI | 🟡 | ✅ | ✅ | ✅ | 🟡 | ✅ | 🟡 | ✅ | ✅ |
@@ -206,6 +207,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Self-hosted | ✅ | `path:apps/server/Dockerfile`<br>`path:compose.yaml`<br>`doc:docs/self-hosting.md` |
 | Open source | ✅ | `path:LICENSE` |
 | HA and shared database | — | SQLite and one process per database; the in-memory lock and notifier do not cross processes. |
+| Rate limits | ✅ | `path:apps/server/FeatureSlash.Server/Limits/RequestLimiter.cs`<br>`doc:docs/self-hosting.md`<br>`test:apps/server/FeatureSlash.Server.Tests/RateLimitTests.cs`<br>`test:packages/sdk/test/rate-limit.test.ts`<br>In memory, one process; a restart resets the counts. No per-route admin limits or per-plan quotas. Only LaunchDarkly was read for this row; the other vendors' cells are not assessed. |
 | Terraform provider | — | — |
 | MCP server | — | — |
 | CLI | 🟡 | `path:packages/cli`<br>`cli:config set-url`<br>`cli:config set-token`<br>Projects, environments, flags (no targeting edit) and keys; no segments, audit or usage commands. |

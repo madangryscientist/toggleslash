@@ -38,6 +38,8 @@ export class FakeServer {
   rulesetBody: string | null = null;
   eventsStatus = 200;
   eventsHang = false;
+  /** Paths answering 429, with the `Retry-After` to send; null sends none. */
+  readonly limited = new Map<string, string | null>();
   readonly seen: Seen[] = [];
   private streams = new Set<ReadableStreamDefaultController<Uint8Array>>();
 
@@ -97,13 +99,20 @@ export class FakeServer {
     if (this.down) throw new TypeError("fetch failed");
     const path = new URL(input).pathname;
     const headers = new Headers(init?.headers);
-    const raw = init?.body;
-    const body: unknown = typeof raw === "string" ? JSON.parse(raw) : undefined;
-    this.seen.push({ method: init?.method ?? "GET", path, headers, body });
+    this.seen.push({ method: init?.method ?? "GET", path, headers, body: parsedBody(init?.body) });
     if (headers.get("Authorization") !== `Bearer ${this.key}`)
       return new Response("", { status: 401 });
-    return this.route(path, headers, init?.signal ?? undefined);
+    return this.tooMany(path) ?? this.route(path, headers, init?.signal ?? undefined);
   };
+
+  private tooMany(path: string): Response | null {
+    const retryAfter = this.limited.get(path);
+    if (retryAfter === undefined) return null;
+    return new Response('{"error":{"code":"rate_limited","message":"Slow down."}}', {
+      status: 429,
+      headers: retryAfter === null ? {} : { "Retry-After": retryAfter },
+    });
+  }
 
   private route(
     path: string,
@@ -150,6 +159,10 @@ export class FakeServer {
       signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
     });
   }
+}
+
+function parsedBody(raw: unknown): unknown {
+  return typeof raw === "string" ? JSON.parse(raw) : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

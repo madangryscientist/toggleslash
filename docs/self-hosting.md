@@ -45,6 +45,8 @@ every `*.db` file and the other apps out of it.
 | `FEATURESLASH_ADMIN_TOKEN` | environment, required by `compose.yaml` | the admin token for `/api/v1` |
 | `FEATURESLASH_DB_PATH` | environment, `/data/featureslash.db` in the image | the SQLite file; keep it on the `/data` volume |
 
+To set anything else, such as the rate limits below, add a line under `environment:` in `compose.yaml`.
+
 Stop it with `docker compose down`, which keeps the data. `docker compose down -v` also deletes the
 volume, and with it every flag: do that only when you mean it.
 
@@ -140,6 +142,50 @@ limits all follow from that:
   the last ruleset they fetched.
 - The volume is local to one Docker host. Back it up as above.
 - Postgres is a later option, not part of this version.
+
+## Rate limits
+
+The limits are always on, and there is no setting that turns them off. A variable takes a positive integer; anything
+else, an empty value included, stops the server at startup with an error naming the variable.
+
+| Limit | Default | Variable | Counted per |
+| --- | --- | --- | --- |
+| `POST /sdk/v1/evaluate` | 6000 a minute | `FEATURESLASH_RATE_LIMIT_EVALUATE_PER_MINUTE` | SDK key |
+| `POST /sdk/v1/events` | 600 a minute | `FEATURESLASH_RATE_LIMIT_EVENTS_PER_MINUTE` | SDK key |
+| wrong credentials, on any route that takes one | 30 a minute | `FEATURESLASH_RATE_LIMIT_AUTH_FAILURES_PER_MINUTE` | client IP |
+| open `GET /sdk/v1/stream` connections | 100 at once | `FEATURESLASH_RATE_LIMIT_STREAMS_PER_KEY` | SDK key |
+
+Over a limit the answer is a `429` with `Retry-After` in whole seconds and the usual error body, code `rate_limited`.
+A client key is shared by everyone using your app, so raise the evaluate and events numbers if a busy app reaches them.
+The per-minute limits are token buckets: a quiet client can spend a whole minute's allowance at once, then gets it
+back evenly.
+
+Once an IP has used its failures, it gets the `429` before its credential is looked at, even a correct one, on the
+admin routes too. A request with no `Authorization` header is not a failure, and neither is the `503` for an unset
+admin token. `GET /health` is never limited. A service still sending a revoked key counts as failing, so it can lock
+out everything else on its IP: replace the key.
+
+Counts live in the server's memory and a restart resets them. The server tracks up to 100,000 IPs and 10,000 keys per
+limit and forgets the stalest first, so rotating addresses cannot grow its memory without limit, though an address
+pushed out that way starts again from a full allowance.
+
+### Behind a proxy
+
+The client IP is the address of the connection. **Behind a proxy that is not listed, that is the proxy's address, so
+every client shares one IP, and one attacker sending wrong credentials locks out all of them.** List your proxies:
+
+```bash
+FEATURESLASH_TRUSTED_PROXIES=10.0.0.5,10.0.0.6
+```
+
+It is a comma-separated list of IP addresses, not ranges, empty by default, and a value that is not an address stops the server. `X-Forwarded-For` is
+believed only from a listed address, read from the right, stopping at the first address that is not listed, so a client
+cannot name an IP of its choice. Your proxy must append to the header rather than pass along a client's alone. IPv6
+clients are grouped by /64. Leave `ASPNETCORE_FORWARDEDHEADERS_ENABLED` unset: it makes ASP.NET believe the header from
+anyone.
+
+Docker can do the same to you with no proxy in sight: depending on the host's network setup, a published port can show
+every client as the bridge's gateway address. If the limits trip for everyone together, that is the first thing to check.
 
 ## How this is tested
 

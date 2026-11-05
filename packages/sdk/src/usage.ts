@@ -1,5 +1,5 @@
 import { type Clock, utcDay } from "./clock.ts";
-import { type Fetch, withTimeout } from "./http.ts";
+import { type Fetch, retryAfterMs, withTimeout } from "./http.ts";
 
 /** One line of `POST /sdk/v1/events`: counts only, never a context or anything about an end user. */
 interface UsageEntry {
@@ -33,11 +33,13 @@ function retryable(status: number): boolean {
  * Counts how often each flag variation was served, per UTC day, and sends the totals in batches.
  * `record` is a map increment, so it is safe on a request path. A batch that fails for a reason that
  * can pass (the server is down or busy) is put back; one the server refused is dropped, since it
- * would be refused again.
+ * would be refused again. After a 429 with a `Retry-After`, nothing is sent until that has passed.
  */
 export class UsageReporter {
   private pending = new Map<string, UsageEntry>();
   private sending: Promise<void> | null = null;
+  /** The server's 429 asked for nothing to reach it before this time. */
+  private retryAt = 0;
 
   constructor(private readonly options: UsageReporterOptions) {}
 
@@ -57,6 +59,23 @@ export class UsageReporter {
     return run;
   }
 
+  /**
+   * The last flush, on closing. It will not wait out a `Retry-After`, and it will not ignore one, so counts
+   * still held back then are lost, and that is reported.
+   */
+  async finish(): Promise<void> {
+    await this.flush();
+    if (this.pending.size > 0 && this.holding()) {
+      this.options.onError(
+        new Error(`closed with ${this.pending.size} usage counts unsent: the server asked to wait`),
+      );
+    }
+  }
+
+  private holding(): boolean {
+    return this.options.clock.now() < this.retryAt;
+  }
+
   private add(entry: UsageEntry): void {
     const key = `${entry.flag}\n${entry.variationIndex}\n${entry.day}`;
     const existing = this.pending.get(key);
@@ -65,6 +84,7 @@ export class UsageReporter {
   }
 
   private async send(): Promise<void> {
+    if (this.holding()) return;
     const entries = [...this.pending.values()];
     this.pending = new Map();
     for (let start = 0; start < entries.length; start += MAX_BATCH) {
@@ -80,17 +100,20 @@ export class UsageReporter {
   private async post(batch: UsageEntry[]): Promise<boolean> {
     const { baseUrl, sdkKey, fetch, clock, requestTimeoutMs, onError } = this.options;
     try {
-      const status = await withTimeout(clock, requestTimeoutMs, undefined, async (signal) => {
-        const response = await fetch(`${baseUrl}/sdk/v1/events`, {
+      const response = await withTimeout(clock, requestTimeoutMs, undefined, async (signal) => {
+        const answer = await fetch(`${baseUrl}/sdk/v1/events`, {
           method: "POST",
           headers: { Authorization: `Bearer ${sdkKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({ events: batch }),
           signal,
         });
-        await response.body?.cancel();
-        return response.status;
+        await answer.body?.cancel();
+        return answer;
       });
+      const { status } = response;
       if (status >= 200 && status < 300) return true;
+      const wait = retryAfterMs(response);
+      if (wait !== null) this.retryAt = Math.max(this.retryAt, clock.now() + wait);
       onError(new Error(`POST /sdk/v1/events answered ${status}`));
       return !retryable(status);
     } catch (error) {
