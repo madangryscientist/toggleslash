@@ -147,3 +147,10 @@ Each entry: what · why · ⚠ if unsure · how to undo.
 - **What:** the flag list reads each flag's config, 8 at a time, because the API has no bulk read. **Why:** no bulk endpoint. **⚠** N+1 on every list load; the builder filed FS-27 (not in tonight's queue, left for you). **Undo:** FS-27.
 - **What:** toggle is a pressed `Button` because `@hackcove/ui-react` has no Switch (filed HC-214). Create makes boolean flags only. Archive hides with no restore. Search is client-side. **Undo:** `FlagList.tsx`, `NewFlagDialog.tsx`.
 - **What:** I checked the token by hand: the name appears in the client bundle only inside the "check FEATURESLASH_ADMIN_TOKEN" error text, no env read reaches the client. **⚠** this ticket's skeptical review ran on a free model (glm) because Opus hit its usage limit and the opencode-go account is out of funds. **Undo:** n/a.
+
+### FS-20 choices (flag detail)
+
+- **Needs your feel-review in the morning:** the layout of the targeting editor, the clause-values text syntax (quoting forces a string), and how blunt the 409 flow is.
+- **What:** a 409 discards the draft and loads the latest version; no field-level merge. **Why:** safe and simple. **⚠** the person loses unsaved edits. **Undo:** `apps/web/src/routes/flags.$flag.tsx`, `TargetingEditor.tsx`.
+- **What:** rollouts typed as percents with up to three decimals; a zero entry is left off the wire; the server judges the sum. Individual targets are a textarea of keys per variation, not a picker. **Undo:** `apps/web/src/targeting/`.
+- **⚠** the detail page can write targeting and the dashboard has no login, so "do not route it publicly" (`docs/architecture.md`) matters more now.
