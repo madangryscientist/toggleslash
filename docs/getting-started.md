@@ -20,6 +20,7 @@ bun run featureslash flags list --project shop --json
 ```
 
 The dashboard (`apps/web`) and the site (`apps/site`) each have a `dev` script: run `bun run dev` in the app's directory.
+The dashboard reads `FEATURESLASH_API_URL` (the C# server's address) and `FEATURESLASH_ADMIN_TOKEN` (the same admin token the server was started with) from the environment, in `apps/web/.dev.vars` for `dev`; without them it shows a "not configured" page.
 
 The C# server (`apps/server`) needs the .NET SDK: `dotnet run --project apps/server/FeatureSlash.Server`, then `GET /health`.
 Set `FEATURESLASH_ADMIN_TOKEN` to use the admin API (projects, environments, flags, their targeting, segments and SDK keys under `/api/v1`);
