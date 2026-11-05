@@ -19,7 +19,7 @@ await client.close(); // stops the loops and sends the last usage counts
 
 ## Guarantees
 
-- **It never throws at a caller.** `createClient`, `ready`, `variation`, `variationDetail` and `close` do not
+- **It never throws at a caller.** `createClient`, `ready`, `status`, `variation`, `variationDetail` and `close` do not
   throw or reject, whatever the server, the network, the context or an `onError` hook does. A failure comes back
   as the caller's fallback with an `ERROR` reason (`variationDetail`), or goes to `onError`.
 - **It never blocks a request path.** `variation` is synchronous and reads memory. `ready()` is for a startup
@@ -42,6 +42,28 @@ await client.close(); // stops the loops and sends the last usage counts
 4. A `429` on the ruleset or the stream with a `Retry-After` of whole seconds holds both until it has passed, capped at
    5 minutes, or for the wait above if that is longer. With the header missing or anything else in it, the wait above is all there is. Evaluation keeps answering
    from the last ruleset, and the `429` goes to `onError`.
+
+## Status
+
+`client.status()` says what this SDK has loaded and how its stream is doing. It is synchronous, reads memory,
+makes no request and never throws:
+
+```ts
+{ etag: string | null; lastSyncAt: number | null; stream: StreamState; lastError: SyncErrorCode | null }
+```
+
+- `etag` is the ETag of the ruleset held; `null` before the first load.
+- `lastSyncAt` is epoch milliseconds from the SDK's clock: when it last confirmed its ruleset matches the server.
+  It moves on a `200`, a `304` or a stream event naming the tag held. **It does not move on a keep-alive, so an old
+  `lastSyncAt` with `stream: "connected"` is normal: nothing has changed.**
+- `stream` is one of: `off` (`stream: false`), `connecting` (opening it, or the first load), `connected` (the
+  server's `connected` event arrived), `disconnected` (down, waiting to retry, polling meanwhile), `closed` (after
+  `close()`).
+- `lastError` is why the most recent ruleset or stream attempt failed, and `null` if it did not. It clears on the
+  next successful fetch or a stream `connected`. Its codes are `http_<status>` (for example `http_401`), `timeout`,
+  `bad_ruleset` (an answer that is not a ruleset) and `network`.
+- Usage count failures are not in it; they still go to `onError`.
+- It is local: the server does not know any of this. Nothing in it is a URL, a header, a key or an error message.
 
 ## Usage counts
 

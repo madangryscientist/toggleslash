@@ -3,6 +3,9 @@ import { type Clock, startTimer } from "./clock.ts";
 /** `fetch`, narrowed to what the SDK calls, so a test can pass a fake. */
 export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
+/** A request or a stream that did not answer in time. */
+export class TimeoutError extends Error {}
+
 /** However long a server asks, a client is back within this. */
 const MAX_RETRY_AFTER_MS = 300_000;
 
@@ -43,7 +46,7 @@ export async function withTimeout<T>(
 ): Promise<T> {
   const { controller, dispose } = linkedController(parent);
   const cancel = startTimer(clock, ms, () => {
-    controller.abort(new Error(`no answer within ${ms} ms`));
+    controller.abort(new TimeoutError(`no answer within ${ms} ms`));
   });
   try {
     return await run(controller.signal);

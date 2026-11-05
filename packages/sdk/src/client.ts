@@ -1,7 +1,7 @@
 import { type Context, type ErrorCode, evaluate, type Reason } from "@hackcove/featureslash-engine";
 import { type Clock, systemClock } from "./clock.ts";
 import type { Fetch } from "./http.ts";
-import { RulesetSync } from "./sync.ts";
+import { type ClientStatus, RulesetSync } from "./sync.ts";
 import { UsageReporter } from "./usage.ts";
 
 export interface ClientOptions {
@@ -53,6 +53,11 @@ export interface Client {
   variation<T>(flagKey: string, context: Context, fallback: T): T;
   /** Like `variation`, with the variation index and the reason. */
   variationDetail<T>(flagKey: string, context: Context, fallback: T): VariationDetail<T>;
+  /**
+   * What this SDK has loaded and how its stream is doing. Synchronous, reads memory, makes no network call
+   * and never throws.
+   */
+  status(): ClientStatus;
   /** Stops following the server and sends the pending usage counts. Never rejects; safe to call twice. */
   close(): Promise<void>;
 }
@@ -129,6 +134,10 @@ class FeatureSlashClient implements Client {
       this.onError(error);
       return fallbackDetail(fallback, "EVALUATION_FAILED");
     }
+  }
+
+  status(): ClientStatus {
+    return this.sync.status;
   }
 
   close(): Promise<void> {
