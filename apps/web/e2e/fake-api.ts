@@ -1,113 +1,23 @@
 /**
  * A small stand-in for the C# server's admin API, for the Playwright run: `bun e2e/fake-api.ts`.
- * It speaks only the routes the dashboard calls, keeps its data in memory, and has two control routes
- * the specs use: `POST /__reset` (back to the fixture data, server up) and `POST /__down` (answer
- * every API request by dropping the connection, as a stopped server would).
+ * It speaks only the routes the dashboard calls, keeps its data in memory, and has three control routes
+ * the specs use: `POST /__reset` (back to the fixture data, server up), `POST /__down` (answer
+ * every API request by dropping the connection, as a stopped server would) and
+ * `POST /__bump/<project>/<env>/<flag>` (another editor saved: the config's version moves on).
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
 import { API_PORT, E2E_ADMIN_TOKEN } from "./constants.ts";
-
-interface Flag {
-  key: string;
-  name: string;
-  description: string;
-  variations: boolean[];
-  temporary: boolean;
-  owner: null;
-  tags: string[];
-  createdAt: string;
-  archivedAt: string | null;
-  lastEvaluated: string | null;
-}
-
-interface Config {
-  on: boolean;
-  version: number;
-}
-
-interface Named {
-  key: string;
-  name: string;
-  createdAt: string;
-}
-
-interface Store {
-  projects: Named[];
-  environments: Record<string, Named[]>;
-  flags: Record<string, Flag[]>;
-  /** `project/env/flag` -> config */
-  configs: Record<string, Config>;
-}
-
-interface Seed {
-  key: string;
-  name: string;
-  tags?: string[];
-  temporary?: boolean;
-  description?: string;
-  last?: string | null;
-}
-
-function flag(seed: Seed): Flag {
-  return {
-    key: seed.key,
-    name: seed.name,
-    description: seed.description ?? "",
-    variations: [true, false],
-    temporary: seed.temporary ?? false,
-    owner: null,
-    tags: seed.tags ?? [],
-    createdAt: "2026-11-01T09:00:00Z",
-    archivedAt: null,
-    lastEvaluated: seed.last ?? null,
-  };
-}
-
-function named(key: string, name: string): Named {
-  return { key, name, createdAt: "2026-11-01T09:00:00Z" };
-}
-
-function fixture(): Store {
-  return {
-    projects: [named("shop", "Shop"), named("docs", "Docs")],
-    environments: {
-      shop: [named("production", "Production"), named("staging", "Staging")],
-      docs: [named("live", "Live")],
-    },
-    flags: {
-      shop: [
-        flag({
-          key: "checkout-v2",
-          name: "Checkout v2",
-          tags: ["checkout"],
-          temporary: true,
-          last: "2026-11-04",
-        }),
-        flag({ key: "dark-mode", name: "Dark mode", tags: ["ui"] }),
-        flag({
-          key: "search-boost",
-          name: "Search boost",
-          tags: ["search", "ui"],
-          last: "2026-10-30",
-        }),
-      ],
-      docs: [flag({ key: "docs-search", name: "Docs search" })],
-    },
-    configs: {
-      "shop/production/checkout-v2": { on: true, version: 3 },
-      "shop/production/dark-mode": { on: false, version: 1 },
-      "shop/production/search-boost": { on: false, version: 2 },
-      "shop/staging/checkout-v2": { on: true, version: 1 },
-      "shop/staging/dark-mode": { on: true, version: 1 },
-      "shop/staging/search-boost": { on: true, version: 1 },
-      "docs/live/docs-search": { on: false, version: 1 },
-    },
-  };
-}
-
-let data = fixture();
-let down = false;
+import { db, flag, plain, reset, type Config, type Flag } from "./fake-data.ts";
+import {
+  historyOf,
+  patchFlag,
+  putConfig,
+  record,
+  usageOf,
+  type Body,
+  type Reply,
+} from "./fake-config.ts";
 
 function send(res: ServerResponse, status: number, body: unknown) {
   res.writeHead(status, { "content-type": "application/json" });
@@ -117,8 +27,6 @@ function send(res: ServerResponse, status: number, body: unknown) {
 function problem(res: ServerResponse, status: number, code: string, message: string) {
   send(res, status, { error: { code, message } });
 }
-
-type Body = Record<string, unknown>;
 
 async function readBody(req: IncomingMessage): Promise<Body> {
   const chunks: Buffer[] = [];
@@ -140,7 +48,7 @@ interface Ctx {
 }
 
 function activeFlags(project: string): Flag[] {
-  return (data.flags[project] ??= []);
+  return (db.data.flags[project] ??= []);
 }
 
 /** Why a create request is refused, or nothing. */
@@ -171,13 +79,17 @@ async function createFlag({ req, res, project }: Ctx) {
     description: typeof body["description"] === "string" ? body["description"] : "",
   });
   activeFlags(project).push(created);
-  for (const env of data.environments[project] ?? []) {
-    data.configs[`${project}/${env.key}/${key}`] = { on: false, version: 1 };
+  for (const env of db.data.environments[project] ?? []) {
+    db.data.configs[`${project}/${env.key}/${key}`] = plain(false, 1);
   }
   return send(res, 201, created);
 }
 
-async function toggle({ req, res }: Ctx, cfg: Config) {
+function reply(res: ServerResponse, [status, body]: Reply) {
+  return send(res, status, body);
+}
+
+async function toggle({ req, res, project }: Ctx, flagKey: string, env: string, cfg: Config) {
   const body = await readBody(req);
   if (typeof body["on"] !== "boolean") {
     return problem(res, 400, "invalid_request", "on is required.");
@@ -187,32 +99,48 @@ async function toggle({ req, res }: Ctx, cfg: Config) {
   }
   cfg.on = body["on"];
   cfg.version += 1;
+  record({ project, flag: flagKey, action: "config.toggled", env, version: cfg.version });
   return send(res, 200, cfg);
 }
 
-function onConfig(ctx: Ctx, key: string, rest: string[]) {
+async function onConfig(ctx: Ctx, found: Flag, rest: string[]) {
   const { req, res, project } = ctx;
   const [env, verb] = rest;
   const method = req.method ?? "GET";
-  const cfg = data.configs[`${project}/${env}/${key}`];
-  if (cfg === undefined) return problem(res, 404, "not_found", "No such route.");
+  const cfg = db.data.configs[`${project}/${env}/${found.key}`];
+  if (cfg === undefined || env === undefined)
+    return problem(res, 404, "not_found", "No such route.");
   if (verb === undefined && method === "GET") return send(res, 200, cfg);
-  if (verb === "toggle" && method === "POST") return toggle(ctx, cfg);
+  if (verb === undefined && method === "PUT") {
+    return reply(res, putConfig({ project, flag: found, env }, cfg, await readBody(req)));
+  }
+  if (verb === "toggle" && method === "POST") return toggle(ctx, found.key, env, cfg);
   return problem(res, 404, "not_found", "No such route.");
 }
 
-/** `.../flags/<flag>/...`: archive, read a config, toggle. */
+function onFlagRead({ res, project }: Ctx, found: Flag, action: string | undefined) {
+  if (action === undefined) return send(res, 200, found);
+  if (action === "history") return reply(res, historyOf(project, found.key));
+  if (action === "usage") return reply(res, usageOf(project, found.key));
+  return problem(res, 404, "not_found", "No such route.");
+}
+
+/** `.../flags/<flag>/...`: read, patch, archive, history, usage, and the per-environment configs. */
 async function onFlag(ctx: Ctx, rest: string[]) {
   const { req, res, project } = ctx;
   const [key, action, ...more] = rest;
   const found = activeFlags(project).find((f) => f.key === key);
   if (found === undefined) return problem(res, 404, "flag_not_found", `No flag ${key}.`);
-  if (action === "archive" && req.method === "POST") {
+  const method = req.method ?? "GET";
+  if (action === undefined && method === "PATCH") {
+    return reply(res, patchFlag(project, found, await readBody(req)));
+  }
+  if (action === "archive" && method === "POST") {
     found.archivedAt = "2026-11-05T08:00:00Z";
     return send(res, 200, found);
   }
-  if (action === "environments") return onConfig(ctx, found.key, more);
-  return problem(res, 404, "not_found", "No such route.");
+  if (action === "environments") return onConfig(ctx, found, more);
+  return onFlagRead(ctx, found, action);
 }
 
 function onFlags(ctx: Ctx, rest: string[]) {
@@ -230,7 +158,7 @@ function onProject(ctx: Ctx, rest: string[]) {
   const { res, project } = ctx;
   const [kind, ...more] = rest;
   if (kind === "environments" && more.length === 0) {
-    return send(res, 200, data.environments[project] ?? []);
+    return send(res, 200, db.data.environments[project] ?? []);
   }
   if (kind === "flags") return onFlags(ctx, more);
   return problem(res, 404, "not_found", "No such route.");
@@ -240,26 +168,36 @@ function onProject(ctx: Ctx, rest: string[]) {
 async function api(req: IncomingMessage, res: ServerResponse, segments: string[]) {
   const [projects, project, ...rest] = segments;
   if (projects !== "projects") return problem(res, 404, "not_found", "No such route.");
-  if (project === undefined) return send(res, 200, data.projects);
-  if (!data.projects.some((p) => p.key === project)) {
+  if (project === undefined) return send(res, 200, db.data.projects);
+  if (!db.data.projects.some((p) => p.key === project)) {
     return problem(res, 404, "project_not_found", `No project ${project}.`);
   }
   return onProject({ req, res, project }, rest);
 }
 
+/** `POST /__bump/<project>/<env>/<flag>`: someone else saved that config, so its version moves on. */
+function bump(res: ServerResponse, path: string) {
+  const [, , project = "", env = "", key = ""] = path.split("/");
+  const cfg = db.data.configs[`${project}/${env}/${key}`];
+  if (cfg === undefined) return problem(res, 404, "not_found", "No such config.");
+  cfg.version += 1;
+  record({ project, flag: key, action: "config.updated", env, version: cfg.version });
+  return send(res, 200, cfg);
+}
+
 createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://fake");
   if (url.pathname === "/__reset") {
-    data = fixture();
-    down = false;
+    reset();
     return send(res, 200, { ok: true });
   }
+  if (url.pathname.startsWith("/__bump/")) return bump(res, url.pathname);
   if (url.pathname === "/__down") {
-    down = true;
+    db.down = true;
     return send(res, 200, { ok: true });
   }
   if (url.pathname === "/health") return send(res, 200, { status: "ok" });
-  if (down) {
+  if (db.down) {
     req.socket.destroy();
     return;
   }

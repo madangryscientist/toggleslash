@@ -4,123 +4,24 @@
  * makes TanStack Start's import protection fail the build if a client module ever imports it.
  */
 import { isRecord, str, strings, type Json } from "./json.ts";
+import {
+  ApiFailure,
+  apiPath,
+  list,
+  makeCall,
+  type Connection,
+  type Fetch,
+  type Call,
+} from "./http.server.ts";
+import { createDetailApi } from "./detail.server.ts";
 import type { Environment, FlagRow, NewFlag, Project } from "./types.ts";
 
-/** `fetch`, narrowed to what the client calls, so a test can pass a fake server. */
-export type Fetch = (input: string, init: RequestInit) => Promise<Response>;
+export { ApiFailure, apiPath };
+export type { Connection, Fetch };
+export type { FlagPatch } from "./detail.server.ts";
 
-export interface Connection {
-  url: string;
-  token: string;
-}
-
-/** A call that did not give the dashboard what it needed. `kind` picks the page; `message` never has the token. */
-export class ApiFailure extends Error {
-  readonly kind: "unreachable" | "unauthorized" | "error";
-  readonly status: number | undefined;
-  constructor(kind: "unreachable" | "unauthorized" | "error", message: string, status?: number) {
-    super(message);
-    this.name = "ApiFailure";
-    this.kind = kind;
-    this.status = status;
-  }
-}
-
-const TIMEOUT_MS = 10_000;
 /** How many per-flag config reads run at once: the list is N+1 until the server has a bulk read. */
 const CONFIG_CONCURRENCY = 8;
-
-/** `/api/v1/projects/p/flags`: each segment is encoded, so a key can never climb out of its place in the path. */
-export function apiPath(...segments: string[]): string {
-  return `/api/v1/${segments.map(encodeURIComponent).join("/")}`;
-}
-
-/** The server's `{ "error": { "code", "message" } }` as `code: message`, or nothing when the body is not that. */
-function errorDetail(text: string): string | undefined {
-  try {
-    const parsed: unknown = JSON.parse(text);
-    const error = isRecord(parsed) ? parsed["error"] : undefined;
-    if (isRecord(error) && typeof error["message"] === "string") {
-      return typeof error["code"] === "string"
-        ? `${error["code"]}: ${error["message"]}`
-        : error["message"];
-    }
-  } catch {
-    // Not JSON: the status line is all there is to say.
-  }
-  return undefined;
-}
-
-interface Answer {
-  status: number;
-  text: string;
-}
-
-interface Outgoing {
-  method: string;
-  path: string;
-  body: unknown;
-}
-
-async function send(
-  connection: Connection,
-  doFetch: Fetch,
-  { method, path, body }: Outgoing,
-): Promise<Answer> {
-  try {
-    const response = await doFetch(`${connection.url}${path}`, {
-      method,
-      headers: {
-        authorization: `Bearer ${connection.token}`,
-        accept: "application/json",
-        ...(body === undefined ? {} : { "content-type": "application/json" }),
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      // A redirect could carry the token somewhere else; the server does not redirect.
-      redirect: "manual",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    return { status: response.status, text: await response.text() };
-  } catch (error) {
-    const why = error instanceof Error ? error.message : "unknown error";
-    throw new ApiFailure("unreachable", `Could not reach ${connection.url}: ${why}`);
-  }
-}
-
-/** Throws the failure a non-2xx answer stands for. */
-function check({ status, text }: Answer): void {
-  if (status === 401 || status === 403) {
-    throw new ApiFailure(
-      "unauthorized",
-      `The server rejected the admin token (${status}).`,
-      status,
-    );
-  }
-  const detail = errorDetail(text);
-  if (status >= 500 && detail === undefined) {
-    throw new ApiFailure("unreachable", `The server answered ${status}.`, status);
-  }
-  if (status < 200 || status >= 300) {
-    throw new ApiFailure("error", detail ?? `The server answered ${status}.`, status);
-  }
-}
-
-function parseBody({ status, text }: Answer): unknown {
-  if (text === "") return null;
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new ApiFailure("error", `The server answered ${status} with a body that is not JSON.`);
-  }
-}
-
-type Call = (method: string, path: string, body?: unknown) => Promise<unknown>;
-
-async function list(call: Call, path: string): Promise<Json[]> {
-  const body = await call("GET", path);
-  if (!Array.isArray(body)) throw new ApiFailure("error", "The server's answer was not a list.");
-  return body.filter(isRecord);
-}
 
 interface FlagConfig {
   on: boolean;
@@ -180,13 +81,10 @@ export interface ToggleRequest {
 }
 
 export function createAdminApi(connection: Connection, doFetch: Fetch) {
-  const call: Call = async (method, path, body) => {
-    const answer = await send(connection, doFetch, { method, path, body });
-    check(answer);
-    return parseBody(answer);
-  };
+  const call = makeCall(connection, doFetch);
 
   return {
+    ...createDetailApi(call),
     async projects(): Promise<Project[]> {
       return (await list(call, apiPath("projects"))).map((p) => ({
         key: str(p["key"]),

@@ -235,7 +235,7 @@ environment in `src/api/env.server.ts` and nowhere else. `.server.ts` files are 
 Start's import protection, a unit test scans the source for the token, and an e2e test scans every
 script the browser loads. The token never reaches the browser.
 
-The page is one route, `/`, with the project and environment in the search (`?project=shop&env=staging`),
+The list is the route `/`, with the project and environment in the search (`?project=shop&env=staging`),
 so a view can be linked. It shows the project's active flags with key, name, tags, temporary, on or off
 in the chosen environment and last evaluated; search runs in the browser over the loaded list. Toggle,
 create (boolean flags only) and archive (no restore) are server functions that call the admin API; a
@@ -243,6 +243,29 @@ toggle sends the version the page read, so a flag that moved on answers 409 and 
 reloads. The server being down, unconfigured or rejecting the token is a page of its own with a retry,
 not a crash. There is no login yet: the dashboard holds the admin token for whoever can reach it, so it
 must not be routed publicly before sign-in exists.
+
+### Flag detail
+
+`/flags/$flag?project=&env=` is the detail page; the list links to it. One server function
+(`loadFlagDetail`) reads the flag, its config in the chosen environment, the project's other flags (for
+prerequisites), the newest history (`GET .../history`) and the usage (`GET .../usage`) together. The page
+has three parts:
+
+- **Details**: name, description, owner, tags and temporary, saved with `PATCH`.
+- **Targeting** (per environment): on or off, the off variation, individual targets (one box of context
+  keys per variation), prerequisites, rules (clauses of attribute, operator and values, each serving a
+  variation or a rollout) and the fallthrough. The editor works on a *draft* of strings (`src/targeting`,
+  pure and unit-tested), so a half-typed percentage is never lost, and sends the whole config with
+  `PUT`, since the server replaces the config as a whole. Rollouts are typed as percents, to three
+  decimals (the wire weights sum to 100000); a zero entry is not sent. Clause values are comma-separated
+  text: a bare `12` or `true` is a number or boolean and `"12"` is the string.
+- **History and usage**: read-only, from the audit and usage endpoints.
+
+The `PUT` carries the version the page read. A stale one answers 409: the page says someone else changed
+the flag, discards the draft and loads the latest. A 400 from the server's validation is shown at the
+field: the server's messages open with the path to the field (`rules[0].rollout ...`), and the editor
+matches that opening to its inputs; one with no path shows as a message above the form. A percentage that
+is not a number is caught in the browser first.
 
 The flag list reads each flag's configuration for the environment (eight at a time) because the API
 has no bulk read of per-environment state. The D1 placeholder table in `apps/web` stays and stays unused.

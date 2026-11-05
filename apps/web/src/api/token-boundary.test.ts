@@ -14,8 +14,14 @@ function walk(dir: string): string[] {
 const files = walk(SRC).map((path) => relative(SRC, path));
 
 describe("the admin token stays on the server", () => {
-  test("only the two .server.ts files and the server-function file touch the connection", () => {
-    const allowed = new Set(["api/client.server.ts", "api/env.server.ts", "api/dashboard.ts"]);
+  test("only the .server.ts api files and the server-function file touch the connection", () => {
+    const allowed = new Set([
+      "api/client.server.ts",
+      "api/detail.server.ts",
+      "api/env.server.ts",
+      "api/http.server.ts",
+      "api/dashboard.ts",
+    ]);
     const touching = files.filter((file) => {
       if (!/\.(ts|tsx)$/.test(file) || /\.test\.|routeTree\.gen/.test(file)) return false;
       const text = readFileSync(join(SRC, file), "utf8");
@@ -39,9 +45,11 @@ describe("the admin token stays on the server", () => {
         /\.(ts|tsx)$/.test(file) &&
         !/\.test\./.test(file) &&
         /\[?["']?FEATURESLASH_ADMIN_TOKEN/.test(readFileSync(join(SRC, file), "utf8")) &&
-        !file.startsWith("routes/"),
+        !file.startsWith("routes/") &&
+        file !== "components/Shell.tsx",
     );
-    // routes/ is exempt here: it is checked above never to import a `.server` file.
+    // routes/ and the Shell's page copy are exempt here: they name the variable in help text (never a
+    // value), and the test above checks they never import a `.server` file.
     // env.server.ts reads it; client.server.ts names it in its "is not set" message.
     expect(readers.toSorted()).toEqual(["api/client.server.ts", "api/env.server.ts"]);
   });
