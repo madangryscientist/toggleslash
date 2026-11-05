@@ -4,6 +4,7 @@ using FeatureSlash.Server.Audit;
 using FeatureSlash.Server.Auth;
 using FeatureSlash.Server.Catalogue;
 using FeatureSlash.Server.Data;
+using FeatureSlash.Server.Hardening;
 using FeatureSlash.Server.Limits;
 using FeatureSlash.Server.Sdk;
 using FeatureSlash.Server.Targeting;
@@ -13,6 +14,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddServerDatabase();
 builder.Services.AddServerAuth();
 builder.Services.AddRateLimits();
+builder.AddRequestLimits();
 // This middleware names an unlisted proxy's address at Debug, and no client IP goes in a log at any level.
 builder.Logging.AddFilter("Microsoft.AspNetCore.HttpOverrides", LogLevel.None);
 builder.Services.AddServerOpenApi();
@@ -25,9 +27,10 @@ builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.N
 builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
 var app = builder.Build();
 
-// Before the migration, so a bad limit or proxy list stops the server without touching the database. Trusted
-// proxies go first in the pipeline, so everything after them sees the client's address.
+// Before the migration, so a bad limit or proxy list stops the server without touching the database. Headers go
+// first, so every answer below carries them; trusted proxies next, so everything after sees the client's address.
 _ = app.Services.GetRequiredService<RequestLimiter>();
+app.UseSecurityHeaders();
 app.UseTrustedProxies();
 
 app.Services.MigrateServerDatabase();
@@ -39,6 +42,10 @@ app.UseExceptionHandler(new ExceptionHandlerOptions
         ApiError.Write(context, StatusCodes.Status500InternalServerError, "internal_server_error", "Internal Server Error"),
 });
 app.UseStatusCodePages(context => ApiError.WriteForStatus(context.HttpContext));
+// Routing runs first without being asked (a WebApplication puts UseRouting at the start of the pipeline), so the
+// endpoint is known here and a route's own timeout, or its opt-out, is read. Inside the exception handler, so the
+// cancellation a timeout causes is the timeout's to answer and never a 500.
+app.UseRequestTimeouts();
 // Before authentication, so a preflight (which carries no token) is answered and a 401 still carries the CORS headers.
 app.UseCors();
 app.UseAuthentication();

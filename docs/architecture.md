@@ -65,7 +65,8 @@ is not an SDK key, and neither kind of key passes for the other. (`sdk-key` is n
 it is the policy of a route that takes a server or a client key.) All three credentials go through one
 authentication scheme, so **401** means the token is missing, malformed, wrong or revoked and **403**
 means it is valid but not for this route. A 401 does not say which of those it was. **429** means a limit,
-[below](#rate-limits).
+[below](#rate-limits). **413** is a body over 1 MiB (128 KiB on `events`), and **504** (`request_timeout`) a request
+that ran past 30 seconds; both are in [`self-hosting.md`](self-hosting.md#headers-body-size-and-timeouts).
 
 Every error body has one shape, from the framework's own 404 and 405 to an unhandled 500:
 
@@ -94,6 +95,25 @@ shared store. Defaults, variables and proxies are in [`self-hosting.md`](self-ho
 
 Each answer is a `429` with `Retry-After` in whole seconds, rounded up, and the one error shape. A refused stream has no
 refill to compute, so it always says 30 seconds. `Retry-After` is exposed to browsers on the two CORS routes.
+
+## Response headers, body size and timeouts
+
+`Hardening/SecurityHeaders.cs` is the first middleware in the pipeline. It sets its headers in `Response.OnStarting`,
+not before `next`, so an exception handler that clears the response, a `401` from the authentication challenge, a `413`
+from Kestrel's body cap and the open stream all still carry them. It never writes a CORS header and never touches the
+ruleset's `ETag`. `Hardening/RequestLimits.cs` holds the Kestrel limits (a 1 MiB body, 30 s for headers, 2 minutes of
+keep-alive) and the request timeout policy (30 s, answered in the error shape). `UseRequestTimeouts` runs after the
+routing `WebApplication` puts first, because it reads each endpoint's metadata, and `GET /sdk/v1/stream` opts out with
+`DisableRequestTimeout`. A test holds that the stream is the only route that does, and another that exactly `evaluate`
+and `events` carry CORS.
+
+The dashboard does the same in `apps/web/src/server.ts` (`src/api/security-headers.server.ts`): one wrapper around
+the gate and TanStack Start's handler, so a redirect and the gate's own answers are covered. The nonce is made per
+request and handed to TanStack Start in the start context (`handler.fetch(request, { context })`); `getRouter` reads it
+with `getGlobalStartContext()`, passes it as `ssr.nonce`, and TanStack writes it on every inline script and style it
+renders. No `unsafe-inline` is needed.
+Static files are answered by the Workers assets layer before the Worker runs, so `apps/web/public/_headers` gives them
+`nosniff` and `no-referrer`; they keep their own caching.
 
 ## Admin API and OpenAPI
 

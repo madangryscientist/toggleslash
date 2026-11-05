@@ -76,7 +76,9 @@ public static class SdkEndpoints
             .WithSummary("Server-Sent Events: a `connected` event, then a `changed` event per change, each carrying the ruleset's ETag; a comment every 25 seconds.")
             .Produces<string>(StatusCodes.Status200OK, "text/event-stream")
             .Produces<ApiError>(StatusCodes.Status401Unauthorized)
-            .Produces<ApiError>(StatusCodes.Status403Forbidden);
+            .Produces<ApiError>(StatusCodes.Status403Forbidden)
+            // A stream is open for hours and says nothing between changes; no request timeout may end it.
+            .DisableRequestTimeout();
         // CORS on this route and events only: the ruleset holds salts and every rule, and no browser should read it.
         routes.MapPost(EvaluatePath, Evaluate)
             .RequireAuthorization(ServerAuth.SdkKeyPolicy)
