@@ -1368,8 +1368,15 @@
       "name": "Observability",
       "description": "Session replay, errors, logs, traces, metrics and alerts.",
       "featureslash": {
-        "status": "no",
-        "evidence": []
+        "status": "partial",
+        "evidence": [
+          "path:packages/sdk-otel",
+          "doc:docs/tracing.md",
+          "test:packages/sdk-otel/test/hooks.test.ts",
+          "test:packages/sdk/test/hooks.test.ts",
+          "test:packages/e2e/test/tracing.test.ts"
+        ],
+        "note": "Only traces: an SDK hook puts each evaluation and the ruleset hash on the active OpenTelemetry span, and the hash answers on the lookup route. No session replay, error tracking, metrics or alerts."
       },
       "competitors": {
         "launchdarkly": "yes",

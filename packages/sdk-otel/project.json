@@ -1,0 +1,16 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "sdk-otel",
+  "sourceRoot": "packages/sdk-otel/src",
+  "projectType": "library",
+  "targets": {
+    "typecheck": { "command": "tsc -p packages/sdk-otel/tsconfig.json" },
+    "lint": {
+      "command": "oxlint --type-aware --deny-warnings packages/sdk-otel && bun scripts/check-slop.ts packages/sdk-otel"
+    },
+    "test": {
+      "command": "bun --bun vitest run",
+      "options": { "cwd": "packages/sdk-otel" }
+    }
+  }
+}

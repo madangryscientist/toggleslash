@@ -20,7 +20,7 @@ await client.close(); // stops the loops and sends the last usage counts
 ## Guarantees
 
 - **It never throws at a caller.** `createClient`, `ready`, `status`, `variation`, `variationDetail` and `close` do not
-  throw or reject, whatever the server, the network, the context or an `onError` hook does. A failure comes back
+  throw or reject, whatever the server, the network, the context, an `onError` hook or an evaluation hook does. A failure comes back
   as the caller's fallback with an `ERROR` reason (`variationDetail`), or goes to `onError`.
 - **It never blocks a request path.** `variation` is synchronous and reads memory. `ready()` is for a startup
   that wants to wait; it settles after the first attempt (bounded by `requestTimeoutMs`), not when the server
@@ -76,6 +76,30 @@ the counts for the next flush; any other `4xx` drops them, since the server woul
 After a `429` with a valid `Retry-After` (capped at 5 minutes) no flush sends anything until it has passed. `close()` does not wait it
 out and does not ignore it: counts still held back then are lost, and `onError` says so.
 
+## Hooks
+
+`hooks.afterEvaluation` is called synchronously after every `variation` and `variationDetail`, a fallback included,
+with what the caller is about to get:
+
+```ts
+createClient({
+  url, sdkKey,
+  hooks: {
+    afterEvaluation: ({ flagKey, context, value, variationIndex, reason, etag, flagVersion }) => {},
+  },
+});
+```
+
+- `value`, `variationIndex` and `reason` are what `variationDetail` returns (`variationIndex` is `null` for a
+  fallback). `etag` is the ETag of the ruleset held at that evaluation, quoted as the server sent it: the same string
+  as `status().etag` at that moment, or `null` before the first load. `flagVersion` is the flag's `version` in that
+  ruleset, or `null` when the flag is not in it or is malformed.
+- **A hook never reaches the caller.** An error it throws, or a promise it rejects, goes to `onError`; the caller gets
+  the same answer, and the evaluation is counted, with or without a hook. A hook that is not a function is ignored.
+- The event holds the `context` the caller passed, so what a hook does with it is the application's decision. The SDK
+  sends none of it anywhere. It takes no OpenTelemetry dependency; [`tracing.md`](tracing.md) describes the package
+  that puts the result and the ruleset hash on a span.
+
 ## Options
 
 | Option | Default | |
@@ -85,6 +109,7 @@ out and does not ignore it: counts still held back then are lost, and `onError` 
 | `pollIntervalMs` | 30000 | poll cadence, and the cap on the stream's reconnect backoff |
 | `flushIntervalMs` | 30000 | usage flush cadence |
 | `requestTimeoutMs` | 10000 | per request, body included, so no single request outlasts it (`close()` waits for at most the in-flight flush and the final one) |
+| `hooks` | none | `{ afterEvaluation }`, see [Hooks](#hooks) |
 | `onError` | ignore | called with each failure; it may throw, and it is ignored if it does |
 | `fetch`, `clock`, `random` | the platform's | injected by the tests |
 

@@ -7,6 +7,8 @@ export {
   type ClientOptions,
   createClient,
   type DetailReason,
+  type EvaluationEvent,
+  type Hooks,
   type SdkErrorCode,
   type VariationDetail,
 } from "./client.ts";

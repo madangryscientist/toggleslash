@@ -96,8 +96,12 @@
       "version": "0.0.0",
       "dependencies": {
         "@hackcove/featureslash-sdk": "workspace:*",
+        "@hackcove/featureslash-sdk-otel": "workspace:*",
+        "@opentelemetry/api": "1.9.1",
       },
       "devDependencies": {
+        "@opentelemetry/context-async-hooks": "2.12.0",
+        "@opentelemetry/sdk-trace-base": "2.12.0",
         "@playwright/test": "1.64.1",
         "@types/bun": "1.4.4",
         "vitest": "5.0.5",
@@ -118,6 +122,20 @@
         "@hackcove/featureslash-engine": "workspace:*",
       },
       "devDependencies": {
+        "@types/bun": "1.4.4",
+        "vitest": "5.0.5",
+      },
+    },
+    "packages/sdk-otel": {
+      "name": "@hackcove/featureslash-sdk-otel",
+      "version": "0.0.0",
+      "dependencies": {
+        "@hackcove/featureslash-sdk": "workspace:*",
+        "@opentelemetry/api": "1.9.1",
+      },
+      "devDependencies": {
+        "@opentelemetry/context-async-hooks": "2.12.0",
+        "@opentelemetry/sdk-trace-base": "2.12.0",
         "@types/bun": "1.4.4",
         "vitest": "5.0.5",
       },
@@ -256,6 +274,8 @@
 
     "@hackcove/featureslash-sdk": ["@hackcove/featureslash-sdk@workspace:packages/sdk"],
 
+    "@hackcove/featureslash-sdk-otel": ["@hackcove/featureslash-sdk-otel@workspace:packages/sdk-otel"],
+
     "@hackcove/theme-catppuccin-mocha": ["@hackcove/theme-catppuccin-mocha@0.3.0", "", { "peerDependencies": { "tailwindcss": "^4" } }, "sha512-YpPQvSfjqKP2ojfXSQJeyrJvOk+uWQuayySQlXORWDerdNscR+LMUCyHl+gyN1FPDWaDI5wtJut13ohmi1hiWQ=="],
 
     "@hackcove/ui-react": ["@hackcove/ui-react@0.8.0", "", { "dependencies": { "@internationalized/date": "^3.12.4", "react-aria-components": "^1.22.1" }, "peerDependencies": { "@types/react": ">=18", "@types/react-dom": ">=18", "react": ">=18", "react-dom": ">=18", "tailwindcss": "^4" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-aWRhlCHXjFZuty/zMths7O8DUrIiT3Y1+/xsi9Dk9JM8v4d74GtGVIbvceY3g/T5t/4z/cjuFde9NAbrMISjxw=="],
@@ -365,6 +385,20 @@
     "@oozcitak/url": ["@oozcitak/url@3.0.0", "", { "dependencies": { "@oozcitak/infra": "^2.0.2", "@oozcitak/util": "^10.0.0" } }, "sha512-ZKfET8Ak1wsLAiLWNfFkZc/BraDccuTJKR6svTYc7sVjbR+Iu0vtXdiDMY4o6jaFl5TW2TlS7jbLl4VovtAJWQ=="],
 
     "@oozcitak/util": ["@oozcitak/util@10.0.0", "", {}, "sha512-hAX0pT/73190NLqBPPWSdBVGtbY6VOhWYK3qqHqtXQ1gK7kS2yz4+ivsN07hpJ6I3aeMtKP6J6npsEKOAzuTLA=="],
+
+    "@opentelemetry/api": ["@opentelemetry/api@1.9.1", "", {}, "sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q=="],
+
+    "@opentelemetry/context-async-hooks": ["@opentelemetry/context-async-hooks@2.12.0", "", { "peerDependencies": { "@opentelemetry/api": ">=1.0.0 <1.10.0" } }, "sha512-iK/1nD7mmZVkuYjVjkdFBiCvzntJdFny1S3CYbUYyOq7V5enL6XX+gJ7eh965L1LnS11VA8mQ7Ej/ck04SB0MQ=="],
+
+    "@opentelemetry/core": ["@opentelemetry/core@2.12.0", "", { "dependencies": { "@opentelemetry/semantic-conventions": "^1.29.0" }, "peerDependencies": { "@opentelemetry/api": ">=1.0.0 <1.10.0" } }, "sha512-1HsSAuvT4/my0QrXWsyXFdWjKaPeCHsismKZgEEIb8NK13LP6DrMRlsUbvD/0F9mDWK3xDom9AMv3IscxgOnOQ=="],
+
+    "@opentelemetry/resources": ["@opentelemetry/resources@2.12.0", "", { "dependencies": { "@opentelemetry/core": "2.12.0", "@opentelemetry/semantic-conventions": "^1.29.0" }, "peerDependencies": { "@opentelemetry/api": ">=1.3.0 <1.10.0" } }, "sha512-+rSRoOdln6NhXTVcBdHSlZxJDNzwxadeweK2ltZO3tVtfp6aklABc06xclDk6ovRR+EiGgIcSbh/6NgjFhnb3A=="],
+
+    "@opentelemetry/sdk-trace": ["@opentelemetry/sdk-trace@2.12.0", "", { "dependencies": { "@opentelemetry/core": "2.12.0", "@opentelemetry/resources": "2.12.0", "@opentelemetry/semantic-conventions": "^1.29.0" }, "peerDependencies": { "@opentelemetry/api": ">=1.3.0 <1.10.0" } }, "sha512-ImVuRQ6faOsTi1Wna88s2avgrrf/iDgXPigIeynkUhjstMuoQUDOJXgkez2j1mlU4btjXcXBGa+q7qKFYR3GsA=="],
+
+    "@opentelemetry/sdk-trace-base": ["@opentelemetry/sdk-trace-base@2.12.0", "", { "dependencies": { "@opentelemetry/core": "2.12.0", "@opentelemetry/resources": "2.12.0", "@opentelemetry/sdk-trace": "2.12.0", "@opentelemetry/semantic-conventions": "^1.29.0" }, "peerDependencies": { "@opentelemetry/api": ">=1.3.0 <1.10.0" } }, "sha512-JOERgZCxRM06FEJ5kEWxlSRChah6MmXDx3KwCruqEv/iEyLkTokCSemf2y1w8oIHtfrr8EVTpzebq/31vn2Cpg=="],
+
+    "@opentelemetry/semantic-conventions": ["@opentelemetry/semantic-conventions@1.44.0", "", {}, "sha512-E3JkOlMBi3N8OGGkbl7tFyqk2MAS6/lySRZBK3Mu7AzjF1fT8oIChH9ChE48SUWzDn9Kdwta+G/p5LJ4xW4CLQ=="],
 
     "@oxc-project/types": ["@oxc-project/types@0.156.0", "", {}, "sha512-1Duyg48TdJNdyhEB8Xn1L36bT9Pv6GUtlKjHxOys8xkaF/rQq3XJE+bAurSK/AgIz5mGFsb77cn9Pb20+WCScw=="],
 
