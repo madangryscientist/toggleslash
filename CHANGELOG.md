@@ -8,6 +8,9 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and ver
 
 ### Added
 
+- Rate limits on the server: evaluate and events per key, wrong credentials per IP and open streams per key, in memory,
+  with `429` and `Retry-After`; the SDK waits out `Retry-After` on the ruleset, the stream and events. See
+  `docs/self-hosting.md`.
 - Self-hosting the server: `apps/server/Dockerfile`, a root `compose.yaml` and `docs/self-hosting.md`; a CI job builds
   the image and brings the stack up (nothing is pushed).
 - CLI commands over the admin API: `config set-url|set-token`, `projects list|create`, `envs list|create`,

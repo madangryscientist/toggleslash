@@ -1247,6 +1247,25 @@
       }
     },
     {
+      "id": "rate-limits",
+      "category": "Operations",
+      "name": "Rate limits",
+      "description": "Per-key limits on evaluation and usage writes, per-IP limits on failed authentication, and a cap on streams per key.",
+      "featureslash": {
+        "status": "yes",
+        "evidence": [
+          "path:apps/server/FeatureSlash.Server/Limits/RequestLimiter.cs",
+          "doc:docs/self-hosting.md",
+          "test:apps/server/FeatureSlash.Server.Tests/RateLimitTests.cs",
+          "test:packages/sdk/test/rate-limit.test.ts"
+        ],
+        "note": "In memory, one process; a restart resets the counts. No per-route admin limits or per-plan quotas. Only LaunchDarkly was read for this row; the other vendors' cells are not assessed."
+      },
+      "competitors": {
+        "launchdarkly": "yes"
+      }
+    },
+    {
       "id": "terraform",
       "category": "Operations",
       "name": "Terraform provider",

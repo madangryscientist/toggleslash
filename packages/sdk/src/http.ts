@@ -3,6 +3,20 @@ import { type Clock, startTimer } from "./clock.ts";
 /** `fetch`, narrowed to what the SDK calls, so a test can pass a fake. */
 export type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
+/** However long a server asks, a client is back within this. */
+const MAX_RETRY_AFTER_MS = 300_000;
+
+/**
+ * How long a 429 asks to wait, capped. Null for any other answer, and for a `Retry-After` that is missing
+ * or is not whole seconds (the server never sends a date), which leaves the caller's usual backoff in charge.
+ */
+export function retryAfterMs(response: Response): number | null {
+  if (response.status !== 429) return null;
+  const header = response.headers.get("Retry-After")?.trim() ?? "";
+  if (!/^\d+$/.test(header)) return null;
+  return Math.min(Number(header) * 1000, MAX_RETRY_AFTER_MS);
+}
+
 /** An `AbortController` that also aborts when `parent` does. Call `dispose` when done with it. */
 export function linkedController(parent: AbortSignal | undefined): {
   controller: AbortController;

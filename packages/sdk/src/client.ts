@@ -159,7 +159,7 @@ class FeatureSlashClient implements Client {
     this.flushLoop.abort();
     await Promise.all([this.loop, this.flushing]);
     this.firstLoad.resolve(false);
-    await this.usage.flush();
+    await this.usage.finish();
   }
 }
 

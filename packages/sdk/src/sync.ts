@@ -1,6 +1,6 @@
 import { createRuleset, type Ruleset } from "@hackcove/featureslash-engine";
 import { type Clock, startTimer } from "./clock.ts";
-import { type Fetch, linkedController, withTimeout } from "./http.ts";
+import { type Fetch, linkedController, retryAfterMs, withTimeout } from "./http.ts";
 import { SseParser } from "./sse.ts";
 
 export interface SyncOptions {
@@ -37,6 +37,8 @@ function hasRulesetShape(body: unknown): boolean {
 export class RulesetSync {
   private ruleset: Ruleset | null = null;
   private etag: string | null = null;
+  /** The server's 429 asked for nothing to reach it before this time. */
+  private retryAt = 0;
   private readonly lifetime = new AbortController();
 
   constructor(private readonly options: SyncOptions) {}
@@ -55,13 +57,29 @@ export class RulesetSync {
     onFirstLoad();
     let failures = 0;
     while (!this.lifetime.signal.aborted) {
+      // A 429 on the ruleset says wait, and without this the stream would be asked straight after it.
+      if (this.options.stream) await this.sleep(0);
+      if (this.lifetime.signal.aborted) return;
       const connected = this.options.stream ? await this.follow() : false;
       failures = connected ? 0 : failures + 1;
-      await this.options.clock.sleep(this.delay(failures), this.lifetime.signal);
+      await this.sleep(this.delay(failures));
       // Sleep first: the ruleset was only just loaded, or the stream only just failed. A stream that was
       // up needs no poll, since reconnecting announces the tag and catches up on its own.
       if (!connected && !this.lifetime.signal.aborted) await this.refresh();
     }
+  }
+
+  /** Sleeps for `ms`, or until the server's `Retry-After` has passed if that is later. */
+  private async sleep(ms: number): Promise<void> {
+    const { clock } = this.options;
+    const wait = Math.max(ms, this.retryAt - clock.now());
+    if (wait > 0) await clock.sleep(wait, this.lifetime.signal);
+  }
+
+  /** Remembers what a 429 asked for; a shorter answer never shortens a longer wait. */
+  private honourRetryAfter(response: Response): void {
+    const wait = retryAfterMs(response);
+    if (wait !== null) this.retryAt = Math.max(this.retryAt, this.options.clock.now() + wait);
   }
 
   /** Exponential from a second up to the poll interval, jittered; with no stream, just the interval. */
@@ -85,6 +103,7 @@ export class RulesetSync {
           return;
         }
         if (response.status !== 200) {
+          this.honourRetryAfter(response);
           await response.body?.cancel();
           throw new Error(`GET /sdk/v1/ruleset answered ${response.status}`);
         }
@@ -117,6 +136,7 @@ export class RulesetSync {
         signal: controller.signal,
       });
       if (response.status !== 200 || response.body === null) {
+        this.honourRetryAfter(response);
         await response.body?.cancel();
         throw new Error(`GET /sdk/v1/stream answered ${response.status}`);
       }

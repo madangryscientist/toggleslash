@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using FeatureSlash.Evaluation;
 using FeatureSlash.Server.Auth;
 using FeatureSlash.Server.Catalogue;
+using FeatureSlash.Server.Limits;
 using FeatureSlash.Server.Usage;
 using Microsoft.Net.Http.Headers;
 
@@ -52,6 +53,8 @@ public static class SdkEndpoints
             .AllowAnyOrigin()
             .WithMethods(HttpMethods.Post)
             .WithHeaders(HeaderNames.Authorization, HeaderNames.ContentType)
+            // Without this a browser's script cannot read how long a 429 asks it to wait.
+            .WithExposedHeaders(HeaderNames.RetryAfter)
             .SetPreflightMaxAge(TimeSpan.FromMinutes(10))));
         return services;
     }
@@ -78,6 +81,7 @@ public static class SdkEndpoints
         routes.MapPost(EvaluatePath, Evaluate)
             .RequireAuthorization(ServerAuth.SdkKeyPolicy)
             .RequireCors(ClientCors)
+            .LimitedPerKey(KeyLimit.Evaluate)
             .WithTags("SDK")
             .WithName("evaluate")
             .Produces<EvaluateResponse>()

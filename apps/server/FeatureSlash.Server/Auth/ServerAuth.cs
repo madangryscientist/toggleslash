@@ -38,6 +38,11 @@ public static class ServerAuth
     public static string? AdminToken(IConfiguration configuration) =>
         string.IsNullOrWhiteSpace(configuration[AdminTokenSetting]) ? null : configuration[AdminTokenSetting];
 
+    /// <summary>This is an admin route, and no admin token is configured: the request gets a 503 whatever it sent.</summary>
+    public static bool AdminIsOffFor(IConfiguration configuration, HttpContext context) =>
+        AdminToken(configuration) is null
+        && context.GetEndpoint()?.Metadata.GetOrderedMetadata<IAuthorizeData>().Any(d => d.Policy == AdminPolicy) == true;
+
     public static IServiceCollection AddServerAuth(this IServiceCollection services)
     {
         services.AddAuthentication(Scheme)
@@ -57,7 +62,7 @@ public static class ServerAuth
         private readonly AuthorizationMiddlewareResultHandler standard = new();
 
         public Task HandleAsync(RequestDelegate next, HttpContext context, AuthorizationPolicy policy, PolicyAuthorizationResult authorizeResult) =>
-            AdminToken(configuration) is null && context.GetEndpoint()?.Metadata.GetOrderedMetadata<IAuthorizeData>().Any(d => d.Policy == AdminPolicy) == true
+            AdminIsOffFor(configuration, context)
                 ? ApiError.Write(context, StatusCodes.Status503ServiceUnavailable, "admin_token_unset", $"The admin API is off: {AdminTokenSetting} is not set on the server.")
                 : standard.HandleAsync(next, context, policy, authorizeResult);
     }

@@ -1,6 +1,7 @@
 using System.Text;
 using FeatureSlash.Server.Auth;
 using FeatureSlash.Server.Data;
+using FeatureSlash.Server.Limits;
 using Microsoft.EntityFrameworkCore;
 
 namespace FeatureSlash.Server.Sdk;
@@ -28,10 +29,18 @@ internal static class RulesetStream
         RulesetNotifier notifier,
         StreamHeartbeat heartbeat,
         IServiceScopeFactory scopes,
-        IHostApplicationLifetime lifetime)
+        IHostApplicationLifetime lifetime,
+        RequestLimiter limiter)
     {
         var environmentId = ServerAuth.EnvironmentId(http.User);
         var keyId = ServerAuth.KeyId(http.User);
+        // A using, so the slot comes back on every way out: the client leaving, an error, the host stopping.
+        using var slot = limiter.TryOpenStream(keyId);
+        if (slot is null)
+        {
+            await RateLimiting.Write(http, RequestLimiter.StreamRetryAfterSeconds, "This key has too many streams open.");
+            return;
+        }
         // The host waits for open requests when it stops, so a stream has to end on the stopping signal too.
         using var ending = CancellationTokenSource.CreateLinkedTokenSource(http.RequestAborted, lifetime.ApplicationStopping);
         var cancellation = ending.Token;

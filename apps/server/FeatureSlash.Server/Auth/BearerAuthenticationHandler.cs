@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
 using FeatureSlash.Server.Data;
+using FeatureSlash.Server.Limits;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
@@ -20,8 +21,12 @@ public sealed class BearerAuthenticationHandler(
     ILoggerFactory logger,
     UrlEncoder encoder,
     IConfiguration configuration,
-    FeatureSlashDbContext database) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+    FeatureSlashDbContext database,
+    RequestLimiter limiter) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
+    /// <summary>Set when this request's IP is locked out: the challenge is then a 429, not a 401.</summary>
+    private long? lockedOutForSeconds;
+
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var header = Request.Headers.Authorization;
@@ -31,8 +36,23 @@ public sealed class BearerAuthenticationHandler(
             return AuthenticateResult.NoResult();
         }
 
+        // Answered 503 whatever was sent (see ServerAuth), so nothing is checked and nothing counts as a failure.
+        if (ServerAuth.AdminIsOffFor(configuration, Context))
+        {
+            return AuthenticateResult.NoResult();
+        }
+
+        // Before any check, so that a right guess from a locked-out IP looks the same as a wrong one.
+        var ip = RateLimiting.ClientAddress(Context);
+        if (limiter.IsLockedOut(ip, out var retryAfter))
+        {
+            lockedOutForSeconds = retryAfter;
+            return AuthenticateResult.Fail("This address has sent too many wrong credentials.");
+        }
+
         if (header.ToString().Split(' ') is not [var scheme, { Length: > 0 } token] || !scheme.Equals("Bearer", StringComparison.OrdinalIgnoreCase))
         {
+            limiter.RecordAuthFailure(ip);
             return AuthenticateResult.Fail("The Authorization header is not a bearer token.");
         }
 
@@ -46,6 +66,7 @@ public sealed class BearerAuthenticationHandler(
             .SingleOrDefaultAsync(k => k.Hash == hash && k.RevokedAt == null, Context.RequestAborted);
         if (key is null)
         {
+            limiter.RecordAuthFailure(ip);
             return AuthenticateResult.Fail("The token is not a valid admin token or a live SDK key.");
         }
 
@@ -57,6 +78,10 @@ public sealed class BearerAuthenticationHandler(
 
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)
     {
+        if (lockedOutForSeconds is { } seconds)
+        {
+            return RateLimiting.Write(Context, seconds, "This address has sent too many wrong credentials.");
+        }
         Response.Headers.WWWAuthenticate = "Bearer";
         return ApiError.Write(Context, StatusCodes.Status401Unauthorized, "unauthorized", "Send a valid token as Authorization: Bearer <token>.");
     }
