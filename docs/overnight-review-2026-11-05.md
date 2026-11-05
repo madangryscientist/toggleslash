@@ -1,6 +1,117 @@
 # FeatureSlash overnight review, 2026-11-05
 
-MORNING SUMMARY goes here when the queue is done. The run is in progress until it does.
+## MORNING SUMMARY
+
+**The whole queue landed: 23 tickets through PRs #3 to #27, none of them merged red.** FeatureSlash now has a C# server, a TypeScript engine and SDK, a CLI, a dashboard and a container build. Nothing was published, deployed or sent externally, and the repo is still private.
+
+**Three things to know first:**
+
+- The dashboard has no login and holds the admin token, so it must not be reachable publicly.
+- The dashboard pages still need your feel-review.
+- Docker has never run on this machine, only in CI.
+
+### ✅ Shipped
+
+Every ticket passed my gate on its PR head, then CI, unless noted under ⚠. Test counts are from when the ticket landed.
+
+| Ticket | What | PR, commit | Result |
+| --- | --- | --- | --- |
+| FS-1, FS-4, FS-3 | shared package store, stale AGENTS.md line, root scripts | #3 `9f85aa2`, #4 `d3a978b`, #5 `dd6a9ad` | gate, CI |
+| FS-6 | C# server skeleton, Nx, CI, architecture doc | #6 `c81cc75` | 2 server tests |
+| FS-25 (added) | e2e ports collided with PixelSlash | #7 `bc6d4cb` | gate, CI |
+| FS-7 | evaluation spec, shared vectors, TS engine | #9 `d3cdf11` | engine 316, 294 vectors |
+| FS-8 | C# evaluator | #10 `544fa9e` | 310 cases |
+| FS-9 | EF Core on SQLite | #11 `dc4cb4c` | server 11 |
+| FS-10 | admin token and hashed SDK keys | #12 `f75c603` | server 39 |
+| FS-11 | admin API: projects, environments, flags | #13 `b815f65` | server 137 |
+| FS-12 | targeting, segments, optimistic concurrency | #14 `3b14029` | server 275 |
+| FS-13 | audit trail | #15 `e79e538` | server 311 |
+| FS-14 | SDK ruleset and evaluate | #16 `86b1cee` | server 586 |
+| FS-15 | live updates over SSE | #17 `595417a` | server 607, run twice |
+| FS-16 | usage counts | #18 `f885e90` | server 664 |
+| FS-17 | TS server SDK | #19 `77a003f` | sdk 43 |
+| FS-26 (added) | site build cache outputs | #20 `b102761` | full gate |
+| FS-18 | CLI | #21 `a39550d` | full gate |
+| FS-19 | dashboard: flag list, toggle, create, archive | #22 `47e14ba` | full gate, ui-review |
+| FS-20 | dashboard: flag detail, targeting editor | #23 `dc6ef5e` | full gate, ui-review |
+| FS-21 | dashboard: environments, keys, segments, audit | #24 `ff8ce39` | full gate, ui-review |
+| FS-22 | Dockerfile, compose, self-hosting guide | #25 `7436970` | full gate, CI container job |
+| FS-23 | cross-language e2e | #26 `59e37c0` | e2e 6 of 6, three runs by me |
+| FS-24 | README, quickstart, API overview | #27 `80a68be` | full gate, CI 5 of 5 |
+
+### ⚠ Review these
+
+Most consequential first. Any ticket can be undone with `git revert <commit>`; the notes below give a narrower fix where one exists.
+
+**Security and exposure**
+
+1. **The dashboard has no login (FS-19, FS-20, FS-21).** Anyone who can reach it acts with the admin token, including writing targeting. It is safe on your own machine and unsafe on a public route. Fix: add sign-in or put an access layer in front before any route exists.
+2. **There is no rate limiting anywhere (FS-10, FS-14, FS-16).** There is one shared admin token. A client key can read evaluations for any context from any origin, and can inflate usage counts. Fix: a rate-limiting ticket before public exposure.
+3. **Masking only covers secrets of 8 or more characters (FS-18).** A shorter token would print unmasked. Fix: lengthen the threshold or refuse short tokens.
+
+**Proof that is thinner than the rest**
+
+4. **Docker has never run on this machine (FS-22).** `jacobus` is not in the `docker` group and sudo needs a password, so I did not work around it. CI proved the build, compose up, `/health`, restart and backup. The commands to run it locally are under ⛔.
+5. **FS-15's mutation check did not run, and no test covers the real 25-second heartbeat.** I read the tests instead. Fix: run the mutation check or add a slow test.
+6. **FS-17 landed without a clean run of my gate script.** A cached-build bug hid the site steps. They passed with the cache skipped and in CI, and FS-26 fixed the bug.
+7. **I did not rerun the quickstart (FS-24).** The builder ran it from a clean state, but added the step-2 token `echo` afterwards. FS-23's e2e covers the same server, CLI and SDK path, but not the doc's exact commands.
+8. **Skeptical review was weaker than planned.** Kimi and Luna are paused because the opencode-go account is out of funds, and FS-19's pass ran on a free glm model after Opus hit its limit. FS-11 had no skeptical review. Consider rereading FS-19 and FS-11.
+
+**Server design that will matter later**
+
+9. **The server assumes one process per database (FS-12, FS-15).** `TargetingLock` and the SSE stream don't work across processes. Fix: a shared lock and fan-out before running more than one.
+10. **Segment PUT is last-write-wins (FS-12), and FS-20 throws away unsaved edits on a 409.** Two editors can overwrite each other on segments. On flags, the loser loses their typing. Fix: versioned segments, and keep the edits on conflict.
+11. **Spec choices worth a look:** how `negate` treats a missing attribute (FS-7), `JsonElement` input (FS-8), and null variations being narrower than the spec (FS-11). Evaluation changes must update the spec, the vectors and both evaluators together.
+12. **Smaller server costs:**
+    - The tag filter runs in memory (FS-11).
+    - OpenAPI marks `offVariation` required though the server tolerates its absence (FS-12).
+    - No-op writes still add audit rows (FS-13).
+    - The ruleset is hashed per request, even for a 304 (FS-14).
+    - `evaluate` takes the SQLite write lock per call (FS-16).
+    - SDK backoff resets on connect (FS-17).
+    - The compose volume name is shared across checkouts (FS-22).
+
+**Dashboard and CLI gaps**
+
+13. **The flag list makes one request per flag (FS-19).** FS-27 is the fix and is open.
+14. **Dashboard scope is narrow:**
+    - Create makes booleans only, and archive has no restore button (FS-19).
+    - Clause values use a typed syntax (FS-20).
+    - Segment rules are raw JSON, with no segment create or delete (FS-21).
+    - Environments are list and create only (FS-21).
+15. **The CLI has no targeting or segment commands (FS-23).** Without the dashboard, those need direct admin API calls.
+16. **Docs nit:** a missing full stop after `started with)` in `docs/getting-started.md` (FS-24). I logged it rather than holding the land.
+
+**Added by me**
+
+17. **FS-18 kept three unrequested additions, and I added FS-25 and FS-26 to the queue.** Details are in the decision log.
+
+### ⛔ Skipped / needs you
+
+- **Feel-review of FS-19, FS-20 and FS-21.** They work mechanically; I can't judge how they feel. See `docs/getting-started.md` for how to run the dashboard.
+- **Docker access.** Run `sudo usermod -aG docker jacobus`, log in again, then:
+  ```bash
+  docker build -f apps/server/Dockerfile -t featureslash-server:local .
+  FEATURESLASH_ADMIN_TOKEN=local-test docker compose up -d --no-build --wait
+  curl http://127.0.0.1:8080/health
+  docker compose down -v
+  ```
+- **When the repo goes public (your decision).** Three things assume it already is: the site footer links to the private repo, `SECURITY.md` says "The code is public", and it points to GitHub private vulnerability reporting. Decide whether to change them now or leave them for launch.
+- **FS-2 (smoke test layer, held).** Its accounts and D1 scope no longer fits, because the C# server owns that data. It needs re-scoping or closing. The D1 binding in `apps/web` is still an unused placeholder.
+- **FS-27 (bulk flag state endpoint).** Filed by the FS-19 builder and not in tonight's queue, so not dispatched.
+- **Dependabot #8 is open and unmerged, as instructed.** #1 no longer needs a decision: Dependabot closed it itself, and #8 is the current bump.
+- **FS-15's builder thread is still unsettled, with a pending prompt. Do not approve it.** It would run a `sed` edit in the old `featureslash.fs-15` worktree. It settles by itself in 3 days.
+- **Tooling:** `.opencode/` is missing and `ob project wire featureslash` hasn't run. The on-PATH `ob` reads `~/dev/omnibus`, which was 12 commits behind origin when I checked at the start of the night, so `ob project rules featureslash` printed nothing.
+- **Human steps still waiting:** domain, Cloudflare, D1, npm publish and image push.
+
+### ▶️ Next actions
+
+1. Feel-review the dashboard (FS-19, FS-20, FS-21) and turn your notes into tickets.
+2. Follow `docs/quickstart.md` once yourself. It is the quickest check of the whole product.
+3. Grant Docker access and run the local commands above.
+4. Decide what comes before any public route: dashboard sign-in and rate limiting are my recommendation.
+5. Dispatch FS-27, re-scope or close FS-2, and gate and merge Dependabot #8.
+6. Decide when the repo goes public, then fix the footer link and `SECURITY.md` to match.
 
 ## Queue
 
@@ -31,7 +142,7 @@ One builder at a time, in this order. FS-2 is held and not in the queue.
 | 19 | FS-21 | medium | operator pages (feel-review) | ✅ PR #24, full gate and CI green; needs your feel-review (#24, ff8ce39) |
 | 20 | FS-22 | medium (raised) | Dockerfile and compose, local only | ✅ PR #25, full gate and CI green; docker run proven in CI only, not locally (#25, 7436970) |
 | 21 | FS-23 | medium | cross-language e2e | ✅ PR #26, full gate, e2e target 6/6 three times, CI green (#26, 59e37c0) |
-| 22 | FS-24 | simple | README and quickstart | full gate, CI 5/5; quickstart run by builder (#27, 80a68be) |
+| 22 | FS-24 | simple | README and quickstart | ✅ PR #27, full gate and CI 5 of 5; quickstart run by the builder, not rerun by me (#27, 80a68be) |
 
 ## Decision log
 
@@ -177,3 +288,10 @@ Each entry: what · why · ⚠ if unsure · how to undo.
 - **What:** the test lives in `packages/e2e` under `test:e2e`, not `test`, with its own CI job. No dotnet prints a skip line; with `CI` set a missing SDK fails. **Why:** it builds .NET and spawns processes. **Undo:** `packages/e2e/project.json`.
 - **What:** targeting and segments are written through the admin API in this test, because the CLI has no command for them. **⚠** the CLI cannot yet set targeting or segments, a gap for anyone without the dashboard. **Undo:** a follow-up ticket.
 - **What:** I ran the new target myself three times (6 of 6, not skipped, no process left), since my gate script covers only the web and site e2e. The builder found no integration bug, so nothing was fixed or ticketed.
+
+### FS-24 choices (docs)
+
+- **What:** landed with the quickstart verified by the builder only. I read every doc, checked `docs/api.md` against the OpenAPI routes and checked the relative links, but did not rerun the quickstart. **Why:** FS-23's e2e covers the same server, CLI and SDK path. **⚠** the step-2 token `echo` was added after the builder's run, and nothing runs the doc's exact commands. **Undo:** follow the quickstart once; fix what differs.
+- **What:** one typo left in `docs/getting-started.md` (no full stop after `started with)`). **Why:** not worth another builder cycle on the last ticket. **Undo:** a one-character fix.
+- **What:** the builder left the footer's repo link and the "code is public" lines in `SECURITY.md` alone. **Why:** when the repo goes public is your decision, not a copy fix. **Undo:** edit both once you decide.
+- **What:** at the end of the run Dependabot #1 was already closed, by Dependabot, as superseded; the handover expected it open. OB-1775, open when I oriented, is now done. Neither needed anything from me.
