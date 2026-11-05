@@ -23,6 +23,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The shared vectors are read the same way here as by the evaluator's own tests. -->
+    <Compile Include="../FeatureSlash.Evaluation.Tests/Fixtures.cs" Link="Fixtures.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 

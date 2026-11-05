@@ -4,12 +4,14 @@ using FeatureSlash.Server.Audit;
 using FeatureSlash.Server.Auth;
 using FeatureSlash.Server.Catalogue;
 using FeatureSlash.Server.Data;
+using FeatureSlash.Server.Sdk;
 using FeatureSlash.Server.Targeting;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddServerDatabase();
 builder.Services.AddServerAuth();
 builder.Services.AddServerOpenApi();
+builder.Services.AddSdkApi();
 builder.Services.AddSingleton<TargetingLock>();
 // A number is a JSON number: "1" for an index is a 400, and the OpenAPI document says integer, not "integer or string".
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.NumberHandling = JsonNumberHandling.Strict);
@@ -26,6 +28,8 @@ app.UseExceptionHandler(new ExceptionHandlerOptions
         ApiError.Write(context, StatusCodes.Status500InternalServerError, "internal_server_error", "Internal Server Error"),
 });
 app.UseStatusCodePages(context => ApiError.WriteForStatus(context.HttpContext));
+// Before authentication, so a preflight (which carries no token) is answered and a 401 still carries the CORS headers.
+app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -39,6 +43,7 @@ app.MapApiKeyEndpoints();
 app.MapConfigEndpoints();
 app.MapSegmentEndpoints();
 app.MapAuditEndpoints();
+app.MapSdkEndpoints();
 
 app.Run();
 

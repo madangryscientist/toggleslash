@@ -12,6 +12,9 @@ public static class ServerAuth
     public const string ServerKeyPolicy = "server-key";
     public const string ClientKeyPolicy = "client-key";
 
+    /// <summary>Either kind of SDK key, and nothing else: not the admin token.</summary>
+    public const string SdkKeyPolicy = "sdk-key";
+
     /// <summary>Who the bearer is: one of the three policy names.</summary>
     public const string PrincipalClaim = "featureslash:principal";
 
@@ -19,6 +22,10 @@ public static class ServerAuth
     public const string EnvironmentClaim = "featureslash:environment";
 
     private const string Scheme = "bearer";
+
+    /// <summary>The environment an authenticated SDK key belongs to.</summary>
+    public static long EnvironmentId(System.Security.Claims.ClaimsPrincipal user) =>
+        long.Parse(user.FindFirst(EnvironmentClaim)!.Value, System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>Null when the variable is unset or blank. The server never makes one up.</summary>
     public static string? AdminToken(IConfiguration configuration) =>
@@ -32,7 +39,8 @@ public static class ServerAuth
         services.AddAuthorizationBuilder()
             .AddPolicy(AdminPolicy, policy => policy.RequireClaim(PrincipalClaim, AdminPolicy))
             .AddPolicy(ServerKeyPolicy, policy => policy.RequireClaim(PrincipalClaim, ServerKeyPolicy))
-            .AddPolicy(ClientKeyPolicy, policy => policy.RequireClaim(PrincipalClaim, ClientKeyPolicy));
+            .AddPolicy(ClientKeyPolicy, policy => policy.RequireClaim(PrincipalClaim, ClientKeyPolicy))
+            .AddPolicy(SdkKeyPolicy, policy => policy.RequireClaim(PrincipalClaim, ServerKeyPolicy, ClientKeyPolicy));
         return services;
     }
 

@@ -20,7 +20,8 @@ public static class OpenApiSetup
                 {
                     Title = "FeatureSlash API",
                     Version = "v1",
-                    Description = "The FeatureSlash server's admin API. Every route under /api/v1 takes `Authorization: Bearer <admin token>`.",
+                    Description = "The FeatureSlash server's admin API and SDK read API. Every route under /api/v1 takes `Authorization: Bearer <admin token>`. " +
+                        "GET /sdk/v1/ruleset takes a server SDK key; POST /sdk/v1/evaluate takes a server or a client SDK key.",
                 };
                 // MapOpenApi fills this from the request's host, so the same server would give a different file per caller.
                 document.Servers = null;
@@ -30,16 +31,16 @@ public static class OpenApiSetup
                 {
                     Type = SecuritySchemeType.Http,
                     Scheme = "bearer",
-                    Description = "The admin token, which the server reads from FEATURESLASH_ADMIN_TOKEN.",
+                    Description = "The admin token (read from FEATURESLASH_ADMIN_TOKEN) on /api/v1, or an SDK key on /sdk/v1.",
                 };
                 return Task.CompletedTask;
             });
             options.AddOperationTransformer((operation, context, _) =>
             {
-                var admin = context.Description.ActionDescriptor.EndpointMetadata
+                var gated = context.Description.ActionDescriptor.EndpointMetadata
                     .OfType<IAuthorizeData>()
-                    .Any(data => data.Policy == ServerAuth.AdminPolicy);
-                if (admin)
+                    .Any(data => data.Policy is ServerAuth.AdminPolicy or ServerAuth.ServerKeyPolicy or ServerAuth.SdkKeyPolicy);
+                if (gated)
                 {
                     operation.Security ??= [];
                     operation.Security.Add(new OpenApiSecurityRequirement

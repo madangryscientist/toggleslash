@@ -9,8 +9,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 /// <summary>
-/// The real server on a temp database, with one environment seeded and two extra routes: nothing real
-/// is gated on the SDK policies until the SDK read API exists, so these stand in for it.
+/// The real server on a temp database, with one environment seeded and two extra routes, each gated on
+/// one SDK policy and nothing else, so the policies are tested on their own. The real SDK routes are in
+/// <c>SdkApiTests</c>.
 /// </summary>
 public sealed class AuthServer : IDisposable
 {

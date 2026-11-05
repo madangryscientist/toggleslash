@@ -2,7 +2,7 @@
   "openapi": "3.1.1",
   "info": {
     "title": "FeatureSlash API",
-    "description": "The FeatureSlash server\u0027s admin API. Every route under /api/v1 takes \u0060Authorization: Bearer \u003Cadmin token\u003E\u0060.",
+    "description": "The FeatureSlash server\u0027s admin API and SDK read API. Every route under /api/v1 takes \u0060Authorization: Bearer \u003Cadmin token\u003E\u0060. GET /sdk/v1/ruleset takes a server SDK key; POST /sdk/v1/evaluate takes a server or a client SDK key.",
     "version": "v1"
   },
   "paths": {
@@ -23,6 +23,129 @@
             }
           }
         }
+      }
+    },
+    "/sdk/v1/ruleset": {
+      "get": {
+        "tags": [
+          "SDK"
+        ],
+        "operationId": "getRuleset",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RulesetResponse"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not Modified"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/sdk/v1/evaluate": {
+      "post": {
+        "tags": [
+          "SDK"
+        ],
+        "operationId": "evaluate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/projects": {
@@ -1960,6 +2083,68 @@
           }
         }
       },
+      "EvaluateRequest": {
+        "required": [
+          "context"
+        ],
+        "type": "object",
+        "properties": {
+          "context": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonElement"
+              }
+            ]
+          },
+          "flagKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "EvaluateResponse": {
+        "required": [
+          "flags"
+        ],
+        "type": "object",
+        "properties": {
+          "flags": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EvaluationResponse"
+            }
+          }
+        }
+      },
+      "EvaluationResponse": {
+        "required": [
+          "value",
+          "variationIndex",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "value": {
+            "$ref": "#/components/schemas/JsonElement"
+          },
+          "variationIndex": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ReasonResponse"
+          }
+        }
+      },
       "FlagResponse": {
         "required": [
           "key",
@@ -2163,6 +2348,145 @@
         },
         "additionalProperties": false
       },
+      "ReasonResponse": {
+        "required": [
+          "kind",
+          "ruleIndex",
+          "flagKey",
+          "code"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "ruleIndex": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "flagKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "code": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "RulesetFlag": {
+        "required": [
+          "key",
+          "variations",
+          "on",
+          "offVariation",
+          "targets",
+          "prerequisites",
+          "rules",
+          "fallthrough",
+          "salt",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "variations": {
+            "$ref": "#/components/schemas/JsonElement"
+          },
+          "on": {
+            "type": "boolean"
+          },
+          "offVariation": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "targets": {
+            "$ref": "#/components/schemas/JsonElement"
+          },
+          "prerequisites": {
+            "$ref": "#/components/schemas/JsonElement"
+          },
+          "rules": {
+            "$ref": "#/components/schemas/JsonElement"
+          },
+          "fallthrough": {
+            "$ref": "#/components/schemas/JsonElement"
+          },
+          "salt": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "RulesetResponse": {
+        "required": [
+          "flags",
+          "segments"
+        ],
+        "type": "object",
+        "properties": {
+          "flags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RulesetFlag"
+            }
+          },
+          "segments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RulesetSegment"
+            }
+          }
+        }
+      },
+      "RulesetSegment": {
+        "required": [
+          "key",
+          "salt",
+          "included",
+          "excluded",
+          "rules"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "salt": {
+            "type": "string"
+          },
+          "included": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "excluded": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rules": {
+            "$ref": "#/components/schemas/JsonElement"
+          }
+        }
+      },
       "SegmentResponse": {
         "required": [
           "key",
@@ -2256,7 +2580,7 @@
     "securitySchemes": {
       "bearer": {
         "type": "http",
-        "description": "The admin token, which the server reads from FEATURESLASH_ADMIN_TOKEN.",
+        "description": "The admin token (read from FEATURESLASH_ADMIN_TOKEN) on /api/v1, or an SDK key on /sdk/v1.",
         "scheme": "bearer"
       }
     }
@@ -2264,6 +2588,9 @@
   "tags": [
     {
       "name": "FeatureSlash.Server"
+    },
+    {
+      "name": "SDK"
     },
     {
       "name": "Projects"

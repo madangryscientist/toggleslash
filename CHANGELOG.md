@@ -12,7 +12,7 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and ver
   dashboard and a marketing site, each with its gate.
 - Flag evaluation in the engine, with its spec (`docs/evaluation.md`) and shared test vectors
   (`fixtures/evaluation/`). The CLI does not use it yet.
-- A C# evaluator (`apps/server/FeatureSlash.Evaluation`) that passes the same vectors. No endpoint uses it yet.
+- A C# evaluator (`apps/server/FeatureSlash.Evaluation`) that passes the same vectors.
 - The server's storage: EF Core on SQLite, migrated at startup.
 - Server auth: the admin token (`FEATURESLASH_ADMIN_TOKEN`), hashed server and client SDK keys per
   environment, and the admin API that creates, lists and revokes them.
@@ -24,3 +24,6 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and ver
 - An audit trail for the server: every admin write records one `audit_events` row in the same transaction
   (when, actor, entity, action, before and after, never a key or its hash), read back with
   `GET /api/v1/projects/{project}/audit` and a flag's `.../history`, filtered and paged by cursor.
+- The SDK read API: `GET /sdk/v1/ruleset` (server key) returns an environment's flags and segments with a strong
+  `ETag` and `304` on `If-None-Match`, and `POST /sdk/v1/evaluate` (server or client key, with CORS) evaluates a
+  context for every flag or one, through the C# evaluator, without exposing rules, targets or segments.
