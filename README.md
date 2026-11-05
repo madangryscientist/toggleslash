@@ -14,7 +14,7 @@ live yet).
 | --- | --- |
 | `packages/engine` | flag evaluation |
 | `fixtures/evaluation` | the language-neutral test vectors every implementation must pass |
-| `packages/cli` | the `featureslash` command |
+| `packages/cli` | the `featureslash` command: manage projects, environments, flags and SDK keys over the admin API |
 | `packages/sdk` | the TypeScript server SDK |
 | `apps/web` | the dashboard: TanStack Start on Cloudflare Workers, D1 via Drizzle |
 | `apps/site` | the marketing and docs site, prerendered |

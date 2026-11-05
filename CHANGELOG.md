@@ -8,6 +8,10 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and ver
 
 ### Added
 
+- CLI commands over the admin API: `config set-url|set-token`, `projects list|create`, `envs list|create`,
+  `flags list|show|create|archive|on|off|history`, `keys create|list|revoke`, with `--json` on reads. The
+  admin token comes from `FEATURESLASH_TOKEN` or a mode-600 file under the XDG config dir and never appears in
+  output. Exit 0 on success, 1 on a server or network failure, 2 on a usage error.
 - The TypeScript server SDK (`packages/sdk`, private): `createClient` with `variation` and `variationDetail`, the
   ruleset with ETags, the stream with reconnect and a polling fallback, local evaluation, batched usage counts
   flushed on `close()`; it never throws at a caller. See `docs/sdk.md`.
