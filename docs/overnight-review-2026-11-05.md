@@ -134,3 +134,8 @@ Each entry: what · why · ⚠ if unsure · how to undo.
 - **Why now:** FS-19 to FS-21 run this gate, and it would be red on each one for a reason unrelated to the work. It first went red gating FS-17; the same head passed with `--skip-nx-cache`, and CI's apps job passed.
 - **⚠** I landed FS-17 on that evidence, not on a clean run of my gate script.
 - **Undo:** revert the outputs line.
+
+### FS-18 choices (CLI)
+
+- **What:** exit 1 is a server or network failure, 2 stays usage. No `--token` flag and `config set-token` reads stdin, so the token stays out of shell history and `ps`. Output goes through a writer that masks a known secret of 8 or more characters. Redirects are refused so the token cannot follow one to another host. **Why:** the ticket asked to pick the exit code and keep the token out of output. **⚠** masking is a backstop only for secrets of 8+ characters; a shorter token would not be masked, though error messages never carry the request. **Undo:** `packages/cli/src/errors.ts`, `command.ts`.
+- **What:** the builder kept three things the ticket did not name: `--url`, `--json` on writes, `flags show --env`. **Why:** `keys create --json` is how a script captures a key shown once. **Undo:** remove from `packages/cli/src/commands/`.
