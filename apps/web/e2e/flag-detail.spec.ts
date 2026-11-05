@@ -119,19 +119,36 @@ test("a percentage that is not a number is caught before it is sent", async ({ p
   await expect(page.getByTestId("config-error")).toBeVisible();
 });
 
-test("a version conflict is shown and the latest config is loaded", async ({ page, request }) => {
+test("a version conflict keeps the typing and says to reload", async ({ page, request }) => {
   await openCheckout(page);
   await page.getByTestId("rule-0-clause-0-values").fill("NL, DE, BE");
   // Someone else saves after this page loaded.
   await request.post(`${API}/__bump/shop/production/checkout-v2`);
   await page.getByTestId("save-targeting").click();
 
-  await expect(page.getByTestId("notice")).toContainText("Someone else changed this flag");
-  await expect(page.getByTestId("notice")).toContainText("not saved");
+  const conflict = page.getByTestId("config-conflict");
+  await expect(conflict).toContainText("Someone else changed this flag");
+  await expect(conflict).toContainText("reload the page");
+  await expect(page.getByTestId("rule-0-clause-0-values")).toHaveValue("NL, DE, BE");
+  await expect(page.getByText("Version 3", { exact: true })).toBeVisible();
+
+  // More typing does not hide the warning, and a details save reloads the page's data without
+  // replacing the editor: the typing stays, and saving it again still refuses.
+  await page.getByTestId("rule-0-clause-0-values").fill("NL, DE, BE, FR");
+  await expect(conflict).toBeVisible();
+  await page.getByTestId("meta-name").fill("Checkout renamed");
+  await page.getByTestId("save-meta").click();
+  await expect(page.getByTestId("notice")).toContainText("details were saved");
+  await expect(page.getByTestId("rule-0-clause-0-values")).toHaveValue("NL, DE, BE, FR");
+  await page.getByTestId("save-targeting").click();
+  await expect(conflict).toBeVisible();
+  await expect(page.getByTestId("rule-0-clause-0-values")).toHaveValue("NL, DE, BE, FR");
+
+  // Reloading is the way out: the latest version, the typing gone, the warning gone.
+  await page.reload();
   await expect(page.getByText("Version 4", { exact: true })).toBeVisible();
-  // The draft was discarded in favour of what the server has.
   await expect(page.getByTestId("rule-0-clause-0-values")).not.toHaveValue(/BE/);
-  await expect(page.getByTestId("save-targeting")).toBeDisabled();
+  await expect(conflict).toBeHidden();
 });
 
 test("edits the flag's details and sees a field error from the server", async ({ page }) => {

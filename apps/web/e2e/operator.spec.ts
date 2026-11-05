@@ -139,6 +139,24 @@ test.describe("SDK keys", () => {
 });
 
 test.describe("segments", () => {
+  test("a version conflict keeps the typing and says to reload", async ({ page, request }) => {
+    await page.goto("/segments?project=shop&env=production");
+    await page.getByTestId("edit-beta-testers").click();
+    await page.locator("#segment-included").fill("alice\ncarol");
+    // Someone else saves after this page loaded.
+    await request.post(`${API}/__bump-segment/shop/production/beta-testers`);
+    await page.getByTestId("save-segment").click();
+
+    await expect(page.getByTestId("segment-error")).toContainText("Someone else changed");
+    await expect(page.getByTestId("segment-error")).toContainText("reload the page");
+    await expect(page.locator("#segment-included")).toHaveValue("alice\ncarol");
+
+    // Reloading is the way out, and what the other editor saved was not overwritten.
+    await page.reload();
+    await page.getByTestId("edit-beta-testers").click();
+    await expect(page.locator("#segment-included")).toHaveValue("someone-else");
+  });
+
   test("lists segments with counts", async ({ page }) => {
     await page.goto("/segments?project=shop&env=production");
     await expect(page.getByTestId("segment-beta-testers")).toContainText("2 contexts");

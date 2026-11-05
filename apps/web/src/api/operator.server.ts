@@ -43,6 +43,7 @@ function toSegment(raw: unknown): Segment {
     included: strings(raw["included"]),
     excluded: strings(raw["excluded"]),
     rules: JSON.stringify(Array.isArray(raw["rules"]) ? raw["rules"] : [], null, 2),
+    version: typeof raw["version"] === "number" ? raw["version"] : 0,
   };
 }
 
@@ -111,12 +112,12 @@ export function createOperatorApi(call: Call) {
       return (await list(call, path)).map(toSegment);
     },
 
-    /** Replaces the segment's members and rules. `rules` is the JSON text the page edited. */
+    /** Replaces the segment's members and rules, if it is still at `version`. `rules` is the parsed JSON the page edited. */
     async putSegment(
       project: string,
       env: string,
       segment: string,
-      body: { included: string[]; excluded: string[]; rules: unknown },
+      body: { included: string[]; excluded: string[]; rules: unknown; version: number },
     ): Promise<Segment> {
       const path = apiPath("projects", project, "environments", env, "segments", segment);
       return toSegment(await call("PUT", path, body));

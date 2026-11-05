@@ -13,9 +13,9 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 
 | Metric | FS | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| ✅ yes | 18 | 61 | 43 | 43 | 41 | 46 | 37 | 37 | 29 |
+| ✅ yes | 19 | 61 | 43 | 43 | 41 | 46 | 37 | 37 | 29 |
 | 🟡 partial | 7 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
-| — no | 38 | 2 | 7 | 5 | 4 | 5 | 5 | 7 | 15 |
+| — no | 37 | 2 | 7 | 5 | 4 | 5 | 5 | 7 | 15 |
 
 ## Matrix
 
@@ -45,7 +45,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Individual targeting | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Rule-based targeting | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Reusable segments | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Segment versioning | — | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | — | — |
+| Segment versioning | ✅ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | — | — |
 | Large or synced segments | — | ✅ | 🟡 | 🟡 | 🟡 | ✅ | 🟡 | 🟡 | — |
 | Prerequisites and dependencies | ✅ | ✅ | ✅ | ✅ | — | ✅ | 🟡 | — | — |
 | Multi-context and context kinds | — | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 |
@@ -145,7 +145,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Individual targeting | ✅ | `api:/api/v1/projects/{project}/flags/{flag}/environments/{env}`<br>`dashboard:/flags/$flag`<br>`doc:docs/evaluation.md` |
 | Rule-based targeting | ✅ | `api:/api/v1/projects/{project}/flags/{flag}/environments/{env}`<br>`dashboard:/flags/$flag`<br>`doc:docs/evaluation.md` |
 | Reusable segments | ✅ | `api:/api/v1/projects/{project}/environments/{env}/segments`<br>`api:/api/v1/projects/{project}/environments/{env}/segments/{segment}`<br>`dashboard:/segments`<br>`doc:docs/evaluation.md` |
-| Segment versioning | — | — |
+| Segment versioning | ✅ | `api:/api/v1/projects/{project}/environments/{env}/segments/{segment}`<br>`dashboard:/segments`<br>`doc:docs/architecture.md` |
 | Large or synced segments | — | — |
 | Prerequisites and dependencies | ✅ | `api:/api/v1/projects/{project}/flags/{flag}/environments/{env}`<br>`doc:docs/evaluation.md` |
 | Multi-context and context kinds | — | — |

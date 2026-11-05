@@ -26,11 +26,15 @@ public sealed class SegmentApiTests : IDisposable
 
     private Task<HttpResponseMessage> RawPost(string path, string json) => Raw(HttpMethod.Post, path, json);
 
-    private async Task<HttpResponseMessage> Raw(HttpMethod method, string path, string json)
+    private async Task<HttpResponseMessage> Raw(HttpMethod method, string path, string json, string? ifMatch = null)
     {
         using var client = server.Server.CreateClient();
         using var request = new HttpRequestMessage(method, path) { Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json") };
         request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", ApiServer.AdminToken);
+        if (ifMatch is not null)
+        {
+            request.Headers.TryAddWithoutValidation("If-Match", ifMatch);
+        }
         return await client.SendAsync(request);
     }
 
@@ -101,13 +105,78 @@ public sealed class SegmentApiTests : IDisposable
         await Seed();
         await ApiServer.Expect(HttpStatusCode.Created, await server.Post(Prod, Segment("beta", ["alice"], ["bob"])));
 
-        var put = await server.Put($"{Prod}/beta", new { included = new[] { "carol" }, excluded = new string[0], rules = new[] { new { clauses = new object[0] } } });
+        var put = await server.Put($"{Prod}/beta", new { included = new[] { "carol" }, excluded = new string[0], rules = new[] { new { clauses = new object[0] } }, version = 1 });
 
         await ApiServer.Expect(HttpStatusCode.OK, put);
         var read = await ApiServer.Json(await server.Get($"{Prod}/beta"));
         Assert.Equal("""["carol"]""", read.GetProperty("included").GetRawText());
         Assert.Equal("[]", read.GetProperty("excluded").GetRawText());
         Assert.Equal("""[{"clauses":[]}]""", read.GetProperty("rules").GetRawText());
+    }
+
+    private static object Members(long? version, params string[] included) =>
+        new { included, excluded = new string[0], rules = new object[0], version };
+
+    private async Task<long> Version(string key = "beta") =>
+        (await ApiServer.Json(await server.Get($"{Prod}/{key}"))).GetProperty("version").GetInt64();
+
+    private List<AuditRow> SegmentUpdates() =>
+        [.. server.AuditRows().Where(r => r.EntityType == "segment" && r.Action == "updated")];
+
+    [Fact]
+    public async Task A_segment_starts_at_version_1_and_a_save_adds_1_and_is_audited()
+    {
+        await Seed();
+
+        var created = await server.Post(Prod, Segment("beta", ["alice"]));
+        Assert.Equal(1, (await ApiServer.Json(created)).GetProperty("version").GetInt64());
+
+        var first = await server.Put($"{Prod}/beta", Members(1, "bob"));
+        await ApiServer.Expect(HttpStatusCode.OK, first);
+        Assert.Equal(2, (await ApiServer.Json(first)).GetProperty("version").GetInt64());
+        Assert.Equal("\"2\"", first.Headers.ETag!.Tag);
+        await ApiServer.Expect(HttpStatusCode.OK, await server.Put($"{Prod}/beta", Members(2, "carol")));
+
+        Assert.Equal(3, await Version());
+        Assert.Equal(
+            [(1L, 2L), (2L, 3L)],
+            SegmentUpdates().Select(r => (JsonDocument.Parse(r.Before!).RootElement.GetProperty("version").GetInt64(), JsonDocument.Parse(r.After!).RootElement.GetProperty("version").GetInt64())));
+        Assert.Contains("carol", SegmentUpdates()[^1].After);
+    }
+
+    [Fact]
+    public async Task Two_concurrent_saves_from_one_version_get_one_save_and_one_409()
+    {
+        await Seed();
+        await ApiServer.Expect(HttpStatusCode.Created, await server.Post(Prod, Segment("beta", ["original"])));
+
+        var responses = await Task.WhenAll(Enumerable.Range(0, 2).Select(i => server.Put($"{Prod}/beta", Members(1, $"writer-{i}"))));
+
+        var winner = Assert.Single(responses, r => r.StatusCode == HttpStatusCode.OK);
+        foreach (var loser in responses.Where(r => r != winner))
+        {
+            await ApiServer.ExpectError(HttpStatusCode.Conflict, "version_conflict", loser);
+        }
+        var read = await ApiServer.Json(await server.Get($"{Prod}/beta"));
+        Assert.Equal(2, read.GetProperty("version").GetInt64());
+        Assert.Equal((await ApiServer.Json(winner)).GetProperty("included").GetRawText(), read.GetProperty("included").GetRawText());
+        Assert.Single(SegmentUpdates());
+    }
+
+    [Fact]
+    public async Task A_put_needs_a_version_in_the_body_or_in_if_match()
+    {
+        await Seed();
+        await ApiServer.Expect(HttpStatusCode.Created, await server.Post(Prod, Segment("beta", ["alice"])));
+        var read = await server.Get($"{Prod}/beta");
+        Assert.Equal("\"1\"", read.Headers.ETag!.Tag);
+        const string Body = """{"included":["bob"],"excluded":[],"rules":[]}""";
+
+        await ExpectBadRequest(await Raw(HttpMethod.Put, $"{Prod}/beta", Body));
+        Assert.Equal(1, await Version());
+
+        await ApiServer.Expect(HttpStatusCode.OK, await Raw(HttpMethod.Put, $"{Prod}/beta", Body, read.Headers.ETag.Tag));
+        Assert.Equal(2, await Version());
     }
 
     public static TheoryData<string> InvalidBodies => new()

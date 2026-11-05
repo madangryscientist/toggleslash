@@ -48,7 +48,7 @@ public sealed class AuditWriteTests : IDisposable
         yield return new("PUT /api/v1/projects/{project}/flags/{flag}/environments/{env}", () => server.Put(Config, ConfigBody(1)), HttpStatusCode.OK, "flag_config", "updated");
         yield return new("POST /api/v1/projects/{project}/flags/{flag}/environments/{env}/toggle", () => server.Post($"{Config}/toggle", new { on = false }), HttpStatusCode.OK, "flag_config", "toggled");
         yield return new("POST /api/v1/projects/{project}/environments/{env}/segments", () => server.Post(Segments, new { key = "beta", included = new[] { "u1" }, excluded = Array.Empty<string>(), rules = Array.Empty<object>() }), HttpStatusCode.Created, "segment", "created");
-        yield return new("PUT /api/v1/projects/{project}/environments/{env}/segments/{segment}", () => server.Put($"{Segments}/beta", new { included = new[] { "u2" }, excluded = Array.Empty<string>(), rules = Array.Empty<object>() }), HttpStatusCode.OK, "segment", "updated");
+        yield return new("PUT /api/v1/projects/{project}/environments/{env}/segments/{segment}", () => server.Put($"{Segments}/beta", new { included = new[] { "u2" }, excluded = Array.Empty<string>(), rules = Array.Empty<object>(), version = 1 }), HttpStatusCode.OK, "segment", "updated");
         yield return new("DELETE /api/v1/projects/{project}/environments/{env}/segments/{segment}", () => server.Delete($"{Segments}/beta"), HttpStatusCode.NoContent, "segment", "deleted");
         yield return new("POST /api/v1/projects/{project}/environments/{env}/keys", async () =>
         {
@@ -227,7 +227,7 @@ public sealed class AuditWriteTests : IDisposable
         }
         await server.Patch(Flag, new { description = "touched" });
         await server.Post($"{Flag}/archive");
-        await server.Put($"{Segments}/beta", new { included = Array.Empty<string>(), excluded = Array.Empty<string>(), rules = Array.Empty<object>() });
+        await server.Put($"{Segments}/beta", new { included = Array.Empty<string>(), excluded = Array.Empty<string>(), rules = Array.Empty<object>(), version = 1 });
         await server.Delete($"{Segments}/beta");
 
         using (var connection = server.OpenDatabase())

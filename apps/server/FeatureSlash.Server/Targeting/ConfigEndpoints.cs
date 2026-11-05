@@ -241,7 +241,7 @@ public static class ConfigEndpoints
     }
 
     /// <summary>The version from <c>If-Match</c> (<c>"3"</c>, <c>W/"3"</c> or <c>3</c>) and/or the body; both must agree.</summary>
-    private static (long? Version, string? Problem) ExpectedVersion(string? ifMatch, long? body)
+    internal static (long? Version, string? Problem) ExpectedVersion(string? ifMatch, long? body)
     {
         long? header = null;
         if (ifMatch is not null)
@@ -250,7 +250,7 @@ public static class ConfigEndpoints
             text = text.StartsWith("W/", StringComparison.Ordinal) ? text[2..] : text;
             if (!long.TryParse(text.Trim('"'), NumberStyles.None, CultureInfo.InvariantCulture, out var parsed))
             {
-                return (null, "If-Match must be the config's version, such as \"3\".");
+                return (null, "If-Match must be the version being replaced, such as \"3\".");
             }
             header = parsed;
         }

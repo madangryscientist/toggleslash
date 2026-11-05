@@ -173,6 +173,7 @@ interface SegmentInput {
   included: string[];
   excluded: string[];
   rules: string;
+  version: number;
 }
 
 function segmentInput(data: unknown): SegmentInput {
@@ -184,6 +185,7 @@ function segmentInput(data: unknown): SegmentInput {
     included: strings(d["included"]),
     excluded: strings(d["excluded"]),
     rules: str(d["rules"]),
+    version: typeof d["version"] === "number" ? d["version"] : 0,
   };
 }
 
@@ -206,6 +208,7 @@ export const saveSegment = createServerFn({ method: "POST" })
         included: data.included,
         excluded: data.excluded,
         rules,
+        version: data.version,
       }),
     );
   });

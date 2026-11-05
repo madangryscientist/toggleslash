@@ -143,6 +143,8 @@ export interface Segment {
   included: string[];
   excluded: string[];
   rules: string;
+  /** What a save sends back, so a stale one is refused. */
+  version: number;
 }
 
 /** One project audit event, as the log lists it. */

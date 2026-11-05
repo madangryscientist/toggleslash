@@ -118,14 +118,12 @@ document the divergence. Do not adopt each language's native regex and call it p
 | Large list-based (≤1M, CSV) | Yes | No |
 | Synced segments | Amplitude, Fivetran/Census, Heap, Hightouch, RudderStack, Tealium, Segment, Zeotap | No |
 | Segment nesting | Not inside a segment (same as ours) | No |
-| Segment versioning | Change history and approvals | None; last `PUT` wins |
+| Segment versioning | Change history and approvals | Compare-and-set on a version; no approvals |
 | Segment size in payload | Big segments delivered separately / evaluated server-side | Whole segment in the ruleset |
 
 Our segment model is sound but local: membership is a list you type, not a list you import or sync.
-The absence of segment versioning is also a correctness gap independent of LaunchDarkly: two editors
-can silently overwrite each other.
 
-**What is left:** segment versions, bulk CSV import, synced segments, and a strategy for large
+**What is left:** bulk CSV import, synced segments, and a strategy for large
 segments that does not bloat every ruleset.
 
 ### 3.4 Rollouts and bucketing
@@ -184,7 +182,7 @@ self-hosted product with multiple SDKs later.
 | --- | --- | --- |
 | Projects / environments | Multiple, unlimited on paid plans, two environments by default | Multiple, no environment edit/delete |
 | Per-environment config | Yes | Yes, versioned compare-and-set |
-| Optimistic concurrency | Yes | Yes for flag config; segments are last-write-wins |
+| Optimistic concurrency | Yes | Yes, for flag config and segments |
 | Archive / restore | Yes | Yes |
 | Permanent delete | Yes, after archive | **No** |
 | Flag status / lifecycle | New, Active, Launched, Inactive; Ready for code removal / Ready to archive | No computed status |
@@ -437,7 +435,6 @@ experienced engineer. They are planning aids, not commitments.
 | OpenFeature provider | Cheap interoperability win | M |
 | Flag status, lifecycle and permanent delete | Users cannot tell what is safe to remove | M |
 | Environment edit/delete | The API and dashboard stop at create | S |
-| Segment versioning | Last-write-wins is a data-loss bug | S |
 | Bulk flag-state endpoint (FS-27) | The list makes one request per flag | S |
 | CLI targeting and segment commands | The CLI stops at flags/keys | M |
 | Dashboard full CRUD (restore, segment create/delete, env edit) | The UI is narrower than the API | M |
@@ -559,7 +556,7 @@ Legend: **Yes** = shipped; **Partial** = some of it; **No** = absent.
 | Projects / environments | Yes | Yes |
 | Environment edit/delete | Yes | No |
 | Per-environment config | Yes | Yes |
-| Optimistic concurrency | Yes | Yes (flags); no (segments, last write wins) |
+| Optimistic concurrency | Yes | Yes (flags and segments) |
 | Archive / restore | Yes | Yes |
 | Permanent delete | Yes | No |
 | Flag status / lifecycle | Yes | No |

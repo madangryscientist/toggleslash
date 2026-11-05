@@ -58,6 +58,8 @@ public sealed partial class FeatureSlashDbContext(DbContextOptions<FeatureSlashD
             segment.HasOne<Project>().WithMany().HasForeignKey(s => s.ProjectId);
             segment.HasOne<ProjectEnvironment>().WithMany().HasForeignKey(s => s.EnvironmentId);
             segment.HasIndex(s => new { s.EnvironmentId, s.Key }).IsUnique();
+            // The default is what segments from before versioning start at.
+            segment.Property(s => s.Version).HasDefaultValue(1L);
         });
 
         modelBuilder.Entity<ApiKey>(key =>

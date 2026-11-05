@@ -1,4 +1,8 @@
+using System.Net;
+using System.Net.Http.Json;
+using FeatureSlash.Server.Auth;
 using FeatureSlash.Server.Data;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -84,8 +88,42 @@ public sealed class StorageTests : IDisposable
         Assert.Equal(Now, flag.CreatedAt);
         var config = stored.FlagEnvironmentConfigs.Single();
         Assert.Equal((true, 7L, "{\"variation\":1}"), (config.On, config.Version, config.Fallthrough));
-        Assert.Equal("[\"u\"]", stored.Segments.Single().Included);
+        var segment = stored.Segments.Single();
+        Assert.Equal(("[\"u\"]", 1L), (segment.Included, segment.Version));
         Assert.Equal("prod", stored.Environments.Single().Key);
+    }
+
+    [Fact]
+    public async Task A_segment_from_before_versioning_reads_and_saves_through_the_api()
+    {
+        var migrations = AllMigrations();
+        var before = migrations[migrations.FindIndex(m => m.EndsWith("_AddSegmentVersion", StringComparison.Ordinal)) - 1];
+        using (var context = Context())
+        {
+            context.GetInfrastructure().GetRequiredService<IMigrator>().Migrate(before);
+        }
+        Execute("""
+            INSERT INTO projects (id, key, name, created_at) VALUES (1, 'shop', 'Shop', '2026-11-05 12:00:00');
+            INSERT INTO environments (id, project_id, key, name, created_at) VALUES (2, 1, 'prod', 'Prod', '2026-11-05 12:00:00');
+            INSERT INTO segments (project_id, environment_id, key, salt, included, excluded, rules)
+                VALUES (1, 2, 'beta', 'kept-salt', '["u"]', '[]', '[]');
+            """);
+
+        using var server = new ServerOn(database.Path, builder => builder.UseSetting(ServerAuth.AdminTokenSetting, ApiServer.AdminToken));
+        using var client = server.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", ApiServer.AdminToken);
+        const string Path = "/api/v1/projects/shop/environments/prod/segments/beta";
+
+        var read = await ApiServer.Json(await client.GetAsync(Path));
+        Assert.Equal("""["u"]""", read.GetProperty("included").GetRawText());
+        Assert.Equal(1, read.GetProperty("version").GetInt64());
+
+        var body = new { included = new[] { "v" }, excluded = Array.Empty<string>(), rules = Array.Empty<object>(), version = 1 };
+        var saved = await client.PutAsJsonAsync(Path, body);
+        await ApiServer.Expect(HttpStatusCode.OK, saved);
+        Assert.Equal(2, (await ApiServer.Json(saved)).GetProperty("version").GetInt64());
+
+        Assert.Equal("kept-salt", Scalar("SELECT salt FROM segments"));
     }
 
     [Fact]

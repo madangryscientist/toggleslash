@@ -165,6 +165,7 @@ public sealed class SdkStreamTests : IDisposable
     public async Task A_failed_write_sends_nothing()
     {
         await Seed();
+        await ApiServer.Expect(HttpStatusCode.Created, await server.Post(ProdSegments, NoMembers("kept")));
         var key = await ServerKey();
         using var stream = await Open(key);
         await stream.NextEvent();
@@ -172,6 +173,8 @@ public sealed class SdkStreamTests : IDisposable
 
         // Refused: the version is stale.
         await ApiServer.Expect(HttpStatusCode.Conflict, await server.Put(Config("dark-mode"), Off(version: 99)));
+        // Refused: the segment's version is stale.
+        await ApiServer.Expect(HttpStatusCode.Conflict, await server.Put($"{ProdSegments}/kept", new { included = Array.Empty<string>(), excluded = Array.Empty<string>(), rules = Array.Empty<object>(), version = 99 }));
         // Refused: the segment is not there.
         await ApiServer.Expect(HttpStatusCode.NotFound, await server.Delete($"{ProdSegments}/nope"));
         // A signal these raised would be taken here, at once: Next only waits when nothing is pending.
@@ -211,7 +214,7 @@ public sealed class SdkStreamTests : IDisposable
             "config" => server.Put(Config("dark-mode"), Off(version)),
             "toggle" => server.Post($"{Config("dark-mode")}/toggle", new { on = true }),
             "segment-create" => server.Post(ProdSegments, NoMembers("fresh")),
-            "segment-put" => server.Put($"{ProdSegments}/kept", NoMembers()),
+            "segment-put" => server.Put($"{ProdSegments}/kept", new { included = Array.Empty<string>(), excluded = Array.Empty<string>(), rules = Array.Empty<object>(), version = 1 }),
             "segment-delete" => server.Delete($"{ProdSegments}/kept"),
             "flag-create" => server.Post(Flags, new { key = "fresh", name = "fresh", variations = new[] { true, false } }),
             "flag-archive" => server.Post($"{Flags}/dark-mode/archive"),
