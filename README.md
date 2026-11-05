@@ -20,6 +20,7 @@ live yet).
 | `apps/site` | the marketing and docs site, prerendered |
 | `apps/server` | the C# server (ASP.NET Core, .NET 10): owns flag data and the API |
 | `apps/server/FeatureSlash.Evaluation` | flag evaluation in C#, to the same spec and vectors as the engine; no endpoint uses it yet |
+| `packages/e2e` | the cross-language end-to-end test: the real server, CLI and SDK on localhost (`bunx nx test:e2e e2e`; needs the .NET SDK) |
 
 ## Develop
 
