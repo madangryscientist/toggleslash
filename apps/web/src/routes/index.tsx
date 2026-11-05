@@ -4,18 +4,10 @@ import { loadDashboard } from "#/api/dashboard";
 import type { Loaded } from "#/api/types";
 import { FlagList } from "#/components/FlagList";
 import { ServerDown, Shell, Switchers } from "#/components/Shell";
-
-interface Search {
-  project?: string | undefined;
-  env?: string | undefined;
-}
-
-function param(value: unknown): string | undefined {
-  return typeof value === "string" && value !== "" ? value : undefined;
-}
+import { param, type ProjectSearch } from "#/routes/-search";
 
 export const Route = createFileRoute("/")({
-  validateSearch: (raw: Record<string, unknown>): Search => ({
+  validateSearch: (raw: Record<string, unknown>): ProjectSearch => ({
     project: param(raw["project"]),
     env: param(raw["env"]),
   }),
@@ -85,7 +77,12 @@ function Dashboard() {
   }
 
   return (
-    <Shell controls={<DashboardSwitchers loaded={loaded} />}>
+    <Shell
+      active="flags"
+      project={loaded.project?.key}
+      env={loaded.environment?.key}
+      controls={<DashboardSwitchers loaded={loaded} />}
+    >
       <Body loaded={loaded} />
     </Shell>
   );

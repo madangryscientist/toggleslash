@@ -39,6 +39,35 @@ export interface AuditEvent {
   after: { version: number } | null;
 }
 
+export interface KeyRow {
+  id: number;
+  kind: "server" | "client";
+  name: string;
+  prefix: string;
+  createdAt: string;
+  revokedAt: string | null;
+}
+
+export interface SegmentRow {
+  key: string;
+  included: string[];
+  excluded: string[];
+  rules: unknown[];
+}
+
+/** A project audit event, as `GET /projects/<p>/audit` returns it. */
+interface ProjectEvent {
+  id: number;
+  occurredAt: string;
+  actor: string;
+  entityType: string;
+  entityId: string;
+  action: string;
+  project: string;
+  environment: string | null;
+  flag: string | null;
+}
+
 export interface Store {
   projects: Named[];
   environments: Record<string, Named[]>;
@@ -47,6 +76,12 @@ export interface Store {
   configs: Record<string, Config>;
   /** `project/flag` -> newest first */
   history: Record<string, AuditEvent[]>;
+  /** `project/env` -> keys, oldest first */
+  keys: Record<string, KeyRow[]>;
+  /** `project/env` -> segments */
+  segments: Record<string, SegmentRow[]>;
+  /** `project` -> newest first */
+  audit: Record<string, ProjectEvent[]>;
 }
 
 interface Seed {
@@ -125,6 +160,26 @@ function event(id: number, action: string, at: string, version: number | null): 
   };
 }
 
+/** Thirty events, one a day through October, so the log has a second page at 25 per page. */
+function shopAudit(): ProjectEvent[] {
+  const events: ProjectEvent[] = [];
+  for (let i = 1; i <= 30; i++) {
+    const flagKey = [null, "dark-mode", "checkout-v2"][i % 3] ?? null;
+    events.push({
+      id: i,
+      occurredAt: `2026-10-${String(i).padStart(2, "0")}T12:00:00Z`,
+      actor: "admin",
+      entityType: flagKey === null ? "environment" : "flag_config",
+      entityId: flagKey ?? "staging",
+      action: flagKey === null ? "environment.created" : "config.updated",
+      project: "shop",
+      environment: i % 2 === 0 ? "production" : "staging",
+      flag: flagKey,
+    });
+  }
+  return events.toReversed();
+}
+
 export function fixture(): Store {
   return {
     projects: [named("shop", "Shop"), named("docs", "Docs")],
@@ -160,6 +215,38 @@ export function fixture(): Store {
       "shop/staging/search-boost": plain(true, 1),
       "docs/live/docs-search": plain(false, 1),
     },
+    keys: {
+      "shop/production": [
+        {
+          id: 1,
+          kind: "server",
+          name: "Backend",
+          prefix: "fs_srv_a1b2c3d4",
+          createdAt: "2026-11-01T09:00:00Z",
+          revokedAt: null,
+        },
+        {
+          id: 2,
+          kind: "client",
+          name: "Old web",
+          prefix: "fs_cli_e5f6a7b8",
+          createdAt: "2026-11-01T09:30:00Z",
+          revokedAt: "2026-11-03T10:00:00Z",
+        },
+      ],
+    },
+    segments: {
+      "shop/production": [
+        {
+          key: "beta-testers",
+          included: ["alice", "bob"],
+          excluded: ["mallory"],
+          rules: [{ clauses: [{ op: "in", attribute: "country", values: ["NL"] }] }],
+        },
+        { key: "staff", included: [], excluded: [], rules: [] },
+      ],
+    },
+    audit: { shop: shopAudit() },
     history: {
       "shop/checkout-v2": [
         event(3, "config.updated", "2026-11-04T10:00:00Z", 3),

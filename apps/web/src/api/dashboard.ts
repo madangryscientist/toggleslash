@@ -3,38 +3,13 @@
  * token; the browser sees only the plain data they return (`types.ts`), never the token or the URL.
  */
 import { createServerFn } from "@tanstack/react-start";
-import { recordOf, str, strings } from "./json.ts";
-import type {
-  DetailLoaded,
-  Failure,
-  FlagDetail,
-  Loaded,
-  MutationResult,
-  NewFlag,
-  SaveResult,
-} from "./types.ts";
+import { recordOf, selection, str, strings } from "./json.ts";
+import type { DetailLoaded, FlagDetail, Loaded, NewFlag, SaveResult } from "./types.ts";
 import type { Config } from "../targeting/model.ts";
 import { wireOf, type Wire } from "../targeting/wire.ts";
-import { ApiFailure, type AdminApi, type FlagPatch } from "./client.server.ts";
+import type { FlagPatch } from "./client.server.ts";
 import { adminApi } from "./env.server.ts";
-
-function failureOf(error: unknown): Failure {
-  if (error instanceof ApiFailure) return { kind: error.kind, message: error.message };
-  return { kind: "error", message: "The dashboard hit an unexpected error." };
-}
-
-interface Selection {
-  project?: string | undefined;
-  env?: string | undefined;
-}
-
-function selection(data: unknown): Selection {
-  const d = recordOf(data);
-  return {
-    project: typeof d["project"] === "string" ? d["project"] : undefined,
-    env: typeof d["env"] === "string" ? d["env"] : undefined,
-  };
-}
+import { failureOf, mutate, save } from "./result.server.ts";
 
 /**
  * Everything the flag list needs for the chosen project and environment (the first of each when none
@@ -66,19 +41,6 @@ export const loadDashboard = createServerFn({ method: "GET" })
       return { ok: false, failure: failureOf(error) };
     }
   });
-
-async function mutate(run: (api: AdminApi) => Promise<void>): Promise<MutationResult> {
-  const made = adminApi();
-  if (!made.ok) return { ok: false, failure: { kind: "unconfigured", message: made.message } };
-  try {
-    await run(made.api);
-    return { ok: true };
-  } catch (error) {
-    const failure = failureOf(error);
-    const conflict = error instanceof ApiFailure && error.status === 409;
-    return conflict ? { ok: false, failure, conflict } : { ok: false, failure };
-  }
-}
 
 interface ToggleInput {
   project: string;
@@ -191,18 +153,6 @@ export const loadFlagDetail = createServerFn({ method: "GET" })
       return { ok: false, failure: failureOf(error) };
     }
   });
-
-async function save<T>(run: (api: AdminApi) => Promise<T>): Promise<SaveResult<T>> {
-  const made = adminApi();
-  if (!made.ok) return { ok: false, failure: { kind: "unconfigured", message: made.message } };
-  try {
-    return { ok: true, saved: await run(made.api) };
-  } catch (error) {
-    const failure = failureOf(error);
-    if (!(error instanceof ApiFailure)) return { ok: false, failure };
-    return { ok: false, failure, detail: error.detail, conflict: error.status === 409 };
-  }
-}
 
 interface MetaInput {
   project: string;

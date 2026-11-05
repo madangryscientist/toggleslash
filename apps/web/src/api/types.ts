@@ -9,6 +9,8 @@ export interface Project {
 export interface Environment {
   key: string;
   name: string;
+  /** ISO 8601, UTC; empty when the server did not say. */
+  createdAt: string;
 }
 
 export interface FlagRow {
@@ -116,3 +118,84 @@ export interface NewFlag {
   temporary: boolean;
   tags: string[];
 }
+
+export type KeyKind = "server" | "client";
+
+/** An SDK key as the server lists it: the prefix identifies it, nothing here can authenticate. */
+export interface ApiKey {
+  id: number;
+  kind: KeyKind;
+  name: string;
+  prefix: string;
+  createdAt: string;
+  /** ISO 8601, or `null` while the key still works. */
+  revokedAt: string | null;
+}
+
+/** The answer to creating a key: the only place the plaintext exists. The page shows it once and drops it. */
+export interface CreatedKey extends ApiKey {
+  plaintext: string;
+}
+
+/** A segment of one environment. `rules` is the JSON text the editor works on. */
+export interface Segment {
+  key: string;
+  included: string[];
+  excluded: string[];
+  rules: string;
+}
+
+/** One project audit event, as the log lists it. */
+export interface AuditEvent {
+  id: number;
+  at: string;
+  actor: string;
+  entityType: string;
+  entityId: string;
+  action: string;
+  environment: string | null;
+  flag: string | null;
+}
+
+export interface AuditPage {
+  events: AuditEvent[];
+  /** Send back for the next page; `null` on the last. */
+  nextCursor: string | null;
+}
+
+/** What the audit log is narrowed to: an empty string is no filter. `since` is `yyyy-mm-dd`. */
+export interface AuditFilters {
+  flag: string;
+  environment: string;
+  since: string;
+}
+
+/** A page that works inside one project, with the environment switcher's state. */
+export type ProjectLoaded =
+  | { ok: false; failure: Failure }
+  | {
+      ok: true;
+      projects: Project[];
+      project: Project | null;
+      environments: Environment[];
+      environment: Environment | null;
+    };
+
+/** A project page whose server call worked. */
+export type ProjectReady = Extract<ProjectLoaded, { ok: true }>;
+
+export type KeysLoaded =
+  | { ok: false; failure: Failure }
+  | (Extract<ProjectLoaded, { ok: true }> & { keys: ApiKey[] });
+
+export type SegmentsLoaded =
+  | { ok: false; failure: Failure }
+  | (Extract<ProjectLoaded, { ok: true }> & { segments: Segment[] });
+
+export type AuditLoaded =
+  | { ok: false; failure: Failure }
+  | (Extract<ProjectLoaded, { ok: true }> & {
+      filters: AuditFilters;
+      cursor: string | null;
+      page: AuditPage;
+    });

@@ -9,6 +9,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 
 import { API_PORT, E2E_ADMIN_TOKEN } from "./constants.ts";
 import { db, flag, plain, reset, type Config, type Flag } from "./fake-data.ts";
+import { auditPage, createEnvironment, onKeys, onSegments } from "./fake-operator.ts";
 import {
   historyOf,
   patchFlag,
@@ -154,25 +155,45 @@ function onFlags(ctx: Ctx, rest: string[]) {
   );
 }
 
-function onProject(ctx: Ctx, rest: string[]) {
-  const { res, project } = ctx;
+/** `.../environments/<env>/keys|segments/...`: the operator routes under one environment. */
+async function onEnvironment({ req, res, project }: Ctx, [env = "", what, ...more]: string[]) {
+  const method = req.method ?? "GET";
+  const body = method === "PUT" || method === "POST" ? await readBody(req) : {};
+  const call = { project, env, method, rest: more, body };
+  if (what === "keys") return reply(res, onKeys(call));
+  if (what === "segments") return reply(res, onSegments(call));
+  return problem(res, 404, "not_found", "No such route.");
+}
+
+async function onProject(ctx: Ctx, rest: string[], query: URLSearchParams) {
+  const { req, res, project } = ctx;
   const [kind, ...more] = rest;
   if (kind === "environments" && more.length === 0) {
+    if (req.method === "POST") {
+      return reply(res, createEnvironment(project, await readBody(req)));
+    }
     return send(res, 200, db.data.environments[project] ?? []);
   }
+  if (kind === "environments") return onEnvironment(ctx, more);
+  if (kind === "audit" && more.length === 0) return reply(res, auditPage(project, query));
   if (kind === "flags") return onFlags(ctx, more);
   return problem(res, 404, "not_found", "No such route.");
 }
 
 /** `segments` are what follows `/api/v1`. */
-async function api(req: IncomingMessage, res: ServerResponse, segments: string[]) {
+async function api(
+  req: IncomingMessage,
+  res: ServerResponse,
+  segments: string[],
+  query: URLSearchParams,
+) {
   const [projects, project, ...rest] = segments;
   if (projects !== "projects") return problem(res, 404, "not_found", "No such route.");
   if (project === undefined) return send(res, 200, db.data.projects);
   if (!db.data.projects.some((p) => p.key === project)) {
     return problem(res, 404, "project_not_found", `No project ${project}.`);
   }
-  return onProject({ req, res, project }, rest);
+  return onProject({ req, res, project }, rest, query);
 }
 
 /** `POST /__bump/<project>/<env>/<flag>`: someone else saved that config, so its version moves on. */
@@ -204,9 +225,11 @@ createServer((req, res) => {
   if (req.headers.authorization !== `Bearer ${E2E_ADMIN_TOKEN}`) {
     return problem(res, 401, "unauthorized", "Missing or wrong admin token.");
   }
-  api(req, res, url.pathname.split("/").slice(3).map(decodeURIComponent)).catch(() => {
-    problem(res, 500, "internal", "The fake API failed.");
-  });
+  api(req, res, url.pathname.split("/").slice(3).map(decodeURIComponent), url.searchParams).catch(
+    () => {
+      problem(res, 500, "internal", "The fake API failed.");
+    },
+  );
 }).listen(API_PORT, "127.0.0.1", () => {
   process.stdout.write(`fake API on http://127.0.0.1:${API_PORT}\n`);
 });

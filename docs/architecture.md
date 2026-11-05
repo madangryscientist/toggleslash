@@ -244,6 +244,26 @@ reloads. The server being down, unconfigured or rejecting the token is a page of
 not a crash. There is no login yet: the dashboard holds the admin token for whoever can reach it, so it
 must not be routed publicly before sign-in exists.
 
+### Environments, SDK keys, segments and the audit log
+
+Four more routes take `?project=&env=` like the list; their server functions are in `src/api/operator.ts`
+and their client calls in `src/api/operator.server.ts`. The nav in the shell moves between them and keeps
+the project and environment.
+
+- **`/environments`**: the project's environments, and create (key and name). The server has no edit or
+  delete for an environment, so the page has none.
+- **`/keys`**: the environment's SDK keys with their prefix, kind and whether revoked. Creating one
+  returns the plaintext once. It is held in the keys panel's component state only: it is not in a
+  loader, the router cache or the URL, so leaving the page, reloading or dismissing the callout removes it,
+  and the server keeps only a hash and the prefix. Revoke asks for a confirm first.
+- **`/segments`**: the environment's segments with member and rule counts; edit replaces a segment's
+  included and excluded contexts (one per line) and its rules. Rules are edited as JSON text: the browser
+  checks only that it is an array, and the server's own validation message is shown for anything else.
+  The ticket asked for list and edit, so the page has no create or delete; the admin API has both.
+- **`/audit`**: the project's audit log, newest first, 25 events a page, filtered by flag, environment and
+  a day (sent as midnight UTC). Paging is by the server's cursor ("Older events", "Back to the newest"),
+  kept in the URL so a view can be linked.
+
 ### Flag detail
 
 `/flags/$flag?project=&env=` is the detail page; the list links to it. One server function

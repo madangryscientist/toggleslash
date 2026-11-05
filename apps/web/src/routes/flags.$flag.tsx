@@ -156,6 +156,9 @@ function FlagDetailPage() {
   }
   return (
     <Shell
+      active="flags"
+      project={loaded.project.key}
+      env={loaded.environment?.key}
       controls={
         <Switchers
           projects={[loaded.project]}
