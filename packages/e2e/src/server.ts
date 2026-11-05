@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { REPO_ROOT } from "./dotnet.ts";
+import { drain } from "./proc.ts";
 
 const CSPROJ = join(
   REPO_ROOT,
@@ -13,13 +14,12 @@ const LISTENING = /Now listening on: (http:\/\/127\.0\.0\.1:\d+)/;
 export interface RunningServer {
   /** `http://127.0.0.1:<port>`, the port the OS picked. */
   url: string;
+  /** Resolves with the exit code when the process ends, whether `stop()` ended it or not. */
+  exited: Promise<number>;
+  /** What it has written to stdout and stderr so far. */
+  log(): string;
   /** Stops the process and waits for it to be gone. Safe to call twice. */
   stop(): Promise<void>;
-}
-
-async function drain(stream: ReadableStream<Uint8Array>, into: (text: string) => void) {
-  const decoder = new TextDecoder();
-  for await (const chunk of stream) into(decoder.decode(chunk, { stream: true }));
 }
 
 async function dotnet(args: string[]): Promise<string> {
@@ -98,7 +98,7 @@ export async function startServer(
   );
   try {
     const url = await listening.promise;
-    return { url, stop };
+    return { url, exited: child.exited, log: () => log, stop };
   } catch (error) {
     await stop();
     throw error;

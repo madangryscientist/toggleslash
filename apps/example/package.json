@@ -1,0 +1,15 @@
+{
+  "name": "@hackcove/featureslash-example",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A fictional shop checkout that uses FeatureSlash through the TypeScript SDK: the example client app.",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@hackcove/featureslash-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.4",
+    "vitest": "5.0.5"
+  }
+}

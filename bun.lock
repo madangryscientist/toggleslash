@@ -15,6 +15,17 @@
         "vitest": "5.0.5",
       },
     },
+    "apps/example": {
+      "name": "@hackcove/featureslash-example",
+      "version": "0.0.0",
+      "dependencies": {
+        "@hackcove/featureslash-sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "1.4.4",
+        "vitest": "5.0.5",
+      },
+    },
     "apps/site": {
       "name": "@featureslash/site",
       "dependencies": {
@@ -239,6 +250,8 @@
     "@hackcove/featureslash-e2e": ["@hackcove/featureslash-e2e@workspace:packages/e2e"],
 
     "@hackcove/featureslash-engine": ["@hackcove/featureslash-engine@workspace:packages/engine"],
+
+    "@hackcove/featureslash-example": ["@hackcove/featureslash-example@workspace:apps/example"],
 
     "@hackcove/featureslash-sdk": ["@hackcove/featureslash-sdk@workspace:packages/sdk"],
 
