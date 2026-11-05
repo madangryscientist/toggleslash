@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../FeatureSlash.Server/FeatureSlash.Server.csproj" />
+    <ProjectReference Include="../FeatureSlash.Evaluation/FeatureSlash.Evaluation.csproj" />
   </ItemGroup>
 
   <ItemGroup>

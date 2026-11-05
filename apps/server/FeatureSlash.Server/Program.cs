@@ -3,11 +3,13 @@ using System.Text.Json.Serialization;
 using FeatureSlash.Server.Auth;
 using FeatureSlash.Server.Catalogue;
 using FeatureSlash.Server.Data;
+using FeatureSlash.Server.Targeting;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddServerDatabase();
 builder.Services.AddServerAuth();
 builder.Services.AddServerOpenApi();
+builder.Services.AddSingleton<TargetingLock>();
 // A number is a JSON number: "1" for an index is a 400, and the OpenAPI document says integer, not "integer or string".
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.NumberHandling = JsonNumberHandling.Strict);
 // An unreadable body is the client's 400 in every environment, not a Development-only exception.
@@ -33,6 +35,8 @@ app.MapProjectEndpoints();
 app.MapEnvironmentEndpoints();
 app.MapFlagEndpoints();
 app.MapApiKeyEndpoints();
+app.MapConfigEndpoints();
+app.MapSegmentEndpoints();
 
 app.Run();
 
