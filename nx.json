@@ -9,7 +9,9 @@
       "{workspaceRoot}/.oxlintrc.json",
       "{workspaceRoot}/scripts/check-slop.ts",
       "{workspaceRoot}/nx.json",
-      "{workspaceRoot}/.tool-versions"
+      "{workspaceRoot}/global.json",
+      "{workspaceRoot}/.tool-versions",
+      "{workspaceRoot}/apps/server/Directory.Build.*"
     ]
   },
   "targetDefaults": {
@@ -28,5 +30,16 @@
   },
   "affected": {
     "legacy": true
-  }
+  },
+  "plugins": [
+    {
+      "plugin": "@nx/dotnet",
+      "options": {
+        "restore": true,
+        "build": {
+          "dependsOn": ["restore", "^build"]
+        }
+      }
+    }
+  ]
 }

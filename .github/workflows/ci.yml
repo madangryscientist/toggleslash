@@ -35,6 +35,10 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
+      # global.json pins the SDK; apps/server is part of the gate. The @nx/dotnet plugin needs it for every nx command.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun run lint
@@ -63,7 +67,7 @@ jobs:
           fi
           # The apps and packages (what they import), plus what decides how they install and run.
           if git diff --name-only "origin/$BASE_REF...HEAD" \
-            | grep -qE '^(apps/|packages/|bun\.lock$|bunfig\.toml$|\.github/workflows/ci\.yml$)'; then
+            | grep -qE '^(apps/(web|site)/|packages/|bun\.lock$|bunfig\.toml$|\.github/workflows/ci\.yml$)'; then
             echo "apps=true" >> "$GITHUB_OUTPUT"
           else
             echo "apps=false" >> "$GITHUB_OUTPUT"
@@ -75,6 +79,9 @@ jobs:
     if: needs.changes.outputs.apps == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # The web and site checks do not touch apps/server (the gate job covers it), so no SDK here.
+      NX_DOTNET_DISABLE: "true"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

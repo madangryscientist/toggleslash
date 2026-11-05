@@ -9,3 +9,5 @@ bun run featureslash --help
 ```
 
 The dashboard (`apps/web`) and the site (`apps/site`) each have a `dev` script: run `bun run dev` in the app's directory.
+
+The C# server (`apps/server`) needs the .NET SDK: `dotnet run --project apps/server/FeatureSlash.Server`, then `GET /health`.

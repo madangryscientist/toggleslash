@@ -5,8 +5,9 @@ engine, manage them from a CLI and a hosted dashboard. The product domain is `fe
 (not registered yet, so nothing is routed to it).
 
 **This repository is a skeleton.** It has the structure, the gate and the CI, and no flag product
-features. The engine exports a name and a version; the dashboard and the site each render one page.
-Flag evaluation, storage and the API arrive as their own tickets.
+features. The engine exports a name and a version; the dashboard and the site each render one page,
+and the C# server answers `GET /health`. Flag evaluation, storage and the API arrive as their own
+tickets. The design they build on is in [`docs/architecture.md`](docs/architecture.md).
 
 This file is the operating agreement for contributors and agents working here: the gate, the landing
 rule and the invariants. Keep it accurate.
@@ -21,7 +22,8 @@ A small Nx workspace on Bun workspaces:
 | `cli` | `packages/cli` | the `featureslash` bin: argv, stdout and exit codes, over `@hackcove/featureslash-engine` |
 | `web` | `apps/web` | the dashboard: TanStack Start on Cloudflare Workers, D1 via Drizzle (one placeholder table) |
 | `site` | `apps/site` | featureslash.dev: TanStack Start on a Worker, every page prerendered; no D1, no secrets |
-| `scripts` | `scripts` | `check-slop.ts`, `test-tmp-scope.ts` (typecheck + lint only) |
+| `server` | `apps/server` | the C# server: ASP.NET Core minimal API on .NET 10 (`FeatureSlash.Server`, xunit in `FeatureSlash.Server.Tests`); owns all flag data and the API |
+| `scripts` | `scripts` | `check-slop.ts`, `test-tmp-scope.ts`, `nx.ts` (typecheck + lint only) |
 
 `bunfig.toml` sets `[install] linker = "isolated"` and `globalStore = true` (the shared package store that
 makes a warm worktree install fast): a package sees its own declared dependencies and the root's, not
@@ -37,17 +39,37 @@ bun run format:check              # oxfmt --check  (`bun run format` fixes)
 bun run test                      # nx run-many -t test  (Vitest under the Bun runtime)
 ```
 
-One project: `bunx nx test engine`, `bunx nx lint cli`. Nx caches in `.nx/`; add `--skip-nx-cache` to
+**The .NET SDK is needed for `apps/server`.** A change to it needs the SDK to be checked. The root
+scripts (`typecheck`, `lint`, `build`, `test`, `test:e2e`) go through `scripts/nx.ts`, which runs
+`dotnet --version` first. Two paths:
+
+- **With a working `dotnet`**: nothing changes. `bun run test` restores, builds and tests
+  `FeatureSlash.Server.Tests` with xunit. The version (10.0.402) is pinned in `.tool-versions` (mise
+  activates it here; `mise install` installs it) and in `global.json` (what `dotnet` itself reads).
+  The first restore fetches NuGet packages, so it needs the network once.
+- **Without one**: the wrapper sets `NX_DOTNET_DISABLE=true` and prints
+  `dotnet SDK not found: skipping apps/server`; the TS projects run as before and the two dotnet
+  projects are not in the graph. Setting `NX_DOTNET_DISABLE` yourself skips the check and the line.
+
+The reason for the wrapper: the `@nx/dotnet` plugin in `nx.json` reads the .NET projects when Nx
+builds its graph, so without an SDK **every** `nx` command fails. A bare `bunx nx ...` skips the
+wrapper, so on a machine without an SDK set `NX_DOTNET_DISABLE=true` yourself. Both `.csproj` files
+set `Nullable`, `TreatWarningsAsErrors` and `InvariantGlobalization`; `apps/server/Directory.Build.props`
+and `.rsp` leave no compiler server or MSBuild node running after a build. `bin/` and `obj/` are
+ignored.
+
+One project: `bunx nx test engine`, `bunx nx lint cli`, `bunx nx test FeatureSlash.Server.Tests`. Nx caches in `.nx/`; add `--skip-nx-cache` to
 force a rerun. There is no Nx Cloud here. Lint rules are all errors; fix the code, do not disable a
 rule. A TODO carries an issue: `TODO(#123)`. Tests live in `packages/*/test/` and
-`apps/*/src/**/*.test.ts` and run with `bun --bun vitest`.
+`apps/*/src/**/*.test.ts` and run with `bun --bun vitest`; the server's tests are xunit, in
+`apps/server/FeatureSlash.Server.Tests`.
 
 A change to `apps/web` or `apps/site` also runs their builds, Playwright and Worker dry-runs (from the
 worktree root). `test:e2e` runs before `build`: web's e2e run leaves its own build behind, and `build` replaces it.
 
 ```bash
 bun run test:e2e                  # nx run-many -t test:e2e  (Playwright: web and site; web builds with the e2e env on a fresh local D1)
-bun run build                     # nx run-many -t build  (every project's build target: web, site, cli)
+bun run build                     # nx run-many -t build  (every project's build target: web, site, cli, and the two C# projects)
 (cd apps/web && bunx wrangler deploy --dry-run --outdir "$TMPDIR/fs-web-dry")
 (cd apps/site && bunx wrangler deploy --dry-run --outdir "$TMPDIR/fs-site-dry")
 ```
@@ -62,7 +84,7 @@ the drizzle migrations. Add a pattern when a new generator appears. `**/*.md` is
 
 **/tmp is a quota'd tmpfs; do not fill it.**
 
-- Every project's test run goes through `scripts/test-tmp-scope.ts` (a Vitest and Playwright
+- Every TypeScript project's test run goes through `scripts/test-tmp-scope.ts` (a Vitest and Playwright
   `globalSetup`): `TMPDIR` is a fresh dir for the run and is removed after it. A new project's
   `vitest.config.ts` must list the same `globalSetup`.
 - `nx.json` sets `"useDaemonProcess": false`; the daemon installs `nx@latest` into `/tmp` and does

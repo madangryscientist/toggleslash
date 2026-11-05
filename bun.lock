@@ -5,6 +5,7 @@
     "": {
       "name": "featureslash-workspace",
       "devDependencies": {
+        "@nx/dotnet": "24.0.1",
         "@types/bun": "1.4.4",
         "nx": "24.0.1",
         "oxfmt": "0.74.0",
@@ -292,6 +293,10 @@
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
     "@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@0.2.4", "", { "dependencies": { "@emnapi/core": "^1.1.0", "@emnapi/runtime": "^1.1.0", "@tybys/wasm-util": "^0.9.0" } }, "sha512-9zESzOO5aDByvhIAsOy9TbpZ0Ur2AJbUI7UT73kcUTS2mxAMHOBaa1st/jAymNoCtvrit99kkzT1FZuXVcgfIQ=="],
+
+    "@nx/devkit": ["@nx/devkit@24.0.1", "", { "dependencies": { "ejs": "5.0.1", "minimatch": "10.2.5", "semver": "^7.6.3", "tslib": "^2.3.0", "yargs-parser": "21.1.1" }, "peerDependencies": { "nx": ">= 23 <= 25 || ^24.0.0-0" } }, "sha512-/mkW5soMCX/dQxJySdTHrgBCl4NkGKByNvXkm7K6e1FCOmCnd3toF9EVJq5Rn7gQbfT+dXVSa8vTK8z2nhcKFg=="],
+
+    "@nx/dotnet": ["@nx/dotnet@24.0.1", "", { "dependencies": { "@nx/devkit": "24.0.1", "ignore": "^7.0.5", "tslib": "^2.3.0" } }, "sha512-i3fwBZfMk9w6/MD+j3HKU2xuqi8RaoyhOTfMTJi8tJxSP0B86VfDoYMWcdHpLH58o10i0Hy/A/h/4Cw5zBkoCQ=="],
 
     "@nx/nx-darwin-arm64": ["@nx/nx-darwin-arm64@24.0.1", "", { "os": "darwin", "cpu": "arm64" }, "sha512-6ODLtFQ1v9Em8lSqTezTXRX5W5QVeqyIxwcUmBWwNWskQ10hFGscoyPihENmZipj1xMRq7Z8qTfkMOoxGhNi4Q=="],
 
