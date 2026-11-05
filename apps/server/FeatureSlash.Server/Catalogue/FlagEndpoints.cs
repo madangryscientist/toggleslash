@@ -33,7 +33,8 @@ public static class FlagEndpoints
         string? Owner = null,
         List<string>? Tags = null);
 
-    public sealed record FlagResponse(
+    /// <summary>A flag as the audit trail records it: the settings, not the usage counted around them.</summary>
+    private sealed record FlagSnapshot(
         string Key,
         string Name,
         string Description,
@@ -43,6 +44,22 @@ public static class FlagEndpoints
         List<string> Tags,
         DateTime CreatedAt,
         DateTime? ArchivedAt);
+
+    /// <param name="LastEvaluated">
+    /// The latest UTC day any environment counted an evaluation of this flag; <c>null</c> if none has. A day, not a
+    /// moment: usage is counted per day.
+    /// </param>
+    public sealed record FlagResponse(
+        string Key,
+        string Name,
+        string Description,
+        List<JsonElement> Variations,
+        bool Temporary,
+        string? Owner,
+        List<string> Tags,
+        DateTime CreatedAt,
+        DateTime? ArchivedAt,
+        DateOnly? LastEvaluated);
 
     public static void MapFlagEndpoints(this IEndpointRouteBuilder routes)
     {
@@ -142,7 +159,7 @@ public static class FlagEndpoints
         await transaction.CommitAsync();
         environmentIds.ForEach(notifier.Changed);
 
-        return Results.Created($"/api/v1/projects/{owner.Key}/flags/{flag.Key}", Describe(flag));
+        return Results.Created($"/api/v1/projects/{owner.Key}/flags/{flag.Key}", Describe(flag, null));
     }
 
     /// <summary>Archived flags are hidden unless <c>archived</c> is <c>true</c> (only those) or <c>all</c>.</summary>
@@ -166,13 +183,15 @@ public static class FlagEndpoints
         };
         var flags = await query.OrderBy(f => f.Id).ToListAsync();
         // Tags are a JSON text column, so the tag filter reads them rather than asking SQL to.
-        return Results.Json(flags.Where(f => tag is null || ReadStrings(f.Tags).Contains(tag)).Select(Describe));
+        var shown = flags.Where(f => tag is null || ReadStrings(f.Tags).Contains(tag)).ToList();
+        var last = await LastEvaluated(database, [.. shown.Select(f => f.Id)]);
+        return Results.Json(shown.Select(f => Describe(f, last.TryGetValue(f.Id, out var day) ? day : null)));
     }
 
     private static async Task<IResult> Read(string project, string flag, FeatureSlashDbContext database)
     {
         var (owner, found) = await Find(database, project, flag, tracked: false);
-        return found is not null ? Results.Json(Describe(found)) : NotFound(owner);
+        return found is not null ? Results.Json(await Detail(database, found)) : NotFound(owner);
     }
 
     private static async Task<IResult> Update(string project, string flag, UpdateFlagRequest request, FeatureSlashDbContext database, TargetingLock targetingLock)
@@ -207,7 +226,7 @@ public static class FlagEndpoints
         }
         database.Record(AuditEntity.Flag, found.Key, AuditAction.Updated, new AuditScope(owner!.Key, Flag: found.Key), before, Describe(found));
         await database.SaveChangesAsync();
-        return Results.Json(Describe(found));
+        return Results.Json(await Detail(database, found));
     }
 
     /// <summary>
@@ -243,7 +262,7 @@ public static class FlagEndpoints
         var environmentIds = await database.Environments.Where(e => e.ProjectId == owner.Id).Select(e => e.Id).ToListAsync();
         await database.SaveChangesAsync();
         environmentIds.ForEach(notifier.Changed);
-        return Results.Json(Describe(found));
+        return Results.Json(await Detail(database, found));
     }
 
     private static async Task<(Project? Project, Flag? Flag)> Find(FeatureSlashDbContext database, string project, string flag, bool tracked)
@@ -271,7 +290,7 @@ public static class FlagEndpoints
 
     private static List<string> ReadStrings(string json) => JsonSerializer.Deserialize<List<string>>(json) ?? [];
 
-    private static FlagResponse Describe(Flag flag) => new(
+    private static FlagSnapshot Describe(Flag flag) => new(
         flag.Key,
         flag.Name,
         flag.Description,
@@ -281,4 +300,31 @@ public static class FlagEndpoints
         ReadStrings(flag.Tags),
         flag.CreatedAt,
         flag.ArchivedAt);
+
+    private static FlagResponse Describe(Flag flag, DateOnly? lastEvaluated)
+    {
+        var settings = Describe(flag);
+        return new(
+            settings.Key,
+            settings.Name,
+            settings.Description,
+            settings.Variations,
+            settings.Temporary,
+            settings.Owner,
+            settings.Tags,
+            settings.CreatedAt,
+            settings.ArchivedAt,
+            lastEvaluated);
+    }
+
+    /// <summary>Flag id to the latest day it was counted; a flag never evaluated is absent.</summary>
+    private static async Task<Dictionary<long, DateOnly>> LastEvaluated(FeatureSlashDbContext database, IReadOnlyCollection<long> flagIds) =>
+        await database.FlagUsageDaily.AsNoTracking()
+            .Where(u => flagIds.Contains(u.FlagId))
+            .GroupBy(u => u.FlagId)
+            .Select(g => new { FlagId = g.Key, Day = g.Max(u => u.Day) })
+            .ToDictionaryAsync(g => g.FlagId, g => g.Day);
+
+    private static async Task<FlagResponse> Detail(FeatureSlashDbContext database, Flag flag) =>
+        Describe(flag, (await LastEvaluated(database, [flag.Id])).TryGetValue(flag.Id, out var day) ? day : null);
 }

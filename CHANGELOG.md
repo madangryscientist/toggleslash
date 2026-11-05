@@ -27,3 +27,6 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and ver
 - The SDK read API: `GET /sdk/v1/ruleset` (server key) returns an environment's flags and segments with a strong
   `ETag` and `304` on `If-None-Match`, and `POST /sdk/v1/evaluate` (server or client key, with CORS) evaluates a
   context for every flag or one, through the C# evaluator, without exposing rules, targets or segments.
+- Usage counts: `POST /sdk/v1/events` (server or client key, with CORS, size-limited) adds daily per-flag,
+  per-variation counts to the key's environment, evaluate counts what it serves, `GET /api/v1/projects/{project}/flags/{flag}/usage`
+  reads them per environment, and flags carry `lastEvaluated`. Counts only: no context or end-user data is stored.

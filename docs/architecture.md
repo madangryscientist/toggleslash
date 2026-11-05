@@ -1,7 +1,7 @@
 # Architecture
 
 This page records the design the later tickets build on. It is a decision record, not a description
-of what exists: today `apps/server` migrates its database, answers `GET /health` and serves the admin API (SDK keys, projects, environments, flags, targeting, segments and the audit trail) and the SDK read API (the ruleset, its live-update stream and server-side evaluate), and nothing else. Where a section says
+of what exists: today `apps/server` migrates its database, answers `GET /health` and serves the admin API (SDK keys, projects, environments, flags, targeting, segments and the audit trail) and the SDK read API (the ruleset, its live-update stream and server-side evaluate), and usage counts (`POST /sdk/v1/events`, the per-flag usage read and `lastEvaluated`), and nothing else. Where a section says
 "will", the code arrives in its own ticket.
 
 ## Who owns what
@@ -53,11 +53,11 @@ The two kinds of SDK key:
 
 | Kind | Looks like | Policy | Who holds it | What it may do |
 | --- | --- | --- | --- | --- |
-| server | `fs_server_<64 hex>` | `server-key` | a backend you run | read the ruleset, follow its stream and evaluate locally |
-| client | `fs_client_<64 hex>` | `client-key` | a browser or a mobile app, so assume it is public | ask the server to evaluate; **never** read the ruleset or its stream |
+| server | `fs_server_<64 hex>` | `server-key` | a backend you run | read the ruleset, follow its stream, evaluate locally and report usage counts |
+| client | `fs_client_<64 hex>` | `client-key` | a browser or a mobile app, so assume it is public | ask the server to evaluate and report usage counts; **never** read the ruleset or its stream |
 
 The kind that counts is the one stored with the key; the text in front is for people and secret
-scanners. The ruleset and stream routes are gated on `server-key`; the evaluate route on `sdk-key`, which is either kind.
+scanners. The ruleset and stream routes are gated on `server-key`; the evaluate and events routes on `sdk-key`, which is either kind.
 
 The policies are `admin`, `server-key` and `client-key`, and none includes another: the admin token
 is not an SDK key, and neither kind of key passes for the other. (`sdk-key` is not a third kind of key:
@@ -132,11 +132,36 @@ Admin only, under `/api/v1`, every route behind the `admin` policy. Keys (`proje
     (`kind: ERROR`, `value: null`) and does not fail the request. An invalid context or body is a `400`
     (checked first, so it is a `400` even for an environment with no flags), and a `flagKey` that does not exist
     or is archived is a `404`.
-  - **CORS is on `evaluate` only**: any origin, `POST`, the `Authorization` and `Content-Type` headers, a ten-minute
+  - `POST /sdk/v1/events` (server or client key) takes `{ "events": [{ "flag", "variationIndex", "count", "day" }] }`
+    (`day` is `yyyy-MM-dd`, UTC) and adds each count to the key's own environment, summing entries that share a
+    flag, variation and day. It answers `{ "accepted", "unknownFlags" }`. See **Usage counts** below. It is for
+    evaluations the server did not perform (a server SDK evaluating locally): `evaluate` counts its own, so an SDK
+    that calls `evaluate` and also reports the result here counts it twice.
+  - **CORS is on `evaluate` and `events` only**: any origin, `POST`, the `Authorization` and `Content-Type` headers, a ten-minute
     preflight, and no credentials (the key travels in a header, never a cookie). The preflight is answered without
     a token. The ruleset, the stream and the admin API send no CORS headers, so a browser cannot read them.
   - Each request reads the environment in one transaction, so a ruleset (and its ETag) is one consistent
     snapshot, and there is no cache in the server to go stale: a write is visible on the next read.
+- **Usage counts.** `flag_usage_daily` holds one row per environment, flag, variation and UTC day, with a
+  `count`. **It is counts only: no evaluation context, context key, attribute or any other end-user data is
+  accepted, stored or logged.** An entry that carries a field outside the four above (`contextKey`, `context`,
+  `environment` and so on) is refused with a `400`, not stored and not quietly dropped.
+  - `POST /sdk/v1/events` upserts additively (`count = count + excluded.count` in one statement), so concurrent
+    batches lose no count. The environment comes only from the key, so a batch cannot write to another one, and
+    a flag is looked up in the key's own project: one that does not exist there (or at all) is ignored and
+    counted in `unknownFlags`. An archived flag still counts. Limits: a body over 128 KiB or more than 1000
+    events is a `413` (`payload_too_large`); a malformed body or entry, a `count` outside 1 to 1,000,000,000, a `day` more than
+    a day ahead of UTC today or more than 366 days before it, or a `variationIndex` the flag does not have is a `400`, and then **nothing** in the batch is counted.
+  - `POST /sdk/v1/evaluate` counts for itself: one for the variation each flag it evaluated served, in the key's
+    environment, on today's UTC day. A flag that errored serves no variation and counts nothing. A failure to
+    count is logged and never fails the evaluation.
+  - `GET /api/v1/projects/{project}/flags/{flag}/usage` (admin only) returns daily totals for every environment of
+    the project, each day with its per-variation counts. `since` and `until` (`yyyy-MM-dd`, inclusive) default to the last 30
+    days and may span at most 366.
+  - A flag read carries `lastEvaluated`: the latest UTC day with a count in any environment, or `null`. It is a day, not a
+    timestamp. It is on the flag read, the list and the flag writes; the audit trail's snapshots leave it out, since it is not part of
+    what an admin wrote.
+  - Whether a flag is safe to remove is a judgement on top of these numbers and is not computed here.
 - **Audit trail.** Every admin write (project, environment, flag, config, segment and SDK key, each route
   above that is not a `GET`) adds exactly one `audit_events` row **in the same transaction as the write**: both
   happen or neither does, so a rejected write (400, 404, 409) records nothing and an audit row that cannot be

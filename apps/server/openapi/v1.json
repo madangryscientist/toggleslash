@@ -194,6 +194,160 @@
         ]
       }
     },
+    "/sdk/v1/events": {
+      "post": {
+        "tags": [
+          "SDK"
+        ],
+        "summary": "Adds a batch of usage counts to the key\u0027s own environment. Counts only.",
+        "operationId": "postEvents",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project}/flags/{flag}/usage": {
+      "get": {
+        "tags": [
+          "Flags"
+        ],
+        "summary": "Daily evaluation counts per environment. \u0060since\u0060 and \u0060until\u0060 are \u0060yyyy-MM-dd\u0060 (UTC, inclusive); the default is the last 30 days.",
+        "operationId": "getFlagUsage",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "flag",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/projects": {
       "post": {
         "tags": [
@@ -2191,6 +2345,41 @@
           }
         }
       },
+      "EventsRequest": {
+        "required": [
+          "events"
+        ],
+        "type": "object",
+        "properties": {
+          "events": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/UsageEvent"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "EventsResponse": {
+        "required": [
+          "accepted",
+          "unknownFlags"
+        ],
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "unknownFlags": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "FlagResponse": {
         "required": [
           "key",
@@ -2201,7 +2390,8 @@
           "owner",
           "tags",
           "createdAt",
-          "archivedAt"
+          "archivedAt",
+          "lastEvaluated"
         ],
         "type": "object",
         "properties": {
@@ -2242,6 +2432,13 @@
               "string"
             ],
             "format": "date-time"
+          },
+          "lastEvaluated": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
           }
         }
       },
@@ -2621,6 +2818,136 @@
             }
           }
         }
+      },
+      "UsageDay": {
+        "required": [
+          "day",
+          "count",
+          "variations"
+        ],
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "variations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageVariation"
+            }
+          }
+        }
+      },
+      "UsageEnvironment": {
+        "required": [
+          "environment",
+          "total",
+          "days"
+        ],
+        "type": "object",
+        "properties": {
+          "environment": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageDay"
+            }
+          }
+        }
+      },
+      "UsageEvent": {
+        "required": [
+          "flag",
+          "variationIndex",
+          "count",
+          "day"
+        ],
+        "type": "object",
+        "properties": {
+          "flag": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "variationIndex": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "count": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          },
+          "day": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "UsageResponse": {
+        "required": [
+          "flag",
+          "since",
+          "until",
+          "environments"
+        ],
+        "type": "object",
+        "properties": {
+          "flag": {
+            "type": "string"
+          },
+          "since": {
+            "type": "string",
+            "format": "date"
+          },
+          "until": {
+            "type": "string",
+            "format": "date"
+          },
+          "environments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageEnvironment"
+            }
+          }
+        }
+      },
+      "UsageVariation": {
+        "required": [
+          "variationIndex",
+          "count"
+        ],
+        "type": "object",
+        "properties": {
+          "variationIndex": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
       }
     },
     "securitySchemes": {
@@ -2639,13 +2966,13 @@
       "name": "SDK"
     },
     {
+      "name": "Flags"
+    },
+    {
       "name": "Projects"
     },
     {
       "name": "Environments"
-    },
-    {
-      "name": "Flags"
     },
     {
       "name": "ApiKeyEndpoints"
