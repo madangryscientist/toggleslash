@@ -1,0 +1,1990 @@
+{
+  "vectors": [
+    {
+      "name": "included: matches",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": ["user-1"],
+          "excluded": [],
+          "rules": []
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "included: another key does not",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": ["user-2"],
+          "excluded": [],
+          "rules": []
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "excluded: does not match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": ["user-1"],
+          "rules": []
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "excluded beats included",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": ["user-1"],
+          "excluded": ["user-1"],
+          "rules": []
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "excluded beats rules",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": ["user-1"],
+          "rules": [
+            {
+              "clauses": []
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "included beats a rule that would not match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": ["user-1"],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "a",
+                  "op": "in",
+                  "values": [1]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "rules: a matching rule includes",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "rules: a rule that does not match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "free"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "rules: any rule may match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "a",
+                  "op": "in",
+                  "values": [1]
+                }
+              ]
+            },
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "rules: all clauses must match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                },
+                {
+                  "attribute": "a",
+                  "op": "in",
+                  "values": [1]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "rules: negate on a missing attribute does not match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"],
+                  "negate": true
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "rules: no rules, no match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": []
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "weight: bucket below the weight is in",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [],
+              "weight": 12748
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "weight: bucket equal to the weight is out",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [],
+              "weight": 12747
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "weight: 0 is nobody",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [],
+              "weight": 0
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "weight: 100000 is everybody",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [],
+              "weight": 100000
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "weight: null is everybody",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [],
+              "weight": null
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "weight: clauses must also match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "a",
+                  "op": "in",
+                  "values": [1]
+                }
+              ],
+              "weight": 100000
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "weight: hashes the segment key and salt, not the flag's",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["other"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "other",
+          "salt": "zz",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [],
+              "weight": 22163
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "values: any segment may match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["a", "b"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "a",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": []
+        },
+        {
+          "key": "b",
+          "salt": "ss",
+          "included": ["user-1"],
+          "excluded": [],
+          "rules": []
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "values: none is no match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": []
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "values: no segment is a match under negate",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": [],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "negate: flips a member",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": ["user-1"],
+          "excluded": [],
+          "rules": []
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "negate: flips a non-member",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": []
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "negate: excluded becomes a match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": ["user-1"],
+          "rules": []
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "attribute: ignored on segmentMatch",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "attribute": "ignored",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": ["user-1"],
+          "excluded": [],
+          "rules": []
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "missing segment is an error",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["gone"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "SEGMENT_NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "missing segment errors even when another value matches",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg", "gone"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": ["user-1"],
+          "excluded": [],
+          "rules": []
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "SEGMENT_NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "missing segment errors even when an earlier rule matches",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [],
+              "variation": 1
+            },
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["gone"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "SEGMENT_NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "missing segment errors under negate",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["gone"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "SEGMENT_NOT_FOUND"
+        }
+      }
+    },
+    {
+      "name": "missing segment does not stop an off flag",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": false,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["gone"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "OFF"
+        }
+      }
+    },
+    {
+      "name": "malformed segment: no salt",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "included": [],
+          "excluded": [],
+          "rules": []
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_SEGMENT"
+        }
+      }
+    },
+    {
+      "name": "malformed segment: weight above 100000",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [],
+              "weight": 100001
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_SEGMENT"
+        }
+      }
+    },
+    {
+      "name": "malformed segment: a segmentMatch clause, segments do not nest",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_SEGMENT"
+        }
+      }
+    },
+    {
+      "name": "malformed segment: included is not a list of strings",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [1],
+          "excluded": [],
+          "rules": []
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_SEGMENT"
+        }
+      }
+    },
+    {
+      "name": "order: first bad reference decides the code",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["bad", "gone"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "bad"
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_SEGMENT"
+        }
+      }
+    },
+    {
+      "name": "duplicate segment keys: the first wins",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": ["user-1"],
+          "excluded": [],
+          "rules": []
+        },
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": []
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    }
+  ]
+}

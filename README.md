@@ -3,13 +3,16 @@
 Open source feature flags you can run yourself. MIT licensed. Site: https://featureslash.dev (not
 live yet).
 
-> **Status: skeleton.** The repo has its structure, gate and CI, and no flag features yet.
+> **Status: early.** The engine evaluates flags, to the spec in
+> [`docs/evaluation.md`](docs/evaluation.md). There is no storage, API or SDK yet, so nothing can use it
+> from outside this repo.
 
 ## Layout
 
 | Path | What it is |
 | --- | --- |
-| `packages/engine` | flag evaluation (stub) |
+| `packages/engine` | flag evaluation |
+| `fixtures/evaluation` | the language-neutral test vectors every implementation must pass |
 | `packages/cli` | the `featureslash` command |
 | `apps/web` | the dashboard: TanStack Start on Cloudflare Workers, D1 via Drizzle |
 | `apps/site` | the marketing and docs site, prerendered |
@@ -26,7 +29,7 @@ bun run typecheck && bun run lint && bun run format:check && bun run test
 `apps/server` needs the .NET SDK (10.0.402, `global.json`); without one the root scripts skip it and say so.
 
 See [`AGENTS.md`](AGENTS.md) for the full gate and [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to
-send a change. [`docs/`](docs) has the [architecture](docs/architecture.md), the testing policy and the getting-started page.
+send a change. [`docs/`](docs) has the [architecture](docs/architecture.md), the [evaluation spec](docs/evaluation.md), the testing policy and the getting-started page.
 
 ## Licence
 

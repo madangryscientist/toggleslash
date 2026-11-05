@@ -1,0 +1,66 @@
+import type { AttributeClause, AttributeOp, ClauseValue } from "./validate.ts";
+
+export interface Context {
+  key: string;
+  attributes?: Readonly<Record<string, unknown>> | null;
+}
+
+function readAttribute(context: Context, name: string): unknown {
+  if (name === "key") return context.key;
+  const attributes = context.attributes;
+  if (!attributes || !Object.hasOwn(attributes, name)) return undefined;
+  return attributes[name];
+}
+
+function sign<T extends string | number>(a: T, b: T): number {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
+}
+
+/** -1, 0 or 1 for two finite numbers or two strings (by UTF-16 code unit); otherwise null. */
+function compare(attribute: unknown, value: ClauseValue): number | null {
+  if (typeof attribute === "number" && typeof value === "number") {
+    return Number.isFinite(attribute) ? sign(attribute, value) : null;
+  }
+  if (typeof attribute === "string" && typeof value === "string") return sign(attribute, value);
+  return null;
+}
+
+function matchesString(op: AttributeOp, attribute: string, value: string): boolean {
+  if (op === "contains") return attribute.includes(value);
+  if (op === "startsWith") return attribute.startsWith(value);
+  return attribute.endsWith(value);
+}
+
+function matchesOrder(op: AttributeOp, order: number): boolean {
+  if (op === "lt") return order < 0;
+  if (op === "lte") return order <= 0;
+  if (op === "gt") return order > 0;
+  return order >= 0;
+}
+
+function matchesValue(op: AttributeOp, attribute: unknown, value: ClauseValue): boolean {
+  if (op === "in") {
+    return typeof attribute === "boolean" ? attribute === value : compare(attribute, value) === 0;
+  }
+  if (op === "contains" || op === "startsWith" || op === "endsWith") {
+    return (
+      typeof attribute === "string" &&
+      typeof value === "string" &&
+      matchesString(op, attribute, value)
+    );
+  }
+  const order = compare(attribute, value);
+  return order !== null && matchesOrder(op, order);
+}
+
+/** Does one attribute clause hold? A missing attribute fails it, whatever `negate` says. */
+export function attributeClauseMatches(clause: AttributeClause, context: Context): boolean {
+  const attribute = readAttribute(context, clause.attribute);
+  if (attribute === undefined || attribute === null) return false;
+  const candidates: readonly unknown[] = Array.isArray(attribute) ? attribute : [attribute];
+  const matched = candidates.some((candidate) =>
+    clause.values.some((value) => matchesValue(clause.op, candidate, value)),
+  );
+  return clause.negate === true ? !matched : matched;
+}

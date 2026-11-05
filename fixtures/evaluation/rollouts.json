@@ -1,0 +1,1065 @@
+{
+  "vectors": [
+    {
+      "name": "fallthrough: bucket below the first weight serves the first",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 0,
+                  "weight": 88806
+                },
+                {
+                  "variation": 1,
+                  "weight": 11194
+                }
+              ]
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "fallthrough: bucket equal to the first weight serves the second",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 0,
+                  "weight": 88805
+                },
+                {
+                  "variation": 1,
+                  "weight": 11195
+                }
+              ]
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "rule: a rollout serve reports the rule",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [],
+              "rollout": {
+                "variations": [
+                  {
+                    "variation": 0,
+                    "weight": 88805
+                  },
+                  {
+                    "variation": 1,
+                    "weight": 11195
+                  }
+                ]
+              }
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "all weight on one variation",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 1,
+                  "weight": 100000
+                }
+              ]
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "zero weight first is skipped",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 0,
+                  "weight": 0
+                },
+                {
+                  "variation": 1,
+                  "weight": 100000
+                }
+              ]
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "zero weight last is never served",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 1,
+                  "weight": 100000
+                },
+                {
+                  "variation": 0,
+                  "weight": 0
+                }
+              ]
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "three-way: cumulative walk reaches the middle",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": ["a", "b", "c"],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 0,
+                  "weight": 88805
+                },
+                {
+                  "variation": 1,
+                  "weight": 1
+                },
+                {
+                  "variation": 2,
+                  "weight": 11194
+                }
+              ]
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": "b",
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "order: the walk follows the listed order, not the index",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 1,
+                  "weight": 88806
+                },
+                {
+                  "variation": 0,
+                  "weight": 11194
+                }
+              ]
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "repeated variation is allowed",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 1,
+                  "weight": 88805
+                },
+                {
+                  "variation": 0,
+                  "weight": 1
+                },
+                {
+                  "variation": 1,
+                  "weight": 11194
+                }
+              ]
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "bucket 0: only a weight of 1 catches it",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 1,
+                  "weight": 1
+                },
+                {
+                  "variation": 0,
+                  "weight": 99999
+                }
+              ]
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-146458",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "bucket 99999: only the last 1 catches it",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 0,
+                  "weight": 99999
+                },
+                {
+                  "variation": 1,
+                  "weight": 1
+                }
+              ]
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-222376",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "salt: a different salt moves the bucket",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 0,
+                  "weight": 72742
+                },
+                {
+                  "variation": 1,
+                  "weight": 27258
+                }
+              ]
+            }
+          },
+          "salt": "other",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "flag key: part of the hash",
+      "flagKey": "g",
+      "flags": [
+        {
+          "key": "g",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 0,
+                  "weight": 52541
+                },
+                {
+                  "variation": 1,
+                  "weight": 47459
+                }
+              ]
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "context key: non-ASCII hashes as UTF-8",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 0,
+                  "weight": 27338
+                },
+                {
+                  "variation": 1,
+                  "weight": 72662
+                }
+              ]
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "üser-😀",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "salt: empty is valid",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 0,
+                  "weight": 48977
+                },
+                {
+                  "variation": 1,
+                  "weight": 51023
+                }
+              ]
+            }
+          },
+          "salt": "",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "malformed: weights sum below 100000",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 0,
+                  "weight": 50000
+                },
+                {
+                  "variation": 1,
+                  "weight": 49999
+                }
+              ]
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_FLAG"
+        }
+      }
+    },
+    {
+      "name": "malformed: weights sum above 100000",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 0,
+                  "weight": 50000
+                },
+                {
+                  "variation": 1,
+                  "weight": 50001
+                }
+              ]
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_FLAG"
+        }
+      }
+    },
+    {
+      "name": "malformed: negative weight",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 0,
+                  "weight": 100001
+                },
+                {
+                  "variation": 1,
+                  "weight": -1
+                }
+              ]
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_FLAG"
+        }
+      }
+    },
+    {
+      "name": "malformed: fractional weights",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 0,
+                  "weight": 50000.5
+                },
+                {
+                  "variation": 1,
+                  "weight": 49999.5
+                }
+              ]
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_FLAG"
+        }
+      }
+    },
+    {
+      "name": "malformed: empty rollout",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": []
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_FLAG"
+        }
+      }
+    },
+    {
+      "name": "malformed: rollout variation out of range",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 2,
+                  "weight": 100000
+                }
+              ]
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_FLAG"
+        }
+      }
+    },
+    {
+      "name": "malformed: a variation and a rollout together",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0,
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 1,
+                  "weight": 100000
+                }
+              ]
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_FLAG"
+        }
+      }
+    },
+    {
+      "name": "malformed: neither a variation nor a rollout",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {},
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_FLAG"
+        }
+      }
+    },
+    {
+      "name": "malformed: a rule with neither",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": []
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_FLAG"
+        }
+      }
+    },
+    {
+      "name": "malformed: a rule with both",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [],
+              "variation": 0,
+              "rollout": {
+                "variations": [
+                  {
+                    "variation": 1,
+                    "weight": 100000
+                  }
+                ]
+              }
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_FLAG"
+        }
+      }
+    }
+  ]
+}
