@@ -23,6 +23,24 @@ const ENV = "production";
 // A null fallback accepts any served type; a typed one would turn a mismatch into the fallback.
 const FALLBACK = null;
 
+/** `rulesets show` for one hash, as the ETag gives it, narrowed to the flag these tests flip. */
+const show = (hash: string): string[] => [
+  "rulesets",
+  "show",
+  hash.replaceAll('"', ""),
+  "--project",
+  PROJECT,
+  "--env",
+  ENV,
+  "--flag",
+  "new-checkout",
+];
+
+const flagIn = (answer: unknown): Record<string, unknown> => {
+  const flags = record(answer)["flags"];
+  return record(Array.isArray(flags) ? flags[0] : undefined);
+};
+
 describe.skipIf(skip)("server, CLI and SDK end to end", () => {
   let scratch = "";
   let server: RunningServer | null = null;
@@ -46,6 +64,7 @@ describe.skipIf(skip)("server, CLI and SDK end to end", () => {
     return client;
   };
   const used = (path: string) => requests.filter((r) => r.path === path).length;
+  const lastTag = () => requests.findLast((r) => r.path === "/sdk/v1/ruleset")?.etag ?? "";
 
   beforeAll(async () => {
     // TMPDIR is a scoped directory for the run (scripts/test-tmp-scope.ts); it is removed after it.
@@ -153,6 +172,31 @@ describe.skipIf(skip)("server, CLI and SDK end to end", () => {
     expect(used("/sdk/v1/ruleset")).toBe(before + 2);
     expect(used("/sdk/v1/stream")).toBe(1);
     expect(sdkErrors).toEqual([]);
+  });
+
+  it("still answers what the flags were under the hash from before a flip", async () => {
+    const earlier = lastTag();
+
+    const on = await cli.run(["flags", "on", "new-checkout", "--project", PROJECT, "--env", ENV]);
+    expect(on.code).toBe(0);
+    await until(
+      "the SDK to serve true",
+      () => sdk().variation("new-checkout", { key: "someone" }, FALLBACK) === true,
+    );
+    const later = lastTag();
+    expect(later).not.toBe(earlier);
+
+    const past = record(await cli.json(show(earlier)));
+    expect(past["etag"]).toBe(earlier);
+    expect(flagIn(past)["on"]).toBe(false);
+    expect(flagIn(await cli.json(show(later)))["on"]).toBe(true);
+
+    const off = await cli.run(["flags", "off", "new-checkout", "--project", PROJECT, "--env", ENV]);
+    expect(off.code).toBe(0);
+    await until(
+      "the SDK to serve false again",
+      () => sdk().variation("new-checkout", { key: "someone" }, FALLBACK) === false,
+    );
   });
 
   it("agrees between POST /sdk/v1/evaluate and the SDK's local evaluation", async () => {

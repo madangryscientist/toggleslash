@@ -17,6 +17,7 @@ public sealed partial class FeatureSlashDbContext(DbContextOptions<FeatureSlashD
     public DbSet<AdminToken> AdminTokens => Set<AdminToken>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<FlagUsageDaily> FlagUsageDaily => Set<FlagUsageDaily>();
+    public DbSet<StoredRuleset> RulesetSnapshots => Set<StoredRuleset>();
 
     /// <summary>Who this request's audit events name. The context is per request, and the auth handler sets this on success.</summary>
     public string AuditActor { get; set; } = AuditLog.Admin;
@@ -103,6 +104,13 @@ public sealed partial class FeatureSlashDbContext(DbContextOptions<FeatureSlashD
             usage.HasKey(u => new { u.EnvironmentId, u.FlagId, u.Variation, u.Day });
             usage.HasOne<ProjectEnvironment>().WithMany().HasForeignKey(u => u.EnvironmentId);
             usage.HasOne<Flag>().WithMany().HasForeignKey(u => u.FlagId);
+        });
+
+        modelBuilder.Entity<StoredRuleset>(snapshot =>
+        {
+            snapshot.ToTable("ruleset_snapshots");
+            snapshot.HasKey(s => new { s.EnvironmentId, s.Hash });
+            snapshot.HasOne<ProjectEnvironment>().WithMany().HasForeignKey(s => s.EnvironmentId);
         });
 
         foreach (var property in modelBuilder.Model.GetEntityTypes().SelectMany(e => e.GetProperties()))

@@ -26,6 +26,12 @@ internal static class Failures
     public static IResult FlagNotFound() =>
         ApiError.Result(StatusCodes.Status404NotFound, "not_found", "No such flag.");
 
+    public static IResult RulesetNotFound() =>
+        ApiError.Result(StatusCodes.Status404NotFound, "not_found", "This environment never served a ruleset with that hash. A hash is the ETag's lowercase hex, without quotes.");
+
+    public static IResult FlagNotInRuleset() =>
+        ApiError.Result(StatusCodes.Status404NotFound, "not_found", "That ruleset has no such flag.");
+
     /// <summary>
     /// A unique index refused the write: the key was free when checked and taken before the insert. The
     /// pre-check gives the friendly message; this catches the race, so it is still a 409 and not a 500.

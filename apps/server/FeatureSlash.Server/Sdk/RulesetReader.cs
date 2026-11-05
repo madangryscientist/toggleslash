@@ -34,10 +34,14 @@ internal sealed class RulesetSnapshot(RulesetResponse ruleset, byte[] body)
 {
     private static readonly JsonSerializerOptions WireOptions = new(JsonSerializerDefaults.Web);
 
+    private string? hash;
+
     public byte[] Body { get; } = body;
 
-    /// <summary>Hashed on demand: <c>evaluate</c> never asks for it.</summary>
-    public string ETag => $"\"{Convert.ToHexStringLower(SHA256.HashData(Body))}\"";
+    /// <summary>SHA-256 of <see cref="Body"/>, lowercase hex. Hashed on demand: <c>evaluate</c> never asks for it.</summary>
+    public string Hash => hash ??= Convert.ToHexStringLower(SHA256.HashData(Body));
+
+    public string ETag => $"\"{Hash}\"";
 
     /// <summary>Keys of the flags in the ruleset, in key order.</summary>
     public IReadOnlyList<string> FlagKeys { get; } = [.. ruleset.Flags.Select(flag => flag.Key)];
@@ -51,10 +55,13 @@ internal sealed class RulesetSnapshot(RulesetResponse ruleset, byte[] body)
 
     public static RulesetSnapshot Of(RulesetResponse ruleset) =>
         new(ruleset, JsonSerializer.SerializeToUtf8Bytes(ruleset, WireOptions));
+
+    /// <summary>A body this class serialized, read back.</summary>
+    public static RulesetResponse Parse(byte[] body) => JsonSerializer.Deserialize<RulesetResponse>(body, WireOptions)!;
 }
 
 /// <summary>Builds <see cref="RulesetSnapshot"/>s from the database. Nothing is cached: a write is visible to the next read.</summary>
-internal sealed class RulesetReader(FeatureSlashDbContext database)
+internal sealed class RulesetReader(FeatureSlashDbContext database, ILogger<RulesetReader> logger)
 {
     /// <summary>The environment is the one an SDK key belongs to, and no route deletes an environment, so it exists.</summary>
     public async Task<RulesetSnapshot> Read(long environmentId, CancellationToken cancellation)
@@ -97,6 +104,32 @@ internal sealed class RulesetReader(FeatureSlashDbContext database)
                 JsonSerializer.Deserialize<string[]>(s.Included)!,
                 JsonSerializer.Deserialize<string[]>(s.Excluded)!,
                 Json(s.Rules)))]));
+    }
+
+    /// <summary>
+    /// Keeps a body the ruleset route is about to send, so its hash can be looked up later. A body already kept takes
+    /// no write lock; two first reads at once are one row, with the first one's time. Keeping it is a side effect of
+    /// serving, so a failure is logged and never costs an SDK its flags; the next 200 of that body tries again.
+    /// </summary>
+    public async Task RecordServed(long environmentId, RulesetSnapshot snapshot, CancellationToken cancellation)
+    {
+        var hash = snapshot.Hash;
+        try
+        {
+            if (await database.RulesetSnapshots.AsNoTracking().AnyAsync(s => s.EnvironmentId == environmentId && s.Hash == hash, cancellation))
+            {
+                return;
+            }
+            await database.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO ruleset_snapshots (environment_id, hash, body, first_served_at)
+                VALUES ({environmentId}, {hash}, {snapshot.Body}, {DateTime.UtcNow})
+                ON CONFLICT (environment_id, hash) DO NOTHING
+                """, cancellation);
+        }
+        catch (SqliteException exception)
+        {
+            logger.LogWarning(exception, "Could not keep a served ruleset; it was served, and its hash cannot be looked up yet.");
+        }
     }
 
     private static JsonElement Json(string text)

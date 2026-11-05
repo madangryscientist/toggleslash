@@ -455,6 +455,30 @@ namespace FeatureSlash.Server.Data.Migrations
                     b.ToTable("segments", (string)null);
                 });
 
+            modelBuilder.Entity("FeatureSlash.Server.Data.StoredRuleset", b =>
+                {
+                    b.Property<long>("EnvironmentId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("environment_id");
+
+                    b.Property<string>("Hash")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("hash");
+
+                    b.Property<byte[]>("Body")
+                        .IsRequired()
+                        .HasColumnType("BLOB")
+                        .HasColumnName("body");
+
+                    b.Property<DateTime>("FirstServedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("first_served_at");
+
+                    b.HasKey("EnvironmentId", "Hash");
+
+                    b.ToTable("ruleset_snapshots", (string)null);
+                });
+
             modelBuilder.Entity("FeatureSlash.Server.Data.AdminToken", b =>
                 {
                     b.HasOne("FeatureSlash.Server.Data.Project", null)
@@ -532,6 +556,15 @@ namespace FeatureSlash.Server.Data.Migrations
                     b.HasOne("FeatureSlash.Server.Data.Project", null)
                         .WithMany()
                         .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("FeatureSlash.Server.Data.StoredRuleset", b =>
+                {
+                    b.HasOne("FeatureSlash.Server.Data.ProjectEnvironment", null)
+                        .WithMany()
+                        .HasForeignKey("EnvironmentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
