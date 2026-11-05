@@ -14,7 +14,7 @@ One builder at a time, in this order. FS-2 is held and not in the queue.
 | 4 | FS-6 | medium | C# server skeleton, Nx, CI, architecture doc | ✅ gate, 2 xunit, CI green (#6, c81cc75) |
 | 4a | FS-25 | simple | e2e ports collide with PixelSlash (added tonight) | ✅ gate and CI green (#7, bc6d4cb) |
 | 5 | FS-7 | complex | evaluation spec, vectors, TS engine | ✅ full gate, engine 316, 294 vectors, CI green (#9, d3cdf11) |
-| 6 | FS-8 | medium | C# evaluator | |
+| 6 | FS-8 | medium | C# evaluator | ✅ full gate, C# 310 cases, CI green (#10, 544fa9e) |
 | 7 | FS-9 | complex | EF Core on SQLite | |
 | 8 | FS-10 | complex | auth | |
 | 9 | FS-11 | medium | admin API catalogue | |
