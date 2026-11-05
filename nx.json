@@ -25,7 +25,12 @@
     },
     "test": {
       "cache": true,
-      "inputs": ["default", "^default", "{workspaceRoot}/fixtures/**/*"]
+      "inputs": [
+        "default",
+        "^default",
+        "{workspaceRoot}/fixtures/**/*",
+        "{workspaceRoot}/apps/server/openapi/*"
+      ]
     }
   },
   "affected": {

@@ -5,6 +5,7 @@
     "**/*.gen.ts",
     "**/routeTree.gen.ts",
     "**/worker-configuration.d.ts",
-    "apps/web/drizzle/**"
+    "apps/web/drizzle/**",
+    "apps/server/openapi/v1.json"
   ]
 }
