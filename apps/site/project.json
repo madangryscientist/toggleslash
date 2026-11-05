@@ -20,7 +20,7 @@
       "options": { "cwd": "apps/site" },
       "cache": true,
       "inputs": ["default", "^default"],
-      "outputs": ["{projectRoot}/dist"]
+      "outputs": ["{projectRoot}/dist", "{projectRoot}/.wrangler/deploy"]
     },
     "test:e2e": {
       "command": "playwright test",
