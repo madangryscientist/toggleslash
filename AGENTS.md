@@ -28,7 +28,7 @@ A small Nx workspace on Bun workspaces:
 | `server` | `apps/server` | the C# server: ASP.NET Core minimal API on .NET 10 (`FeatureSlash.Server`, xunit in `FeatureSlash.Server.Tests`); owns all flag data and the API. `apps/server/openapi/v1.json` is its generated OpenAPI document; `apps/server/Dockerfile` and the root `compose.yaml` containerise it (below) |
 | `evaluation` | `apps/server/FeatureSlash.Evaluation` | the C# implementation of `docs/evaluation.md`: a class library with no ASP.NET or database dependency (xunit in `FeatureSlash.Evaluation.Tests`, which runs every vector); the server references it for `POST /sdk/v1/evaluate` |
 | `e2e` | `packages/e2e` | the cross-language end-to-end test (`test:e2e`, not `test`): builds and starts the real C# server on a port the OS picks with a SQLite file under `$TMPDIR`, drives it with the real CLI (a subprocess) and the real TS SDK, and checks a CLI flip arrives through the stream and that `POST /sdk/v1/evaluate` and the SDK's local evaluation agree over a set of contexts. It also holds the seed (`src/seed.ts`: a shop with five flags and a segment) and `bun run stack` (`src/stack.ts`, `src/stack-cli.ts`): the server, the seed, the dashboard on 4440 and the example app on 4441, with secrets made per run; `test/example.test.ts` proves the example against the real server. `bun run test:stack` (`test:stack`, not `test:e2e`; `playwright.config.ts`, `stack/journey.spec.ts`) starts that stack and walks one journey in a browser: sign in to the dashboard, two shoppers on the example, a flag created through the UI, a toggle that reaches both shoppers through the stream, `runtime` and `diagnose` from the CLI, the usage count, the audit log, and a read-scoped token refused a write; on a failure it prints the stack's logs. Loopback only; skips with a printed line when no `dotnet` runs (in CI, where `CI` is set, a missing SDK fails instead). Private |
-| `scripts` | `scripts` | `check-slop.ts`, `test-tmp-scope.ts`, `nx.ts` (typecheck + lint only) |
+| `scripts` | `scripts` | `check-slop.ts`, `test-tmp-scope.ts`, `nx.ts` and `dotnet.ts` (typecheck + lint only) |
 
 `bunfig.toml` sets `[install] linker = "isolated"` and `globalStore = true` (the shared package store that
 makes a warm worktree install fast): a package sees its own declared dependencies and the root's, not
@@ -54,23 +54,34 @@ reading of public pages, not a claim of vendor parity; refresh them when a relea
 matters.
 
 **The .NET SDK is needed for `apps/server`.** A change to it needs the SDK to be checked. The root
-scripts (`typecheck`, `lint`, `build`, `test`, `test:e2e`) go through `scripts/nx.ts`, which runs
-`dotnet --version` first. Two paths:
+scripts (`typecheck`, `lint`, `build`, `test`, `test:e2e`, `test:stack`) go through `scripts/nx.ts`,
+which asks `scripts/dotnet.ts` (`findDotnet`) for a `dotnet` that *runs*, from the repo root so
+`global.json` applies. It tries every `dotnet` on PATH in order, because a `dotnet` that exists can
+still fail: here `/usr/bin/dotnet` is a host with no SDK, and a mise shim fails where no SDK is
+active. `packages/e2e/src/dotnet.ts` uses the same function, so the two cannot disagree. Two paths:
 
-- **With a working `dotnet`**: nothing changes. `bun run test` restores, builds and tests
-  `FeatureSlash.Server.Tests` with xunit. The version (10.0.402) is pinned in `.tool-versions` (mise
-  activates it here; `mise install` installs it) and in `global.json` (what `dotnet` itself reads).
-  The first restore fetches NuGet packages, so it needs the network once.
-- **Without one**: the wrapper sets `NX_DOTNET_DISABLE=true` and prints
-  `dotnet SDK not found: skipping apps/server`; the TS projects run as before and the dotnet
-  projects are not in the graph. Setting `NX_DOTNET_DISABLE` yourself skips the check and the line.
+- **With a working `dotnet`** (anywhere on PATH, `/usr/bin/dotnet` first or not): `bun run test`
+  restores, builds and tests `FeatureSlash.Server.Tests` with xunit, and `bun run test:e2e` runs the
+  `e2e` project. The version (10.0.402) is pinned in `.tool-versions` (mise activates it here;
+  `mise install` installs it) and in `global.json` (what `dotnet` itself reads). The first restore
+  fetches NuGet packages, so it needs the network once.
+- **Without one**: the wrapper sets `NX_DOTNET_DISABLE=true` and prints a `!!` banner to stderr
+  saying `apps/server` is NOT in the run, so a green there does not cover the server; the TS projects
+  run as before and the dotnet projects are not in the graph. In CI (`CI` set) a missing SDK fails
+  instead. Setting `NX_DOTNET_DISABLE` yourself skips the check and the banner.
 
-The reason for the wrapper: the `@nx/dotnet` plugin in `nx.json` reads the .NET projects when Nx
-builds its graph, so without an SDK **every** `nx` command fails. A bare `bunx nx ...` skips the
-wrapper, so on a machine without an SDK set `NX_DOTNET_DISABLE=true` yourself. Both `.csproj` files
-set `Nullable`, `TreatWarningsAsErrors` and `InvariantGlobalization`; `apps/server/Directory.Build.props`
-and `.rsp` leave no compiler server or MSBuild node running after a build. `bin/` and `obj/` are
-ignored.
+Why the wrapper does more than check: Nx puts the directory of its own runtime ahead of PATH for
+every task (npm-run-path), and `nx` run through its `#!/usr/bin/env node` shebang is `/usr/bin/node`
+here, so `/usr/bin` went first and the host-only `/usr/bin/dotnet` hid the SDK even with the mise one
+first on the caller's PATH (`dotnet restore` failed with "No .NET SDKs were found"). The wrapper runs
+nx under Bun (`~/.bun/bin` has no `dotnet`) and puts the directory of the `dotnet` it found first on
+PATH. **A bare `bunx nx ...` skips all of that**, so on a machine like this one use the root scripts,
+or `bun scripts/nx.ts <nx args>` for one project, and on a machine without an SDK set
+`NX_DOTNET_DISABLE=true` yourself. The `@nx/dotnet` plugin in `nx.json` reads the .NET projects when
+Nx builds its graph, so without an SDK **every** `nx` command fails unless it is disabled. Both
+`.csproj` files set `Nullable`, `TreatWarningsAsErrors` and `InvariantGlobalization`;
+`apps/server/Directory.Build.props` and `.rsp` leave no compiler server or MSBuild node running after a
+build. `bin/` and `obj/` are ignored.
 
 One project: `bunx nx test engine`, `bunx nx lint cli`, `bunx nx test FeatureSlash.Server.Tests`. Nx caches in `.nx/`; add `--skip-nx-cache` to
 force a rerun. There is no Nx Cloud here. Lint rules are all errors; fix the code, do not disable a
