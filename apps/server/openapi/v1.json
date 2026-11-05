@@ -25,6 +25,62 @@
         }
       }
     },
+    "/api/v1/projects/{project}/environments/{env}/flag-states": {
+      "get": {
+        "tags": [
+          "Flag targeting"
+        ],
+        "operationId": "listFlagStates",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "env",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FlagState"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/sdk/v1/ruleset": {
       "get": {
         "tags": [
@@ -2459,6 +2515,34 @@
           }
         }
       },
+      "FlagState": {
+        "required": [
+          "flag",
+          "on",
+          "version",
+          "lastEvaluated"
+        ],
+        "type": "object",
+        "properties": {
+          "flag": {
+            "type": "string"
+          },
+          "on": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lastEvaluated": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          }
+        }
+      },
       "HealthResponse": {
         "required": [
           "status",
@@ -2992,6 +3076,9 @@
       "name": "FeatureSlash.Server"
     },
     {
+      "name": "Flag targeting"
+    },
+    {
       "name": "SDK"
     },
     {
@@ -3005,9 +3092,6 @@
     },
     {
       "name": "ApiKeyEndpoints"
-    },
-    {
-      "name": "Flag targeting"
     },
     {
       "name": "Segments"

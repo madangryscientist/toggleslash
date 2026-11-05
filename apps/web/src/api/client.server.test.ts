@@ -58,17 +58,24 @@ describe("apiPath", () => {
 });
 
 describe("flags", () => {
+  const flagsPath = "GET /api/v1/projects/shop/flags";
+  const statesPath = "GET /api/v1/projects/shop/environments/prod/flag-states";
+
   test("joins each flag with its state in the environment and sends the bearer token", async () => {
     const { doFetch, seen } = fakeFetch({
-      "GET /api/v1/projects/shop/flags": () =>
+      [flagsPath]: () =>
         json([
-          { key: "a", name: "A", tags: ["x"], temporary: true, lastEvaluated: "2026-11-04" },
-          { key: "b", name: "B", tags: [], temporary: false, lastEvaluated: null },
+          { key: "a", name: "A", tags: ["x"], temporary: true, lastEvaluated: "2026-01-01" },
+          { key: "b", name: "B", tags: [], temporary: false, lastEvaluated: "2026-01-02" },
         ]),
-      "GET /api/v1/projects/shop/flags/a/environments/prod": () => json({ on: true, version: 4 }),
-      "GET /api/v1/projects/shop/flags/b/environments/prod": () => json({ on: false, version: 1 }),
+      [statesPath]: () =>
+        json([
+          { flag: "b", on: false, version: 1, lastEvaluated: null },
+          { flag: "a", on: true, version: 4, lastEvaluated: "2026-11-04" },
+        ]),
     });
     const flags = await createAdminApi(connection, doFetch).flags("shop", "prod");
+    // The column is the environment's day, not the flag's any-environment day.
     expect(flags.map((f) => [f.key, f.on, f.version, f.temporary, f.lastEvaluated])).toEqual([
       ["a", true, 4, true, "2026-11-04"],
       ["b", false, 1, false, null],
@@ -76,21 +83,52 @@ describe("flags", () => {
     expect(seen.every((s) => s.auth === `Bearer ${TOKEN}`)).toBe(true);
   });
 
-  test("a flag with no config in the environment is unknown, not an error", async () => {
-    const { doFetch } = fakeFetch({
-      "GET /api/v1/projects/shop/flags": () => json([{ key: "a", name: "A" }]),
-      "GET /api/v1/projects/shop/flags/a/environments/prod": () =>
-        json({ error: { code: "not_found", message: "No config." } }, 404),
+  test("makes exactly two calls however many flags there are", async () => {
+    const keys = Array.from({ length: 60 }, (_, i) => `flag-${i}`);
+    const { doFetch, seen } = fakeFetch({
+      [flagsPath]: () => json(keys.map((key) => ({ key, name: key }))),
+      [statesPath]: () =>
+        json(keys.map((flag) => ({ flag, on: true, version: 1, lastEvaluated: null }))),
     });
-    const [flag] = await createAdminApi(connection, doFetch).flags("shop", "prod");
-    expect(flag?.on).toBeNull();
+    const flags = await createAdminApi(connection, doFetch).flags("shop", "prod");
+    expect(flags).toHaveLength(60);
+    expect(seen).toHaveLength(2);
+    expect(flags.every((f) => f.on === true)).toBe(true);
   });
 
-  test("a config read that fails with a server error is a failure, not an unknown flag", async () => {
+  test("a flag missing from the states is unknown, not an error", async () => {
     const { doFetch } = fakeFetch({
-      "GET /api/v1/projects/shop/flags": () => json([{ key: "a", name: "A" }]),
-      "GET /api/v1/projects/shop/flags/a/environments/prod": () =>
-        json({ error: { code: "internal", message: "Boom." } }, 500),
+      [flagsPath]: () =>
+        json([
+          { key: "a", name: "A", lastEvaluated: "2026-11-04" },
+          { key: "b", name: "B" },
+        ]),
+      [statesPath]: () => json([{ flag: "b", on: true, version: 2, lastEvaluated: null }]),
+    });
+    const [a, b] = await createAdminApi(connection, doFetch).flags("shop", "prod");
+    expect([a?.on, a?.version, a?.lastEvaluated]).toEqual([null, null, null]);
+    expect([b?.on, b?.version]).toEqual([true, 2]);
+  });
+
+  test("states the server does not have for the environment (404) leave every flag unknown", async () => {
+    const { doFetch } = fakeFetch({
+      [flagsPath]: () => json([{ key: "a", name: "A" }]),
+      [statesPath]: () =>
+        json({ error: { code: "environment_not_found", message: "No environment." } }, 404),
+    });
+    const [flag] = await createAdminApi(connection, doFetch).flags("shop", "prod");
+    expect([flag?.key, flag?.on, flag?.version, flag?.lastEvaluated]).toEqual([
+      "a",
+      null,
+      null,
+      null,
+    ]);
+  });
+
+  test("a states read that fails with a server error is a failure, not an unknown flag", async () => {
+    const { doFetch } = fakeFetch({
+      [flagsPath]: () => json([{ key: "a", name: "A" }]),
+      [statesPath]: () => json({ error: { code: "internal", message: "Boom." } }, 500),
     });
     await expect(createAdminApi(connection, doFetch).flags("shop", "prod")).rejects.toMatchObject({
       kind: "error",
@@ -100,9 +138,8 @@ describe("flags", () => {
 
   test("a server that dies mid-list is a failure, not an unknown flag", async () => {
     const { doFetch } = fakeFetch({
-      "GET /api/v1/projects/shop/flags": () => json([{ key: "a", name: "A" }]),
-      "GET /api/v1/projects/shop/flags/a/environments/prod": () =>
-        new Response("", { status: 502 }),
+      [flagsPath]: () => json([{ key: "a", name: "A" }]),
+      [statesPath]: () => new Response("", { status: 502 }),
     });
     await expect(createAdminApi(connection, doFetch).flags("shop", "prod")).rejects.toMatchObject({
       kind: "unreachable",

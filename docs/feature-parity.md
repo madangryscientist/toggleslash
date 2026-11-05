@@ -125,7 +125,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | --- | :---: | --- |
 | Boolean flags | ✅ | `api:/api/v1/projects/{project}/flags`<br>`api:/api/v1/projects/{project}/flags/{flag}`<br>`api:/api/v1/projects/{project}/flags/{flag}/environments/{env}/toggle`<br>`cli:flags create`<br>`cli:flags show`<br>`cli:flags on`<br>`cli:flags off`<br>`dashboard:/` |
 | Multivariate flags | 🟡 | `api:/api/v1/projects/{project}/flags`<br>`cli:flags create`<br>`doc:docs/evaluation.md`<br>The API takes 2–100 variations of one JSON type, but the dashboard only creates boolean flags. |
-| Per-environment configuration | ✅ | `api:/api/v1/projects/{project}/flags/{flag}/environments/{env}`<br>`doc:docs/architecture.md` |
+| Per-environment configuration | ✅ | `api:/api/v1/projects/{project}/flags/{flag}/environments/{env}`<br>`api:/api/v1/projects/{project}/environments/{env}/flag-states`<br>`doc:docs/architecture.md` |
 | Projects and environments | ✅ | `api:/api/v1/projects`<br>`api:/api/v1/projects/{project}`<br>`api:/api/v1/projects/{project}/environments`<br>`api:/api/v1/projects/{project}/environments/{env}`<br>`cli:projects list`<br>`cli:projects create`<br>`cli:envs list`<br>`cli:envs create`<br>`dashboard:/environments` |
 | Archive and restore | ✅ | `api:/api/v1/projects/{project}/flags/{flag}/archive`<br>`api:/api/v1/projects/{project}/flags/{flag}/restore`<br>`cli:flags archive` |
 | Permanent delete | — | — |

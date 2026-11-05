@@ -3,7 +3,7 @@
  * the token it is given, and nothing here is imported by a route component. The `.server.ts` name
  * makes TanStack Start's import protection fail the build if a client module ever imports it.
  */
-import { isRecord, str, strings, type Json } from "./json.ts";
+import { str, strings, type Json } from "./json.ts";
 import {
   ApiFailure,
   apiPath,
@@ -21,55 +21,43 @@ export { ApiFailure, apiPath };
 export type { Connection, Fetch };
 export type { FlagPatch } from "./detail.server.ts";
 
-/** How many per-flag config reads run at once: the list is N+1 until the server has a bulk read. */
-const CONFIG_CONCURRENCY = 8;
-
-interface FlagConfig {
+/** What `GET .../environments/{env}/flag-states` says about one flag in the selected environment. */
+interface FlagState {
   on: boolean;
   version: number;
+  lastEvaluated: string | null;
 }
 
-function toFlag(raw: Json, cfg: FlagConfig | null): FlagRow {
+function toFlag(raw: Json, state: FlagState | undefined): FlagRow {
   return {
     key: str(raw["key"]),
     name: str(raw["name"]),
     description: str(raw["description"]),
     tags: strings(raw["tags"]),
     temporary: raw["temporary"] === true,
-    lastEvaluated: typeof raw["lastEvaluated"] === "string" ? raw["lastEvaluated"] : null,
-    on: cfg?.on ?? null,
-    version: cfg?.version ?? null,
+    lastEvaluated: state?.lastEvaluated ?? null,
+    on: state?.on ?? null,
+    version: state?.version ?? null,
   };
 }
 
-async function readConfig(call: Call, path: string): Promise<FlagConfig | null> {
+/** The states by flag key. An environment the server does not know (404) gives none, so every flag is unknown. */
+async function readStates(call: Call, path: string): Promise<Map<string, FlagState>> {
+  const states = new Map<string, FlagState>();
   try {
-    const body = await call("GET", path);
-    if (!isRecord(body) || typeof body["on"] !== "boolean") return null;
-    return { on: body["on"], version: typeof body["version"] === "number" ? body["version"] : 0 };
-  } catch (error) {
-    // A flag with no config in this environment (404) is shown as unknown; any other failure is not.
-    if (error instanceof ApiFailure && error.status === 404) return null;
-    throw error;
-  }
-}
-
-/** `fn` over `items`, `limit` at a time, results in order. */
-async function mapLimit<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = [];
-  let next = 0;
-  async function worker() {
-    for (let i = next++; i < items.length; i = next++) {
-      const item = items[i];
-      if (item !== undefined) results[i] = await fn(item);
+    for (const item of await list(call, path)) {
+      if (typeof item["on"] !== "boolean") continue;
+      states.set(str(item["flag"]), {
+        on: item["on"],
+        version: typeof item["version"] === "number" ? item["version"] : 0,
+        lastEvaluated: typeof item["lastEvaluated"] === "string" ? item["lastEvaluated"] : null,
+      });
     }
+  } catch (error) {
+    // No states for this environment (404) shows every flag as unknown; any other failure is not.
+    if (!(error instanceof ApiFailure && error.status === 404)) throw error;
   }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return results;
+  return states;
 }
 
 export interface ToggleRequest {
@@ -98,13 +86,16 @@ export function createAdminApi(connection: Connection, doFetch: Fetch) {
       return (await list(call, apiPath("projects", project, "environments"))).map(toEnvironment);
     },
 
-    /** The project's active flags with each one's on/off in `env`. A config that cannot be read leaves `on` null. */
+    /**
+     * The project's active flags with each one's on/off, version and last evaluated day in `env`: the flag list
+     * and the environment's flag states, one read each, joined on the key. A flag with no state leaves `on` null.
+     */
     async flags(project: string, env: string): Promise<FlagRow[]> {
-      const raws = await list(call, apiPath("projects", project, "flags"));
-      return mapLimit(raws, CONFIG_CONCURRENCY, async (raw) => {
-        const path = apiPath("projects", project, "flags", str(raw["key"]), "environments", env);
-        return toFlag(raw, await readConfig(call, path));
-      });
+      const [raws, states] = await Promise.all([
+        list(call, apiPath("projects", project, "flags")),
+        readStates(call, apiPath("projects", project, "environments", env, "flag-states")),
+      ]);
+      return raws.map((raw) => toFlag(raw, states.get(str(raw["key"]))));
     },
 
     /** Turns a flag on or off in one environment. */
