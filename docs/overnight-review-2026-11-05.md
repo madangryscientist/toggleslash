@@ -29,7 +29,7 @@ One builder at a time, in this order. FS-2 is held and not in the queue.
 | 17 | FS-19 | medium | dashboard list (feel-review) | ✅ PR #22, full gate and CI green; needs your feel-review (#22, 47e14ba) |
 | 18 | FS-20 | medium | flag detail (feel-review) | ✅ PR #23, full gate and CI green; needs your feel-review (#23, dc6ef5e) |
 | 19 | FS-21 | medium | operator pages (feel-review) | ✅ PR #24, full gate and CI green; needs your feel-review (#24, ff8ce39) |
-| 20 | FS-22 | simple | Dockerfile and compose, local only | |
+| 20 | FS-22 | medium (raised) | Dockerfile and compose, local only | |
 | 21 | FS-23 | medium | cross-language e2e | |
 | 22 | FS-24 | simple | README and quickstart | |
 
@@ -162,3 +162,7 @@ Each entry: what · why · ⚠ if unsure · how to undo.
 - **What:** environments are list and create only (the server has no edit or delete); segments are list and edit only, so the dashboard cannot create or delete a segment yet. **⚠** a gap against what an operator expects; the CLI has no segment commands either. **Undo:** a follow-up ticket.
 - **What:** the key plaintext lives only in component state, not a loader, router cache or URL; e2e proves it is gone after leaving the page. **Undo:** n/a.
 - **What:** I filed the Dialog gap the builder named (no internal scroll, tall dialog hides its footer) against hackcove, because it was not filed. **Undo:** close that ticket.
+
+### FS-22 dispatch: no local Docker
+
+- **What:** the ticket wants `docker build` and `docker compose up` run locally. `jacobus` is not in the `docker` group and sudo needs a password, so neither can run here. I did not add the group, use sudo or install rootless Docker. The proof moves to a CI job that runs the same build and compose commands and curls `/health`, with no push and no registry login. Tier raised from simple to medium. **Why:** granting Docker access is root-equivalent and is your call, while CI proves the same commands. **⚠** nothing has been run on this machine, so a local-only difference would not show. **Undo / finish:** `sudo usermod -aG docker jacobus`, log in again, then run the two commands from `docs/self-hosting.md`.
