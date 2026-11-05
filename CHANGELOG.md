@@ -8,6 +8,9 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and ver
 
 ### Added
 
+- The TypeScript server SDK (`packages/sdk`, private): `createClient` with `variation` and `variationDetail`, the
+  ruleset with ETags, the stream with reconnect and a polling fallback, local evaluation, batched usage counts
+  flushed on `close()`; it never throws at a caller. See `docs/sdk.md`.
 - The repository skeleton: an engine stub, the `featureslash` CLI (`--version`, `--help`), a
   dashboard and a marketing site, each with its gate.
 - Flag evaluation in the engine, with its spec (`docs/evaluation.md`) and shared test vectors

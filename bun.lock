@@ -88,6 +88,17 @@
         "vitest": "5.0.5",
       },
     },
+    "packages/sdk": {
+      "name": "@hackcove/featureslash-sdk",
+      "version": "0.0.0",
+      "dependencies": {
+        "@hackcove/featureslash-engine": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "1.4.4",
+        "vitest": "5.0.5",
+      },
+    },
   },
   "packages": {
     "@babel/code-frame": ["@babel/code-frame@7.29.7", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],
@@ -215,6 +226,8 @@
     "@hackcove/featureslash": ["@hackcove/featureslash@workspace:packages/cli"],
 
     "@hackcove/featureslash-engine": ["@hackcove/featureslash-engine@workspace:packages/engine"],
+
+    "@hackcove/featureslash-sdk": ["@hackcove/featureslash-sdk@workspace:packages/sdk"],
 
     "@hackcove/theme-catppuccin-mocha": ["@hackcove/theme-catppuccin-mocha@0.3.0", "", { "peerDependencies": { "tailwindcss": "^4" } }, "sha512-YpPQvSfjqKP2ojfXSQJeyrJvOk+uWQuayySQlXORWDerdNscR+LMUCyHl+gyN1FPDWaDI5wtJut13ohmi1hiWQ=="],
 

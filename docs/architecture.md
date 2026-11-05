@@ -13,6 +13,7 @@ on .NET 10. TypeScript stays for the engine, the SDKs, the CLI, the dashboard an
 | --- | --- | --- |
 | `apps/server` | C# | flag data, the HTTP API, auth, evaluation for clients that ask the server |
 | `packages/engine` | TypeScript | flag evaluation, for TypeScript SDKs |
+| `packages/sdk` | TypeScript | the server-side SDK: ruleset, stream, local evaluation, usage counts (see [`sdk.md`](sdk.md)) |
 | `packages/cli` | TypeScript | the `featureslash` command; talks to the server |
 | `apps/web` | TypeScript | the dashboard; calls the server |
 | `apps/site` | TypeScript | featureslash.dev, prerendered |
@@ -222,7 +223,7 @@ Evaluation is specified once, in `docs/evaluation.md`, with shared test vectors 
 `fixtures/evaluation/`. It is implemented twice, in TypeScript (`packages/engine`) and in C#
 (`apps/server/FeatureSlash.Evaluation`), and both implementations must pass the same vectors.
 
-- **Server-side SDKs** fetch the ruleset from the server and evaluate locally.
+- **Server-side SDKs** fetch the ruleset from the server and evaluate locally. The TypeScript one is `packages/sdk` ([`sdk.md`](sdk.md)).
 - **Other clients** (browsers, mobile, anything without an SDK) ask the server, which evaluates (`POST /sdk/v1/evaluate`).
 
 ## Dashboard

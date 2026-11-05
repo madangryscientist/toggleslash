@@ -37,7 +37,7 @@ Lint rules are errors: fix the code, do not disable a rule.
 - Branch from `main`, keep the change small, and rebase on `origin/main` before you push.
 - Write the commit subject as a [Conventional Commit](https://www.conventionalcommits.org/)
   (`feat(scope): …`, `fix(scope): …`; `docs`, `chore`, `refactor`, `test`, `perf`, `build`, `ci`,
-  `style`, `revert`). The scope is the area (`cli`, `engine`, `web`, `site`, `server`, `ci`) and the issue goes
+  `style`, `revert`). The scope is the area (`cli`, `engine`, `sdk`, `web`, `site`, `server`, `ci`) and the issue goes
   at the end: `fix(engine): handle an empty rule list (#12)`. The squash keeps your subject.
 - Stage files by name. Never commit straight to `main`.
 - No AI attribution trailers are required or expected.
