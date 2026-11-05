@@ -8,6 +8,9 @@ not published.
   flag's value and reason for that shopper, and the SDK's status (ruleset ETag, last sync, stream).
   Its script reads `/state` once a second, so a flag changed anywhere shows up within a second.
 - `GET /state?user=<key>` is the same data as JSON. It reads the SDK's memory and makes no request.
+- Either route takes `&flag=<key>` to read one more flag than the five the shop uses (a key of up to
+  64 letters, digits, `-` or `_`; anything else is a 400). The page keeps it across the picker and its
+  refresh. The journey test uses it to watch a flag it creates in the dashboard.
 - The **Evaluate in the browser** button calls the server's `POST /sdk/v1/evaluate` from the page with
   the **client key**. The server key stays in this process: it is never in the page or in `/state`,
   and `test/` holds that.

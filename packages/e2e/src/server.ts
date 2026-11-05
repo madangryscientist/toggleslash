@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { REPO_ROOT } from "./dotnet.ts";
+import { dotnetPath, REPO_ROOT } from "./dotnet.ts";
 import { drain } from "./proc.ts";
 
 const CSPROJ = join(
@@ -23,7 +23,11 @@ export interface RunningServer {
 }
 
 async function dotnet(args: string[]): Promise<string> {
-  const child = Bun.spawn(["dotnet", ...args], { cwd: REPO_ROOT, stdout: "pipe", stderr: "pipe" });
+  const child = Bun.spawn([dotnetPath() ?? "dotnet", ...args], {
+    cwd: REPO_ROOT,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   const [out, err, code] = await Promise.all([
     child.stdout.text(),
     child.stderr.text(),
@@ -54,7 +58,7 @@ export async function startServer(
   assembly: string,
   options: { dbPath: string; adminToken: string },
 ): Promise<RunningServer> {
-  const child = Bun.spawn(["dotnet", assembly], {
+  const child = Bun.spawn([dotnetPath() ?? "dotnet", assembly], {
     cwd: join(REPO_ROOT, "apps", "server", "FeatureSlash.Server"),
     env: {
       ...process.env,

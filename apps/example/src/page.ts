@@ -5,6 +5,8 @@ interface PageConfig {
   serverUrl: string;
   /** A client key. The only key that is ever written into the page. */
   clientKey: string;
+  /** The `?flag=` the page was asked for, kept so its refresh asks for it too. */
+  extraFlag: string | null;
 }
 
 function escapeHtml(text: string): string {
@@ -48,7 +50,8 @@ function paint(state) {
 }
 async function refresh() {
   try {
-    const response = await fetch("/state?user=" + encodeURIComponent(config.user.key), { cache: "no-store" });
+    const query = "?user=" + encodeURIComponent(config.user.key) + (config.flag === null ? "" : "&flag=" + encodeURIComponent(config.flag));
+    const response = await fetch("/state" + query, { cache: "no-store" });
     if (response.ok) paint(await response.json());
   } catch {
     // The next tick tries again.
@@ -75,13 +78,17 @@ document.querySelector('[data-testid="evaluate-button"]').addEventListener("clic
 });
 `;
 
+/** Keeps `?flag=` through the shopper picker, which is a GET form. */
+function extraFlagInput(flag: string | null): string {
+  return flag === null ? "" : `<input type="hidden" name="flag" value="${escapeHtml(flag)}">`;
+}
+
 export function renderPage(state: State, config: PageConfig): string {
   const plan = state.user.attributes?.["plan"];
   const options = USERS.map((user) => {
     const selected = user.key === state.user.key ? " selected" : "";
     return `<option value="${escapeHtml(user.key)}"${selected}>${escapeHtml(user.key)}</option>`;
   }).join("");
-
   const rows = state.flags
     .map(
       (flag, i) => `<tr>
@@ -105,11 +112,11 @@ export function renderPage(state: State, config: PageConfig): string {
     .join("\n");
 
   // `<` is escaped so no value in the document can close the script element.
-  const data = JSON.stringify({
-    user: state.user,
-    serverUrl: config.serverUrl,
-    clientKey: config.clientKey,
-  }).replaceAll("<", "\\u003c");
+  const { serverUrl, clientKey, extraFlag: flag } = config;
+  const data = JSON.stringify({ user: state.user, serverUrl, clientKey, flag }).replaceAll(
+    "<",
+    "\\u003c",
+  );
 
   return `<!doctype html>
 <html lang="en">
@@ -125,6 +132,7 @@ export function renderPage(state: State, config: PageConfig): string {
 </header>
 <main>
 <form method="get" action="/">
+${extraFlagInput(config.extraFlag)}
 <label for="user">Shopper</label>
 <select id="user" name="user" data-testid="user-select">${options}</select>
 <button type="submit" data-testid="user-submit">Switch</button>

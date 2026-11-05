@@ -21,6 +21,8 @@ interface Stack {
   operatorPassword: string;
   /** Resolves with the log of whichever part exits while the stack is meant to be up. */
   failed: Promise<string>;
+  /** What each part has written to stdout and stderr, labelled. For a failed run to show. */
+  logs(): string;
   /** Stops every process and removes the database. Safe to call twice; rejects if a part would not stop. */
   stop(): Promise<void>;
 }
@@ -42,6 +44,7 @@ export async function startStack(signal?: AbortSignal): Promise<Stack> {
   mkdirSync(join(scratch, "home"));
 
   const stoppers: (() => Promise<void>)[] = [];
+  const parts: { name: string; log: () => string }[] = [];
   const failure = Promise.withResolvers<string>();
   let stopping: Promise<void> | null = null;
   const stop = (): Promise<void> => {
@@ -56,6 +59,7 @@ export async function startStack(signal?: AbortSignal): Promise<Stack> {
   };
   /** Says so when a part ends before `stop()` was called. */
   const watch = (name: string, exited: Promise<number>, log: () => string) => {
+    parts.push({ name, log });
     void exited.then((code) => {
       if (stopping === null) failure.resolve(`${name} exited (${code}):\n${log()}`);
     });
@@ -106,6 +110,7 @@ export async function startStack(signal?: AbortSignal): Promise<Stack> {
       adminToken,
       operatorPassword,
       failed: failure.promise,
+      logs: () => parts.map(({ name, log }) => `--- ${name} ---\n${log()}`).join("\n"),
       stop,
     };
   } catch (error) {

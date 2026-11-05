@@ -126,5 +126,13 @@ export function baseEnv(extra: Record<string, string>): Record<string, string> {
     const value = process.env[name];
     if (value !== undefined) env[name] = value;
   }
+  // `bun --bun` puts a `node` that is really Bun first on PATH. A child that asks for `node` (vite
+  // preview, miniflare) must get the real one: under Bun's, the dashboard's preview accepts
+  // connections and never answers.
+  if (env.PATH !== undefined) {
+    env.PATH = env.PATH.split(":")
+      .filter((dir) => !/\/bun-node-[^/]*$/.test(dir))
+      .join(":");
+  }
   return { ...env, ...extra };
 }

@@ -35,9 +35,17 @@ interface AppOptions {
   clientKey: string;
 }
 
-/** What the shop knows for one user, from the SDK's memory: no request is made. */
-function stateFor(client: FlagClient, user: Context): State {
-  const flags = FLAGS.map(({ key, fallback }) => {
+/** The shape of a flag key (the server's rule), so `?flag=` cannot carry anything else into the page. */
+const FLAG_KEY = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+
+/**
+ * What the shop knows for one user, from the SDK's memory: no request is made. `extraFlag` is one
+ * more flag to read, with a `null` fallback, for a flag the shop does not know yet.
+ */
+function stateFor(client: FlagClient, user: Context, extraFlag: string | null): State {
+  const known = extraFlag === null || FLAGS.some(({ key }) => key === extraFlag);
+  const read = known ? FLAGS : [...FLAGS, { key: extraFlag, fallback: null }];
+  const flags = read.map(({ key, fallback }) => {
     const { value, variationIndex, reason } = client.variationDetail(key, user, fallback);
     return { key, value, variationIndex, reason };
   });
@@ -48,7 +56,7 @@ function json(body: unknown, status: number): Response {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 }
 
-/** The app as a `fetch` handler: `GET /` is the page and `GET /state` the page's data. */
+/** The app as a `fetch` handler: `GET /` is the page and `GET /state` the page's data; both take `?user=` and `?flag=`. */
 export function createApp(options: AppOptions): (request: Request) => Response {
   return (request) => {
     const url = new URL(request.url);
@@ -61,10 +69,24 @@ export function createApp(options: AppOptions): (request: Request) => Response {
     if (user === null) {
       return json({ error: `unknown user; try one of ${USERS.map((u) => u.key).join(", ")}` }, 400);
     }
-    const state = stateFor(options.client, user);
+    const extraFlag = url.searchParams.get("flag");
+    if (extraFlag !== null && !FLAG_KEY.test(extraFlag)) {
+      return json(
+        {
+          error:
+            "flag must be a flag key: lowercase letters, digits, - and _, starting with a letter or digit",
+        },
+        400,
+      );
+    }
+    const state = stateFor(options.client, user, extraFlag);
     if (url.pathname === "/state") return json(state, 200);
 
-    const html = renderPage(state, { serverUrl: options.serverUrl, clientKey: options.clientKey });
+    const html = renderPage(state, {
+      serverUrl: options.serverUrl,
+      clientKey: options.clientKey,
+      extraFlag,
+    });
     return new Response(html, {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
