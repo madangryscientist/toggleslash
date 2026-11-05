@@ -89,6 +89,23 @@ public sealed class ApiServer : IDisposable
         return rows;
     }
 
+    public Task<HttpResponseMessage> Put(string path, object body) => AsAdmin(HttpMethod.Put, path, body);
+
+    /// <summary>
+    /// A flag's or a segment's salt, which the API never returns, read from the file: a test that evaluates
+    /// a saved config needs it to build the ruleset the way an SDK read would.
+    /// </summary>
+    public string Salt(string table, string project, string key)
+    {
+        Assert.Contains(table, new[] { "flags", "segments" });
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT t.salt FROM {table} t JOIN projects p ON p.id = t.project_id WHERE p.key = $project AND t.key = $key";
+        command.Parameters.AddWithValue("$project", project);
+        command.Parameters.AddWithValue("$key", key);
+        return (string)command.ExecuteScalar()!;
+    }
+
     public void Dispose()
     {
         Server.Dispose();

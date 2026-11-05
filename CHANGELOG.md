@@ -18,3 +18,6 @@ format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and ver
   environment, and the admin API that creates, lists and revokes them.
 - The admin API for projects, environments and flags (create, list, read; update, archive and restore
   for flags), and the OpenAPI document at `/openapi/v1.json`, committed as `apps/server/openapi/v1.json`.
+- The admin API for a flag's targeting in each environment (targets, prerequisites, rules, fallthrough, on
+  and off) with optimistic concurrency (`version`, `ETag`, `If-Match`; a stale save is 409) and a `toggle`
+  route, and for segments, validated against `docs/evaluation.md`.

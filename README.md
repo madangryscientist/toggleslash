@@ -5,7 +5,7 @@ live yet).
 
 > **Status: early.** The engine (TypeScript) and a C# evaluator evaluate flags, to the spec in
 > [`docs/evaluation.md`](docs/evaluation.md). The server stores flags in SQLite and has an admin API for projects,
-> environments, flags and SDK keys (OpenAPI: [`apps/server/openapi/v1.json`](apps/server/openapi/v1.json)). It cannot evaluate or serve flags to an SDK yet and there is no
+> environments, flags, their targeting and segments, and SDK keys (OpenAPI: [`apps/server/openapi/v1.json`](apps/server/openapi/v1.json)). It cannot evaluate or serve flags to an SDK yet and there is no
 > SDK, so nothing can use them from outside this repo.
 
 ## Layout
