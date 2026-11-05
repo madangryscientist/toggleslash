@@ -2,7 +2,7 @@
 
 ## MORNING SUMMARY
 
-**The whole queue landed: 23 tickets through PRs #3 to #27, none of them merged red.** FeatureSlash now has a C# server, a TypeScript engine and SDK, a CLI, a dashboard and a container build. Nothing was published, deployed or sent externally, and the repo is still private.
+**The whole queue landed: 24 tickets through PRs #3 to #27 (#8 is Dependabot's), none of them merged red.** FeatureSlash now has a C# server, a TypeScript engine and SDK, a CLI, a dashboard and a container build. Nothing was published, deployed or sent externally, and the repo is still private.
 
 **Three things to know first:**
 
