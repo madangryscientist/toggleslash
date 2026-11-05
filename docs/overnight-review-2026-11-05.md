@@ -28,7 +28,7 @@ One builder at a time, in this order. FS-2 is held and not in the queue.
 | 16 | FS-18 | medium | CLI | ✅ PR #21, full gate and CI green (#21, a39550d) |
 | 17 | FS-19 | medium | dashboard list (feel-review) | ✅ PR #22, full gate and CI green; needs your feel-review (#22, 47e14ba) |
 | 18 | FS-20 | medium | flag detail (feel-review) | ✅ PR #23, full gate and CI green; needs your feel-review (#23, dc6ef5e) |
-| 19 | FS-21 | medium | operator pages (feel-review) | |
+| 19 | FS-21 | medium | operator pages (feel-review) | ✅ PR #24, full gate and CI green; needs your feel-review (#24, ff8ce39) |
 | 20 | FS-22 | simple | Dockerfile and compose, local only | |
 | 21 | FS-23 | medium | cross-language e2e | |
 | 22 | FS-24 | simple | README and quickstart | |
