@@ -18,7 +18,7 @@ One builder at a time, in this order. FS-2 is held and not in the queue.
 | 7 | FS-9 | complex | EF Core on SQLite | ✅ gate, server 11, CI green (#11, dc4cb4c) |
 | 8 | FS-10 | complex | auth | ✅ gate, server 39, CI green (#12, f75c603) |
 | 9 | FS-11 | medium | admin API catalogue | ✅ PR #13, 137 server tests, gate and CI green (#13, b815f65) |
-| 10 | FS-12 | medium | targeting and segments | |
+| 10 | FS-12 | medium | targeting and segments | ✅ PR #14, 275 server tests, gate and CI green (#14, 3b14029) |
 | 11 | FS-13 | medium | audit | |
 | 12 | FS-14 | medium | SDK ruleset and evaluate | |
 | 13 | FS-15 | complex | SSE | |
