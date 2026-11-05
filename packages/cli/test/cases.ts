@@ -52,6 +52,10 @@ const historyPage = {
   nextCursor: "c-2",
 };
 
+export const diagnosis = {
+  flags: { "new-checkout": { value: true, variationIndex: 0, reason: { kind: "FALLTHROUGH" } } },
+};
+
 export interface Case {
   /** The command's name, so a test below can prove no command is untested. */
   command: string;
@@ -279,5 +283,24 @@ export const cases: Case[] = [
     path: `${P}/shop/environments/production/keys/7`,
     shows: ["revoked key 7"],
     reply: { id: 7, revoked: true },
+  },
+  {
+    command: "diagnose",
+    args: [
+      "diagnose",
+      "new-checkout",
+      "--project",
+      "shop",
+      "--env",
+      "production",
+      "--context",
+      '{"key":"u1"}',
+    ],
+    routes: { [`POST ${P}/shop/environments/production/evaluate`]: json(200, diagnosis) },
+    method: "POST",
+    path: `${P}/shop/environments/production/evaluate`,
+    body: { flagKey: "new-checkout", context: { key: "u1" } },
+    shows: ["value:", "true", "variationIndex:", "0", "reason:", "FALLTHROUGH"],
+    reply: diagnosis,
   },
 ];

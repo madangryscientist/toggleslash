@@ -75,6 +75,9 @@ function guardedWriter(
 
 function findCommand(args: readonly string[]): Command {
   const [group, action] = args;
+  // A command of one word (`diagnose <flag>`): the second argument is its own, not an action.
+  const single = COMMANDS.find((c) => c.name === group);
+  if (single !== undefined) return single;
   const known = COMMANDS.find((c) => c.name === `${group} ${action}`);
   if (known !== undefined) return known;
   const groupActions = COMMANDS.filter((c) => c.name.startsWith(`${group} `)).map((c) =>
@@ -99,7 +102,7 @@ async function dispatch(args: readonly string[], deps: Deps, secrets: Set<string
   let parsed;
   try {
     parsed = parseArgs({
-      args: args.slice(2),
+      args: args.slice(command.name.split(" ").length),
       allowPositionals: true,
       strict: true,
       options: {
