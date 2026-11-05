@@ -22,7 +22,7 @@ One builder at a time, in this order. FS-2 is held and not in the queue.
 | 11 | FS-13 | medium | audit | ✅ PR #15, 311 server tests, gate and CI green (#15, e79e538) |
 | 12 | FS-14 | medium | SDK ruleset and evaluate | ✅ PR #16, 586 server tests, gate and CI green (#16, 86b1cee) |
 | 13 | FS-15 | complex | SSE | ✅ PR #17, 607 server tests twice, gate and CI green, mutation check not run (#17, 595417a) |
-| 14 | FS-16 | medium | usage counts | |
+| 14 | FS-16 | medium | usage counts | ✅ PR #18, 664 server tests, gate and CI green (#18, f885e90) |
 | 15 | FS-17 | medium | TS SDK | |
 | 16 | FS-18 | medium | CLI | |
 | 17 | FS-19 | medium | dashboard list (feel-review) | |
