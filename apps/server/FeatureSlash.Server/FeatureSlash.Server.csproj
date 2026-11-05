@@ -11,4 +11,9 @@
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.14" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.14" PrivateAssets="all" />
+  </ItemGroup>
+
 </Project>

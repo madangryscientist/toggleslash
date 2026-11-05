@@ -4,8 +4,8 @@ Open source feature flags you can run yourself. MIT licensed. Site: https://feat
 live yet).
 
 > **Status: early.** The engine (TypeScript) and a C# evaluator evaluate flags, to the spec in
-> [`docs/evaluation.md`](docs/evaluation.md). There is no storage, API or SDK yet, so nothing can use it
-> from outside this repo.
+> [`docs/evaluation.md`](docs/evaluation.md). The server stores flags in SQLite but has no API yet and there is no
+> SDK, so nothing can use them from outside this repo.
 
 ## Layout
 

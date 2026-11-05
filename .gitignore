@@ -12,6 +12,12 @@ packages/cli/*.tgz
 .env
 .dev.vars
 
+# the server's SQLite file, wherever FEATURESLASH_DB_PATH points inside the tree
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
 # the C# server's build output
 apps/server/**/bin/
 apps/server/**/obj/

@@ -1,6 +1,7 @@
 {
   "ignorePatterns": [
     "**/*.md",
+    ".config/dotnet-tools.json",
     "**/*.gen.ts",
     "**/routeTree.gen.ts",
     "**/worker-configuration.d.ts",
