@@ -1,0 +1,35 @@
+# The Docker build context is the repository root. The server's image needs only global.json and
+# apps/server/FeatureSlash.{Evaluation,Server}; everything else stays out, and so does anything a
+# build or a run leaves behind.
+
+# dependencies and build output
+**/node_modules
+**/bin
+**/obj
+**/TestResults
+**/dist
+.nx
+.wrangler
+.output
+
+# any SQLite database, and secrets
+**/*.db
+**/*.db-journal
+**/*.db-shm
+**/*.db-wal
+**/.env
+**/.env.*
+**/.dev.vars
+**/*.pem
+
+# not part of the server image
+.git
+.github
+docs
+fixtures
+packages
+scripts
+apps/web
+apps/site
+apps/server/FeatureSlash.Server.Tests
+apps/server/FeatureSlash.Evaluation.Tests

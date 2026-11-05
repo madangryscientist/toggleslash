@@ -5,7 +5,7 @@ engine, manage them from a CLI and a hosted dashboard. The product domain is `fe
 (not registered yet, so nothing is routed to it).
 
 **This repository is early.** The engine evaluates flags; the dashboard lists, toggles, creates and archives flags and edits one flag's details and per-environment
-targeting (with its history and usage), lists and creates environments, creates and revokes SDK keys, edits segments and reads the project audit log, all through the server's admin API, the site renders one page, and the C# server migrates its SQLite database, answers `GET /health`, authenticates (the admin token and hashed SDK keys) and serves the admin API: SDK keys, projects, environments, flags, their per-environment targeting (versioned) and segments, each write recorded in an audit trail you can read back, described by `/openapi/v1.json`. It serves the SDK read API (`GET /sdk/v1/ruleset` with an `ETag`, `GET /sdk/v1/stream` for live updates in one server process, `POST /sdk/v1/evaluate`, through the C# evaluator, and `POST /sdk/v1/events` for usage counts, which store counts and nothing about an end user). The TypeScript server SDK (`packages/sdk`) calls the ruleset, stream and events routes; the `featureslash` CLI (`packages/cli`) calls the admin API (projects, environments, flags and SDK keys); no browser SDK exists. The design is in [`docs/architecture.md`](docs/architecture.md).
+targeting (with its history and usage), lists and creates environments, creates and revokes SDK keys, edits segments and reads the project audit log, all through the server's admin API, the site renders one page, and the C# server migrates its SQLite database, answers `GET /health`, authenticates (the admin token and hashed SDK keys) and serves the admin API: SDK keys, projects, environments, flags, their per-environment targeting (versioned) and segments, each write recorded in an audit trail you can read back, described by `/openapi/v1.json`. It serves the SDK read API (`GET /sdk/v1/ruleset` with an `ETag`, `GET /sdk/v1/stream` for live updates in one server process, `POST /sdk/v1/evaluate`, through the C# evaluator, and `POST /sdk/v1/events` for usage counts, which store counts and nothing about an end user). The TypeScript server SDK (`packages/sdk`) calls the ruleset, stream and events routes; the `featureslash` CLI (`packages/cli`) calls the admin API (projects, environments, flags and SDK keys); no browser SDK exists. The server builds into a container for self-hosting (`apps/server/Dockerfile`, `compose.yaml`, [`docs/self-hosting.md`](docs/self-hosting.md)), proven by a CI job and never pushed. The design is in [`docs/architecture.md`](docs/architecture.md).
 
 **Evaluation is specified once and implemented per language.** [`docs/evaluation.md`](docs/evaluation.md)
 is normative and `fixtures/evaluation/` is its executable form. A change to evaluation changes the spec,
@@ -25,7 +25,7 @@ A small Nx workspace on Bun workspaces:
 | `sdk` | `packages/sdk` | the TypeScript server SDK (`createClient`): ruleset with ETags, the stream with reconnect and a polling fallback, local evaluation with the engine, batched usage counts; it never throws at a caller. Private and unpublished; see `docs/sdk.md` |
 | `web` | `apps/web` | the dashboard: TanStack Start on Cloudflare Workers; a server-only client for the C# admin API (`src/api`), a project and environment switcher and the flag list (search, toggle, create, archive) and the flag detail page (`/flags/$flag`: metadata, targeting editor, history, usage; the editor's pure logic is `src/targeting`), and the operator pages `/environments` (list, create), `/keys` (create shows the plaintext once, in component state only; revoke asks first), `/segments` (list, edit) and `/audit` (flag, environment and date filters, cursor paging). D1 via Drizzle stays a placeholder table, unused. Its e2e run against a fake API (`e2e/fake-api.ts`), so its gate needs no .NET SDK |
 | `site` | `apps/site` | featureslash.dev: TanStack Start on a Worker, every page prerendered; no D1, no secrets |
-| `server` | `apps/server` | the C# server: ASP.NET Core minimal API on .NET 10 (`FeatureSlash.Server`, xunit in `FeatureSlash.Server.Tests`); owns all flag data and the API. `apps/server/openapi/v1.json` is its generated OpenAPI document |
+| `server` | `apps/server` | the C# server: ASP.NET Core minimal API on .NET 10 (`FeatureSlash.Server`, xunit in `FeatureSlash.Server.Tests`); owns all flag data and the API. `apps/server/openapi/v1.json` is its generated OpenAPI document; `apps/server/Dockerfile` and the root `compose.yaml` containerise it (below) |
 | `evaluation` | `apps/server/FeatureSlash.Evaluation` | the C# implementation of `docs/evaluation.md`: a class library with no ASP.NET or database dependency (xunit in `FeatureSlash.Evaluation.Tests`, which runs every vector); only the server's tests reference it |
 | `scripts` | `scripts` | `check-slop.ts`, `test-tmp-scope.ts`, `nx.ts` (typecheck + lint only) |
 
@@ -82,6 +82,14 @@ One app: `bunx nx test:e2e web`, `bunx nx build site`.
 
 First time on a machine: `bunx playwright install chromium-headless-shell`.
 
+**The server's container is checked in CI, not by the gate.** The `container` job in `.github/workflows/ci.yml`
+runs `docker build -f apps/server/Dockerfile`, `docker compose up -d`, waits for `/health` and runs
+`docker compose down -v`; it pushes nothing, logs in to no registry and uses a throwaway token. You need Docker to
+run the same commands locally, and the gate does not. Both base images in the Dockerfile are pinned by digest
+(the multi-arch index digest from `mcr.microsoft.com`); a bump changes the tag and the digest together, and
+the SDK image matches `global.json`. `.dockerignore` keeps `node_modules`, `bin`, `obj` and any `*.db` out of the
+context. `apps/web` is not containerised.
+
 **Generated files are not formatted.** `oxfmt` rewrites what it is given, so anything a tool writes
 is excluded in `.oxfmtrc.json`'s `ignorePatterns`: the route tree, `worker-configuration.d.ts`,
 the drizzle migrations and the `dotnet-tools.json` manifest. Add a pattern when a new generator appears. `**/*.md` is ignored too.
@@ -97,7 +105,7 @@ the drizzle migrations and the `dotnet-tools.json` manifest. Add a pattern when 
 
 ## Cloudflare, domains and publishing are human steps
 
-The repo adds no Worker route and no custom domain: `featureslash.dev` is not registered. The
+Pushing a container image to a registry is a human step too. The repo adds no Worker route and no custom domain: `featureslash.dev` is not registered. The
 `D1` binding in `apps/web/wrangler.jsonc` carries a placeholder id. Creating the D1 database, the
 Worker routes, and the first npm publish each wait for the maintainer's yes.
 `featureslash.dev` is used for canonical URLs and copy only.

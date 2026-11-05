@@ -32,7 +32,7 @@ bun run typecheck && bun run lint && bun run format:check && bun run test
 `apps/server` needs the .NET SDK (10.0.402, `global.json`); without one the root scripts skip it and say so.
 
 See [`AGENTS.md`](AGENTS.md) for the full gate and [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to
-send a change. [`docs/`](docs) has the [architecture](docs/architecture.md), the [evaluation spec](docs/evaluation.md), the testing policy and the getting-started page.
+send a change. [`docs/`](docs) has the [architecture](docs/architecture.md), the [evaluation spec](docs/evaluation.md), the testing policy, the getting-started page and the [self-hosting guide](docs/self-hosting.md).
 
 ## Licence
 

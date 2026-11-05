@@ -293,7 +293,9 @@ has no bulk read of per-environment state. The D1 placeholder table in `apps/web
 ## Hosting
 
 **Hosting is undecided.** C# does not run on Cloudflare Workers, so the server ships as a container
-for self-hosting. No Dockerfile exists yet. The dashboard and the site stay on Workers; the human
+for self-hosting: `apps/server/Dockerfile` (multi-stage, base images pinned by digest, a non-root user, a
+`/data` volume for the SQLite file, a healthcheck on `/health`) and the root `compose.yaml`, described in
+[`self-hosting.md`](self-hosting.md). No image is published. The dashboard and the site stay on Workers; the human
 steps in `AGENTS.md` (domain, routes, D1, publishing) still apply.
 
 ## Build and gate
