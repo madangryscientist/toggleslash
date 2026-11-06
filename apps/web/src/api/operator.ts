@@ -16,6 +16,7 @@ import type {
   MutationResult,
   ProjectLoaded,
   ProjectReady,
+  RulesetLoaded,
   SaveResult,
   Segment,
   SegmentsLoaded,
@@ -102,6 +103,37 @@ export const loadAudit = createServerFn({ method: "GET" })
       if (base.project === null) return { ...base, filters, cursor, page: empty };
       return { ...base, filters, cursor, page: await api.audit(base.project.key, filters, cursor) };
     }),
+  );
+
+interface RulesetInput {
+  project: string;
+  env: string;
+  hash: string;
+  flag: string | null;
+}
+
+function rulesetInput(data: unknown): RulesetInput {
+  const d = recordOf(data);
+  return {
+    project: str(d["project"]),
+    env: str(d["env"]),
+    hash: str(d["hash"]),
+    flag: str(d["flag"]) === "" ? null : str(d["flag"]),
+  };
+}
+
+/** What the flags were under a ruleset hash: the page a trace links to. Needs the project and environment the hash belongs to. */
+export const loadRuleset = createServerFn({ method: "GET" })
+  .validator(rulesetInput)
+  .handler(({ data }): Promise<RulesetLoaded> =>
+    load(async (api) => ({
+      ok: true,
+      project: data.project,
+      env: data.env,
+      hash: data.hash,
+      flag: data.flag,
+      found: await api.ruleset(data.project, data.env, data.hash, data.flag),
+    })),
   );
 
 interface NewEnvironmentInput {

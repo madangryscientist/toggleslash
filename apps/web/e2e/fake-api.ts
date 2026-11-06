@@ -10,7 +10,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 
 import { API_PORT, E2E_ADMIN_TOKEN } from "./constants.ts";
 import { db, flag, plain, reset, type Config, type Flag } from "./fake-data.ts";
-import { auditPage, createEnvironment, onKeys, onSegments } from "./fake-operator.ts";
+import { auditPage, createEnvironment, onKeys, onSegments, rulesetAt } from "./fake-operator.ts";
 import {
   historyOf,
   patchFlag,
@@ -172,6 +172,15 @@ function flagStates(res: ServerResponse, project: string, env: string) {
   return send(res, 200, states);
 }
 
+/** `.../environments/<env>/rulesets/<hash>`: what the environment served under one hash. */
+function onRuleset(
+  { res, project }: Ctx,
+  [env = "", , hash = ""]: string[],
+  query: URLSearchParams,
+) {
+  return reply(res, rulesetAt(project, env, hash, query));
+}
+
 /** `.../environments/<env>/keys|segments/...`: the operator routes under one environment. */
 async function onEnvironment({ req, res, project }: Ctx, [env = "", what, ...more]: string[]) {
   if (what === "flag-states") return flagStates(res, project, env);
@@ -183,6 +192,13 @@ async function onEnvironment({ req, res, project }: Ctx, [env = "", what, ...mor
   return problem(res, 404, "not_found", "No such route.");
 }
 
+/** An environment's route: the lookup of a past ruleset, else the rest. */
+function onEnvironmentRoute(ctx: Ctx, rest: string[], query: URLSearchParams) {
+  return rest[1] === "rulesets" && rest.length === 3
+    ? onRuleset(ctx, rest, query)
+    : onEnvironment(ctx, rest);
+}
+
 async function onProject(ctx: Ctx, rest: string[], query: URLSearchParams) {
   const { req, res, project } = ctx;
   const [kind, ...more] = rest;
@@ -192,7 +208,7 @@ async function onProject(ctx: Ctx, rest: string[], query: URLSearchParams) {
     }
     return send(res, 200, db.data.environments[project] ?? []);
   }
-  if (kind === "environments") return onEnvironment(ctx, more);
+  if (kind === "environments") return onEnvironmentRoute(ctx, more, query);
   if (kind === "audit" && more.length === 0) return reply(res, auditPage(project, query));
   if (kind === "flags") return onFlags(ctx, more);
   return problem(res, 404, "not_found", "No such route.");

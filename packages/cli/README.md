@@ -63,7 +63,7 @@ featureslash tokens create --project <project> --name <name> --permission read|w
 featureslash tokens list --project <project>
 featureslash tokens revoke <id> --project <project>
 
-featureslash diagnose <flag> --project <project> --env <env> (--context '<json>' | --context-file <path>)
+featureslash diagnose <flag> --project <project> --env <env> (--context '<json>' | --context-file <path>) [--etag <hash>]
 featureslash runtime --project <project> --env <env>
 featureslash rulesets show <hash> --project <project> --env <env> [--flag <flag>]
 ```
@@ -88,7 +88,10 @@ featureslash rulesets show <hash> --project <project> --env <env> [--flag <flag>
   "attributes": {}}`, from exactly one of `--context` and `--context-file`. It exits 0 whenever the server
   answers 200, **including when the reason is an error** (`ERROR FLAG_NOT_FOUND` is an answer, not a
   failure). A diagnosis counts no usage, writes no audit event, and the server neither stores nor logs the
-  context.
+  context. `--etag <hash>` asks as of a past ruleset: the hash is the one `runtime` and `rulesets show` use, the
+  `ETag` as 64 lowercase hex characters without its quotes (anything else is a usage error, exit 2), and the server
+  evaluates the context against the ruleset it kept when it served that hash, so the value and reason are what the
+  flag gave then. A hash the environment never served exits 1.
 - **`runtime`** asks what the server is serving for one environment (`GET /api/v1/projects/{project}/environments/{env}/runtime`)
   and prints `etag` (the `ETag` of that environment's ruleset, quotes included, as `GET /sdk/v1/ruleset` gives a server
   key), `flagCount` (flags in that ruleset, so archived ones are not counted), `generatedAt` (the server's time) and

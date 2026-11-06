@@ -53,6 +53,44 @@ describe("diagnose: the context", () => {
   });
 });
 
+describe("diagnose: --etag", () => {
+  const HASH = "a".repeat(64);
+
+  it("sends the hash as the request's etag", async () => {
+    const result = await run([...BASE, "--context", '{"key":"u1"}', "--etag", HASH]);
+    expect(result.code).toBe(0);
+    expect(result.seen[0]?.body).toEqual({
+      flagKey: "new-checkout",
+      context: { key: "u1" },
+      etag: HASH,
+    });
+  });
+
+  it("sends no etag field without the option", async () => {
+    const result = await run([...BASE, "--context", '{"key":"u1"}']);
+    expect(result.seen[0]?.body).not.toHaveProperty("etag");
+  });
+
+  it.each(["", "ABCDEF", `"${"a".repeat(64)}"`, "a".repeat(63)])(
+    "refuses %j before any request, as a usage error",
+    async (etag) => {
+      const result = await run([...BASE, "--context", "{}", "--etag", etag]);
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain("64 lowercase hex");
+      expect(result.seen).toEqual([]);
+    },
+  );
+
+  it("exits 1 for a hash the environment never served", async () => {
+    const result = await run(
+      [...BASE, "--context", "{}", "--etag", HASH],
+      apiError(404, "not_found", "This environment never served a ruleset with that hash."),
+    );
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("404 not_found");
+  });
+});
+
 describe("diagnose: plain output", () => {
   it("gives the value, the variation index and the reason", async () => {
     const result = await run([...BASE, "--context", '{"key":"u1"}']);

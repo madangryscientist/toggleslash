@@ -1,4 +1,5 @@
 /** The fake API's operator routes: environments, SDK keys, segments and the project audit log. */
+import { PAST_RULESET_HASH } from "./constants.ts";
 import { asBody, failure, type Body, type Reply } from "./fake-config.ts";
 import { db, type KeyRow, type SegmentRow } from "./fake-data.ts";
 
@@ -147,4 +148,70 @@ export function auditPage(project: string, query: URLSearchParams): Reply {
   const last = events.at(-1);
   const nextCursor = matching.length > limit && last !== undefined ? String(last.id) : null;
   return [200, { events, nextCursor }];
+}
+
+/**
+ * `GET .../environments/<env>/rulesets/<hash>[?flag=]`: what shop/production served under one hash. The flags are
+ * as they were then, not as the fake's current configs are: checkout-v2 was off with no rules and dark-mode on.
+ * Like the real route it has no salt, and a hash it never served (or another environment's) is a 404.
+ */
+export function rulesetAt(
+  project: string,
+  env: string,
+  hash: string,
+  query: URLSearchParams,
+): Reply {
+  if (project !== "shop" || env !== "production" || hash !== PAST_RULESET_HASH) {
+    return failure(
+      404,
+      "not_found",
+      "This environment never served a ruleset with that hash. A hash is the ETag's lowercase hex, without quotes.",
+    );
+  }
+  const old = {
+    etag: `"${PAST_RULESET_HASH}"`,
+    firstServedAt: "2026-11-02T09:30:00Z",
+    flags: [
+      {
+        key: "checkout-v2",
+        variations: [true, false],
+        on: false,
+        offVariation: 1,
+        targets: [],
+        prerequisites: [],
+        rules: [
+          {
+            clauses: [{ op: "in", attribute: "country", values: ["NL"] }],
+            variation: 0,
+          },
+        ],
+        fallthrough: { variation: 1 },
+        version: 2,
+      },
+      {
+        key: "dark-mode",
+        variations: [true, false],
+        on: true,
+        offVariation: 1,
+        targets: [{ variation: 0, contextKeys: ["alice"] }],
+        prerequisites: [],
+        rules: [],
+        fallthrough: { variation: 1 },
+        version: 1,
+      },
+    ],
+    segments: [
+      {
+        key: "beta-testers",
+        included: ["alice"],
+        excluded: [],
+        rules: [{ clauses: [{ op: "in", attribute: "country", values: ["NL"] }] }],
+      },
+    ],
+  };
+  const only = query.get("flag");
+  if (only === null) return [200, old];
+  const flags = old.flags.filter((f) => f.key === only);
+  if (flags.length === 0) return failure(404, "not_found", "That ruleset has no such flag.");
+  return [200, { ...old, flags, segments: [] }];
 }

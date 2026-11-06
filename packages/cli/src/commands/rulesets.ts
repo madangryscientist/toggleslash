@@ -5,6 +5,14 @@ import { cell, details, expectObject, expectObjects, table, type JsonObject } fr
 
 const HASH = /^[0-9a-f]{64}$/;
 
+/** A ruleset hash as the server takes it, or a usage error before any request: the ETag's lowercase hex, no quotes. */
+export function checkHash(hash: string): string {
+  if (!HASH.test(hash)) {
+    throw new UsageError("the hash is the ETag's 64 lowercase hex characters, without its quotes.");
+  }
+  return hash;
+}
+
 /** How many entries a list has: the rules and targets themselves are for `--json`. */
 function count(value: unknown): string {
   return Array.isArray(value) ? String(value.length) : "-";
@@ -39,12 +47,7 @@ const show: Command = {
   async run({ values, positionals }, ctx) {
     const project = need(values, "project");
     const env = need(values, "env");
-    const hash = first(positionals, "the hash");
-    if (!HASH.test(hash)) {
-      throw new UsageError(
-        "the hash is the ETag's 64 lowercase hex characters, without its quotes.",
-      );
-    }
+    const hash = checkHash(first(positionals, "the hash"));
     const body = await ctx
       .api(str(values, "url"))
       .get(apiPath("projects", project, "environments", env, "rulesets", hash), {

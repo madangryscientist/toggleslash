@@ -201,3 +201,42 @@ export type AuditLoaded =
       cursor: string | null;
       page: AuditPage;
     });
+
+/** One flag as it was under a past ruleset hash. There is no salt: the server never sends one on this route. */
+export interface PastFlag {
+  key: string;
+  /** Each variation's value as JSON text; the index is what the rules refer to. */
+  variations: string[];
+  config: Config;
+}
+
+/** A segment as it was under a past ruleset hash. `rules` is JSON text. */
+export interface PastSegment {
+  key: string;
+  included: string[];
+  excluded: string[];
+  rules: string;
+}
+
+/** What the server kept for one served ruleset hash. */
+export interface PastRuleset {
+  /** The hash: lowercase hex, no quotes. */
+  hash: string;
+  /** ISO 8601, UTC. */
+  firstServedAt: string;
+  flags: PastFlag[];
+  segments: PastSegment[];
+}
+
+/** The answer to asking what the flags were under a hash: the ruleset, or that the environment never served it. */
+export type RulesetLoaded =
+  | { ok: false; failure: Failure }
+  | {
+      ok: true;
+      project: string;
+      env: string;
+      hash: string;
+      /** The one flag the page was narrowed to, if it was. */
+      flag: string | null;
+      found: { ok: true; ruleset: PastRuleset } | { ok: false; message: string };
+    };
