@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// <c>GET /sdk/v1/stream</c>. Nothing here waits for time to pass: the heartbeat is ticked by hand, and
@@ -29,10 +30,11 @@ public sealed class SdkStreamTests : IDisposable
     private readonly ManualHeartbeat heartbeat = new();
     private readonly StreamProbe probe = new();
     private readonly CommitSwitch commits = new();
+    private readonly CapturedLogs logs = new();
     private readonly ApiServer server;
 
     public SdkStreamTests() =>
-        server = ApiServer.With(builder => builder.ConfigureTestServices(services =>
+        server = ApiServer.With(builder => builder.ConfigureLogging(logging => logging.SetMinimumLevel(LogLevel.Trace).AddProvider(logs)).ConfigureTestServices(services =>
         {
             services.AddSingleton<StreamHeartbeat>(heartbeat);
             services.AddSingleton<IStartupFilter>(probe);
@@ -385,6 +387,25 @@ public sealed class SdkStreamTests : IDisposable
         await stream.Ended();
         await probe.Finished.WaitAsync(Guard);
         Assert.Equal(0, Notifier.SubscriberCount);
+    }
+
+    [Fact]
+    public async Task A_deleted_environments_stream_ends_at_the_next_keep_alive_with_no_error_logged()
+    {
+        await Seed();
+        var (key, revoke) = await RevocableKey();
+        using var stream = await Open(key);
+        await stream.NextEvent();
+        await revoke();
+        await ApiServer.Expect(HttpStatusCode.NoContent, await server.Delete("/api/v1/projects/shop/environments/prod"));
+
+        heartbeat.Tick();
+
+        await stream.Ended();
+        await probe.Finished.WaitAsync(Guard);
+        Assert.Equal(0, Notifier.SubscriberCount);
+        Assert.DoesNotContain(" Error ", logs.All);
+        Assert.DoesNotContain(" Critical ", logs.All);
     }
 
     private async Task<(string Key, Func<Task> Revoke)> RevocableKey()

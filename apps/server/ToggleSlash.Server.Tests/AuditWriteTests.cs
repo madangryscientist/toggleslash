@@ -41,6 +41,7 @@ public sealed class AuditWriteTests : IDisposable
         long keyId = 0;
         yield return new("POST /api/v1/projects", () => server.Post("/api/v1/projects", new { key = "other", name = "Other" }), HttpStatusCode.Created, "project", "created");
         yield return new("POST /api/v1/projects/{project}/environments", () => server.Post($"{Shop}/environments", new { key = "staging", name = "Staging" }), HttpStatusCode.Created, "environment", "created");
+        yield return new("PATCH /api/v1/projects/{project}/environments/{env}", () => server.Patch($"{Shop}/environments/staging", new { name = "Pre-production" }), HttpStatusCode.OK, "environment", "updated");
         yield return new("POST /api/v1/projects/{project}/flags", () => server.Post($"{Shop}/flags", new { key = "banner", name = "Banner", variations = new[] { true, false } }), HttpStatusCode.Created, "flag", "created");
         yield return new("PATCH /api/v1/projects/{project}/flags/{flag}", () => server.Patch(Flag, new { name = "Checkout v2" }), HttpStatusCode.OK, "flag", "updated");
         yield return new("POST /api/v1/projects/{project}/flags/{flag}/archive", () => server.Post($"{Flag}/archive"), HttpStatusCode.OK, "flag", "archived");
@@ -65,6 +66,7 @@ public sealed class AuditWriteTests : IDisposable
             return response;
         }, HttpStatusCode.Created, "admin_token", "created");
         yield return new("DELETE /api/v1/projects/{project}/tokens/{id:long}", () => server.Delete($"{Shop}/tokens/{tokenId}"), HttpStatusCode.NoContent, "admin_token", "revoked");
+        yield return new("DELETE /api/v1/projects/{project}/environments/{env}", () => server.Delete($"{Shop}/environments/staging"), HttpStatusCode.NoContent, "environment", "deleted");
     }
 
     [Fact]
@@ -156,6 +158,8 @@ public sealed class AuditWriteTests : IDisposable
         "invalid config",
         "delete a segment a rule uses",
         "revoke a missing key",
+        "delete an environment with a live key",
+        "rename to a blank name",
         "no token",
         "an SDK key",
     };
@@ -186,6 +190,8 @@ public sealed class AuditWriteTests : IDisposable
             "invalid config" => (HttpStatusCode.BadRequest, await server.Put(Config, new { on = true, offVariation = 9, targets = Array.Empty<object>(), prerequisites = Array.Empty<object>(), rules = Array.Empty<object>(), fallthrough = new { variation = 0 }, version = 2 })),
             "delete a segment a rule uses" => (HttpStatusCode.Conflict, await server.Delete($"{Segments}/beta")),
             "revoke a missing key" => (HttpStatusCode.NotFound, await server.Delete($"{Keys}/9999")),
+            "delete an environment with a live key" => (HttpStatusCode.Conflict, await server.Delete($"{Shop}/environments/prod")),
+            "rename to a blank name" => (HttpStatusCode.BadRequest, await server.Patch($"{Shop}/environments/prod", new { name = " " })),
             "no token" => (HttpStatusCode.Unauthorized, await server.Send(HttpMethod.Post, "/api/v1/projects", null, new { key = "nope", name = "x" })),
             "an SDK key" => (HttpStatusCode.Forbidden, await server.Send(HttpMethod.Post, "/api/v1/projects", $"Bearer {sdkKey}", new { key = "nope", name = "x" })),
             _ => throw new ArgumentException(scenario),

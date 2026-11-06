@@ -165,15 +165,64 @@ describe("usage errors exit 2 and call nothing", () => {
       ["tokens", "create", "-p", "p", "--name", "n", "--permission", "read"],
       "--expires-in-days is required",
     ],
+    [
+      "a missing --name on envs rename",
+      ["envs", "rename", "prod", "-p", "p"],
+      "--name is required",
+    ],
+    [
+      "a blank --name on envs rename",
+      ["envs", "rename", "prod", "-p", "p", "--name", "  "],
+      "--name is required",
+    ],
+    [
+      "a missing key on envs rename",
+      ["envs", "rename", "-p", "p", "--name", "n"],
+      "takes the environment key",
+    ],
+    [
+      "envs delete without --yes",
+      ["envs", "delete", "prod", "-p", "p"],
+      "pass --yes to delete prod",
+    ],
+    [
+      "a missing key on envs delete",
+      ["envs", "delete", "-p", "p", "--yes"],
+      "takes the environment key",
+    ],
     ["a group with no action", ["flags"], "flags needs one of"],
     ["an unknown action", ["flags", "frobnicate"], 'unknown command "flags frobnicate"'],
     ["an unknown command", ["nope"], 'unknown argument "nope"'],
   ];
 
   it.each(usage)("%s", async (_name, args, message) => {
-    const result = await cli(args, { fetch: fakeServer({}).fetch, env: CONNECTED });
+    const server = fakeServer({});
+    const result = await cli(args, { fetch: server.fetch, env: CONNECTED });
     expect(result.code).toBe(2);
     expect(result.stdout).toBe("");
     expect(result.stderr).toContain(message);
+    expect(server.seen).toEqual([]);
+  });
+});
+
+describe("envs delete", () => {
+  it("delete exits 1 with the server's message when a live key blocks it", async () => {
+    const server = fakeServer({
+      [`DELETE ${P}/p/environments/prod`]: apiError(
+        409,
+        "conflict",
+        'Environment "prod" still has 1 SDK key that is not revoked. Revoke it first.',
+      ),
+    });
+    const result = await cli(["envs", "delete", "prod", "-p", "p", "--yes"], {
+      fetch: server.fetch,
+      env: CONNECTED,
+    });
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(
+      'toggleslash: the server answered 409 conflict: Environment "prod" still has 1 SDK key that is not revoked. Revoke it first.\n',
+    );
+    expect(server.seen).toHaveLength(1);
   });
 });

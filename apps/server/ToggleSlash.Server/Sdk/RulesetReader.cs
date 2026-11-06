@@ -66,7 +66,7 @@ internal sealed class RulesetSnapshot(RulesetResponse ruleset, byte[] body)
 /// <summary>Builds <see cref="RulesetSnapshot"/>s from the database. Nothing is cached: a write is visible to the next read.</summary>
 internal sealed class RulesetReader(ToggleSlashDbContext database, ILogger<RulesetReader> logger)
 {
-    /// <summary>The environment is the one an SDK key belongs to, and no route deletes an environment, so it exists.</summary>
+    /// <summary>The caller has already found the environment. A delete landing in the instant between that and this read makes it throw: a sweep logs it, a request answers 500.</summary>
     public async Task<RulesetSnapshot> Read(long environmentId, CancellationToken cancellation)
     {
         // One read transaction (the database is in WAL mode), so flags and segments come from the same moment.
