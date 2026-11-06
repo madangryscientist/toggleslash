@@ -51,6 +51,8 @@ export interface Config {
 /** Rollout weights sum to this; one percent is 1000. */
 export const WEIGHT_TOTAL = 100_000;
 
+/** The ops that compare versions: their values are version strings, never numbers or booleans. */
+export const SEMVER_OPS = ["semverEq", "semverLt", "semverLte", "semverGt", "semverGte"] as const;
 export const ATTRIBUTE_OPS = [
   "in",
   "contains",
@@ -60,6 +62,7 @@ export const ATTRIBUTE_OPS = [
   "lte",
   "gt",
   "gte",
+  ...SEMVER_OPS,
 ] as const;
 export const SEGMENT_OP = "segmentMatch";
 

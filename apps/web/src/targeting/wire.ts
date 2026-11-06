@@ -1,6 +1,6 @@
 /** The PUT body the editor builds from a draft, and the shape check on it when it comes back. Pure. */
 import { isRecord } from "../api/json.ts";
-import { SEGMENT_OP } from "./model.ts";
+import { SEGMENT_OP, SEMVER_OPS } from "./model.ts";
 import { weightOf, type ClauseDraft, type Draft, type ServeDraft } from "./draft.ts";
 import type { FieldProblem } from "./problems.ts";
 import { parseKeys, parseStrings, parseValues } from "./values.ts";
@@ -53,12 +53,16 @@ function serveWire(
   return { rollout: { variations } };
 }
 
+function isSemverOp(op: string): boolean {
+  return SEMVER_OPS.some((semver) => semver === op);
+}
+
 function clauseWire(c: ClauseDraft): Record<string, unknown> {
-  const values = parseValues(c.values);
-  if (c.op === SEGMENT_OP) {
-    return { op: c.op, values: parseStrings(c.values), ...(c.negate ? { negate: true } : {}) };
-  }
-  return { op: c.op, attribute: c.attribute.trim(), values, ...(c.negate ? { negate: true } : {}) };
+  const negate = c.negate ? { negate: true } : {};
+  if (c.op === SEGMENT_OP) return { op: c.op, values: parseStrings(c.values), ...negate };
+  // A version is a string even when it looks like a number: a bare `2.1` must not be sent as 2.1.
+  const values = isSemverOp(c.op) ? parseStrings(c.values) : parseValues(c.values);
+  return { op: c.op, attribute: c.attribute.trim(), values, ...negate };
 }
 
 /** The body of a PUT, or the fields a person must fix first (the rest is the server's to judge). */

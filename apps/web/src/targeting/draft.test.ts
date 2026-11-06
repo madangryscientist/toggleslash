@@ -123,6 +123,39 @@ describe("toDraft and toWire", () => {
     if (!sent.ok) throw new Error("fixture");
     expect(JSON.stringify(sent.wire.rules[0])).toContain('"values":["007","true"]');
   });
+  test("a version typed bare under a semver op is sent as a string, and stays a number under gte", () => {
+    const draft = toDraft(config, 2);
+    draft.rules[0]?.clauses.push(
+      { op: "semverGte", attribute: "appVersion", values: "2.1, 1.2.3", negate: false },
+      { op: "gte", attribute: "age", values: "2.1, 1.2.3", negate: false },
+    );
+    const sent = toWire(draft);
+    if (!sent.ok) throw new Error("fixture");
+    const rule = JSON.stringify(sent.wire.rules[0]);
+    expect(rule).toContain('"op":"semverGte","attribute":"appVersion","values":["2.1","1.2.3"]');
+    expect(rule).toContain('"op":"gte","attribute":"age","values":[2.1,"1.2.3"]');
+  });
+  test("a saved semver clause survives draft to wire unchanged", () => {
+    const saved: Config = {
+      ...config,
+      rules: [
+        {
+          clauses: [
+            { op: "semverGte", attribute: "appVersion", values: ["2.1", "1.2.3"], negate: true },
+          ],
+          serve: { kind: "variation", variation: 0 },
+        },
+      ],
+    };
+    const sent = toWire(toDraft(saved, 3));
+    if (!sent.ok) throw new Error("fixture");
+    expect(sent.wire.rules[0]).toEqual({
+      clauses: [
+        { op: "semverGte", attribute: "appVersion", values: ["2.1", "1.2.3"], negate: true },
+      ],
+      variation: 0,
+    });
+  });
 });
 
 describe("switchServe", () => {

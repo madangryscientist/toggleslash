@@ -65,6 +65,26 @@ test("edits a rule and a rollout, saves, and sees them after a reload", async ({
   });
 });
 
+test("a semver operator is picked from the menu and a bare version is saved as a string", async ({
+  page,
+  request,
+}) => {
+  await openCheckout(page);
+
+  await page.getByTestId("rule-0-clause-0-op").selectOption("semverGte");
+  await page.getByTestId("rule-0-clause-0-values").fill("2.1");
+  await page.getByTestId("save-targeting").click();
+
+  await expect(page.getByTestId("notice")).toContainText("Targeting saved");
+  await page.reload();
+  await expect(page.getByTestId("rule-0-clause-0-op")).toHaveValue("semverGte");
+  await expect(page.getByTestId("rule-0-clause-0-values")).toHaveValue('"2.1"');
+  const stored = await request.get(CONFIG, { headers: AUTH });
+  expect(await stored.json()).toMatchObject({
+    rules: [{ clauses: [{ op: "semverGte", values: ["2.1"] }] }],
+  });
+});
+
 test("adds a rule and a prerequisite and turns targeting off", async ({ page, request }) => {
   await openCheckout(page);
   await page.getByTestId("add-rule").click();

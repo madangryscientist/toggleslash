@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ToggleSlash.Evaluation;
 
 namespace ToggleSlash.Server.Targeting;
 
@@ -12,7 +13,7 @@ internal sealed class TargetingValidator(int variationCount)
 {
     public const int MaxWeight = 100_000;
 
-    private static readonly string[] AttributeOps = ["in", "contains", "startsWith", "endsWith", "lt", "lte", "gt", "gte"];
+    private static readonly string[] AttributeOps = ["in", "contains", "startsWith", "endsWith", "lt", "lte", "gt", "gte", "semverEq", "semverLt", "semverLte", "semverGt", "semverGte"];
 
     /// <summary>Every prerequisite, in order, for the endpoint to resolve and to check for cycles.</summary>
     public List<PrerequisiteReference> Prerequisites { get; } = [];
@@ -228,9 +229,20 @@ internal sealed class TargetingValidator(int variationCount)
         {
             return $"{path}.values must be an array.";
         }
+        var isSemver = name.StartsWith("semver", StringComparison.Ordinal);
         var index = 0;
         foreach (var value in valuesElement.EnumerateArray())
         {
+            if (isSemver)
+            {
+                // A typo here would silently never match, so a semver clause must hold valid versions.
+                if (value.ValueKind != JsonValueKind.String || SemanticVersion.Parse(value.GetString()!) is null)
+                {
+                    return $"{path}.values[{index}] must be a string holding a semantic version, such as \"1.2.3\".";
+                }
+                index++;
+                continue;
+            }
             var ok = value.ValueKind is JsonValueKind.String or JsonValueKind.True or JsonValueKind.False
                 || value.ValueKind == JsonValueKind.Number && TryFinite(value);
             if (!ok)

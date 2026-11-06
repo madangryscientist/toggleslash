@@ -203,6 +203,45 @@ public sealed class SegmentApiTests : IDisposable
     };
 
     [Theory]
+    [InlineData("\"v1\"")]
+    [InlineData("\"\"")]
+    [InlineData("2")]
+    public async Task A_semver_rule_with_a_value_that_is_not_a_version_is_400_naming_the_value(string valueJson)
+    {
+        await Seed();
+        var body = $$"""{"key":"s","included":[],"excluded":[],"rules":[{"clauses":[{"attribute":"version","op":"semverGte","values":["1.0.0",{{valueJson}}]}]}]}""";
+
+        var response = await RawPost(Prod, body);
+
+        await ExpectBadRequest(response);
+        Assert.Contains("rules[0].clauses[0].values[1]", (await ApiServer.Json(response)).GetProperty("error").GetProperty("message").GetString());
+        Assert.Equal(0, (await ApiServer.Json(await server.Get(Prod))).GetArrayLength());
+    }
+
+    [Fact]
+    public async Task A_semver_rule_with_versions_saves_on_create_and_on_put()
+    {
+        await Seed();
+        var rules = """[{"clauses":[{"attribute":"version","op":"semverGte","values":["2.10","1.0.0-rc.1"]}],"weight":50000}]""";
+
+        var created = await RawPost(Prod, $$"""{"key":"s","included":[],"excluded":[],"rules":{{rules}}}""");
+
+        await ApiServer.Expect(HttpStatusCode.Created, created);
+        Assert.Equal(rules, (await ApiServer.Json(created)).GetProperty("rules").GetRawText());
+        var put = await Raw(HttpMethod.Put, $"{Prod}/s", $$"""{"included":[],"excluded":[],"rules":{{rules.Replace("semverGte", "semverLt")}},"version":1}""");
+        await ApiServer.Expect(HttpStatusCode.OK, put);
+        Assert.Contains("semverLt", (await ApiServer.Json(put)).GetProperty("rules").GetRawText());
+    }
+
+    [Fact]
+    public async Task A_semver_rule_with_no_values_saves()
+    {
+        await Seed();
+
+        await ApiServer.Expect(HttpStatusCode.Created, await RawPost(Prod, """{"key":"s","included":[],"excluded":[],"rules":[{"clauses":[{"attribute":"version","op":"semverEq","values":[]}]}]}"""));
+    }
+
+    [Theory]
     [MemberData(nameof(InvalidBodies))]
     public async Task An_invalid_body_is_400_and_creates_nothing(string json)
     {

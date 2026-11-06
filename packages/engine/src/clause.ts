@@ -1,3 +1,4 @@
+import { compareSemanticVersions, parseSemanticVersion } from "./semver.ts";
 import type { AttributeClause, AttributeOp, ClauseValue } from "./validate.ts";
 
 export interface Context {
@@ -39,6 +40,18 @@ function matchesOrder(op: AttributeOp, order: number): boolean {
   return order >= 0;
 }
 
+function matchesSemver(op: AttributeOp, attribute: unknown, value: ClauseValue): boolean {
+  if (typeof attribute !== "string" || typeof value !== "string") return false;
+  const candidate = parseSemanticVersion(attribute);
+  const target = parseSemanticVersion(value);
+  if (candidate === null || target === null) return false;
+  const order = compareSemanticVersions(candidate, target);
+  if (op === "semverEq") return order === 0;
+  if (op === "semverLt") return order < 0;
+  if (op === "semverLte") return order <= 0;
+  return op === "semverGt" ? order > 0 : order >= 0;
+}
+
 function matchesValue(op: AttributeOp, attribute: unknown, value: ClauseValue): boolean {
   if (op === "in") {
     return typeof attribute === "boolean" ? attribute === value : compare(attribute, value) === 0;
@@ -50,6 +63,7 @@ function matchesValue(op: AttributeOp, attribute: unknown, value: ClauseValue): 
       matchesString(op, attribute, value)
     );
   }
+  if (op.startsWith("semver")) return matchesSemver(op, attribute, value);
   const order = compare(attribute, value);
   return order !== null && matchesOrder(op, order);
 }

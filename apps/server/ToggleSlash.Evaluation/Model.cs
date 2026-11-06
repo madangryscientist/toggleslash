@@ -12,6 +12,11 @@ internal enum Op
     Lte,
     Gt,
     Gte,
+    SemverEq,
+    SemverLt,
+    SemverLte,
+    SemverGt,
+    SemverGte,
     SegmentMatch,
 }
 
