@@ -337,6 +337,83 @@ public sealed class ConfigApiTests : IDisposable
         """{"on":false,"offVariation":1,"targets":[],"prerequisites":[],"rules":[{"clauses":[],"variation":0,"\ud800":1}],"fallthrough":{"variation":0},"version":1}""",
     };
 
+    /// <summary>A v prefix, a leading zero, an Arabic-Indic digit: the parser has its own vectors.</summary>
+    public static TheoryData<string> BadSemverValues => ["v1", "01.2.3", "1.\u0661.0"];
+
+    /// <summary>A number and a null: not strings.</summary>
+    public static TheoryData<string> BadSemverTypes => ["2", "null"];
+
+    private static string SemverRule(string valuesJson, string op = "semverGte") =>
+        $$"""[{"clauses":[{"attribute":"version","op":"{{op}}","values":{{valuesJson}}}],"variation":0}]""";
+
+    [Theory]
+    [MemberData(nameof(BadSemverValues))]
+    public async Task A_semver_clause_with_a_value_that_is_not_a_version_is_400_naming_the_value(string value)
+    {
+        await Seed("dark-mode", "base");
+
+        var response = await Put("dark-mode", Body(1, ("rules", SemverRule($"[\"1.0.0\",{JsonSerializer.Serialize(value)}]"))));
+
+        await ExpectBadRequest(response);
+        Assert.Contains("rules[0].clauses[0].values[1]", (await ApiServer.Json(response)).GetProperty("error").GetProperty("message").GetString());
+        Assert.Equal(1, await Version("dark-mode"));
+    }
+
+    [Theory]
+    [MemberData(nameof(BadSemverTypes))]
+    public async Task A_semver_clause_with_a_value_that_is_not_a_string_is_400(string valueJson)
+    {
+        await Seed("dark-mode", "base");
+
+        var response = await Put("dark-mode", Body(1, ("rules", SemverRule($"[{valueJson}]"))));
+
+        await ExpectBadRequest(response);
+        Assert.Contains("rules[0].clauses[0].values[0]", (await ApiServer.Json(response)).GetProperty("error").GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task A_number_value_stays_valid_under_the_other_ops()
+    {
+        await Seed("dark-mode", "base");
+
+        await ApiServer.Expect(HttpStatusCode.OK, await Put("dark-mode", Body(1, ("rules", SemverRule("[2]", "gte")))));
+    }
+
+    [Theory]
+    [InlineData("semverEq")]
+    [InlineData("semverLt")]
+    [InlineData("semverLte")]
+    [InlineData("semverGt")]
+    [InlineData("semverGte")]
+    public async Task A_semver_clause_with_versions_saves_and_the_ruleset_carries_it(string op)
+    {
+        await Seed("dark-mode", "base");
+        var rules = SemverRule("[\"2.10\",\"1.2.3-rc.1+build.5\"]", op);
+
+        await ApiServer.Expect(HttpStatusCode.OK, await Put("dark-mode", Body(1, ("rules", rules))));
+
+        var read = await ApiServer.Json(await server.Get(Config("dark-mode")));
+        Assert.Equal(JsonDocument.Parse(rules).RootElement.GetRawText(), read.GetProperty("rules").GetRawText());
+        var key = await ApiServer.Json(await server.Post("/api/v1/projects/shop/environments/prod/keys", new { kind = "server", name = "s" }));
+        using var client = server.Server.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/sdk/v1/ruleset");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key.GetProperty("key").GetString());
+        var ruleset = await client.SendAsync(request);
+        await ApiServer.Expect(HttpStatusCode.OK, ruleset);
+        var flag = (await ApiServer.Json(ruleset)).GetProperty("flags").EnumerateArray().Single(f => f.GetProperty("key").GetString() == "dark-mode");
+        var clause = flag.GetProperty("rules")[0].GetProperty("clauses")[0];
+        Assert.Equal(op, clause.GetProperty("op").GetString());
+        Assert.Equal("1.2.3-rc.1+build.5", clause.GetProperty("values")[1].GetString());
+    }
+
+    [Fact]
+    public async Task A_semver_clause_with_no_values_saves()
+    {
+        await Seed("dark-mode", "base");
+
+        await ApiServer.Expect(HttpStatusCode.OK, await Put("dark-mode", Body(1, ("rules", SemverRule("[]")))));
+    }
+
     [Theory]
     [MemberData(nameof(LoneSurrogates))]
     public async Task A_lone_surrogate_is_400_not_500(string json)

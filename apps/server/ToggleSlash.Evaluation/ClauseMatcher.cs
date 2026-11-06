@@ -61,6 +61,11 @@ internal static class ClauseMatcher
                     Op.StartsWith => text.StartsWith(value.String, StringComparison.Ordinal),
                     _ => text.EndsWith(value.String, StringComparison.Ordinal),
                 };
+            case Op.SemverEq or Op.SemverLt or Op.SemverLte or Op.SemverGt or Op.SemverGte:
+                if (attribute.ValueKind != JsonValueKind.String || value.Kind != ValueKind.String) return false;
+                if (SemanticVersion.Parse(JsonStrings.Read(attribute)) is not { } candidate || SemanticVersion.Parse(value.String) is not { } target) return false;
+                var versionOrder = candidate.CompareTo(target);
+                return op == Op.SemverEq ? versionOrder == 0 : MatchesOrder(op, versionOrder);
             default:
                 return Compare(attribute, value) is { } order && MatchesOrder(op, order);
         }
@@ -83,9 +88,9 @@ internal static class ClauseMatcher
 
     private static bool MatchesOrder(Op op, int order) => op switch
     {
-        Op.Lt => order < 0,
-        Op.Lte => order <= 0,
-        Op.Gt => order > 0,
+        Op.Lt or Op.SemverLt => order < 0,
+        Op.Lte or Op.SemverLte => order <= 0,
+        Op.Gt or Op.SemverGt => order > 0,
         _ => order >= 0,
     };
 }

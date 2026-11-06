@@ -561,8 +561,8 @@
       "name": "Semantic-version operator",
       "description": "Compare versions such as 1.2.3 without writing string logic.",
       "toggleslash": {
-        "status": "no",
-        "evidence": []
+        "status": "yes",
+        "evidence": ["doc:docs/evaluation.md", "test:fixtures/evaluation/semver.json"]
       },
       "competitors": {
         "launchdarkly": "yes",

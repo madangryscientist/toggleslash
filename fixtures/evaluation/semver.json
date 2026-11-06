@@ -1,0 +1,7218 @@
+{
+  "vectors": [
+    {
+      "name": "semverEq: 1.2.3 against 1.2.3",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverEq",
+                  "values": ["1.2.3"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverEq: 1.2.3 against 1.2.4",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverEq",
+                  "values": ["1.2.4"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "semverLt: 1.2.3 against 1.2.4",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.2.4"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: 1.2.4 against 1.2.3",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.2.3"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.4"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "semverLt: 1.2.3 against 1.2.3",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.2.3"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "semverLte: 1.2.3 against 1.2.3",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLte",
+                  "values": ["1.2.3"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLte: 1.2.3 against 1.2.4",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLte",
+                  "values": ["1.2.4"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLte: 1.2.4 against 1.2.3",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLte",
+                  "values": ["1.2.3"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.4"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "semverGt: 1.2.4 against 1.2.3",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGt",
+                  "values": ["1.2.3"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.4"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverGt: 1.2.3 against 1.2.3",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGt",
+                  "values": ["1.2.3"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "semverGt: 1.2.3 against 1.2.4",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGt",
+                  "values": ["1.2.4"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "semverGte: 1.2.3 against 1.2.3",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.2.3"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverGte: 1.2.4 against 1.2.3",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.2.3"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.4"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverGte: 1.2.3 against 1.2.4",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.2.4"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "semverGt: 10.0.0 is above 9.0.0",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGt",
+                  "values": ["9.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "10.0.0"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: 10.0.0 is not below 9.0.0",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["9.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "10.0.0"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "semverGte: 2.10.0 is at least 2.10",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["2.10"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "2.10.0"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverGte: 2.9.0 is not at least 2.10",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["2.10"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "2.9.0"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "semverLt: 1.9.0 is below 1.10.0",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.10.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.9.0"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "lt on strings still orders 10.0.0 before 9.0.0",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "lt",
+                  "values": ["9.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "10.0.0"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: 1.0.0-alpha is below 1.0.0-alpha.1",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.0.0-alpha.1"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-alpha"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: 1.0.0-alpha.1 is not below 1.0.0-alpha",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.0.0-alpha"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-alpha.1"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "semverGt: 1.0.0-alpha.1 is above 1.0.0-alpha",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGt",
+                  "values": ["1.0.0-alpha"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-alpha.1"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: 1.0.0-alpha.1 is below 1.0.0-alpha.beta",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.0.0-alpha.beta"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-alpha.1"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: 1.0.0-alpha.beta is not below 1.0.0-alpha.1",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.0.0-alpha.1"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-alpha.beta"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "semverGt: 1.0.0-alpha.beta is above 1.0.0-alpha.1",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGt",
+                  "values": ["1.0.0-alpha.1"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-alpha.beta"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: 1.0.0-alpha.beta is below 1.0.0-beta",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.0.0-beta"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-alpha.beta"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: 1.0.0-beta is not below 1.0.0-alpha.beta",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.0.0-alpha.beta"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-beta"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "semverGt: 1.0.0-beta is above 1.0.0-alpha.beta",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGt",
+                  "values": ["1.0.0-alpha.beta"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-beta"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: 1.0.0-beta is below 1.0.0-beta.2",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.0.0-beta.2"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-beta"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: 1.0.0-beta.2 is not below 1.0.0-beta",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.0.0-beta"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-beta.2"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "semverGt: 1.0.0-beta.2 is above 1.0.0-beta",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGt",
+                  "values": ["1.0.0-beta"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-beta.2"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: 1.0.0-beta.2 is below 1.0.0-beta.11",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.0.0-beta.11"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-beta.2"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: 1.0.0-beta.11 is not below 1.0.0-beta.2",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.0.0-beta.2"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-beta.11"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "semverGt: 1.0.0-beta.11 is above 1.0.0-beta.2",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGt",
+                  "values": ["1.0.0-beta.2"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-beta.11"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: 1.0.0-beta.11 is below 1.0.0-rc.1",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.0.0-rc.1"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-beta.11"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: 1.0.0-rc.1 is not below 1.0.0-beta.11",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.0.0-beta.11"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-rc.1"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "semverGt: 1.0.0-rc.1 is above 1.0.0-beta.11",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGt",
+                  "values": ["1.0.0-beta.11"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-rc.1"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: 1.0.0-rc.1 is below 1.0.0",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-rc.1"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: 1.0.0 is not below 1.0.0-rc.1",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.0.0-rc.1"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "semverGt: 1.0.0 is above 1.0.0-rc.1",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGt",
+                  "values": ["1.0.0-rc.1"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: the first of the chain is below the last",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-alpha"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverEq: a prerelease equals itself",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverEq",
+                  "values": ["1.0.0-rc.1"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-rc.1"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverEq: a prerelease is not the release",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverEq",
+                  "values": ["1.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-rc.1"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "semverGt: a prerelease of 2.0.0 is above 1.9.9",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGt",
+                  "values": ["1.9.9"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "2.0.0-alpha"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: uppercase sorts before lowercase",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.0.0-a"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-Z"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: a prefix identifier is lower",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.0.0-a-b"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-a"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: digits only is below alphanumeric",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.0.0-0a"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-1"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverGt: alphanumeric is above digits only",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGt",
+                  "values": ["1.0.0-1"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-0a"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: digits only compare numerically",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.0.0-b.11"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-b.2"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverGt: a longer list wins when the rest is equal",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGt",
+                  "values": ["1.0.0-a.b"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-a.b.c"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverEq: 2.1 equals 2.1.0 (candidate short)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverEq",
+                  "values": ["2.1.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "2.1"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverEq: 2.1 equals 2.1.0 (value short)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverEq",
+                  "values": ["2.1"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "2.1.0"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverEq: 2 equals 2.0.0",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverEq",
+                  "values": ["2.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "2"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverEq: 2 equals 2.0",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverEq",
+                  "values": ["2.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "2"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverEq: 2.1 is not 2.2",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverEq",
+                  "values": ["2.2"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "2.1"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "semverLt: 2.1 is below 2.1.1",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["2.1.1"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "2.1"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverGt: 2 is above 1.9.9",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGt",
+                  "values": ["1.9.9"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "2"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverEq: build is ignored",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverEq",
+                  "values": ["1.0.0+b"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0+a"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: build does not order",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.0.0+b"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0+a"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "semverGt: build does not order upward",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGt",
+                  "values": ["1.0.0+a"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0+b"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "semverEq: build with leading zeros is valid",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverEq",
+                  "values": ["1.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0+001"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverEq: prerelease and build",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverEq",
+                  "values": ["1.0.0-rc.1"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-rc.1+build.5"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverEq: build with a hyphen",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverEq",
+                  "values": ["1.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0+a-b.c"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverGt: 20 digit patch above its neighbour",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGt",
+                  "values": ["1.0.99999999999999999998"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.99999999999999999999"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverLt: 20 digit patch is not below its neighbour",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverLt",
+                  "values": ["1.0.99999999999999999998"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.99999999999999999999"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "semverGt: a longer digit string is larger",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGt",
+                  "values": ["1.0.99999999999999999999"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.100000000000000000000"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverGt: beyond binary64 precision",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGt",
+                  "values": ["9007199254740992.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "9007199254740993.0.0"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverEq: the same 20 digits are equal",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverEq",
+                  "values": ["1.0.99999999999999999999"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.99999999999999999999"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverEq: a hyphen in a prerelease identifier",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverEq",
+                  "values": ["1.0.0-a-b"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-a-b"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverEq: a prerelease of only a hyphen",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverEq",
+                  "values": ["1.0.0--"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0--"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverEq: 0a is not a leading zero",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverEq",
+                  "values": ["1.0.0-0a"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-0a"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "semverEq: a lone 0 prerelease identifier",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverEq",
+                  "values": ["1.0.0-0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-0"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (v prefix)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "v1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (v prefix)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["v1.2.3"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (leading space)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": " 1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (leading space)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": [" 1.2.3"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (trailing space)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3 "
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (trailing space)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.2.3 "]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (short with prerelease)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2-beta"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (short with prerelease)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.2-beta"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (major only with prerelease)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1-beta"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (major only with prerelease)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1-beta"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (short with build)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2+build"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (short with build)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.2+build"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (four parts)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3.4"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (four parts)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.2.3.4"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (empty)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": ""
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (empty)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": [""]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (leading zero major)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "01.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (leading zero major)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["01.2.3"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (leading zero minor)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.02.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (leading zero minor)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.02.3"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (leading zero patch)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.03"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (leading zero patch)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.2.03"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (leading zero prerelease)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.0.0-01"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (leading zero prerelease)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.0.0-01"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (trailing dot)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2."
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (trailing dot)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.2."]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (leading dot)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": ".1.2"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (leading dot)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": [".1.2"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (empty part)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1..2"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (empty part)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1..2"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (empty prerelease)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3-"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (empty prerelease)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.2.3-"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (empty build)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3+"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (empty build)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.2.3+"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (empty prerelease identifier)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3-a..b"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (empty prerelease identifier)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.2.3-a..b"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (underscore)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3-a_b"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (underscore)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.2.3-a_b"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (symbol in build)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3+a!b"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (symbol in build)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.2.3+a!b"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (leading minus)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "-1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (leading minus)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["-1.2.3"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (leading plus)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "+1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (leading plus)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["+1.2.3"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (two builds)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3+a+b"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (two builds)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.2.3+a+b"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (non-ASCII identifier)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3-\u00e9"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (non-ASCII identifier)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.2.3-\u00e9"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (newline)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3\n"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (newline)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.2.3\n"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (words)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "banana"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (words)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["banana"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (Arabic-Indic digit)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.\u0661.0"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (Arabic-Indic digit)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.\u0661.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid candidate (negative)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "-1"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "invalid value (negative)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["-1"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "an Arabic-Indic digit is not a digit (eq)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverEq",
+                  "values": ["1.1.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.\u0661.0"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "a number attribute is not a version",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": 2
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "a fractional number attribute is not a version",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": 1.5
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "a boolean attribute is not a version",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": true
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "a number value is not a version",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": [2]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "2.0.0"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "a boolean value is not a version",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverEq",
+                  "values": [true]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "2.0.0"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "an object attribute is not a version",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": {
+            "major": 2
+          }
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "negate: a non-version attribute matches",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.0.0"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "banana"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "negate: a number attribute matches",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.0.0"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": 2
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "negate: a version that satisfies the op does not",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.0.0"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "2.0.0"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "negate: a version that does not satisfy the op matches",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.0.0"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "0.5.0"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "negate: a missing attribute fails whatever negate says",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.0.0"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "a missing attribute does not match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["0.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {}
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "negate: a null attribute fails whatever negate says",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["1.0.0"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": null
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "array: one matching element matches",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["2.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": ["1.0.0", "2.5.0"]
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "array: no matching element does not",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["2.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": ["1.0.0", "1.5.0"]
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "array: elements that are not versions are skipped",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["2.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": ["x", 3, null, "2.5.0"]
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "array: negate flips the base match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["2.0.0"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": ["1.0.0", "1.5.0"]
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "array: an empty array has the attribute and never matches",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["2.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": []
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "array: negate on an empty array matches",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["2.0.0"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": []
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "values: any value may match",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverEq",
+                  "values": ["1.0.0", "2.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "2.0.0"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "values: an invalid value does not make the flag malformed",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["v1"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "values: negate with an invalid value matches a present version",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["v1"],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "values: an invalid value beside a valid one",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["v1", "1.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "values: empty never matches",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": []
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "values: empty under negate matches",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": [],
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.2.3"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "the context key can be a version",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "key",
+                  "op": "semverGte",
+                  "values": ["2.0.0"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "2.1.0"
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "segment rule: a version in range",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["2.0.0"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "2.5.0"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "segment rule: a version out of range",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "version",
+                  "op": "semverGte",
+                  "values": ["2.0.0"]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "version": "1.9.0"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    }
+  ]
+}

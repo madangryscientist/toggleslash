@@ -183,6 +183,11 @@ internal static class Validation
         "lte" => Op.Lte,
         "gt" => Op.Gt,
         "gte" => Op.Gte,
+        "semverEq" => Op.SemverEq,
+        "semverLt" => Op.SemverLt,
+        "semverLte" => Op.SemverLte,
+        "semverGt" => Op.SemverGt,
+        "semverGte" => Op.SemverGte,
         _ => null,
     };
 

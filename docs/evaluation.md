@@ -55,8 +55,8 @@ that environment by the time they get here.
 ### Clause
 
 An attribute clause is `{ "attribute": <key>, "op": <op>, "values": [...], "negate": <boolean> }`.
-`op` is one of `in`, `contains`, `startsWith`, `endsWith`, `lt`, `lte`, `gt`, `gte`. `negate` is
-optional. Each value is a string, a finite number or a boolean; anything else is malformed.
+`op` is one of `in`, `contains`, `startsWith`, `endsWith`, `lt`, `lte`, `gt`, `gte`, `semverEq`,
+`semverLt`, `semverLte`, `semverGt`, `semverGte`. `negate` is optional. Each value is a string, a finite number or a boolean; anything else is malformed.
 
 A segment clause is `{ "op": "segmentMatch", "values": [<string>...], "negate": <boolean> }`. Its
 values are segment keys. An `attribute` on it is ignored.
@@ -217,6 +217,7 @@ For an attribute candidate `a` and a clause value `v`:
 | `startsWith` | both strings, and `a` begins with `v` |
 | `endsWith` | both strings, and `a` ends with `v` |
 | `lt`, `lte`, `gt`, `gte` | both finite numbers, or both strings, and `a` orders that way against `v` |
+| `semverEq`, `semverLt`, `semverLte`, `semverGt`, `semverGte` | both strings, both valid versions (below), and `a` equals or orders that way against `v` |
 
 - **Number equality and order are IEEE-754.** `1` equals `1.0`, and `-0` equals `0`.
 - **String equality and the three substring ops are ordinal:** the same UTF-16 code units, case-sensitive,
@@ -229,6 +230,39 @@ For an attribute candidate `a` and a clause value `v`:
   (0xFF5E), which code point order would reverse. ISO-8601 dates in one format order correctly as
   strings, which is how a date comparison is expressed.
 - **Booleans have no order.** `lt` and friends never match them.
+
+### Semantic versions
+
+The five `semver` ops compare versions, because `lt` on strings puts `"10.0.0"` before `"9.0.0"`.
+
+- **Valid forms.** Full SemVer 2.0.0: `MAJOR.MINOR.PATCH`, then an optional `-prerelease`, then an
+  optional `+build`. Also two short forms with no suffix: `MAJOR` and `MAJOR.MINOR`, where a missing part
+  reads as 0, so `2.1` equals `2.1.0`. Anything else is not a version: `v1.2.3`, ` 1.2.3` (nothing is
+  trimmed), `1.2-beta`, `1.2.3.4` and the empty string.
+- **Numeric parts.** ASCII `0` to `9` only, either `0` or with no leading zero (`01.2.3` is not a
+  version), of any length. A non-ASCII digit, such as U+0661, is not a digit.
+- **Prerelease and build.** Dot-separated identifiers of ASCII letters, digits and `-`, none empty. A
+  prerelease identifier made only of digits has no leading zero (`1.0.0-01` is not a version, `1.0.0-0a`
+  is). A build identifier may have leading zeros.
+- **Order** is SemVer 2.0.0 section 11. Major, minor and patch compare numerically. A version with a
+  prerelease is below the same version without one. Prerelease identifiers compare left to right:
+  digits-only identifiers numerically, others by ASCII code unit, a digits-only identifier below an
+  alphanumeric one, and a longer list wins when all the earlier identifiers are equal. So
+  `1.0.0-alpha < 1.0.0-alpha.1 < 1.0.0-alpha.beta < 1.0.0-beta < 1.0.0-beta.2 < 1.0.0-beta.11 < 1.0.0-rc.1 < 1.0.0`.
+  Build is ignored for equality and order: `1.0.0+a` `semverEq` `1.0.0+b` is true.
+- **A number is never converted.** Digit strings compare by length, then by code unit, so
+  `1.0.99999999999999999999` is above `1.0.99999999999999999998` in every language.
+- **No match, no error.** The candidate and the value must both be strings and valid versions, otherwise
+  that pair does not match. So the rules under "Matching" hold: under `negate` a present attribute that is
+  not a version matches, a missing attribute fails whatever `negate` says, and an array attribute is one
+  candidate per element. A semver clause with an invalid version in `values` does not make a flag
+  malformed.
+- **Writing is stricter than reading.** The server's targeting API refuses a semver clause whose `values`
+  hold anything but a string spelling a valid version, because a typo there would silently never match.
+  Empty `values` saves, as for every op, and never matches.
+
+Implementations read the version with a hand-written walk over the characters, not a regular expression:
+`\d` matches Unicode digits in .NET, and a library would bring in its own idea of what is valid.
 
 ### segmentMatch
 
@@ -320,6 +354,7 @@ with `expected`, deeply.
 | `clauses.json` | every attribute op, type mismatches, missing attributes, `negate`, array attributes |
 | `reasons.json` | the order of evaluation, targets, rules, non-boolean variation values |
 | `prerequisites.json` | met, failed, cycles, the depth limit, reuse within an evaluation |
+| `semver.json` | the five `semver` ops: the section 11 order, short forms, build, big numbers, what is not a version, `negate`, arrays |
 | `segments.json` | `segmentMatch`, excluded and included, segment rules and weights, bad segments |
 | `rollouts.json` | the cumulative walk at bucket boundaries, hash inputs, malformed rollouts |
 | `errors.json` | invalid contexts, malformed flags, what happens on load |

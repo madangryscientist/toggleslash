@@ -13,9 +13,9 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 
 | Metric | ToggleSlash | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| ✅ yes | 21 | 63 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
+| ✅ yes | 22 | 63 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
 | 🟡 partial | 10 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
-| — no | 35 | 3 | 9 | 7 | 6 | 7 | 7 | 9 | 17 |
+| — no | 34 | 3 | 9 | 7 | 6 | 7 | 7 | 9 | 17 |
 
 ## Matrix
 
@@ -51,7 +51,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Multi-context and context kinds | — | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 |
 | Nested attribute paths | — | ✅ | — | — | 🟡 | — | — | 🟡 | — |
 | Regex operator | — | ✅ | ✅ | 🟡 | ✅ | 🟡 | 🟡 | ✅ | 🟡 |
-| Semantic-version operator | — | ✅ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | — | — |
+| Semantic-version operator | ✅ | ✅ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | — | — |
 | Date and time operator | — | ✅ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 |
 | Percentage rollouts | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Attribute-based rollouts | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 |
@@ -154,7 +154,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Multi-context and context kinds | — | — |
 | Nested attribute paths | — | — |
 | Regex operator | — | — |
-| Semantic-version operator | — | — |
+| Semantic-version operator | ✅ | `doc:docs/evaluation.md`<br>`test:fixtures/evaluation/semver.json` |
 | Date and time operator | — | — |
 | Percentage rollouts | ✅ | `doc:docs/evaluation.md`<br>`test:fixtures/evaluation/rollouts.json` |
 | Attribute-based rollouts | — | — |
