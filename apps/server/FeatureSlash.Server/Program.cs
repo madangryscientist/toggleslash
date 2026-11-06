@@ -20,6 +20,7 @@ builder.Logging.AddFilter("Microsoft.AspNetCore.HttpOverrides", LogLevel.None);
 builder.Services.AddServerOpenApi();
 builder.Services.AddSdkApi();
 builder.Services.AddUsage();
+builder.Services.AddRulesetRetention();
 builder.Services.AddSingleton<TargetingLock>();
 // A number is a JSON number: "1" for an index is a 400, and the OpenAPI document says integer, not "integer or string".
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.NumberHandling = JsonNumberHandling.Strict);
@@ -30,6 +31,7 @@ var app = builder.Build();
 // Before the migration, so a bad limit or proxy list stops the server without touching the database. Headers go
 // first, so every answer below carries them; trusted proxies next, so everything after sees the client's address.
 _ = app.Services.GetRequiredService<RequestLimiter>();
+_ = app.Services.GetRequiredService<RulesetRetentionSettings>();
 app.UseSecurityHeaders();
 app.UseTrustedProxies();
 

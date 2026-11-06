@@ -27,7 +27,7 @@ internal static class Failures
         ApiError.Result(StatusCodes.Status404NotFound, "not_found", "No such flag.");
 
     public static IResult RulesetNotFound() =>
-        ApiError.Result(StatusCodes.Status404NotFound, "not_found", "This environment never served a ruleset with that hash. A hash is the ETag's lowercase hex, without quotes.");
+        ApiError.Result(StatusCodes.Status404NotFound, "not_found", "This environment never served a ruleset with that hash, or no longer keeps it. A hash is the ETag's lowercase hex, without quotes.");
 
     public static IResult FlagNotInRuleset() =>
         ApiError.Result(StatusCodes.Status404NotFound, "not_found", "That ruleset has no such flag.");

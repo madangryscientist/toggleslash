@@ -176,7 +176,7 @@ public sealed class FlagUsageDaily
 
 /// <summary>
 /// A ruleset as it was served: the exact bytes whose SHA-256 is <see cref="Hash"/>, salts included, so a past hash
-/// can be looked up. Written the first time a body is served and never changed or removed.
+/// can be looked up. Written the first time a body is served and never changed; <c>RulesetRetention</c> removes the ones a newer ruleset replaced long ago.
 /// </summary>
 public sealed class StoredRuleset
 {
