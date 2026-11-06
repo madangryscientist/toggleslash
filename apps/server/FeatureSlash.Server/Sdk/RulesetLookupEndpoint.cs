@@ -44,18 +44,18 @@ public static class RulesetLookupEndpoint
     }
 
     private static async Task<IResult> Lookup(
-        string project, string env, string hash, HttpContext http, FeatureSlashDbContext database, string? flag = null)
+        string project, string env, string hash, HttpContext http, FeatureSlashDbContext database, CancellationToken cancellation, string? flag = null)
     {
-        if (await database.Project(project) is not { } owner)
+        if (await database.Project(project, cancellation) is not { } owner)
         {
             return Failures.ProjectNotFound();
         }
-        if (await database.Environment(owner.Id, env) is not { } environment)
+        if (await database.Environment(owner.Id, env, cancellation) is not { } environment)
         {
             return Failures.EnvironmentNotFound();
         }
         var stored = await database.RulesetSnapshots.AsNoTracking()
-            .SingleOrDefaultAsync(s => s.EnvironmentId == environment.Id && s.Hash == hash, http.RequestAborted);
+            .SingleOrDefaultAsync(s => s.EnvironmentId == environment.Id && s.Hash == hash, cancellation);
         if (stored is null)
         {
             return Failures.RulesetNotFound();

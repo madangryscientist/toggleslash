@@ -62,20 +62,20 @@ public static class SegmentEndpoints
             .Produces<ApiError>(StatusCodes.Status409Conflict);
     }
 
-    private static async Task<IResult> Create(string project, string env, CreateSegmentRequest request, FeatureSlashDbContext database, TargetingLock targetingLock, RulesetNotifier notifier)
+    private static async Task<IResult> Create(string project, string env, CreateSegmentRequest request, FeatureSlashDbContext database, TargetingLock targetingLock, RulesetNotifier notifier, CancellationToken cancellation)
     {
         var problem = Validation.Key(request.Key, "key") ?? Shape(request.Included, request.Excluded, request.Rules);
         if (problem is not null)
         {
             return Failures.BadRequest(problem);
         }
-        using var held = await targetingLock.Enter();
-        var (scope, missing) = await Scope(database, project, env);
+        using var held = await targetingLock.Enter(cancellation);
+        var (scope, missing) = await Scope(database, project, env, cancellation);
         if (missing is not null)
         {
             return missing;
         }
-        if (await Find(database, scope!, request.Key!) is not null)
+        if (await Find(database, scope!, request.Key!, cancellation) is not null)
         {
             return Taken(request.Key!, env);
         }
@@ -96,7 +96,7 @@ public static class SegmentEndpoints
             AuditEntity.Segment, segment.Key, AuditAction.Created, new AuditScope(scope.Project.Key, scope.Environment.Key), null, Describe(segment));
         try
         {
-            await database.SaveChangesAsync();
+            await database.SaveChangesAsync(cancellation);
         }
         catch (DbUpdateException exception) when (Failures.IsUniqueViolation(exception))
         {
@@ -108,9 +108,9 @@ public static class SegmentEndpoints
             Describe(segment));
     }
 
-    private static async Task<IResult> List(string project, string env, FeatureSlashDbContext database)
+    private static async Task<IResult> List(string project, string env, FeatureSlashDbContext database, CancellationToken cancellation)
     {
-        var (scope, missing) = await Scope(database, project, env);
+        var (scope, missing) = await Scope(database, project, env, cancellation);
         if (missing is not null)
         {
             return missing;
@@ -118,18 +118,18 @@ public static class SegmentEndpoints
         var segments = await database.Segments.AsNoTracking()
             .Where(s => s.EnvironmentId == scope!.Environment.Id)
             .OrderBy(s => s.Key)
-            .ToListAsync();
+            .ToListAsync(cancellation);
         return Results.Json(segments.Select(Describe).ToArray());
     }
 
-    private static async Task<IResult> Read(string project, string env, string segment, HttpContext http, FeatureSlashDbContext database)
+    private static async Task<IResult> Read(string project, string env, string segment, HttpContext http, FeatureSlashDbContext database, CancellationToken cancellation)
     {
-        var (scope, missing) = await Scope(database, project, env);
+        var (scope, missing) = await Scope(database, project, env, cancellation);
         if (missing is not null)
         {
             return missing;
         }
-        return await Find(database, scope!, segment) is { } found ? Respond(http, Describe(found)) : NoSuchSegment();
+        return await Find(database, scope!, segment, cancellation) is { } found ? Respond(http, Describe(found)) : NoSuchSegment();
     }
 
     private static async Task<IResult> Put(
@@ -141,19 +141,19 @@ public static class SegmentEndpoints
         HttpContext http,
         FeatureSlashDbContext database,
         TargetingLock targetingLock,
-        RulesetNotifier notifier)
+        RulesetNotifier notifier, CancellationToken cancellation)
     {
         if (Shape(request.Included, request.Excluded, request.Rules) is { } problem)
         {
             return Failures.BadRequest(problem);
         }
-        using var held = await targetingLock.Enter();
-        var (scope, missing) = await Scope(database, project, env);
+        using var held = await targetingLock.Enter(cancellation);
+        var (scope, missing) = await Scope(database, project, env, cancellation);
         if (missing is not null)
         {
             return missing;
         }
-        if (await Find(database, scope!, segment) is not { } found)
+        if (await Find(database, scope!, segment, cancellation) is not { } found)
         {
             return NoSuchSegment();
         }
@@ -172,23 +172,23 @@ public static class SegmentEndpoints
         var rules = JsonSerializer.Serialize(request.Rules!.Value);
         // The compare-and-set and its event commit together. The targeting lock keeps `found` the row's true
         // "before" whenever the compare-and-set succeeds; a stale version changed no row, so it records nothing.
-        await using var transaction = await database.Database.BeginTransactionAsync();
+        await using var transaction = await database.Database.BeginTransactionAsync(cancellation);
         var rows = await database.Segments
             .Where(s => s.Id == found.Id && s.Version == expected)
             .ExecuteUpdateAsync(set => set
                 .SetProperty(s => s.Included, included)
                 .SetProperty(s => s.Excluded, excluded)
                 .SetProperty(s => s.Rules, rules)
-                .SetProperty(s => s.Version, s => s.Version + 1));
-        var saved = Describe(await database.Segments.AsNoTracking().SingleAsync(s => s.Id == found.Id));
+                .SetProperty(s => s.Version, s => s.Version + 1), cancellation);
+        var saved = Describe(await database.Segments.AsNoTracking().SingleAsync(s => s.Id == found.Id, cancellation));
         if (rows == 0)
         {
             return Failures.VersionConflict($"The segment is at version {saved.Version}, not {expected}: it changed since it was read. GET it again and retry.");
         }
         database.Record(
             AuditEntity.Segment, found.Key, AuditAction.Updated, new AuditScope(scope!.Project.Key, scope.Environment.Key), Describe(found), saved);
-        await database.SaveChangesAsync();
-        await transaction.CommitAsync();
+        await database.SaveChangesAsync(cancellation);
+        await transaction.CommitAsync(cancellation);
         notifier.Changed(scope.Environment.Id);
         return Respond(http, saved);
     }
@@ -197,15 +197,15 @@ public static class SegmentEndpoints
     /// A segment a rule still names cannot go: the flag would evaluate to <c>SEGMENT_NOT_FOUND</c>. The
     /// 409 says which flags, so the caller knows what to edit first.
     /// </summary>
-    private static async Task<IResult> Delete(string project, string env, string segment, FeatureSlashDbContext database, TargetingLock targetingLock, RulesetNotifier notifier)
+    private static async Task<IResult> Delete(string project, string env, string segment, FeatureSlashDbContext database, TargetingLock targetingLock, RulesetNotifier notifier, CancellationToken cancellation)
     {
-        using var held = await targetingLock.Enter();
-        var (scope, missing) = await Scope(database, project, env);
+        using var held = await targetingLock.Enter(cancellation);
+        var (scope, missing) = await Scope(database, project, env, cancellation);
         if (missing is not null)
         {
             return missing;
         }
-        if (await Find(database, scope!, segment) is not { } found)
+        if (await Find(database, scope!, segment, cancellation) is not { } found)
         {
             return NoSuchSegment();
         }
@@ -213,19 +213,19 @@ public static class SegmentEndpoints
         var configs = await database.FlagEnvironmentConfigs.AsNoTracking()
             .Where(c => c.EnvironmentId == scope!.Environment.Id)
             .Join(database.Flags, c => c.FlagId, f => f.Id, (c, f) => new { f.Key, c.Rules })
-            .ToListAsync();
+            .ToListAsync(cancellation);
         var users = configs.Where(c => ReferencedSegments(c.Rules).Contains(found.Key)).Select(c => c.Key).Order(StringComparer.Ordinal).ToList();
         if (users.Count > 0)
         {
             return Failures.Conflict($"Segment \"{found.Key}\" is still used by the rules of: {string.Join(", ", users)}. Remove those rules first.");
         }
 
-        await using var transaction = await database.Database.BeginTransactionAsync();
-        await database.Segments.Where(s => s.Id == found.Id).ExecuteDeleteAsync();
+        await using var transaction = await database.Database.BeginTransactionAsync(cancellation);
+        await database.Segments.Where(s => s.Id == found.Id).ExecuteDeleteAsync(cancellation);
         database.Record(
             AuditEntity.Segment, found.Key, AuditAction.Deleted, new AuditScope(scope!.Project.Key, scope.Environment.Key), Describe(found), null);
-        await database.SaveChangesAsync();
-        await transaction.CommitAsync();
+        await database.SaveChangesAsync(cancellation);
+        await transaction.CommitAsync(cancellation);
         notifier.Changed(scope.Environment.Id);
         return Results.NoContent();
     }
@@ -261,19 +261,19 @@ public static class SegmentEndpoints
 
     private sealed record Located(Project Project, ProjectEnvironment Environment);
 
-    private static async Task<(Located? Scope, IResult? Missing)> Scope(FeatureSlashDbContext database, string project, string env)
+    private static async Task<(Located? Scope, IResult? Missing)> Scope(FeatureSlashDbContext database, string project, string env, CancellationToken cancellation)
     {
-        if (await database.Project(project) is not { } owner)
+        if (await database.Project(project, cancellation) is not { } owner)
         {
             return (null, Failures.ProjectNotFound());
         }
-        return await database.Environment(owner.Id, env) is { } environment
+        return await database.Environment(owner.Id, env, cancellation) is { } environment
             ? (new Located(owner, environment), null)
             : (null, Failures.EnvironmentNotFound());
     }
 
-    private static Task<Segment?> Find(FeatureSlashDbContext database, Located scope, string key) =>
-        database.Segments.AsNoTracking().SingleOrDefaultAsync(s => s.EnvironmentId == scope.Environment.Id && s.Key == key);
+    private static Task<Segment?> Find(FeatureSlashDbContext database, Located scope, string key, CancellationToken cancellation) =>
+        database.Segments.AsNoTracking().SingleOrDefaultAsync(s => s.EnvironmentId == scope.Environment.Id && s.Key == key, cancellation);
 
     private static string? Shape(string[]? included, string[]? excluded, JsonElement? rules)
     {

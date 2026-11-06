@@ -30,13 +30,13 @@ public static class FlagStateEndpoints
     /// environment, the flags with their configs, and the latest usage day per flag. A flag with no config in the
     /// environment has no state to report and is left out.
     /// </summary>
-    private static async Task<IResult> List(string project, string env, FeatureSlashDbContext database)
+    private static async Task<IResult> List(string project, string env, FeatureSlashDbContext database, CancellationToken cancellation)
     {
-        if (await database.Project(project) is not { } owner)
+        if (await database.Project(project, cancellation) is not { } owner)
         {
             return Failures.ProjectNotFound();
         }
-        if (await database.Environment(owner.Id, env) is not { } environment)
+        if (await database.Environment(owner.Id, env, cancellation) is not { } environment)
         {
             return Failures.EnvironmentNotFound();
         }
@@ -47,12 +47,12 @@ public static class FlagStateEndpoints
             where flag.ProjectId == owner.Id && flag.ArchivedAt == null && config.EnvironmentId == environment.Id
             orderby flag.Id
             select new { flag.Id, flag.Key, config.On, config.Version })
-            .ToListAsync();
+            .ToListAsync(cancellation);
         var last = await database.FlagUsageDaily.AsNoTracking()
             .Where(u => u.EnvironmentId == environment.Id)
             .GroupBy(u => u.FlagId)
             .Select(g => new { FlagId = g.Key, Day = g.Max(u => u.Day) })
-            .ToDictionaryAsync(g => g.FlagId, g => g.Day);
+            .ToDictionaryAsync(g => g.FlagId, g => g.Day, cancellation);
 
         return Results.Json(states.Select(s => new FlagState(s.Key, s.On, s.Version, last.TryGetValue(s.Id, out var day) ? day : null)));
     }

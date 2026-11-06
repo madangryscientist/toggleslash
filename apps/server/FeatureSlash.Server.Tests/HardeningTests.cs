@@ -346,6 +346,32 @@ public sealed class HardeningTests : IDisposable
     }
 
     [Fact]
+    public async Task A_slow_admin_read_is_ended_by_the_timeout_because_the_handler_passes_the_token_on()
+    {
+        var server = Start(TimeoutOf(TimeSpan.FromSeconds(1)));
+        await server.SeedProject();
+        slowness.Mode = Mode.Hang;
+
+        var response = await server.Get($"{Projects}/shop/flags");
+
+        await ApiServer.ExpectError(HttpStatusCode.GatewayTimeout, "request_timeout", response);
+        ExpectHeaders(response);
+    }
+
+    [Fact]
+    public async Task A_slow_admin_write_is_ended_by_the_timeout_and_writes_nothing()
+    {
+        var server = Start(TimeoutOf(TimeSpan.FromSeconds(1)));
+        slowness.Mode = Mode.Hang;
+
+        var response = await server.Post(Projects, new { key = "late", name = "Late" });
+
+        await ApiServer.ExpectError(HttpStatusCode.GatewayTimeout, "request_timeout", response);
+        slowness.Mode = Mode.Normal;
+        await ApiServer.Expect(HttpStatusCode.NotFound, await server.Get($"{Projects}/late"));
+    }
+
+    [Fact]
     public async Task A_stream_stays_open_past_that_same_timeout_and_its_heartbeat_still_works()
     {
         var heartbeat = new TickedHeartbeat();

@@ -61,13 +61,14 @@ public static class AuditEndpoints
         string? since,
         int? limit,
         string? cursor,
-        FeatureSlashDbContext database)
+        FeatureSlashDbContext database,
+        CancellationToken cancellation)
     {
-        if (await database.Project(project) is null)
+        if (await database.Project(project, cancellation) is null)
         {
             return Failures.ProjectNotFound();
         }
-        return await Page(database, project, flag, environment, since, limit, cursor);
+        return await Page(database, project, flag, environment, since, limit, cursor, cancellation);
     }
 
     /// <summary>One flag's events, newest first: its metadata, archive state and every environment's config.</summary>
@@ -78,17 +79,18 @@ public static class AuditEndpoints
         string? since,
         int? limit,
         string? cursor,
-        FeatureSlashDbContext database)
+        FeatureSlashDbContext database,
+        CancellationToken cancellation)
     {
-        if (await database.Project(project) is not { } owner)
+        if (await database.Project(project, cancellation) is not { } owner)
         {
             return Failures.ProjectNotFound();
         }
-        if (!await database.Flags.AnyAsync(f => f.ProjectId == owner.Id && f.Key == flag))
+        if (!await database.Flags.AnyAsync(f => f.ProjectId == owner.Id && f.Key == flag, cancellation))
         {
             return Failures.FlagNotFound();
         }
-        return await Page(database, project, flag, environment, since, limit, cursor);
+        return await Page(database, project, flag, environment, since, limit, cursor, cancellation);
     }
 
     private static async Task<IResult> Page(
@@ -98,7 +100,8 @@ public static class AuditEndpoints
         string? environment,
         string? since,
         int? limit,
-        string? cursor)
+        string? cursor,
+        CancellationToken cancellation)
     {
         DateTime? sinceUtc = null;
         if (since is not null)
@@ -143,7 +146,7 @@ public static class AuditEndpoints
 
         var size = limit ?? DefaultLimit;
         // One more than a page, to know whether there is a next one without a count.
-        var rows = await query.OrderByDescending(a => a.Id).Take(size + 1).ToListAsync();
+        var rows = await query.OrderByDescending(a => a.Id).Take(size + 1).ToListAsync(cancellation);
         var events = rows.Take(size).Select(Describe).ToArray();
         return Results.Json(new AuditPage(events, rows.Count > size ? events[^1].Id.ToString(CultureInfo.InvariantCulture) : null));
     }

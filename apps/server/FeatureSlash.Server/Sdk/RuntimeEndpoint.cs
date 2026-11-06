@@ -36,11 +36,11 @@ public static class RuntimeEndpoint
         string project, string env, HttpContext http, FeatureSlashDbContext database, RulesetReader reader)
     {
         var cancellation = http.RequestAborted;
-        if (await database.Project(project) is not { } owner)
+        if (await database.Project(project, cancellation) is not { } owner)
         {
             return Failures.ProjectNotFound();
         }
-        if (await database.Environment(owner.Id, env) is not { } environment)
+        if (await database.Environment(owner.Id, env, cancellation) is not { } environment)
         {
             return Failures.EnvironmentNotFound();
         }

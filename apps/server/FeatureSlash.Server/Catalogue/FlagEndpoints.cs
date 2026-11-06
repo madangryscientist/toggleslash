@@ -101,7 +101,7 @@ public static class FlagEndpoints
     /// The flag and its config row in every environment of the project are written together, or not at
     /// all. Every config starts off, serving <c>OffVariation</c> when off and <c>FallthroughVariation</c> when on.
     /// </summary>
-    private static async Task<IResult> Create(string project, CreateFlagRequest request, FeatureSlashDbContext database, RulesetNotifier notifier)
+    private static async Task<IResult> Create(string project, CreateFlagRequest request, FeatureSlashDbContext database, RulesetNotifier notifier, CancellationToken cancellation)
     {
         var problem = Validation.Key(request.Key, "key")
             ?? Validation.Name(request.Name)
@@ -115,11 +115,11 @@ public static class FlagEndpoints
         {
             return Failures.BadRequest(problem);
         }
-        if (await database.Project(project) is not { } owner)
+        if (await database.Project(project, cancellation) is not { } owner)
         {
             return Failures.ProjectNotFound();
         }
-        if (await database.Flags.AnyAsync(f => f.ProjectId == owner.Id && f.Key == request.Key))
+        if (await database.Flags.AnyAsync(f => f.ProjectId == owner.Id && f.Key == request.Key, cancellation))
         {
             return Taken(request.Key!);
         }
@@ -137,17 +137,17 @@ public static class FlagEndpoints
             Tags = JsonSerializer.Serialize(Validation.DistinctTags(request.Tags ?? [])),
             CreatedAt = DateTime.UtcNow,
         };
-        await using var transaction = await database.Database.BeginTransactionAsync();
+        await using var transaction = await database.Database.BeginTransactionAsync(cancellation);
         database.Flags.Add(flag);
         try
         {
-            await database.SaveChangesAsync();
+            await database.SaveChangesAsync(cancellation);
         }
         catch (DbUpdateException exception) when (Failures.IsUniqueViolation(exception))
         {
             return Taken(request.Key!);
         }
-        var environmentIds = await database.Environments.Where(e => e.ProjectId == owner.Id).Select(e => e.Id).ToListAsync();
+        var environmentIds = await database.Environments.Where(e => e.ProjectId == owner.Id).Select(e => e.Id).ToListAsync(cancellation);
         database.FlagEnvironmentConfigs.AddRange(environmentIds.Select(id => FlagDefaults.NewConfig(
             flag.Id,
             id,
@@ -155,21 +155,21 @@ public static class FlagEndpoints
             request.FallthroughVariation ?? FlagDefaults.FallthroughVariation)));
         // One event for the write, however many default configs it brought with it.
         database.Record(AuditEntity.Flag, flag.Key, AuditAction.Created, new AuditScope(owner.Key, Flag: flag.Key), null, Describe(flag));
-        await database.SaveChangesAsync();
-        await transaction.CommitAsync();
+        await database.SaveChangesAsync(cancellation);
+        await transaction.CommitAsync(cancellation);
         environmentIds.ForEach(notifier.Changed);
 
         return Results.Created($"/api/v1/projects/{owner.Key}/flags/{flag.Key}", Describe(flag, null));
     }
 
     /// <summary>Archived flags are hidden unless <c>archived</c> is <c>true</c> (only those) or <c>all</c>.</summary>
-    private static async Task<IResult> List(string project, string? tag, string? archived, FeatureSlashDbContext database)
+    private static async Task<IResult> List(string project, string? tag, string? archived, FeatureSlashDbContext database, CancellationToken cancellation)
     {
         if (archived is not (null or "true" or "false" or "all"))
         {
             return Failures.BadRequest("archived must be \"true\", \"false\" or \"all\".");
         }
-        if (await database.Project(project) is not { } owner)
+        if (await database.Project(project, cancellation) is not { } owner)
         {
             return Failures.ProjectNotFound();
         }
@@ -181,20 +181,20 @@ public static class FlagEndpoints
             "all" => query,
             _ => query.Where(f => f.ArchivedAt == null),
         };
-        var flags = await query.OrderBy(f => f.Id).ToListAsync();
+        var flags = await query.OrderBy(f => f.Id).ToListAsync(cancellation);
         // Tags are a JSON text column, so the tag filter reads them rather than asking SQL to.
         var shown = flags.Where(f => tag is null || ReadStrings(f.Tags).Contains(tag)).ToList();
-        var last = await LastEvaluated(database, [.. shown.Select(f => f.Id)]);
+        var last = await LastEvaluated(database, [.. shown.Select(f => f.Id)], cancellation);
         return Results.Json(shown.Select(f => Describe(f, last.TryGetValue(f.Id, out var day) ? day : null)));
     }
 
-    private static async Task<IResult> Read(string project, string flag, FeatureSlashDbContext database)
+    private static async Task<IResult> Read(string project, string flag, FeatureSlashDbContext database, CancellationToken cancellation)
     {
-        var (owner, found) = await Find(database, project, flag, tracked: false);
-        return found is not null ? Results.Json(await Detail(database, found)) : NotFound(owner);
+        var (owner, found) = await Find(database, project, flag, tracked: false, cancellation);
+        return found is not null ? Results.Json(await Detail(database, found, cancellation)) : NotFound(owner);
     }
 
-    private static async Task<IResult> Update(string project, string flag, UpdateFlagRequest request, FeatureSlashDbContext database, TargetingLock targetingLock)
+    private static async Task<IResult> Update(string project, string flag, UpdateFlagRequest request, FeatureSlashDbContext database, TargetingLock targetingLock, CancellationToken cancellation)
     {
         var problem = (request.Name is null ? null : Validation.Name(request.Name))
             ?? Validation.Tags(request.Tags)
@@ -205,8 +205,8 @@ public static class FlagEndpoints
             return Failures.BadRequest(problem);
         }
         // Under the lock so that the event's before and after are the row as it was and as it became.
-        using var held = await targetingLock.Enter();
-        var (owner, found) = await Find(database, project, flag, tracked: true);
+        using var held = await targetingLock.Enter(cancellation);
+        var (owner, found) = await Find(database, project, flag, tracked: true, cancellation);
         if (found is null)
         {
             return NotFound(owner);
@@ -225,8 +225,8 @@ public static class FlagEndpoints
             found.Tags = JsonSerializer.Serialize(Validation.DistinctTags(request.Tags));
         }
         database.Record(AuditEntity.Flag, found.Key, AuditAction.Updated, new AuditScope(owner!.Key, Flag: found.Key), before, Describe(found));
-        await database.SaveChangesAsync();
-        return Results.Json(await Detail(database, found));
+        await database.SaveChangesAsync(cancellation);
+        return Results.Json(await Detail(database, found, cancellation));
     }
 
     /// <summary>
@@ -234,16 +234,16 @@ public static class FlagEndpoints
     /// changes nothing but is still a write that succeeded, so it still records one event (before equals after).
     /// An archived flag keeps its key and its configs.
     /// </summary>
-    private static Task<IResult> Archive(string project, string flag, FeatureSlashDbContext database, TargetingLock targetingLock, RulesetNotifier notifier) =>
-        SetArchived(project, flag, database, targetingLock, notifier, archived: true);
+    private static Task<IResult> Archive(string project, string flag, FeatureSlashDbContext database, TargetingLock targetingLock, RulesetNotifier notifier, CancellationToken cancellation) =>
+        SetArchived(project, flag, database, targetingLock, notifier, archived: true, cancellation: cancellation);
 
-    private static Task<IResult> Restore(string project, string flag, FeatureSlashDbContext database, TargetingLock targetingLock, RulesetNotifier notifier) =>
-        SetArchived(project, flag, database, targetingLock, notifier, archived: false);
+    private static Task<IResult> Restore(string project, string flag, FeatureSlashDbContext database, TargetingLock targetingLock, RulesetNotifier notifier, CancellationToken cancellation) =>
+        SetArchived(project, flag, database, targetingLock, notifier, archived: false, cancellation: cancellation);
 
-    private static async Task<IResult> SetArchived(string project, string flag, FeatureSlashDbContext database, TargetingLock targetingLock, RulesetNotifier notifier, bool archived)
+    private static async Task<IResult> SetArchived(string project, string flag, FeatureSlashDbContext database, TargetingLock targetingLock, RulesetNotifier notifier, bool archived, CancellationToken cancellation)
     {
-        using var held = await targetingLock.Enter();
-        var (owner, found) = await Find(database, project, flag, tracked: true);
+        using var held = await targetingLock.Enter(cancellation);
+        var (owner, found) = await Find(database, project, flag, tracked: true, cancellation);
         if (found is null)
         {
             return NotFound(owner);
@@ -259,21 +259,21 @@ public static class FlagEndpoints
             before,
             Describe(found));
         // Read before the save: once the write has committed, nothing should be able to fail before the signal.
-        var environmentIds = await database.Environments.Where(e => e.ProjectId == owner.Id).Select(e => e.Id).ToListAsync();
-        await database.SaveChangesAsync();
+        var environmentIds = await database.Environments.Where(e => e.ProjectId == owner.Id).Select(e => e.Id).ToListAsync(cancellation);
+        await database.SaveChangesAsync(cancellation);
         environmentIds.ForEach(notifier.Changed);
-        return Results.Json(await Detail(database, found));
+        return Results.Json(await Detail(database, found, cancellation));
     }
 
-    private static async Task<(Project? Project, Flag? Flag)> Find(FeatureSlashDbContext database, string project, string flag, bool tracked)
+    private static async Task<(Project? Project, Flag? Flag)> Find(FeatureSlashDbContext database, string project, string flag, bool tracked, CancellationToken cancellation)
     {
-        var owner = await database.Project(project);
+        var owner = await database.Project(project, cancellation);
         if (owner is null)
         {
             return (null, null);
         }
         var flags = tracked ? database.Flags : database.Flags.AsNoTracking();
-        return (owner, await flags.SingleOrDefaultAsync(f => f.ProjectId == owner.Id && f.Key == flag));
+        return (owner, await flags.SingleOrDefaultAsync(f => f.ProjectId == owner.Id && f.Key == flag, cancellation));
     }
 
     /// <summary>No project, or a project without that flag: the message says which.</summary>
@@ -318,13 +318,13 @@ public static class FlagEndpoints
     }
 
     /// <summary>Flag id to the latest day it was counted; a flag never evaluated is absent.</summary>
-    private static async Task<Dictionary<long, DateOnly>> LastEvaluated(FeatureSlashDbContext database, IReadOnlyCollection<long> flagIds) =>
+    private static async Task<Dictionary<long, DateOnly>> LastEvaluated(FeatureSlashDbContext database, IReadOnlyCollection<long> flagIds, CancellationToken cancellation) =>
         await database.FlagUsageDaily.AsNoTracking()
             .Where(u => flagIds.Contains(u.FlagId))
             .GroupBy(u => u.FlagId)
             .Select(g => new { FlagId = g.Key, Day = g.Max(u => u.Day) })
-            .ToDictionaryAsync(g => g.FlagId, g => g.Day);
+            .ToDictionaryAsync(g => g.FlagId, g => g.Day, cancellation);
 
-    private static async Task<FlagResponse> Detail(FeatureSlashDbContext database, Flag flag) =>
-        Describe(flag, (await LastEvaluated(database, [flag.Id])).TryGetValue(flag.Id, out var day) ? day : null);
+    private static async Task<FlagResponse> Detail(FeatureSlashDbContext database, Flag flag, CancellationToken cancellation) =>
+        Describe(flag, (await LastEvaluated(database, [flag.Id], cancellation)).TryGetValue(flag.Id, out var day) ? day : null);
 }

@@ -39,24 +39,24 @@ public static class DiagnoseEndpoint
     }
 
     private static async Task<IResult> Diagnose(
-        string project, string env, DiagnoseRequest request, HttpContext http, FeatureSlashDbContext database, RulesetReader reader)
+        string project, string env, DiagnoseRequest request, HttpContext http, FeatureSlashDbContext database, RulesetReader reader, CancellationToken cancellation)
     {
-        if (await database.Project(project) is not { } owner)
+        if (await database.Project(project, cancellation) is not { } owner)
         {
             return Failures.ProjectNotFound();
         }
-        if (await database.Environment(owner.Id, env) is not { } environment)
+        if (await database.Environment(owner.Id, env, cancellation) is not { } environment)
         {
             return Failures.EnvironmentNotFound();
         }
         var ask = new EvaluateRequest(request.Context, request.FlagKey);
         if (request.Etag is null)
         {
-            var current = await EvaluateAll(ask, () => reader.Read(environment.Id, http.RequestAborted));
+            var current = await EvaluateAll(ask, () => reader.Read(environment.Id, cancellation));
             return current.Failure ?? Results.Ok(current.Response);
         }
         var stored = await database.RulesetSnapshots.AsNoTracking()
-            .SingleOrDefaultAsync(s => s.EnvironmentId == environment.Id && s.Hash == request.Etag, http.RequestAborted);
+            .SingleOrDefaultAsync(s => s.EnvironmentId == environment.Id && s.Hash == request.Etag, cancellation);
         if (stored is null)
         {
             return Failures.RulesetNotFound();
