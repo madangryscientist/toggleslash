@@ -183,7 +183,7 @@ public static class UsageEndpoints
         return null;
     }
 
-    private static async Task<IResult> Usage(string project, string flag, string? since, string? until, FeatureSlashDbContext database)
+    private static async Task<IResult> Usage(string project, string flag, string? since, string? until, FeatureSlashDbContext database, CancellationToken cancellation)
     {
         var last = DateOnly.FromDateTime(DateTime.UtcNow);
         if (until is not null && !DateOnly.TryParseExact(until, DayFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out last))
@@ -199,20 +199,20 @@ public static class UsageEndpoints
         {
             return Failures.BadRequest($"since must not be after until, and the window is at most {MaxWindowDays} days.");
         }
-        if (await database.Project(project) is not { } owner)
+        if (await database.Project(project, cancellation) is not { } owner)
         {
             return Failures.ProjectNotFound();
         }
-        if (await database.Flags.AsNoTracking().SingleOrDefaultAsync(f => f.ProjectId == owner.Id && f.Key == flag) is not { } found)
+        if (await database.Flags.AsNoTracking().SingleOrDefaultAsync(f => f.ProjectId == owner.Id && f.Key == flag, cancellation) is not { } found)
         {
             return Failures.FlagNotFound();
         }
 
-        var environments = await database.Environments.AsNoTracking().Where(e => e.ProjectId == owner.Id).OrderBy(e => e.Id).ToListAsync();
+        var environments = await database.Environments.AsNoTracking().Where(e => e.ProjectId == owner.Id).OrderBy(e => e.Id).ToListAsync(cancellation);
         var rows = await database.FlagUsageDaily.AsNoTracking()
             .Where(u => u.FlagId == found.Id && u.Day >= first && u.Day <= last)
             .OrderBy(u => u.Day).ThenBy(u => u.Variation)
-            .ToListAsync();
+            .ToListAsync(cancellation);
 
         return Results.Json(new UsageResponse(
             found.Key,

@@ -70,9 +70,9 @@ public static class ConfigEndpoints
             .Produces<ApiError>(StatusCodes.Status409Conflict);
     }
 
-    private static async Task<IResult> Read(string project, string flag, string env, HttpContext http, FeatureSlashDbContext database)
+    private static async Task<IResult> Read(string project, string flag, string env, HttpContext http, FeatureSlashDbContext database, CancellationToken cancellation)
     {
-        var found = await Find(database, project, flag, env);
+        var found = await Find(database, project, flag, env, cancellation);
         if (found.Problem is not null)
         {
             return found.Problem;
@@ -89,10 +89,10 @@ public static class ConfigEndpoints
         HttpContext http,
         FeatureSlashDbContext database,
         TargetingLock targetingLock,
-        RulesetNotifier notifier)
+        RulesetNotifier notifier, CancellationToken cancellation)
     {
-        using var held = await targetingLock.Enter();
-        var found = await Find(database, project, flag, env);
+        using var held = await targetingLock.Enter(cancellation);
+        var found = await Find(database, project, flag, env, cancellation);
         if (found.Problem is not null)
         {
             return found.Problem;
@@ -115,7 +115,7 @@ public static class ConfigEndpoints
             ?? validator.Prerequisite(request.Prerequisites)
             ?? validator.Rules(request.Rules)
             ?? validator.Fallthrough(request.Fallthrough))
-            ?? await ReferenceProblem(database, found, validator);
+            ?? await ReferenceProblem(database, found, validator, cancellation);
         if (problem is not null)
         {
             return Failures.BadRequest(problem);
@@ -128,7 +128,7 @@ public static class ConfigEndpoints
         var fallthrough = JsonSerializer.Serialize(request.Fallthrough!.Value);
         // The compare-and-set and its event commit together. The targeting lock keeps `config` (read in Find)
         // the row's true "before" whenever the compare-and-set succeeds.
-        await using var transaction = await database.Database.BeginTransactionAsync();
+        await using var transaction = await database.Database.BeginTransactionAsync(cancellation);
         var saved = await database.FlagEnvironmentConfigs
             .Where(c => c.Id == config.Id && c.Version == expected)
             .ExecuteUpdateAsync(set => set
@@ -138,8 +138,8 @@ public static class ConfigEndpoints
                 .SetProperty(c => c.Prerequisites, prerequisites)
                 .SetProperty(c => c.Rules, rules)
                 .SetProperty(c => c.Fallthrough, fallthrough)
-                .SetProperty(c => c.Version, c => c.Version + 1));
-        return await Saved(database, http, found, saved, expected.Value, AuditAction.Updated, transaction, notifier);
+                .SetProperty(c => c.Version, c => c.Version + 1), cancellation);
+        return await Saved(database, http, found, saved, expected.Value, AuditAction.Updated, transaction, notifier, cancellation);
     }
 
     /// <summary>
@@ -156,7 +156,7 @@ public static class ConfigEndpoints
         HttpContext http,
         FeatureSlashDbContext database,
         TargetingLock targetingLock,
-        RulesetNotifier notifier)
+        RulesetNotifier notifier, CancellationToken cancellation)
     {
         if (request.On is not { } on)
         {
@@ -167,21 +167,21 @@ public static class ConfigEndpoints
         {
             return Failures.BadRequest(versionProblem);
         }
-        using var held = await targetingLock.Enter();
-        var found = await Find(database, project, flag, env);
+        using var held = await targetingLock.Enter(cancellation);
+        var found = await Find(database, project, flag, env, cancellation);
         if (found.Problem is not null)
         {
             return found.Problem;
         }
 
         var config = found.Config!;
-        await using var transaction = await database.Database.BeginTransactionAsync();
+        await using var transaction = await database.Database.BeginTransactionAsync(cancellation);
         var saved = await database.FlagEnvironmentConfigs
             .Where(c => c.Id == config.Id && (expected == null || c.Version == expected))
             .ExecuteUpdateAsync(set => set
                 .SetProperty(c => c.On, on)
-                .SetProperty(c => c.Version, c => c.Version + 1));
-        return await Saved(database, http, found, saved, expected ?? 0, AuditAction.Toggled, transaction, notifier);
+                .SetProperty(c => c.Version, c => c.Version + 1), cancellation);
+        return await Saved(database, http, found, saved, expected ?? 0, AuditAction.Toggled, transaction, notifier, cancellation);
     }
 
     /// <summary>
@@ -196,9 +196,9 @@ public static class ConfigEndpoints
         long expected,
         string action,
         IDbContextTransaction transaction,
-        RulesetNotifier notifier)
+        RulesetNotifier notifier, CancellationToken cancellation)
     {
-        var current = await database.FlagEnvironmentConfigs.AsNoTracking().SingleAsync(c => c.Id == found.Config!.Id);
+        var current = await database.FlagEnvironmentConfigs.AsNoTracking().SingleAsync(c => c.Id == found.Config!.Id, cancellation);
         if (rows == 0)
         {
             return Failures.Conflict($"The config is at version {current.Version}, not {expected}: it changed since it was read. GET it again and retry.");
@@ -211,30 +211,30 @@ public static class ConfigEndpoints
             new AuditScope(found.Project!.Key, found.Environment.Key, found.Flag.Key),
             Describe(found.Config!),
             Describe(current));
-        await database.SaveChangesAsync();
-        await transaction.CommitAsync();
+        await database.SaveChangesAsync(cancellation);
+        await transaction.CommitAsync(cancellation);
         notifier.Changed(found.Environment.Id);
         return Respond(http, current);
     }
 
     private sealed record Found(IResult? Problem, Project? Project, ProjectEnvironment? Environment, Flag? Flag, FlagEnvironmentConfig? Config);
 
-    private static async Task<Found> Find(FeatureSlashDbContext database, string project, string flag, string env)
+    private static async Task<Found> Find(FeatureSlashDbContext database, string project, string flag, string env, CancellationToken cancellation)
     {
-        if (await database.Project(project) is not { } owner)
+        if (await database.Project(project, cancellation) is not { } owner)
         {
             return new Found(Failures.ProjectNotFound(), null, null, null, null);
         }
-        if (await database.Environment(owner.Id, env) is not { } environment)
+        if (await database.Environment(owner.Id, env, cancellation) is not { } environment)
         {
             return new Found(Failures.EnvironmentNotFound(), null, null, null, null);
         }
-        if (await database.Flags.AsNoTracking().SingleOrDefaultAsync(f => f.ProjectId == owner.Id && f.Key == flag) is not { } found)
+        if (await database.Flags.AsNoTracking().SingleOrDefaultAsync(f => f.ProjectId == owner.Id && f.Key == flag, cancellation) is not { } found)
         {
             return new Found(Failures.FlagNotFound(), null, null, null, null);
         }
         var config = await database.FlagEnvironmentConfigs.AsNoTracking()
-            .SingleOrDefaultAsync(c => c.FlagId == found.Id && c.EnvironmentId == environment.Id);
+            .SingleOrDefaultAsync(c => c.FlagId == found.Id && c.EnvironmentId == environment.Id, cancellation);
         return config is null
             ? new Found(ApiError.Result(StatusCodes.Status404NotFound, "not_found", "No config for this flag in this environment."), null, null, null, null)
             : new Found(null, owner, environment, found, config);
@@ -293,7 +293,7 @@ public static class ConfigEndpoints
     /// project, a segment is one of this environment, and the prerequisites cannot lead back to this flag.
     /// Storage does not stop a row pointing across projects or environments, so this does.
     /// </summary>
-    private static async Task<string?> ReferenceProblem(FeatureSlashDbContext database, Found found, TargetingValidator validator)
+    private static async Task<string?> ReferenceProblem(FeatureSlashDbContext database, Found found, TargetingValidator validator, CancellationToken cancellation)
     {
         var project = found.Project!;
         var environment = found.Environment!;
@@ -302,7 +302,7 @@ public static class ConfigEndpoints
         var flagKeys = validator.Prerequisites.Select(p => p.FlagKey).Distinct().ToList();
         var required = await database.Flags.AsNoTracking()
             .Where(f => f.ProjectId == project.Id && flagKeys.Contains(f.Key))
-            .ToDictionaryAsync(f => f.Key);
+            .ToDictionaryAsync(f => f.Key, cancellation);
         foreach (var prerequisite in validator.Prerequisites)
         {
             if (prerequisite.FlagKey == flag.Key)
@@ -324,7 +324,7 @@ public static class ConfigEndpoints
         var existing = await database.Segments.AsNoTracking()
             .Where(s => s.ProjectId == project.Id && s.EnvironmentId == environment.Id && segmentKeys.Contains(s.Key))
             .Select(s => s.Key)
-            .ToListAsync();
+            .ToListAsync(cancellation);
         if (validator.Segments.FirstOrDefault(s => !existing.Contains(s.Key)) is { } missing)
         {
             return $"{missing.Path}: there is no segment \"{missing.Key}\" in environment \"{environment.Key}\" (segments belong to one environment).";
@@ -333,7 +333,7 @@ public static class ConfigEndpoints
         var stored = (await database.FlagEnvironmentConfigs.AsNoTracking()
                 .Join(database.Flags, c => c.FlagId, f => f.Id, (c, f) => new { f.ProjectId, f.Key, c.EnvironmentId, c.Prerequisites })
                 .Where(r => r.ProjectId == project.Id && r.EnvironmentId == environment.Id)
-                .ToListAsync())
+                .ToListAsync(cancellation))
             .ToDictionary(r => r.Key, r => PrerequisiteGraph.Edges(r.Prerequisites), StringComparer.Ordinal);
         return PrerequisiteGraph.CycleThrough(flag.Key, validator.Prerequisites.Select(p => p.FlagKey).ToList(), stored) is { } cycle
             ? $"prerequisites would make a cycle: {string.Join(" -> ", cycle)}."

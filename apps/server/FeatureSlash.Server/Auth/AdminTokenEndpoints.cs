@@ -38,7 +38,7 @@ public static class AdminTokenEndpoints
             .Produces<ApiError>(StatusCodes.Status404NotFound);
     }
 
-    private static async Task<IResult> Create(string project, CreateTokenRequest request, FeatureSlashDbContext database)
+    private static async Task<IResult> Create(string project, CreateTokenRequest request, FeatureSlashDbContext database, CancellationToken cancellation)
     {
         AdminTokenPermission? permission = request.Permission switch
         {
@@ -58,7 +58,7 @@ public static class AdminTokenEndpoints
         {
             return Failures.BadRequest($"expiresInDays is required: a whole number from 1 to {MaxExpiresInDays}.");
         }
-        if (await database.Project(project) is not { } owner)
+        if (await database.Project(project, cancellation) is not { } owner)
         {
             return Failures.ProjectNotFound();
         }
@@ -76,13 +76,13 @@ public static class AdminTokenEndpoints
             ExpiresAt = now.AddDays(request.ExpiresInDays.Value),
         };
         // Two saves in one transaction: the event names the token by its id, which exists only once the token is saved.
-        await using var transaction = await database.Database.BeginTransactionAsync();
+        await using var transaction = await database.Database.BeginTransactionAsync(cancellation);
         database.AdminTokens.Add(token);
-        await database.SaveChangesAsync();
+        await database.SaveChangesAsync(cancellation);
         database.Record(
             AuditEntity.AdminToken, token.Id.ToString(CultureInfo.InvariantCulture), AuditAction.Created, new AuditScope(project), null, Summarise(token));
-        await database.SaveChangesAsync();
-        await transaction.CommitAsync();
+        await database.SaveChangesAsync(cancellation);
+        await transaction.CommitAsync(cancellation);
 
         // The only place the plain token ever appears. Anonymous, so no named type carries it anywhere else.
         return Results.Json(
@@ -91,9 +91,9 @@ public static class AdminTokenEndpoints
     }
 
     /// <summary>Every token of the project, expired and revoked ones included.</summary>
-    private static async Task<IResult> List(string project, FeatureSlashDbContext database)
+    private static async Task<IResult> List(string project, FeatureSlashDbContext database, CancellationToken cancellation)
     {
-        if (await database.Project(project) is not { } owner)
+        if (await database.Project(project, cancellation) is not { } owner)
         {
             return Failures.ProjectNotFound();
         }
@@ -101,19 +101,19 @@ public static class AdminTokenEndpoints
         var tokens = await database.AdminTokens.AsNoTracking()
             .Where(t => t.ProjectId == owner.Id)
             .OrderBy(t => t.Id)
-            .ToListAsync();
+            .ToListAsync(cancellation);
         return Results.Json(tokens.Select(Summarise));
     }
 
     /// <summary>Revoking twice is fine and keeps the first time. A token of another project is not found here.</summary>
-    private static async Task<IResult> Revoke(string project, long id, FeatureSlashDbContext database)
+    private static async Task<IResult> Revoke(string project, long id, FeatureSlashDbContext database, CancellationToken cancellation)
     {
-        if (await database.Project(project) is not { } owner)
+        if (await database.Project(project, cancellation) is not { } owner)
         {
             return Failures.ProjectNotFound();
         }
 
-        var token = await database.AdminTokens.SingleOrDefaultAsync(t => t.Id == id && t.ProjectId == owner.Id);
+        var token = await database.AdminTokens.SingleOrDefaultAsync(t => t.Id == id && t.ProjectId == owner.Id, cancellation);
         if (token is null)
         {
             return ApiError.Result(StatusCodes.Status404NotFound, "not_found", "No such token in this project.");
@@ -123,7 +123,7 @@ public static class AdminTokenEndpoints
         token.RevokedAt ??= DateTime.UtcNow;
         database.Record(
             AuditEntity.AdminToken, token.Id.ToString(CultureInfo.InvariantCulture), AuditAction.Revoked, new AuditScope(project), before, Summarise(token));
-        await database.SaveChangesAsync();
+        await database.SaveChangesAsync(cancellation);
         return Results.NoContent();
     }
 

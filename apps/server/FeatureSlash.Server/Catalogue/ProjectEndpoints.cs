@@ -34,13 +34,13 @@ public static class ProjectEndpoints
             .Produces<ApiError>(StatusCodes.Status404NotFound);
     }
 
-    private static async Task<IResult> Create(CreateProjectRequest request, FeatureSlashDbContext database)
+    private static async Task<IResult> Create(CreateProjectRequest request, FeatureSlashDbContext database, CancellationToken cancellation)
     {
         if ((Validation.Key(request.Key, "key") ?? Validation.Name(request.Name)) is { } problem)
         {
             return Failures.BadRequest(problem);
         }
-        if (await database.Projects.AnyAsync(p => p.Key == request.Key))
+        if (await database.Projects.AnyAsync(p => p.Key == request.Key, cancellation))
         {
             return Failures.Conflict($"A project with key \"{request.Key}\" already exists.");
         }
@@ -50,7 +50,7 @@ public static class ProjectEndpoints
         database.Record(AuditEntity.Project, project.Key, AuditAction.Created, new AuditScope(project.Key), null, Describe(project));
         try
         {
-            await database.SaveChangesAsync();
+            await database.SaveChangesAsync(cancellation);
         }
         catch (DbUpdateException exception) when (Failures.IsUniqueViolation(exception))
         {
@@ -60,19 +60,19 @@ public static class ProjectEndpoints
     }
 
     /// <summary>Every project for the root token; a scoped token sees only its own.</summary>
-    private static async Task<IResult> List(ClaimsPrincipal user, FeatureSlashDbContext database)
+    private static async Task<IResult> List(ClaimsPrincipal user, FeatureSlashDbContext database, CancellationToken cancellation)
     {
         var visible = database.Projects.AsNoTracking();
         if (ServerAuth.TokenProject(user) is { } own)
         {
             visible = visible.Where(p => p.Key == own);
         }
-        var projects = await visible.OrderBy(p => p.Id).ToListAsync();
+        var projects = await visible.OrderBy(p => p.Id).ToListAsync(cancellation);
         return Results.Json(projects.Select(Describe));
     }
 
-    private static async Task<IResult> Read(string project, FeatureSlashDbContext database) =>
-        await database.Project(project) is { } found ? Results.Json(Describe(found)) : Failures.ProjectNotFound();
+    private static async Task<IResult> Read(string project, FeatureSlashDbContext database, CancellationToken cancellation) =>
+        await database.Project(project, cancellation) is { } found ? Results.Json(Describe(found)) : Failures.ProjectNotFound();
 
     private static ProjectResponse Describe(Project project) => new(project.Key, project.Name, project.CreatedAt);
 }

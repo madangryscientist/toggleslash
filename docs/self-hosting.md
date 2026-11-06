@@ -180,8 +180,11 @@ keep-alive comment every 25 seconds. The data-rate floor for a request body is A
 after a five second grace).
 
 A request timeout is cooperative. It cancels the request's token, and a handler that does not look at it runs to
-completion and answers as it would have: no `504` is sent. The SDK routes pass the token to the database; most admin
-routes do not yet, so a slow admin query is not cut off at 30 seconds.
+completion and answers as it would have: no `504` is sent. Every route that reads or writes the database passes the
+token to its queries, so a slow query on any of them, an admin route included, is stopped at 30 seconds and answered
+with the `504`. A write is one statement or one transaction, so a stopped write is never half done; but a write that
+saves just before the limit can still answer `504`, so read the resource before you retry a write that timed out.
+`GET /sdk/v1/stream` is the one route that is exempt.
 
 ## Rate limits
 

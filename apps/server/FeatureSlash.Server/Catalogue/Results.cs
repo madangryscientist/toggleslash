@@ -44,9 +44,9 @@ internal static class Failures
 
 internal static class Lookups
 {
-    public static Task<Project?> Project(this FeatureSlashDbContext database, string key) =>
-        database.Projects.AsNoTracking().SingleOrDefaultAsync(p => p.Key == key);
+    public static Task<Project?> Project(this FeatureSlashDbContext database, string key, CancellationToken cancellation) =>
+        database.Projects.AsNoTracking().SingleOrDefaultAsync(p => p.Key == key, cancellation);
 
-    public static Task<ProjectEnvironment?> Environment(this FeatureSlashDbContext database, long projectId, string key) =>
-        database.Environments.AsNoTracking().SingleOrDefaultAsync(e => e.ProjectId == projectId && e.Key == key);
+    public static Task<ProjectEnvironment?> Environment(this FeatureSlashDbContext database, long projectId, string key, CancellationToken cancellation) =>
+        database.Environments.AsNoTracking().SingleOrDefaultAsync(e => e.ProjectId == projectId && e.Key == key, cancellation);
 }

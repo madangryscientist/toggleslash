@@ -21,7 +21,7 @@ public static class ApiKeyEndpoints
         keys.MapDelete("{id:long}", Revoke);
     }
 
-    private static async Task<IResult> Create(string project, string env, CreateKeyRequest request, FeatureSlashDbContext database)
+    private static async Task<IResult> Create(string project, string env, CreateKeyRequest request, FeatureSlashDbContext database, CancellationToken cancellation)
     {
         ApiKeyKind? kind = request.Kind switch
         {
@@ -37,7 +37,7 @@ public static class ApiKeyEndpoints
         {
             return ApiError.Result(StatusCodes.Status400BadRequest, "bad_request", "name is required.");
         }
-        if (await FindEnvironment(database, project, env) is not { } environment)
+        if (await FindEnvironment(database, project, env, cancellation) is not { } environment)
         {
             return EnvironmentNotFound();
         }
@@ -53,13 +53,13 @@ public static class ApiKeyEndpoints
             CreatedAt = DateTime.UtcNow,
         };
         // Two saves in one transaction: the event names the key by its id, which exists only once the key is saved.
-        await using var transaction = await database.Database.BeginTransactionAsync();
+        await using var transaction = await database.Database.BeginTransactionAsync(cancellation);
         database.ApiKeys.Add(key);
-        await database.SaveChangesAsync();
+        await database.SaveChangesAsync(cancellation);
         database.Record(
             AuditEntity.ApiKey, key.Id.ToString(CultureInfo.InvariantCulture), AuditAction.Created, ScopeOf(project, env), null, Summarise(key));
-        await database.SaveChangesAsync();
-        await transaction.CommitAsync();
+        await database.SaveChangesAsync(cancellation);
+        await transaction.CommitAsync(cancellation);
 
         // The only place the plain key ever appears. Anonymous, so no named type carries it anywhere else.
         return Results.Json(
@@ -67,9 +67,9 @@ public static class ApiKeyEndpoints
             statusCode: StatusCodes.Status201Created);
     }
 
-    private static async Task<IResult> List(string project, string env, FeatureSlashDbContext database)
+    private static async Task<IResult> List(string project, string env, FeatureSlashDbContext database, CancellationToken cancellation)
     {
-        if (await FindEnvironment(database, project, env) is not { } environment)
+        if (await FindEnvironment(database, project, env, cancellation) is not { } environment)
         {
             return EnvironmentNotFound();
         }
@@ -77,19 +77,19 @@ public static class ApiKeyEndpoints
         var keys = await database.ApiKeys.AsNoTracking()
             .Where(k => k.EnvironmentId == environment.Id)
             .OrderBy(k => k.Id)
-            .ToListAsync();
+            .ToListAsync(cancellation);
         return Results.Json(keys.Select(Summarise));
     }
 
     /// <summary>Revoking twice is fine and keeps the first time. A key of another environment is not found here.</summary>
-    private static async Task<IResult> Revoke(string project, string env, long id, FeatureSlashDbContext database)
+    private static async Task<IResult> Revoke(string project, string env, long id, FeatureSlashDbContext database, CancellationToken cancellation)
     {
-        if (await FindEnvironment(database, project, env) is not { } environment)
+        if (await FindEnvironment(database, project, env, cancellation) is not { } environment)
         {
             return EnvironmentNotFound();
         }
 
-        var key = await database.ApiKeys.SingleOrDefaultAsync(k => k.Id == id && k.EnvironmentId == environment.Id);
+        var key = await database.ApiKeys.SingleOrDefaultAsync(k => k.Id == id && k.EnvironmentId == environment.Id, cancellation);
         if (key is null)
         {
             return ApiError.Result(StatusCodes.Status404NotFound, "not_found", "No such key in this environment.");
@@ -99,13 +99,13 @@ public static class ApiKeyEndpoints
         key.RevokedAt ??= DateTime.UtcNow;
         database.Record(
             AuditEntity.ApiKey, key.Id.ToString(CultureInfo.InvariantCulture), AuditAction.Revoked, ScopeOf(project, env), before, Summarise(key));
-        await database.SaveChangesAsync();
+        await database.SaveChangesAsync(cancellation);
         return Results.NoContent();
     }
 
-    private static Task<ProjectEnvironment?> FindEnvironment(FeatureSlashDbContext database, string project, string env) =>
+    private static Task<ProjectEnvironment?> FindEnvironment(FeatureSlashDbContext database, string project, string env, CancellationToken cancellation) =>
         database.Environments.AsNoTracking().SingleOrDefaultAsync(e =>
-            e.Key == env && database.Projects.Any(p => p.Id == e.ProjectId && p.Key == project));
+            e.Key == env && database.Projects.Any(p => p.Id == e.ProjectId && p.Key == project), cancellation);
 
     private static IResult EnvironmentNotFound() =>
         ApiError.Result(StatusCodes.Status404NotFound, "not_found", "No such project or environment.");

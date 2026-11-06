@@ -10,9 +10,9 @@ public sealed class TargetingLock
 {
     private readonly SemaphoreSlim gate = new(1, 1);
 
-    internal async Task<IDisposable> Enter()
+    internal async Task<IDisposable> Enter(CancellationToken cancellation)
     {
-        await gate.WaitAsync();
+        await gate.WaitAsync(cancellation);
         return new Releaser(gate);
     }
 

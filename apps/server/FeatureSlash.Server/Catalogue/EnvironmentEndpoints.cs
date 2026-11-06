@@ -37,17 +37,17 @@ public static class EnvironmentEndpoints
     /// A new environment gets an off config row for every flag the project already has, archived ones
     /// included, so "every flag has a config in every environment" holds whichever was created first.
     /// </summary>
-    private static async Task<IResult> Create(string project, CreateEnvironmentRequest request, FeatureSlashDbContext database)
+    private static async Task<IResult> Create(string project, CreateEnvironmentRequest request, FeatureSlashDbContext database, CancellationToken cancellation)
     {
         if ((Validation.Key(request.Key, "key") ?? Validation.Name(request.Name)) is { } problem)
         {
             return Failures.BadRequest(problem);
         }
-        if (await database.Project(project) is not { } owner)
+        if (await database.Project(project, cancellation) is not { } owner)
         {
             return Failures.ProjectNotFound();
         }
-        if (await database.Environment(owner.Id, request.Key!) is not null)
+        if (await database.Environment(owner.Id, request.Key!, cancellation) is not null)
         {
             return Taken(request.Key!);
         }
@@ -59,19 +59,19 @@ public static class EnvironmentEndpoints
             Name = request.Name!.Trim(),
             CreatedAt = DateTime.UtcNow,
         };
-        await using var transaction = await database.Database.BeginTransactionAsync();
+        await using var transaction = await database.Database.BeginTransactionAsync(cancellation);
         database.Environments.Add(environment);
         try
         {
-            await database.SaveChangesAsync();
-            var flagIds = await database.Flags.Where(f => f.ProjectId == owner.Id).Select(f => f.Id).ToListAsync();
+            await database.SaveChangesAsync(cancellation);
+            var flagIds = await database.Flags.Where(f => f.ProjectId == owner.Id).Select(f => f.Id).ToListAsync(cancellation);
             database.FlagEnvironmentConfigs.AddRange(flagIds.Select(id =>
                 FlagDefaults.NewConfig(id, environment.Id, FlagDefaults.OffVariation, FlagDefaults.FallthroughVariation)));
             // One event for the write, however many default configs it brought with it.
             database.Record(
                 AuditEntity.Environment, environment.Key, AuditAction.Created, new AuditScope(owner.Key, environment.Key), null, Describe(environment));
-            await database.SaveChangesAsync();
-            await transaction.CommitAsync();
+            await database.SaveChangesAsync(cancellation);
+            await transaction.CommitAsync(cancellation);
         }
         catch (DbUpdateException exception) when (Failures.IsUniqueViolation(exception))
         {
@@ -80,26 +80,26 @@ public static class EnvironmentEndpoints
         return Results.Created($"/api/v1/projects/{owner.Key}/environments/{environment.Key}", Describe(environment));
     }
 
-    private static async Task<IResult> List(string project, FeatureSlashDbContext database)
+    private static async Task<IResult> List(string project, FeatureSlashDbContext database, CancellationToken cancellation)
     {
-        if (await database.Project(project) is not { } owner)
+        if (await database.Project(project, cancellation) is not { } owner)
         {
             return Failures.ProjectNotFound();
         }
         var environments = await database.Environments.AsNoTracking()
             .Where(e => e.ProjectId == owner.Id)
             .OrderBy(e => e.Id)
-            .ToListAsync();
+            .ToListAsync(cancellation);
         return Results.Json(environments.Select(Describe));
     }
 
-    private static async Task<IResult> Read(string project, string env, FeatureSlashDbContext database)
+    private static async Task<IResult> Read(string project, string env, FeatureSlashDbContext database, CancellationToken cancellation)
     {
-        if (await database.Project(project) is not { } owner)
+        if (await database.Project(project, cancellation) is not { } owner)
         {
             return Failures.ProjectNotFound();
         }
-        return await database.Environment(owner.Id, env) is { } found
+        return await database.Environment(owner.Id, env, cancellation) is { } found
             ? Results.Json(Describe(found))
             : Failures.EnvironmentNotFound();
     }
