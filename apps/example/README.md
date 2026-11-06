@@ -1,6 +1,6 @@
-# FeatureSlash example: a shop checkout
+# ToggleSlash example: a shop checkout
 
-A fictional shop whose checkout is steered by FeatureSlash flags, written the way a customer would
+A fictional shop whose checkout is steered by ToggleSlash flags, written the way a customer would
 write it: the [TypeScript server SDK](../../docs/sdk.md) in a small `Bun.serve` app. Private, and
 not published.
 
@@ -24,11 +24,11 @@ The page is plain semantic HTML with no stylesheet and no component library, so 
 
 | Variable | |
 | --- | --- |
-| `FEATURESLASH_URL` | the server, for example `http://127.0.0.1:5080` |
-| `FEATURESLASH_SDK_KEY` | a server key (`fs_server_...`) |
-| `FEATURESLASH_CLIENT_KEY` | a client key (`fs_client_...`), sent to the browser |
+| `TOGGLESLASH_URL` | the server, for example `http://127.0.0.1:5080` |
+| `TOGGLESLASH_SDK_KEY` | a server key (`fs_server_...`) |
+| `TOGGLESLASH_CLIENT_KEY` | a client key (`fs_client_...`), sent to the browser |
 | `PORT` | default `4441`, bound to `127.0.0.1` |
-| `FEATURESLASH_FLUSH_INTERVAL_MS` | how often usage counts are sent (optional) |
+| `TOGGLESLASH_FLUSH_INTERVAL_MS` | how often usage counts are sent (optional) |
 
 ## Run it with the whole product
 
@@ -44,7 +44,7 @@ the dashboard, and starts this app. Then it prints:
 
 - the dashboard on <http://127.0.0.1:4440> with its sign-in password,
 - this app on <http://127.0.0.1:4441>,
-- the server's URL and the admin token, with the `FEATURESLASH_URL` and `FEATURESLASH_TOKEN` exports
+- the server's URL and the admin token, with the `TOGGLESLASH_URL` and `TOGGLESLASH_TOKEN` exports
   for the CLI.
 
 Every secret is made fresh for the run, written nowhere, and thrown away when you press Ctrl-C.
@@ -55,7 +55,7 @@ Everything listens on loopback only.
 1. Open the app as `free-user`, then `pro-user`: `new-checkout` is on only for the `pro-customers` segment.
 2. Open it as `beta-user`: `banner-text` differs (a target).
 3. Flip `legacy-cart` with the CLI and watch the app follow within a second, and the ETag change:
-   `bun run featureslash flags on legacy-cart --project shop --env dev`
+   `bun run toggleslash flags on legacy-cart --project shop --env dev`
 4. Do the same from the dashboard (sign in, pick `shop` and `dev`, toggle the flag).
 5. Press **Evaluate in the browser**.
 6. After a few seconds, open `new-checkout` in the dashboard: its usage shows the counts this app sent.

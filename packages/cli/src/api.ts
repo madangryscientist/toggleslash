@@ -53,7 +53,7 @@ function queryString(query: Query | undefined): string {
 function interpret(response: Response, text: string): Json {
   if (response.status === 401) {
     throw new FailureError(
-      "the server rejected the admin token (401). Check FEATURESLASH_TOKEN or run `featureslash config set-token`.",
+      "the server rejected the admin token (401). Check TOGGLESLASH_TOKEN or run `toggleslash config set-token`.",
     );
   }
   if (!response.ok) {

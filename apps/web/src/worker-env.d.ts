@@ -4,7 +4,7 @@
  */
 declare namespace Cloudflare {
   interface Env {
-    FEATURESLASH_OPERATOR_PASSWORD?: string;
-    FEATURESLASH_SESSION_SECRET?: string;
+    TOGGLESLASH_OPERATOR_PASSWORD?: string;
+    TOGGLESLASH_SESSION_SECRET?: string;
   }
 }

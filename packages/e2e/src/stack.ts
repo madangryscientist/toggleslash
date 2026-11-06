@@ -40,7 +40,7 @@ export async function startStack(signal?: AbortSignal): Promise<Stack> {
   const adminToken = secret(24, "hex");
   const operatorPassword = secret(18, "base64url");
   const sessionSecret = secret(32, "hex");
-  const scratch = mkdtempSync(join(tmpdir(), "featureslash-stack-"));
+  const scratch = mkdtempSync(join(tmpdir(), "toggleslash-stack-"));
   mkdirSync(join(scratch, "home"));
 
   const stoppers: (() => Promise<void>)[] = [];
@@ -67,7 +67,7 @@ export async function startStack(signal?: AbortSignal): Promise<Stack> {
 
   try {
     const server = await startServer(await buildServer(), {
-      dbPath: join(scratch, "featureslash.db"),
+      dbPath: join(scratch, "toggleslash.db"),
       adminToken,
     });
     stoppers.push(() => server.stop());

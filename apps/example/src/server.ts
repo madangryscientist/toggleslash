@@ -1,4 +1,4 @@
-import { createClient } from "@hackcove/featureslash-sdk";
+import { createClient } from "@hackcove/toggleslash-sdk";
 import { createApp } from "./app.ts";
 
 const DEFAULT_PORT = 4441;
@@ -24,13 +24,13 @@ function optionalMs(name: string): number | undefined {
   return value;
 }
 
-const url = required("FEATURESLASH_URL");
-const flushIntervalMs = optionalMs("FEATURESLASH_FLUSH_INTERVAL_MS");
+const url = required("TOGGLESLASH_URL");
+const flushIntervalMs = optionalMs("TOGGLESLASH_FLUSH_INTERVAL_MS");
 
 // The server key goes to the SDK and nowhere else; `createApp` is never given it.
 const client = createClient({
   url,
-  sdkKey: required("FEATURESLASH_SDK_KEY"),
+  sdkKey: required("TOGGLESLASH_SDK_KEY"),
   ...(flushIntervalMs === undefined ? {} : { flushIntervalMs }),
   onError: (error) => process.stderr.write(`example: sdk: ${String(error)}\n`),
 });
@@ -39,7 +39,7 @@ const server = Bun.serve({
   // Loopback only: this is an example, not something to expose.
   hostname: "127.0.0.1",
   port: Number(process.env["PORT"] ?? DEFAULT_PORT),
-  fetch: createApp({ client, serverUrl: url, clientKey: required("FEATURESLASH_CLIENT_KEY") }),
+  fetch: createApp({ client, serverUrl: url, clientKey: required("TOGGLESLASH_CLIENT_KEY") }),
 });
 process.stdout.write(`example: listening on http://127.0.0.1:${server.port}\n`);
 

@@ -1,6 +1,6 @@
 {
   "updated": "2026-11-05",
-  "note": "Competitor cells are coarse and were read from public product and documentation pages on 2026-11-05. yes = documented first-class capability; partial = limited, plan-gated, adjacent, or not a core strength; no = not documented. Verify before using this in sales material. FeatureSlash cells are backed by evidence in this repository and are checked by scripts/parity.ts.",
+  "note": "Competitor cells are coarse and were read from public product and documentation pages on 2026-11-05. yes = documented first-class capability; partial = limited, plan-gated, adjacent, or not a core strength; no = not documented. Verify before using this in sales material. ToggleSlash cells are backed by evidence in this repository and are checked by scripts/parity.ts.",
   "competitors": [
     {
       "id": "launchdarkly",
@@ -57,7 +57,7 @@
       "category": "Core flags",
       "name": "Boolean flags",
       "description": "On/off flags with an off variation and a fallthrough.",
-      "featureslash": {
+      "toggleslash": {
         "status": "yes",
         "evidence": [
           "api:/api/v1/projects/{project}/flags",
@@ -86,7 +86,7 @@
       "category": "Core flags",
       "name": "Multivariate flags",
       "description": "String, number and JSON variations, not only booleans.",
-      "featureslash": {
+      "toggleslash": {
         "status": "partial",
         "evidence": [
           "api:/api/v1/projects/{project}/flags",
@@ -111,7 +111,7 @@
       "category": "Core flags",
       "name": "Per-environment configuration",
       "description": "Each environment gets its own targeting and on/off state.",
-      "featureslash": {
+      "toggleslash": {
         "status": "yes",
         "evidence": [
           "api:/api/v1/projects/{project}/flags/{flag}/environments/{env}",
@@ -135,7 +135,7 @@
       "category": "Core flags",
       "name": "Projects and environments",
       "description": "Organise flags into projects and environments.",
-      "featureslash": {
+      "toggleslash": {
         "status": "yes",
         "evidence": [
           "api:/api/v1/projects",
@@ -165,7 +165,7 @@
       "category": "Core flags",
       "name": "Archive and restore",
       "description": "Take a flag out of service without deleting its history.",
-      "featureslash": {
+      "toggleslash": {
         "status": "yes",
         "evidence": [
           "api:/api/v1/projects/{project}/flags/{flag}/archive",
@@ -189,7 +189,7 @@
       "category": "Core flags",
       "name": "Permanent delete",
       "description": "Remove an archived flag completely.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -209,7 +209,7 @@
       "category": "Core flags",
       "name": "Flag lifecycle and stale detection",
       "description": "Compute whether a flag is new, active, launched, stale or ready to archive.",
-      "featureslash": {
+      "toggleslash": {
         "status": "partial",
         "evidence": [
           "api:/api/v1/projects/{project}/flags/{flag}/usage",
@@ -233,7 +233,7 @@
       "category": "Core flags",
       "name": "Code references",
       "description": "Find where a flag is used in source control and flag stale references.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -250,7 +250,7 @@
       "category": "Core flags",
       "name": "Change history and restore",
       "description": "See previous flag versions and roll back to one.",
-      "featureslash": {
+      "toggleslash": {
         "status": "partial",
         "evidence": ["api:/api/v1/projects/{project}/flags/{flag}/history", "cli:flags history"],
         "note": "History is readable but there is no restore action."
@@ -271,7 +271,7 @@
       "category": "Core flags",
       "name": "Clone, compare and copy",
       "description": "Clone a flag, or compare and copy its settings between environments.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -291,7 +291,7 @@
       "category": "Core flags",
       "name": "Bulk targeting",
       "description": "Edit many individual targets or import a large audience at once.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -311,7 +311,7 @@
       "category": "Core flags",
       "name": "Tags",
       "description": "Tag flags for search, ownership and automation.",
-      "featureslash": {
+      "toggleslash": {
         "status": "yes",
         "evidence": ["api:/api/v1/projects/{project}/flags", "cli:flags list"]
       },
@@ -331,7 +331,7 @@
       "category": "Core flags",
       "name": "Scheduled changes",
       "description": "Schedule a flag or segment change for a future time.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -351,7 +351,7 @@
       "category": "Core flags",
       "name": "Flag templates",
       "description": "Release, kill-switch, experiment, migration and custom flag templates.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -369,7 +369,7 @@
       "category": "Targeting",
       "name": "Individual targeting",
       "description": "Serve a variation to named context keys.",
-      "featureslash": {
+      "toggleslash": {
         "status": "yes",
         "evidence": [
           "api:/api/v1/projects/{project}/flags/{flag}/environments/{env}",
@@ -393,7 +393,7 @@
       "category": "Targeting",
       "name": "Rule-based targeting",
       "description": "Attribute clauses that serve a variation or rollout.",
-      "featureslash": {
+      "toggleslash": {
         "status": "yes",
         "evidence": [
           "api:/api/v1/projects/{project}/flags/{flag}/environments/{env}",
@@ -417,7 +417,7 @@
       "category": "Targeting",
       "name": "Reusable segments",
       "description": "Named groups of contexts reused across flags.",
-      "featureslash": {
+      "toggleslash": {
         "status": "yes",
         "evidence": [
           "api:/api/v1/projects/{project}/environments/{env}/segments",
@@ -442,7 +442,7 @@
       "category": "Targeting",
       "name": "Segment versioning",
       "description": "Compare-and-set or version history for segment edits.",
-      "featureslash": {
+      "toggleslash": {
         "status": "yes",
         "evidence": [
           "api:/api/v1/projects/{project}/environments/{env}/segments/{segment}",
@@ -464,7 +464,7 @@
       "category": "Targeting",
       "name": "Large or synced segments",
       "description": "CSV/warehouse-sized audiences and segments synced from external tools.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -483,7 +483,7 @@
       "category": "Targeting",
       "name": "Prerequisites and dependencies",
       "description": "A flag only applies when another flag serves a required variation.",
-      "featureslash": {
+      "toggleslash": {
         "status": "yes",
         "evidence": [
           "api:/api/v1/projects/{project}/flags/{flag}/environments/{env}",
@@ -503,7 +503,7 @@
       "category": "Targeting",
       "name": "Multi-context and context kinds",
       "description": "Combine user, organisation, device and custom context kinds in one evaluation.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -523,7 +523,7 @@
       "category": "Targeting",
       "name": "Nested attribute paths",
       "description": "Target a field inside an object, such as /address/city.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -538,7 +538,7 @@
       "category": "Targeting",
       "name": "Regex operator",
       "description": "Match an attribute against a regular expression.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -558,7 +558,7 @@
       "category": "Targeting",
       "name": "Semantic-version operator",
       "description": "Compare versions such as 1.2.3 without writing string logic.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -576,7 +576,7 @@
       "category": "Targeting",
       "name": "Date and time operator",
       "description": "Target before or after a point in time.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -596,7 +596,7 @@
       "category": "Targeting",
       "name": "Percentage rollouts",
       "description": "Serve a consistent percentage of contexts.",
-      "featureslash": {
+      "toggleslash": {
         "status": "yes",
         "evidence": ["doc:docs/evaluation.md", "test:fixtures/evaluation/rollouts.json"]
       },
@@ -616,7 +616,7 @@
       "category": "Targeting",
       "name": "Attribute-based rollouts",
       "description": "Bucket on an attribute such as company or region, not only the context key.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -636,7 +636,7 @@
       "category": "Targeting",
       "name": "Progressive rollouts",
       "description": "Increase a rollout percentage automatically over time.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -656,7 +656,7 @@
       "category": "Targeting",
       "name": "Guarded rollouts",
       "description": "Watch metrics during a rollout and pause or roll back on a regression.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -675,7 +675,7 @@
       "category": "Release",
       "name": "Approvals and change requests",
       "description": "Require one or more reviewers before a change applies.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -695,7 +695,7 @@
       "category": "Release",
       "name": "Required comments and confirmation",
       "description": "Force a comment or an explicit confirmation on a production change.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -715,7 +715,7 @@
       "category": "Release",
       "name": "Audit log",
       "description": "Record every write with an actor and the before and after state.",
-      "featureslash": {
+      "toggleslash": {
         "status": "yes",
         "evidence": [
           "api:/api/v1/projects/{project}/audit",
@@ -740,7 +740,7 @@
       "category": "Release",
       "name": "Dashboard sign-in and sessions",
       "description": "Sign in to the dashboard and hold a session; every dashboard call refused without one.",
-      "featureslash": {
+      "toggleslash": {
         "status": "partial",
         "evidence": [
           "dashboard:/sign-in",
@@ -766,7 +766,7 @@
       "category": "Release",
       "name": "Role-based access control",
       "description": "Roles, teams and project/environment scoped permissions.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -786,7 +786,7 @@
       "category": "Release",
       "name": "SSO and SCIM",
       "description": "SAML/OIDC sign-in and directory provisioning.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -806,7 +806,7 @@
       "category": "Release",
       "name": "Scoped API tokens",
       "description": "Create tokens limited to a project, environment or action.",
-      "featureslash": {
+      "toggleslash": {
         "status": "partial",
         "evidence": [
           "api:/api/v1/projects/{project}/tokens",
@@ -834,7 +834,7 @@
       "category": "Release",
       "name": "SDK keys",
       "description": "Server and client keys, shown once, stored hashed and revocable.",
-      "featureslash": {
+      "toggleslash": {
         "status": "yes",
         "evidence": [
           "api:/api/v1/projects/{project}/environments/{env}/keys",
@@ -861,7 +861,7 @@
       "category": "Release",
       "name": "Private attributes",
       "description": "Mark context attributes so they are not stored or sent in events.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -874,7 +874,7 @@
       "category": "Release",
       "name": "Secure mode and signed contexts",
       "description": "Sign client-side contexts so a user cannot evaluate as another user.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -887,7 +887,7 @@
       "category": "Experimentation",
       "name": "Experiments",
       "description": "Randomise into variations and measure which performs best.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -907,7 +907,7 @@
       "category": "Experimentation",
       "name": "Holdouts and multi-armed bandits",
       "description": "Keep a control holdout or shift traffic toward the best variation.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -924,12 +924,12 @@
       "category": "Experimentation",
       "name": "Metrics and analytics",
       "description": "Count evaluations and attach business or performance metrics.",
-      "featureslash": {
+      "toggleslash": {
         "status": "partial",
         "evidence": [
           "api:/api/v1/projects/{project}/flags/{flag}/usage",
           "api:/sdk/v1/events",
-          "path:apps/server/FeatureSlash.Server/Usage",
+          "path:apps/server/ToggleSlash.Server/Usage",
           "doc:docs/architecture.md"
         ],
         "note": "Only daily counts per flag, variation and environment; no custom events or metrics."
@@ -950,7 +950,7 @@
       "category": "Experimentation",
       "name": "Warehouse-native experiments",
       "description": "Compute experiment metrics from Snowflake, BigQuery, Redshift or another warehouse.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -967,7 +967,7 @@
       "category": "SDKs and delivery",
       "name": "Server SDKs",
       "description": "Native server-side SDKs across common languages.",
-      "featureslash": {
+      "toggleslash": {
         "status": "partial",
         "evidence": ["path:packages/sdk", "path:packages/engine", "doc:docs/sdk.md"],
         "note": "One TypeScript server SDK. The C# evaluator is internal to the server, not a public SDK."
@@ -988,7 +988,7 @@
       "category": "SDKs and delivery",
       "name": "Browser SDKs",
       "description": "JavaScript, React and other client-side SDKs.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -1008,7 +1008,7 @@
       "category": "SDKs and delivery",
       "name": "Mobile SDKs",
       "description": "iOS, Android, React Native and Flutter SDKs.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -1028,7 +1028,7 @@
       "category": "SDKs and delivery",
       "name": "Edge SDKs",
       "description": "Evaluate at Cloudflare, Fastly, Akamai, Vercel or another edge.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -1048,7 +1048,7 @@
       "category": "SDKs and delivery",
       "name": "OpenFeature providers",
       "description": "Use the CNCF OpenFeature API through a provider.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -1068,7 +1068,7 @@
       "category": "SDKs and delivery",
       "name": "Streaming updates",
       "description": "Push flag changes to SDKs instead of waiting for a poll.",
-      "featureslash": {
+      "toggleslash": {
         "status": "yes",
         "evidence": [
           "api:/sdk/v1/ruleset",
@@ -1094,7 +1094,7 @@
       "category": "SDKs and delivery",
       "name": "Polling fallback",
       "description": "Keep working when streaming is blocked or unavailable, and let the application read the SDK's sync state.",
-      "featureslash": {
+      "toggleslash": {
         "status": "yes",
         "evidence": [
           "path:packages/sdk",
@@ -1118,7 +1118,7 @@
       "category": "SDKs and delivery",
       "name": "Bootstrap and offline mode",
       "description": "Start from a known payload or keep serving the last one with no network.",
-      "featureslash": {
+      "toggleslash": {
         "status": "partial",
         "evidence": ["path:packages/sdk", "doc:docs/sdk.md"],
         "note": "The SDK keeps the last ruleset in memory but has no explicit bootstrap input."
@@ -1139,7 +1139,7 @@
       "category": "SDKs and delivery",
       "name": "Relay or persistent store",
       "description": "Fan out a local stream, or keep the ruleset in Redis, DynamoDB or another store.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -1159,7 +1159,7 @@
       "category": "SDKs and delivery",
       "name": "Server-side evaluation API",
       "description": "Evaluate flags for a context without shipping the ruleset. Includes an admin diagnostic that says why a flag has its value, now or under a past ruleset hash; an admin read of the ruleset tag, flag count and last change an environment is served; an admin lookup of what the flags were under a ruleset hash it served, which answers for the retention window (90 days by default) after a newer ruleset replaced it; and a dashboard page for that hash.",
-      "featureslash": {
+      "toggleslash": {
         "status": "yes",
         "evidence": [
           "api:/sdk/v1/evaluate",
@@ -1170,7 +1170,7 @@
           "cli:runtime",
           "cli:rulesets show",
           "dashboard:/rulesets/$hash",
-          "path:apps/server/FeatureSlash.Evaluation"
+          "path:apps/server/ToggleSlash.Evaluation"
         ]
       },
       "competitors": {
@@ -1189,12 +1189,12 @@
       "category": "SDKs and delivery",
       "name": "Usage counts",
       "description": "Count which variation was served, per flag and environment.",
-      "featureslash": {
+      "toggleslash": {
         "status": "yes",
         "evidence": [
           "api:/sdk/v1/events",
           "api:/api/v1/projects/{project}/flags/{flag}/usage",
-          "path:apps/server/FeatureSlash.Server/Usage"
+          "path:apps/server/ToggleSlash.Server/Usage"
         ],
         "note": "Counts only; no context, context key or attribute is stored."
       },
@@ -1214,7 +1214,7 @@
       "category": "Operations",
       "name": "Self-hosted",
       "description": "Run the whole product on your own infrastructure.",
-      "featureslash": {
+      "toggleslash": {
         "status": "yes",
         "evidence": ["path:apps/server/Dockerfile", "path:compose.yaml", "doc:docs/self-hosting.md"]
       },
@@ -1231,7 +1231,7 @@
       "category": "Operations",
       "name": "Open source",
       "description": "The product's source is available under an open-source licence.",
-      "featureslash": {
+      "toggleslash": {
         "status": "yes",
         "evidence": ["path:LICENSE"]
       },
@@ -1247,7 +1247,7 @@
       "category": "Operations",
       "name": "HA and shared database",
       "description": "Run several instances against a shared relational or managed database.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": [],
         "note": "SQLite and one process per database; the in-memory lock and notifier do not cross processes."
@@ -1268,12 +1268,12 @@
       "category": "Operations",
       "name": "Rate limits",
       "description": "Per-key limits on evaluation and usage writes, per-IP limits on failed authentication, and a cap on streams per key.",
-      "featureslash": {
+      "toggleslash": {
         "status": "yes",
         "evidence": [
-          "path:apps/server/FeatureSlash.Server/Limits/RequestLimiter.cs",
+          "path:apps/server/ToggleSlash.Server/Limits/RequestLimiter.cs",
           "doc:docs/self-hosting.md",
-          "test:apps/server/FeatureSlash.Server.Tests/RateLimitTests.cs",
+          "test:apps/server/ToggleSlash.Server.Tests/RateLimitTests.cs",
           "test:packages/sdk/test/rate-limit.test.ts"
         ],
         "note": "In memory, one process; a restart resets the counts. No per-route admin limits or per-plan quotas. Only LaunchDarkly was read for this row; the other vendors' cells are not assessed."
@@ -1287,14 +1287,14 @@
       "category": "Operations",
       "name": "Security headers, body limits and timeouts",
       "description": "Response headers on every answer from the server and the dashboard, a content security policy with a per-request nonce, a request body cap, request and header timeouts, and CORS on exactly two routes.",
-      "featureslash": {
+      "toggleslash": {
         "status": "yes",
         "evidence": [
-          "path:apps/server/FeatureSlash.Server/Hardening/SecurityHeaders.cs",
-          "path:apps/server/FeatureSlash.Server/Hardening/RequestLimits.cs",
+          "path:apps/server/ToggleSlash.Server/Hardening/SecurityHeaders.cs",
+          "path:apps/server/ToggleSlash.Server/Hardening/RequestLimits.cs",
           "path:apps/web/src/api/security-headers.server.ts",
-          "test:apps/server/FeatureSlash.Server.Tests/HardeningTests.cs",
-          "test:apps/server/FeatureSlash.Server.Tests/CorsTests.cs",
+          "test:apps/server/ToggleSlash.Server.Tests/HardeningTests.cs",
+          "test:apps/server/ToggleSlash.Server.Tests/CorsTests.cs",
           "test:apps/web/e2e/security-headers.spec.ts",
           "doc:docs/self-hosting.md"
         ],
@@ -1307,7 +1307,7 @@
       "category": "Operations",
       "name": "Terraform provider",
       "description": "Manage flags and environments as infrastructure-as-code.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -1327,7 +1327,7 @@
       "category": "Operations",
       "name": "MCP server",
       "description": "Manage flags from an AI client through the Model Context Protocol.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -1347,7 +1347,7 @@
       "category": "Operations",
       "name": "CLI",
       "description": "Manage projects, environments, flags and keys from a terminal.",
-      "featureslash": {
+      "toggleslash": {
         "status": "partial",
         "evidence": ["path:packages/cli", "cli:config set-url", "cli:config set-token"],
         "note": "Projects, environments, flags (no targeting edit) and keys; no segments, audit or usage commands."
@@ -1368,7 +1368,7 @@
       "category": "Platform",
       "name": "Observability",
       "description": "Session replay, errors, logs, traces, metrics and alerts.",
-      "featureslash": {
+      "toggleslash": {
         "status": "partial",
         "evidence": [
           "path:packages/sdk-otel",
@@ -1393,7 +1393,7 @@
       "category": "Platform",
       "name": "AI configs and prompt management",
       "description": "Manage prompts, model settings and agent behaviour as a runtime config.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -1412,7 +1412,7 @@
       "category": "Platform",
       "name": "Release automation",
       "description": "Automatically flag PRs, plan releases, ramp, monitor and clean up.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },
@@ -1431,7 +1431,7 @@
       "category": "Platform",
       "name": "Compliance certifications",
       "description": "SOC 2, ISO 27001, FedRAMP or equivalent attestations.",
-      "featureslash": {
+      "toggleslash": {
         "status": "no",
         "evidence": []
       },

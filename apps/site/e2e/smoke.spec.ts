@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { PAGES } from "../src/content/pages.ts";
 
-/* Every page, on a desktop and a phone: the nav and the footer are there, the canonical link is on the product domain, nothing scrolls sideways. */
+/* Every page, on a desktop and a phone: the nav and the footer are there, the page has no canonical link (the product has no domain yet), nothing scrolls sideways. */
 for (const { to, label } of PAGES) {
-  test(`${label} (${to}): nav, footer, canonical`, async ({ page }) => {
+  test(`${label} (${to}): nav, footer, no canonical`, async ({ page }) => {
     const response = await page.goto(to);
     expect(response?.status()).toBe(200);
 
@@ -11,10 +11,7 @@ for (const { to, label } of PAGES) {
     for (const item of PAGES)
       await expect(nav.getByRole("link", { name: item.label, exact: true })).toHaveCount(1);
     await expect(page.getByTestId("footer")).toBeVisible();
-    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
-      "href",
-      new RegExp(`^https://featureslash\\.dev${to === "/" ? "/$" : to + "$"}`),
-    );
+    await expect(page.locator('link[rel="canonical"]')).toHaveCount(0);
 
     const width = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

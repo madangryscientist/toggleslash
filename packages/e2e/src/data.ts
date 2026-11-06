@@ -1,4 +1,4 @@
-import type { Context } from "@hackcove/featureslash-sdk";
+import type { Context } from "@hackcove/toggleslash-sdk";
 
 export function record(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {

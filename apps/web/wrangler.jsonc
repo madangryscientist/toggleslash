@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "featureslash-web",
+  "name": "toggleslash-web",
   "compatibility_date": "2025-09-02",
   "compatibility_flags": ["nodejs_compat"],
   "main": "src/server.ts",
@@ -8,12 +8,12 @@
   "upload_source_maps": true,
   // The id is a placeholder: creating the real D1 database is the first deploy's job (a human
   // step), not this scaffold's. Local dev and tests use local state. There is no route and no
-  // custom domain either: the product domain (featureslash.dev) is not registered yet, and
-  // attaching it is part of that first deploy.
+  // custom domain either: the product has no domain yet, and
+  // attaching one is part of that first deploy.
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "featureslash",
+      "database_name": "toggleslash",
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "drizzle",
     },
@@ -24,7 +24,7 @@
       "d1_databases": [
         {
           "binding": "DB",
-          "database_name": "featureslash",
+          "database_name": "toggleslash",
           "database_id": "00000000-0000-0000-0000-000000000000",
           "migrations_dir": "drizzle",
         },

@@ -1,15 +1,15 @@
 {
   "openapi": "3.1.1",
   "info": {
-    "title": "FeatureSlash API",
-    "description": "The FeatureSlash server\u0027s admin API and SDK read API. Every route under /api/v1 takes \u0060Authorization: Bearer \u003Cadmin token\u003E\u0060, or a scoped token where its project and permission allow it. GET /sdk/v1/ruleset and GET /sdk/v1/stream take a server SDK key; POST /sdk/v1/evaluate takes a server or a client SDK key.",
+    "title": "ToggleSlash API",
+    "description": "The ToggleSlash server\u0027s admin API and SDK read API. Every route under /api/v1 takes \u0060Authorization: Bearer \u003Cadmin token\u003E\u0060, or a scoped token where its project and permission allow it. GET /sdk/v1/ruleset and GET /sdk/v1/stream take a server SDK key; POST /sdk/v1/evaluate takes a server or a client SDK key.",
     "version": "v1"
   },
   "paths": {
     "/health": {
       "get": {
         "tags": [
-          "FeatureSlash.Server"
+          "ToggleSlash.Server"
         ],
         "responses": {
           "200": {
@@ -4348,14 +4348,14 @@
     "securitySchemes": {
       "bearer": {
         "type": "http",
-        "description": "The admin token (read from FEATURESLASH_ADMIN_TOKEN) or a scoped token on /api/v1, or an SDK key on /sdk/v1.",
+        "description": "The admin token (read from TOGGLESLASH_ADMIN_TOKEN) or a scoped token on /api/v1, or an SDK key on /sdk/v1.",
         "scheme": "bearer"
       }
     }
   },
   "tags": [
     {
-      "name": "FeatureSlash.Server"
+      "name": "ToggleSlash.Server"
     },
     {
       "name": "Flag targeting"

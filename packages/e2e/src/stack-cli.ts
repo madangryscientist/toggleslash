@@ -44,9 +44,9 @@ out(`  Operator password   ${stack.operatorPassword}`);
 out(`  Admin token         ${stack.adminToken}`);
 out("");
 out("  Use the CLI against it (project shop, environment dev):");
-out(`    export FEATURESLASH_URL=${stack.serverUrl}`);
-out(`    export FEATURESLASH_TOKEN=${stack.adminToken}`);
-out("    bun run featureslash flags on legacy-cart --project shop --env dev");
+out(`    export TOGGLESLASH_URL=${stack.serverUrl}`);
+out(`    export TOGGLESLASH_TOKEN=${stack.adminToken}`);
+out("    bun run toggleslash flags on legacy-cart --project shop --env dev");
 out("");
 out("Press Ctrl-C to stop.");
 

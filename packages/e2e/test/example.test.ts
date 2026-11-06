@@ -47,11 +47,11 @@ describe.skipIf(skip)("the example app, the seed and the real server", () => {
     );
 
   beforeAll(async () => {
-    scratch = mkdtempSync(join(tmpdir(), "featureslash-example-e2e-"));
+    scratch = mkdtempSync(join(tmpdir(), "toggleslash-example-e2e-"));
     mkdirSync(join(scratch, "home"));
     const assembly = await buildServer();
     server = await startServer(assembly, {
-      dbPath: join(scratch, "featureslash.db"),
+      dbPath: join(scratch, "toggleslash.db"),
       adminToken: ADMIN_TOKEN,
     });
     cli = createCli({ url: server.url, token: ADMIN_TOKEN, home: join(scratch, "home") });

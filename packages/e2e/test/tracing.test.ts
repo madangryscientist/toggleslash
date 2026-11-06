@@ -1,5 +1,5 @@
-import { createClient, type Client } from "@hackcove/featureslash-sdk";
-import { createTracingHooks } from "@hackcove/featureslash-sdk-otel";
+import { createClient, type Client } from "@hackcove/toggleslash-sdk";
+import { createTracingHooks } from "@hackcove/toggleslash-sdk-otel";
 import { context as otelContext, trace } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import {
@@ -65,9 +65,9 @@ const showArgs = (hash: string, span: Attributes): string[] => [
   "show",
   hash,
   "--project",
-  String(span["featureslash.project"]),
+  String(span["toggleslash.project"]),
   "--env",
-  String(span["featureslash.environment"]),
+  String(span["toggleslash.environment"]),
   "--flag",
   String(span["feature_flag.key"]),
 ];
@@ -80,10 +80,10 @@ describe.skipIf(skip)("a span's ruleset hash against the real server", () => {
   const sdkErrors: unknown[] = [];
 
   beforeAll(async () => {
-    scratch = mkdtempSync(join(tmpdir(), "featureslash-tracing-e2e-"));
+    scratch = mkdtempSync(join(tmpdir(), "toggleslash-tracing-e2e-"));
     mkdirSync(join(scratch, "home"));
     server = await startServer(await buildServer(), {
-      dbPath: join(scratch, "featureslash.db"),
+      dbPath: join(scratch, "toggleslash.db"),
       adminToken: ADMIN_TOKEN,
     });
     cli = createCli({ url: server.url, token: ADMIN_TOKEN, home: join(scratch, "home") });
@@ -127,10 +127,10 @@ describe.skipIf(skip)("a span's ruleset hash against the real server", () => {
     expect(pro["feature_flag.result.variant"]).toBe("0");
     expect(free["feature_flag.result.variant"]).toBe("1");
 
-    const hash = String(pro["featureslash.ruleset.etag"]);
+    const hash = String(pro["toggleslash.ruleset.etag"]);
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
     expect(hash).toBe(sdk.status().etag?.replaceAll('"', ""));
-    expect(free["featureslash.ruleset.etag"]).toBe(hash);
+    expect(free["toggleslash.ruleset.etag"]).toBe(hash);
 
     // The lookup route knows that hash, and the flag under it serves what the span says.
     const lookup = await cli.json(showArgs(hash, pro));

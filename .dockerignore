@@ -1,5 +1,5 @@
 # The Docker build context is the repository root. The server's image needs only global.json and
-# apps/server/FeatureSlash.{Evaluation,Server}; everything else stays out, and so does anything a
+# apps/server/ToggleSlash.{Evaluation,Server}; everything else stays out, and so does anything a
 # build or a run leaves behind.
 
 # dependencies and build output
@@ -31,5 +31,5 @@ packages
 scripts
 apps/web
 apps/site
-apps/server/FeatureSlash.Server.Tests
-apps/server/FeatureSlash.Evaluation.Tests
+apps/server/ToggleSlash.Server.Tests
+apps/server/ToggleSlash.Evaluation.Tests

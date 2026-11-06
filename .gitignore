@@ -1,7 +1,7 @@
 node_modules/
 .nx/
 
-# the featureslash npm package's build output
+# the toggleslash npm package's build output
 packages/cli/dist/
 packages/cli/LICENSE
 packages/cli/NOTICE
@@ -12,7 +12,7 @@ packages/cli/*.tgz
 .env
 .dev.vars
 
-# the server's SQLite file, wherever FEATURESLASH_DB_PATH points inside the tree
+# the server's SQLite file, wherever TOGGLESLASH_DB_PATH points inside the tree
 *.db
 *.db-journal
 *.db-shm

@@ -2,7 +2,7 @@
  * Where sign-in sends you afterwards. It comes from the URL, so it is untrusted: only a path on this
  * origin passes, and everything else means the home page.
  */
-const BASE = "http://featureslash.invalid";
+const BASE = "http://toggleslash.invalid";
 
 export function safeReturnPath(value: unknown): string {
   if (typeof value !== "string" || !value.startsWith("/") || !URL.canParse(value, BASE)) return "/";

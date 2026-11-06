@@ -40,7 +40,7 @@ function Body({ loaded }: { loaded: Ready }) {
     return (
       <Callout tone="info" title="No projects yet">
         <Text>
-          Create one with the CLI: <code>featureslash projects create</code>. The dashboard does not
+          Create one with the CLI: <code>toggleslash projects create</code>. The dashboard does not
           create projects yet.
         </Text>
       </Callout>
@@ -50,7 +50,7 @@ function Body({ loaded }: { loaded: Ready }) {
     return (
       <Callout tone="info" title={`${project.name} has no environments`}>
         <Text>
-          Create one with the CLI: <code>featureslash envs create</code>. Flags are switched on and
+          Create one with the CLI: <code>toggleslash envs create</code>. Flags are switched on and
           off per environment.
         </Text>
       </Callout>

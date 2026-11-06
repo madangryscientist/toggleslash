@@ -8,7 +8,7 @@ export function NeedsEnvironment({ project, what }: { project: Project | null; w
     return (
       <Callout tone="info" title="No projects yet">
         <Text>
-          Create one with the CLI: <code>featureslash projects create</code>. The dashboard does not
+          Create one with the CLI: <code>toggleslash projects create</code>. The dashboard does not
           create projects yet.
         </Text>
       </Callout>

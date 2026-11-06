@@ -59,4 +59,4 @@ export async function cli(args: string[], options: Options = {}): Promise<Result
   return { code, stdout, stderr };
 }
 
-export const CONNECTED = { FEATURESLASH_URL: URL_BASE, FEATURESLASH_TOKEN: TOKEN };
+export const CONNECTED = { TOGGLESLASH_URL: URL_BASE, TOGGLESLASH_TOKEN: TOKEN };

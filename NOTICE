@@ -1,7 +1,7 @@
-FeatureSlash
-Copyright 2026 Jacobus Langner and the FeatureSlash contributors
+ToggleSlash
+Copyright 2026 Jacobus Langner and the ToggleSlash contributors
 
-FeatureSlash is MIT-licensed; see LICENSE.
+ToggleSlash is MIT-licensed; see LICENSE.
 
 The dashboard and the site use the Catppuccin Mocha colour palette through
 @hackcove/theme-catppuccin-mocha.

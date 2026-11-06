@@ -25,11 +25,11 @@ function validate(data: ParityData): void {
 }
 
 function report(data: ParityData): void {
-  const yes = data.features.filter((feature) => feature.featureslash.status === "yes").length;
+  const yes = data.features.filter((feature) => feature.toggleslash.status === "yes").length;
   const partial = data.features.filter(
-    (feature) => feature.featureslash.status === "partial",
+    (feature) => feature.toggleslash.status === "partial",
   ).length;
-  const no = data.features.filter((feature) => feature.featureslash.status === "no").length;
+  const no = data.features.filter((feature) => feature.toggleslash.status === "no").length;
   console.log(
     `parity: ${data.features.length} capabilities (${yes} yes, ${partial} partial, ${no} no)`,
   );

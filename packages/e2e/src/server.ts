@@ -2,13 +2,7 @@ import { join } from "node:path";
 import { dotnetPath, REPO_ROOT } from "./dotnet.ts";
 import { drain } from "./proc.ts";
 
-const CSPROJ = join(
-  REPO_ROOT,
-  "apps",
-  "server",
-  "FeatureSlash.Server",
-  "FeatureSlash.Server.csproj",
-);
+const CSPROJ = join(REPO_ROOT, "apps", "server", "ToggleSlash.Server", "ToggleSlash.Server.csproj");
 const LISTENING = /Now listening on: (http:\/\/127\.0\.0\.1:\d+)/;
 
 export interface RunningServer {
@@ -43,7 +37,7 @@ export async function buildServer(): Promise<string> {
   // Evaluates the project only: msbuild prints just the property's value.
   const out = await dotnet(["msbuild", CSPROJ, "-nologo", "-getProperty:TargetPath"]);
   const path = out.trim();
-  if (!path.endsWith("FeatureSlash.Server.dll")) {
+  if (!path.endsWith("ToggleSlash.Server.dll")) {
     throw new Error(`dotnet did not report the assembly path: ${out}`);
   }
   return path;
@@ -59,13 +53,13 @@ export async function startServer(
   options: { dbPath: string; adminToken: string },
 ): Promise<RunningServer> {
   const child = Bun.spawn([dotnetPath() ?? "dotnet", assembly], {
-    cwd: join(REPO_ROOT, "apps", "server", "FeatureSlash.Server"),
+    cwd: join(REPO_ROOT, "apps", "server", "ToggleSlash.Server"),
     env: {
       ...process.env,
       ASPNETCORE_URLS: "http://127.0.0.1:0",
       ASPNETCORE_ENVIRONMENT: "Production",
-      FEATURESLASH_DB_PATH: options.dbPath,
-      FEATURESLASH_ADMIN_TOKEN: options.adminToken,
+      TOGGLESLASH_DB_PATH: options.dbPath,
+      TOGGLESLASH_ADMIN_TOKEN: options.adminToken,
     },
     stdin: "ignore",
     stdout: "pipe",

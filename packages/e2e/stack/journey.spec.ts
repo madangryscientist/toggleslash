@@ -179,7 +179,7 @@ test("a flag changed in the dashboard reaches the shop, the CLI and the usage co
   browser,
 }) => {
   const info = stack();
-  const root = mkdtempSync(join(tmpdir(), "featureslash-journey-"));
+  const root = mkdtempSync(join(tmpdir(), "toggleslash-journey-"));
   const home = join(root, "home");
   mkdirSync(home);
   const context = await browser.newContext();
@@ -209,7 +209,7 @@ test("a flag changed in the dashboard reaches the shop, the CLI and the usage co
     toggleNewCheckout(journey));
   await test.step("the stream is connected and the ruleset is the one the server reports", () =>
     streamAndEtag(journey));
-  await test.step("featureslash diagnose agrees with the page for the pro shopper", () =>
+  await test.step("toggleslash diagnose agrees with the page for the pro shopper", () =>
     diagnoseAgrees(journey));
   await test.step("the browser evaluate button answers what /state says", () =>
     browserEvaluates(journey));

@@ -21,8 +21,8 @@ export function createCli(options: { url: string; token: string; home: string })
         ...process.env,
         HOME: options.home,
         XDG_CONFIG_HOME: join(options.home, "config"),
-        FEATURESLASH_URL: options.url,
-        FEATURESLASH_TOKEN: options.token,
+        TOGGLESLASH_URL: options.url,
+        TOGGLESLASH_TOKEN: options.token,
       },
       stdin: "ignore",
       stdout: "pipe",
@@ -40,7 +40,7 @@ export function createCli(options: { url: string; token: string; home: string })
   async function json(args: string[]): Promise<unknown> {
     const result = await run([...args, "--json"]);
     if (result.code !== 0) {
-      throw new Error(`featureslash ${args.join(" ")} exited ${result.code}: ${result.stderr}`);
+      throw new Error(`toggleslash ${args.join(" ")} exited ${result.code}: ${result.stderr}`);
     }
     return JSON.parse(result.stdout);
   }

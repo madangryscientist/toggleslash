@@ -1,4 +1,4 @@
-import { createRuleset, type Ruleset } from "@hackcove/featureslash-engine";
+import { createRuleset, type Ruleset } from "@hackcove/toggleslash-engine";
 import { type Clock, startTimer } from "./clock.ts";
 import { type Fetch, linkedController, retryAfterMs, TimeoutError, withTimeout } from "./http.ts";
 import { SseParser } from "./sse.ts";

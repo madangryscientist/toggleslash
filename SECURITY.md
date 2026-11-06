@@ -14,7 +14,7 @@ against someone else's deployment or data.
 
 ## What is in scope
 
-- **The CLI** (`packages/cli`, the `@hackcove/featureslash` npm package) and **the engine** it runs
+- **The CLI** (`packages/cli`, the `@hackcove/toggleslash` npm package) and **the engine** it runs
   (`packages/engine`).
 - **The server** (`apps/server`): its admin token and SDK key handling. A key or token reaching a
   log, a client key reading a ruleset, and a revoked key still working are all in scope.
@@ -23,7 +23,7 @@ against someone else's deployment or data.
   handles that token is in scope.
 
 Out of scope: a deployment you configured weakly, a vulnerability in a dependency that does not
-affect FeatureSlash (report it upstream), and findings that need a stolen token or a machine you
+affect ToggleSlash (report it upstream), and findings that need a stolen token or a machine you
 already control.
 
 ## The threat model, short

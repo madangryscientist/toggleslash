@@ -80,7 +80,7 @@ function Targeting({ loaded, reload }: { loaded: Ready; reload: Reload }) {
     return (
       <Callout tone="info" title={`${project.name} has no environments`}>
         <Text>
-          Create one with the CLI: <code>featureslash envs create</code>. Targeting is set per
+          Create one with the CLI: <code>toggleslash envs create</code>. Targeting is set per
           environment.
         </Text>
       </Callout>

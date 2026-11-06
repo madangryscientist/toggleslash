@@ -39,7 +39,7 @@ describe("every command that calls the server", () => {
     const result = await cli(c.args, { fetch: server.fetch, env: CONNECTED });
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toBe("featureslash: the server answered 404 not_found: No such thing.\n");
+    expect(result.stderr).toBe("toggleslash: the server answered 404 not_found: No such thing.\n");
   });
 
   it.each(cases)("$command: exits 1 when the server cannot be reached", async (c) => {
@@ -49,7 +49,7 @@ describe("every command that calls the server", () => {
     });
     expect(result.code).toBe(1);
     expect(result.stderr).toBe(
-      `featureslash: could not reach ${URL_BASE}: connect ECONNREFUSED 127.0.0.1:1\n`,
+      `toggleslash: could not reach ${URL_BASE}: connect ECONNREFUSED 127.0.0.1:1\n`,
     );
   });
 

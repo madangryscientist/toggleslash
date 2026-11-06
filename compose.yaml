@@ -1,7 +1,7 @@
-# Self-hosting the FeatureSlash server (docs/self-hosting.md). One container, one process, one
-# SQLite file in the `featureslash-data` volume.
+# Self-hosting the ToggleSlash server (docs/self-hosting.md). One container, one process, one
+# SQLite file in the `toggleslash-data` volume.
 #
-#   export FEATURESLASH_ADMIN_TOKEN="$(openssl rand -hex 32)"   # or put it in .env (git-ignored)
+#   export TOGGLESLASH_ADMIN_TOKEN="$(openssl rand -hex 32)"   # or put it in .env (git-ignored)
 #   docker compose up -d --build
 #   curl http://127.0.0.1:8080/health
 #
@@ -13,19 +13,19 @@ services:
     build:
       context: .
       dockerfile: apps/server/Dockerfile
-    image: featureslash-server:local
+    image: toggleslash-server:local
     environment:
-      FEATURESLASH_ADMIN_TOKEN: ${FEATURESLASH_ADMIN_TOKEN:?set FEATURESLASH_ADMIN_TOKEN to the admin token}
-      FEATURESLASH_DB_PATH: /data/featureslash.db
+      TOGGLESLASH_ADMIN_TOKEN: ${TOGGLESLASH_ADMIN_TOKEN:?set TOGGLESLASH_ADMIN_TOKEN to the admin token}
+      TOGGLESLASH_DB_PATH: /data/toggleslash.db
     # Loopback only: the server speaks plain HTTP. Put a TLS-terminating proxy in front to expose it.
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
-      - featureslash-data:/data
+      - toggleslash-data:/data
     restart: unless-stopped
     # The health check is the image's (Dockerfile HEALTHCHECK on /health).
 
 volumes:
-  featureslash-data:
+  toggleslash-data:
     # A fixed name, so the data does not depend on the checkout's directory name.
-    name: featureslash-data
+    name: toggleslash-data

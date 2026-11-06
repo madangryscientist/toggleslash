@@ -15,11 +15,11 @@ export interface ConfigEnv {
   home: string;
 }
 
-/** `$XDG_CONFIG_HOME/featureslash/config.json`, falling back to `~/.config` (an empty or relative XDG value is ignored, as the spec says). */
+/** `$XDG_CONFIG_HOME/toggleslash/config.json`, falling back to `~/.config` (an empty or relative XDG value is ignored, as the spec says). */
 export function configPath({ env, home }: ConfigEnv): string {
   const xdg = env["XDG_CONFIG_HOME"];
   const base = xdg !== undefined && xdg.startsWith("/") ? xdg : join(home, ".config");
-  return join(base, "featureslash", "config.json");
+  return join(base, "toggleslash", "config.json");
 }
 
 /** Reads the file; a missing one is `{}`, a broken one is a usage error that names the path (never its contents). */
@@ -92,12 +92,12 @@ function present(value: string | undefined): string | undefined {
 
 /**
  * The server URL and admin token. Precedence, highest first: `--url` (the URL only), the environment
- * (`FEATURESLASH_URL`, `FEATURESLASH_TOKEN`), the config file. The file is not read when the environment
+ * (`TOGGLESLASH_URL`, `TOGGLESLASH_TOKEN`), the config file. The file is not read when the environment
  * and the flag already answer everything, so a broken file does not break a run that never needed it.
  */
 export function resolveConnection(where: ConfigEnv, urlFlag: string | undefined): Connection {
-  let url = present(urlFlag) ?? present(where.env["FEATURESLASH_URL"]);
-  let token = present(where.env["FEATURESLASH_TOKEN"]);
+  let url = present(urlFlag) ?? present(where.env["TOGGLESLASH_URL"]);
+  let token = present(where.env["TOGGLESLASH_TOKEN"]);
   if (url === undefined || token === undefined) {
     const stored = readConfig(configPath(where));
     url ??= present(stored.url);
@@ -105,12 +105,12 @@ export function resolveConnection(where: ConfigEnv, urlFlag: string | undefined)
   }
   if (url === undefined) {
     throw new UsageError(
-      "no server URL. Run `featureslash config set-url <url>`, set FEATURESLASH_URL, or pass --url.",
+      "no server URL. Run `toggleslash config set-url <url>`, set TOGGLESLASH_URL, or pass --url.",
     );
   }
   if (token === undefined) {
     throw new UsageError(
-      "no admin token. Run `featureslash config set-token` (the token on stdin), or set FEATURESLASH_TOKEN.",
+      "no admin token. Run `toggleslash config set-token` (the token on stdin), or set TOGGLESLASH_TOKEN.",
     );
   }
   return { url: normaliseUrl(url), token };

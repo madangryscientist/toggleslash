@@ -238,7 +238,7 @@ describe("diagnose: exit 1", () => {
     );
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toBe(`featureslash: the server answered ${status} ${code}: ${message}\n`);
+    expect(result.stderr).toBe(`toggleslash: the server answered ${status} ${code}: ${message}\n`);
   });
 
   it("when the server cannot be reached", async () => {

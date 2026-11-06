@@ -3,7 +3,7 @@ import type {
   Context,
   DetailReason,
   VariationDetail,
-} from "@hackcove/featureslash-sdk";
+} from "@hackcove/toggleslash-sdk";
 import { FLAGS } from "./flags.ts";
 import { renderPage } from "./page.ts";
 import { USERS, userFor } from "./users.ts";

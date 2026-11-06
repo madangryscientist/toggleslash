@@ -20,7 +20,7 @@ function Footer(): ReactNode {
           GitHub
         </TextLink>
       </Cluster>
-      <Caption>FeatureSlash is in early development.</Caption>
+      <Caption>ToggleSlash is in early development.</Caption>
     </Stack>
   );
 }
@@ -40,7 +40,7 @@ export function Shell({
   }));
   return (
     <AppShell
-      brand={<AppShellBrand href="/" label="FeatureSlash" />}
+      brand={<AppShellBrand href="/" label="ToggleSlash" />}
       subnav={<Tabs variant="pill" items={items} label="Site" size="sm" data-testid="site-nav" />}
       footer={<Footer />}
     >

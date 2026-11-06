@@ -1,4 +1,4 @@
-import { type Client, createClient, type Fetch } from "@hackcove/featureslash-sdk";
+import { type Client, createClient, type Fetch } from "@hackcove/toggleslash-sdk";
 import { context, trace, type Span } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import {
@@ -103,13 +103,13 @@ describe("the feature_flag.evaluation event", () => {
     expect(span.events[0]?.name).toBe("feature_flag.evaluation");
     expect(span.events[0]?.attributes).toEqual({
       "feature_flag.key": "checkout",
-      "feature_flag.provider.name": "FeatureSlash",
+      "feature_flag.provider.name": "ToggleSlash",
       "feature_flag.result.variant": "1",
       "feature_flag.result.reason": "fallthrough",
       "feature_flag.version": "7",
-      "featureslash.ruleset.etag": HASH,
-      "featureslash.project": "shop",
-      "featureslash.environment": "production",
+      "toggleslash.ruleset.etag": HASH,
+      "toggleslash.project": "shop",
+      "toggleslash.environment": "production",
     });
   });
 
@@ -119,7 +119,7 @@ describe("the feature_flag.evaluation event", () => {
 
     const held = client.status().etag;
     expect(held).toBe(`"${HASH}"`);
-    expect(span.events[0]?.attributes?.["featureslash.ruleset.etag"]).toBe(
+    expect(span.events[0]?.attributes?.["toggleslash.ruleset.etag"]).toBe(
       held?.replaceAll('"', ""),
     );
   });

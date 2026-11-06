@@ -1,10 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { canonicalUrl } from "#/content/canonical";
 
 export const Route = createFileRoute("/")({
   head: () => ({
-    meta: [{ title: "FeatureSlash: feature flags you can self-host" }],
-    links: [{ rel: "canonical", href: canonicalUrl("/") }],
+    meta: [{ title: "ToggleSlash: feature flags you can self-host" }],
   }),
   component: Home,
 });
@@ -12,10 +10,10 @@ export const Route = createFileRoute("/")({
 function Home() {
   return (
     <div className="space-y-4">
-      <h1 className="text-3xl font-bold">FeatureSlash</h1>
+      <h1 className="text-3xl font-bold">ToggleSlash</h1>
       <p>Open source feature flags you can run yourself. MIT licensed.</p>
       <p>
-        FeatureSlash is in early development and nothing is published yet. The server, the CLI and
+        ToggleSlash is in early development and nothing is published yet. The server, the CLI and
         the TypeScript server SDK work; the code is not yet open to the public.
       </p>
     </div>

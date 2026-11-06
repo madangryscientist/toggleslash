@@ -4,7 +4,7 @@ import {
   evaluate,
   type Reason,
   type Ruleset,
-} from "@hackcove/featureslash-engine";
+} from "@hackcove/toggleslash-engine";
 import { type Clock, systemClock } from "./clock.ts";
 import type { Fetch } from "./http.ts";
 import { type ClientStatus, RulesetSync } from "./sync.ts";
@@ -129,7 +129,7 @@ function fallbackDetail<T>(fallback: T, code: SdkErrorCode): VariationDetail<T> 
   return { value: fallback, variationIndex: null, reason: { kind: "ERROR", code } };
 }
 
-class FeatureSlashClient implements Client {
+class ToggleSlashClient implements Client {
   private readonly sync: RulesetSync;
   private readonly usage: UsageReporter;
   private readonly clock: Clock;
@@ -252,5 +252,5 @@ class FeatureSlashClient implements Client {
 }
 
 export function createClient(options: ClientOptions): Client {
-  return new FeatureSlashClient(options);
+  return new ToggleSlashClient(options);
 }

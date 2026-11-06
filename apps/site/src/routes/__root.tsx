@@ -16,10 +16,10 @@ export const Route = createRootRoute({
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { name: "color-scheme", content: "light dark" },
-      { title: "FeatureSlash: feature flags you can self-host" },
+      { title: "ToggleSlash: feature flags you can self-host" },
       {
         name: "description",
-        content: "FeatureSlash is an open source feature flag service. MIT, self-hostable.",
+        content: "ToggleSlash is an open source feature flag service. MIT, self-hostable.",
       },
     ],
     links: [{ rel: "stylesheet", href: appCss }],

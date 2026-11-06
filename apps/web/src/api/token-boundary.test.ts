@@ -48,7 +48,7 @@ describe("the admin token stays on the server", () => {
       (file) =>
         /\.(ts|tsx)$/.test(file) &&
         !/\.test\./.test(file) &&
-        /\[?["']?FEATURESLASH_ADMIN_TOKEN/.test(readFileSync(join(SRC, file), "utf8")) &&
+        /\[?["']?TOGGLESLASH_ADMIN_TOKEN/.test(readFileSync(join(SRC, file), "utf8")) &&
         !file.startsWith("routes/") &&
         file !== "components/Shell.tsx",
     );
@@ -65,7 +65,7 @@ describe("the sign-in secrets stay on the server", () => {
       (file) =>
         /\.(ts|tsx)$/.test(file) &&
         !/\.test\./.test(file) &&
-        /FEATURESLASH_(OPERATOR_PASSWORD|SESSION_SECRET)|\.sessionSecret|authSecrets/.test(
+        /TOGGLESLASH_(OPERATOR_PASSWORD|SESSION_SECRET)|\.sessionSecret|authSecrets/.test(
           readFileSync(join(SRC, file), "utf8"),
         ),
     );

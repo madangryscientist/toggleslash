@@ -1,5 +1,5 @@
 {
-  "name": "@featureslash/web",
+  "name": "@toggleslash/web",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -19,8 +19,8 @@
     "cf-typegen": "wrangler types --strict-vars=false"
   },
   "dependencies": {
-    "@hackcove/featureslash-engine": "workspace:*",
     "@hackcove/theme-catppuccin-mocha": "0.3.0",
+    "@hackcove/toggleslash-engine": "workspace:*",
     "@hackcove/ui-react": "^0.8.0",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-router": "1.170.46",

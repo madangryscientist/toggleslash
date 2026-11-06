@@ -1,7 +1,7 @@
 /** The data model and validator for docs/feature-parity.json. */
 
 export type Status = "yes" | "partial" | "no";
-export type FeatureSlashStatus = Status | "planned";
+export type ToggleSlashStatus = Status | "planned";
 
 export interface Competitor {
   id: string;
@@ -10,8 +10,8 @@ export interface Competitor {
   url: string;
 }
 
-export interface FeatureSlashCell {
-  status: FeatureSlashStatus;
+export interface ToggleSlashCell {
+  status: ToggleSlashStatus;
   evidence: string[];
   note: string | undefined;
 }
@@ -21,7 +21,7 @@ export interface Feature {
   category: string;
   name: string;
   description: string;
-  featureslash: FeatureSlashCell;
+  toggleslash: ToggleSlashCell;
   competitors: Record<string, Status>;
   note: string | undefined;
 }
@@ -67,7 +67,7 @@ function parseStatus(value: unknown, where: string): Status {
   throw new Error(`${where}: expected yes, partial or no.`);
 }
 
-function parseFeatureStatus(value: unknown, where: string): FeatureSlashStatus {
+function parseFeatureStatus(value: unknown, where: string): ToggleSlashStatus {
   if (value === "planned") return value;
   return parseStatus(value, where);
 }
@@ -94,7 +94,7 @@ function parseCompetitors(raw: unknown): Competitor[] {
   return competitors;
 }
 
-function parseEvidence(raw: unknown, where: string, status: FeatureSlashStatus): string[] {
+function parseEvidence(raw: unknown, where: string, status: ToggleSlashStatus): string[] {
   if (!Array.isArray(raw)) throw new Error(`${where}: "evidence" must be an array.`);
   const evidence: string[] = [];
   for (const item of raw) {
@@ -113,10 +113,10 @@ function parseFeature(raw: unknown, index: number, competitorIds: Set<string>): 
   const where = `features[${index}]`;
   if (!isRecord(raw)) throw new Error(`${where}: must be an object.`);
   const id = text(raw, "id", where);
-  const cell = raw["featureslash"];
-  if (!isRecord(cell)) throw new Error(`${where}: "featureslash" must be an object.`);
-  const status = parseFeatureStatus(cell["status"], `${where}.featureslash`);
-  const evidence = parseEvidence(cell["evidence"], `${where}.featureslash`, status);
+  const cell = raw["toggleslash"];
+  if (!isRecord(cell)) throw new Error(`${where}: "toggleslash" must be an object.`);
+  const status = parseFeatureStatus(cell["status"], `${where}.toggleslash`);
+  const evidence = parseEvidence(cell["evidence"], `${where}.toggleslash`, status);
   const competitorsRaw = raw["competitors"];
   if (!isRecord(competitorsRaw)) {
     throw new Error(`${where}: "competitors" must be an object.`);
@@ -133,10 +133,10 @@ function parseFeature(raw: unknown, index: number, competitorIds: Set<string>): 
     category: text(raw, "category", where),
     name: text(raw, "name", where),
     description: text(raw, "description", where),
-    featureslash: {
+    toggleslash: {
       status,
       evidence,
-      note: optionalText(cell, "note", `${where}.featureslash`),
+      note: optionalText(cell, "note", `${where}.toggleslash`),
     },
     competitors,
     note: optionalText(raw, "note", where),

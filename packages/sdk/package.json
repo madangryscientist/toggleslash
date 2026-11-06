@@ -1,15 +1,15 @@
 {
-  "name": "@hackcove/featureslash-sdk",
+  "name": "@hackcove/toggleslash-sdk",
   "version": "0.0.0",
   "private": true,
-  "description": "The FeatureSlash server-side SDK for TypeScript: local evaluation that never throws and never blocks.",
+  "description": "The ToggleSlash server-side SDK for TypeScript: local evaluation that never throws and never blocks.",
   "license": "MIT",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@hackcove/featureslash-engine": "workspace:*"
+    "@hackcove/toggleslash-engine": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "1.4.4",

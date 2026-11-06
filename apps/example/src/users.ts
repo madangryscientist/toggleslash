@@ -1,4 +1,4 @@
-import type { Context } from "@hackcove/featureslash-sdk";
+import type { Context } from "@hackcove/toggleslash-sdk";
 
 /** The shoppers the page can be viewed as. `plan` is what the `pro-customers` segment looks at. */
 export const USERS: readonly Context[] = [

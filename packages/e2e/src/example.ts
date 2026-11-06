@@ -27,12 +27,12 @@ export async function startExample(options: {
     env: baseEnv({
       TMPDIR: options.tmpdir,
       PORT: String(options.port),
-      FEATURESLASH_URL: options.serverUrl,
-      FEATURESLASH_SDK_KEY: options.sdkKey,
-      FEATURESLASH_CLIENT_KEY: options.clientKey,
+      TOGGLESLASH_URL: options.serverUrl,
+      TOGGLESLASH_SDK_KEY: options.sdkKey,
+      TOGGLESLASH_CLIENT_KEY: options.clientKey,
       ...(options.flushIntervalMs === undefined
         ? {}
-        : { FEATURESLASH_FLUSH_INTERVAL_MS: String(options.flushIntervalMs) }),
+        : { TOGGLESLASH_FLUSH_INTERVAL_MS: String(options.flushIntervalMs) }),
     }),
   });
   let url = "";

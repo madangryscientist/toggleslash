@@ -13,9 +13,9 @@ There are two kinds of credential, and each is accepted only where its routes sa
 
 | Credential | Set by | Accepted on |
 | --- | --- | --- |
-| Admin token | the server's `FEATURESLASH_ADMIN_TOKEN` | `/api/v1` (the admin API) |
-| Server SDK key (`fs_server_…`) | `featureslash keys create --kind server`, or the admin API | `/sdk/v1/ruleset`, `/sdk/v1/stream`, `/sdk/v1/evaluate`, `/sdk/v1/events` |
-| Client SDK key (`fs_client_…`) | `featureslash keys create --kind client`, or the admin API | `/sdk/v1/evaluate`, `/sdk/v1/events` |
+| Admin token | the server's `TOGGLESLASH_ADMIN_TOKEN` | `/api/v1` (the admin API) |
+| Server SDK key (`fs_server_…`) | `toggleslash keys create --kind server`, or the admin API | `/sdk/v1/ruleset`, `/sdk/v1/stream`, `/sdk/v1/evaluate`, `/sdk/v1/events` |
+| Client SDK key (`fs_client_…`) | `toggleslash keys create --kind client`, or the admin API | `/sdk/v1/evaluate`, `/sdk/v1/events` |
 
 A key is bound to one environment of one project. The server stores only a hash and a prefix of each key,
 so a lost key cannot be shown again; create a new one and revoke the old one. The server never generates, stores or logs the admin token. `GET /health` takes no credential.
@@ -42,7 +42,7 @@ The TypeScript server SDK ([`sdk.md`](sdk.md)) uses the ruleset, the stream and 
 
 All of these take the admin token. They cover projects, environments, flags (including archive and
 restore, per-environment targeting and toggling, history and usage), SDK keys, segments and the project's
-audit log. The `featureslash` CLI ([`packages/cli/README.md`](../packages/cli/README.md)) calls the routes
+audit log. The `toggleslash` CLI ([`packages/cli/README.md`](../packages/cli/README.md)) calls the routes
 for projects, environments, flags and SDK keys; the dashboard (`apps/web`) calls them for the flag list and
 detail page, environments, keys, segments and the audit log. The OpenAPI document lists every route.
 

@@ -1,7 +1,7 @@
 # Self-hosting
 
 The C# server (`apps/server`) ships as a container image you build yourself. Nothing is published:
-there is no image on any registry, and `featureslash.dev` is not routed to anything. The dashboard
+there is no image on any registry, and the product has no domain yet, so nothing is routed anywhere. The dashboard
 (`apps/web`) is not containerised; it runs on Cloudflare Workers and its hosting is undecided
 (see [`architecture.md`](architecture.md#hosting)). This page is about the server, plus
 [what the dashboard needs before anyone can sign in](#dashboard-sign-in).
@@ -16,18 +16,18 @@ environment when the container starts.
 You need Docker with the Compose plugin and this repository.
 
 ```bash
-export FEATURESLASH_ADMIN_TOKEN="$(openssl rand -hex 32)"   # keep it; the dashboard and CLI need the same value
+export TOGGLESLASH_ADMIN_TOKEN="$(openssl rand -hex 32)"   # keep it; the dashboard and CLI need the same value
 docker compose up -d --build --wait
 curl http://127.0.0.1:8080/health                            # {"status":"ok","version":"0.0.0"}
 ```
 
-`compose.yaml` refuses to start without `FEATURESLASH_ADMIN_TOKEN`. Instead of exporting it you can
-put `FEATURESLASH_ADMIN_TOKEN=...` in a `.env` file next to `compose.yaml`; `.env` is git-ignored.
+`compose.yaml` refuses to start without `TOGGLESLASH_ADMIN_TOKEN`. Instead of exporting it you can
+put `TOGGLESLASH_ADMIN_TOKEN=...` in a `.env` file next to `compose.yaml`; `.env` is git-ignored.
 The server never generates, stores or logs the token. Without it the whole admin API answers 503
 `admin_token_unset`, and that includes scoped tokens that are otherwise live.
 
 Terraform and CI should not hold that token. Give each one a scoped token instead: one project, `read` or `write`,
-expiring in 1 to 365 days (`featureslash tokens create`, which takes the root token; see
+expiring in 1 to 365 days (`toggleslash tokens create`, which takes the root token; see
 [the architecture](architecture.md#auth) for what each may reach). A `write` token can create and revoke its project's SDK
 keys, and a `read` token can list them, so treat both as you would the admin token, within that project. The server stores
 only a hash and a prefix; the plain token is shown once. There is no rotation: create a new one, then revoke the old.
@@ -39,8 +39,8 @@ leave the published port on loopback.
 Point the CLI at it:
 
 ```bash
-bun run featureslash config set-url http://127.0.0.1:8080
-bun run featureslash config set-token < token-file    # or FEATURESLASH_URL / FEATURESLASH_TOKEN
+bun run toggleslash config set-url http://127.0.0.1:8080
+bun run toggleslash config set-token < token-file    # or TOGGLESLASH_URL / TOGGLESLASH_TOKEN
 ```
 
 The image's build context is the repository root (`docker build -f apps/server/Dockerfile .`), and `.dockerignore` keeps `node_modules`, `bin`, `obj`,
@@ -48,9 +48,9 @@ every `*.db` file and the other apps out of it.
 
 | Setting | Where | Meaning |
 | --- | --- | --- |
-| `FEATURESLASH_ADMIN_TOKEN` | environment, required by `compose.yaml` | the root admin token for `/api/v1`; scoped tokens are created through the API and live in the database |
-| `FEATURESLASH_DB_PATH` | environment, `/data/featureslash.db` in the image | the SQLite file; keep it on the `/data` volume |
-| `FEATURESLASH_RULESET_RETENTION_DAYS` | environment, optional, default `90` | how long a replaced ruleset is kept for lookup by its hash (`.../rulesets/{hash}`, `diagnose --etag`, the dashboard page), counted from when a newer one took its place; `0` keeps every one and the table grows without limit; anything but a whole number stops the server at startup |
+| `TOGGLESLASH_ADMIN_TOKEN` | environment, required by `compose.yaml` | the root admin token for `/api/v1`; scoped tokens are created through the API and live in the database |
+| `TOGGLESLASH_DB_PATH` | environment, `/data/toggleslash.db` in the image | the SQLite file; keep it on the `/data` volume |
+| `TOGGLESLASH_RULESET_RETENTION_DAYS` | environment, optional, default `90` | how long a replaced ruleset is kept for lookup by its hash (`.../rulesets/{hash}`, `diagnose --etag`, the dashboard page), counted from when a newer one took its place; `0` keeps every one and the table grows without limit; anything but a whole number stops the server at startup |
 
 To set anything else, such as the rate limits below, add a line under `environment:` in `compose.yaml`.
 
@@ -59,18 +59,18 @@ volume, and with it every flag: do that only when you mean it.
 
 ## Backup
 
-Everything the server knows is in one SQLite file, `/data/featureslash.db`, in the `featureslash-data`
+Everything the server knows is in one SQLite file, `/data/toggleslash.db`, in the `toggleslash-data`
 volume. The database runs in WAL mode, so a copy taken while the server is writing can miss recent
 changes. Stop the server, copy the volume's contents, start it again:
 
 ```bash
-backup="featureslash-backup-$(date +%Y%m%d-%H%M%S)"
+backup="toggleslash-backup-$(date +%Y%m%d-%H%M%S)"
 docker compose stop server
 docker compose cp server:/data/. "./$backup"
 docker compose start server
 ```
 
-`$backup` holds `featureslash.db` (and, only after an unclean stop, its `-wal` and `-shm` files, which belong
+`$backup` holds `toggleslash.db` (and, only after an unclean stop, its `-wal` and `-shm` files, which belong
 with it). It contains SDK key hashes, so treat it as sensitive. Each backup gets its own directory, so
 a later one never mixes files with an earlier one.
 
@@ -81,7 +81,7 @@ the server runs as UID 1654, so copy and `chown` in one throwaway container inst
 docker compose stop server
 docker compose run --rm --no-deps --user 0 --entrypoint bash \
   -v "$PWD/$backup:/backup:ro" server \
-  -c 'rm -f /data/featureslash.db* && cp -a /backup/. /data/ && chown -R 1654 /data'
+  -c 'rm -f /data/toggleslash.db* && cp -a /backup/. /data/ && chown -R 1654 /data'
 docker compose start server
 ```
 
@@ -110,14 +110,14 @@ Worker secrets, set by hand on the Worker.
 cd apps/web
 password="$(openssl rand -base64 24)"
 echo "$password"                                             # keep it; it is what you type at sign-in
-printf '%s' "$password" | bunx wrangler secret put FEATURESLASH_OPERATOR_PASSWORD
-openssl rand -hex 32 | bunx wrangler secret put FEATURESLASH_SESSION_SECRET
+printf '%s' "$password" | bunx wrangler secret put TOGGLESLASH_OPERATOR_PASSWORD
+openssl rand -hex 32 | bunx wrangler secret put TOGGLESLASH_SESSION_SECRET
 ```
 
 | Secret | Minimum length | Meaning |
 | --- | --- | --- |
-| `FEATURESLASH_OPERATOR_PASSWORD` | 16 characters | the password on the sign-in page |
-| `FEATURESLASH_SESSION_SECRET` | 32 characters | signs the session cookie (HMAC-SHA256) |
+| `TOGGLESLASH_OPERATOR_PASSWORD` | 16 characters | the password on the sign-in page |
+| `TOGGLESLASH_SESSION_SECRET` | 32 characters | signs the session cookie (HMAC-SHA256) |
 
 **It fails closed.** With either one unset or too short, nobody can sign in: the sign-in page names the
 variable (never its value), every other page redirects to it, and every server function answers 401.
@@ -127,7 +127,7 @@ variable (never its value), every other page redirects to it, and every server f
 
 - **Signing out** clears the cookie in that browser. A copy of the cookie taken earlier stays valid until
   it expires, because the server keeps no list of sessions.
-- **Rotating `FEATURESLASH_SESSION_SECRET` ends every session at once.** That is the way to cut off a
+- **Rotating `TOGGLESLASH_SESSION_SECRET` ends every session at once.** That is the way to cut off a
   cookie you think has leaked. Changing the password alone does not end a session.
 
 **Nothing counts failed attempts**, so sign-in itself does not slow down someone guessing. Two things
@@ -194,10 +194,10 @@ else, an empty value included, stops the server at startup with an error naming 
 
 | Limit | Default | Variable | Counted per |
 | --- | --- | --- | --- |
-| `POST /sdk/v1/evaluate` | 6000 a minute | `FEATURESLASH_RATE_LIMIT_EVALUATE_PER_MINUTE` | SDK key |
-| `POST /sdk/v1/events` | 600 a minute | `FEATURESLASH_RATE_LIMIT_EVENTS_PER_MINUTE` | SDK key |
-| wrong credentials, on any route that takes one | 30 a minute | `FEATURESLASH_RATE_LIMIT_AUTH_FAILURES_PER_MINUTE` | client IP |
-| open `GET /sdk/v1/stream` connections | 100 at once | `FEATURESLASH_RATE_LIMIT_STREAMS_PER_KEY` | SDK key |
+| `POST /sdk/v1/evaluate` | 6000 a minute | `TOGGLESLASH_RATE_LIMIT_EVALUATE_PER_MINUTE` | SDK key |
+| `POST /sdk/v1/events` | 600 a minute | `TOGGLESLASH_RATE_LIMIT_EVENTS_PER_MINUTE` | SDK key |
+| wrong credentials, on any route that takes one | 30 a minute | `TOGGLESLASH_RATE_LIMIT_AUTH_FAILURES_PER_MINUTE` | client IP |
+| open `GET /sdk/v1/stream` connections | 100 at once | `TOGGLESLASH_RATE_LIMIT_STREAMS_PER_KEY` | SDK key |
 
 Over a limit the answer is a `429` with `Retry-After` in whole seconds and the usual error body, code `rate_limited`.
 A client key is shared by everyone using your app, so raise the evaluate and events numbers if a busy app reaches them.
@@ -219,7 +219,7 @@ The client IP is the address of the connection. **Behind a proxy that is not lis
 every client shares one IP, and one attacker sending wrong credentials locks out all of them.** List your proxies:
 
 ```bash
-FEATURESLASH_TRUSTED_PROXIES=10.0.0.5,10.0.0.6
+TOGGLESLASH_TRUSTED_PROXIES=10.0.0.5,10.0.0.6
 ```
 
 It is a comma-separated list of IP addresses, not ranges, empty by default, and a value that is not an address stops the server. `X-Forwarded-For` is

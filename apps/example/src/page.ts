@@ -123,12 +123,12 @@ export function renderPage(state: State, config: PageConfig): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Shop checkout: a FeatureSlash example</title>
+<title>Shop checkout: a ToggleSlash example</title>
 </head>
 <body>
 <header>
 <h1>Shop checkout</h1>
-<p>A fictional shop whose checkout is steered by FeatureSlash flags. Change a flag in the dashboard or the CLI and the values below follow within a second.</p>
+<p>A fictional shop whose checkout is steered by ToggleSlash flags. Change a flag in the dashboard or the CLI and the values below follow within a second.</p>
 </header>
 <main>
 <form method="get" action="/">

@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 export default function setup(): () => void {
-  const scope = mkdtempSync(join(tmpdir(), "featureslash-test-"));
+  const scope = mkdtempSync(join(tmpdir(), "toggleslash-test-"));
   process.env.TMPDIR = scope;
   return () => {
     rmSync(scope, { recursive: true, force: true });

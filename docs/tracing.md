@@ -1,6 +1,6 @@
 # Tracing: the ruleset hash on a trace
 
-`packages/sdk-otel` (`@hackcove/featureslash-sdk-otel`, Nx project `sdk-otel`) is an evaluation hook for the
+`packages/sdk-otel` (`@hackcove/toggleslash-sdk-otel`, Nx project `sdk-otel`) is an evaluation hook for the
 [TypeScript SDK](sdk.md). Each time the SDK evaluates a flag it adds a `feature_flag.evaluation` event to the
 **active OpenTelemetry span**, with the flag's result and the **hash of the ruleset the SDK held**. Later, anyone
 holding a trace can ask the server what the flags were under that hash ([below](#from-a-trace-to-the-flags)).
@@ -10,12 +10,12 @@ starts no tracer provider, so the application owns both. The SDK itself has no O
 offers [`hooks.afterEvaluation`](sdk.md#hooks).
 
 ```ts
-import { createClient } from "@hackcove/featureslash-sdk";
-import { createTracingHooks } from "@hackcove/featureslash-sdk-otel";
+import { createClient } from "@hackcove/toggleslash-sdk";
+import { createTracingHooks } from "@hackcove/toggleslash-sdk-otel";
 
 const client = createClient({
   url: "https://flags.example.com",
-  sdkKey: process.env.FEATURESLASH_SDK_KEY ?? "",
+  sdkKey: process.env.TOGGLESLASH_SDK_KEY ?? "",
   hooks: createTracingHooks({ project: "shop", environment: "production" }),
 });
 ```
@@ -37,32 +37,32 @@ conventions (status *Development*; its attributes are *Release Candidate*).
 | Attribute | Value | |
 | --- | --- | --- |
 | `feature_flag.key` | the flag key | always |
-| `feature_flag.provider.name` | `FeatureSlash` | always |
+| `feature_flag.provider.name` | `ToggleSlash` | always |
 | `feature_flag.result.variant` | the variation index as a string, `"0"`, `"1"`... | omitted when nothing was served (a fallback, an unknown flag) |
 | `feature_flag.result.reason` | see [reasons](#reasons) | always |
 | `feature_flag.version` | the **flag's** `version` in the ruleset held | omitted when the flag is not in it |
-| `featureslash.ruleset.etag` | the ruleset's ETag: lowercase hex, no quotes | omitted before the first load |
-| `featureslash.project` | the `project` option | always |
-| `featureslash.environment` | the `environment` option | always |
+| `toggleslash.ruleset.etag` | the ruleset's ETag: lowercase hex, no quotes | omitted before the first load |
+| `toggleslash.project` | the `project` option | always |
+| `toggleslash.environment` | the `environment` option | always |
 | `error.type` | `flag_not_found`, `invalid_context`, `provider_not_ready`, `type_mismatch` or `general` | only when the reason is `error` |
 | `feature_flag.context.id` | the context's `key` | **only with `includeContextId: true`** |
 | `feature_flag.result.value` | the value the caller got (a JSON object or array as JSON text) | **only with `includeValue: true`** |
 
 - **Nothing identifying is on the span by default.** The context key is an end user's identifier and a value can
   be large or private, so each is off until the option turns it on. A context's other attributes are never
-  recorded. Both options are about *your* trace backend's retention, not FeatureSlash's: the server never
+  recorded. Both options are about *your* trace backend's retention, not ToggleSlash's: the server never
   receives them.
 - `feature_flag.version` is the flag's version. The conventions describe it as "the version of the ruleset",
-  which is `featureslash.ruleset.etag` here.
-- `featureslash.ruleset.etag` is the ETag the SDK held at that evaluation, the same value as `client.status().etag`
+  which is `toggleslash.ruleset.etag` here.
+- `toggleslash.ruleset.etag` is the ETag the SDK held at that evaluation, the same value as `client.status().etag`
   without its quotes. It is also what `GET /sdk/v1/ruleset` sent as `ETag` and what the `runtime` read reports.
 
 ### Reasons
 
-`feature_flag.result.reason` uses the conventions' well-known values where one applies and keeps FeatureSlash's own
+`feature_flag.result.reason` uses the conventions' well-known values where one applies and keeps ToggleSlash's own
 lowercase name where none does:
 
-| FeatureSlash reason | `feature_flag.result.reason` |
+| ToggleSlash reason | `feature_flag.result.reason` |
 | --- | --- |
 | `OFF` | `disabled` |
 | `TARGET_MATCH`, `RULE_MATCH` | `targeting_match` |
@@ -80,13 +80,13 @@ An SDK key cannot call it, and it has no CORS.
 Make a read token once (root admin token; `--expires-in-days` is required, 1 to 365):
 
 ```bash
-featureslash tokens create --project shop --name trace-lookup --permission read --expires-in-days 30
+toggleslash tokens create --project shop --name trace-lookup --permission read --expires-in-days 30
 ```
 
-Then, from the trace's `featureslash.project`, `featureslash.environment` and `featureslash.ruleset.etag`:
+Then, from the trace's `toggleslash.project`, `toggleslash.environment` and `toggleslash.ruleset.etag`:
 
 ```bash
-curl -s -H "Authorization: Bearer $FEATURESLASH_READ_TOKEN" \
+curl -s -H "Authorization: Bearer $TOGGLESLASH_READ_TOKEN" \
   "https://flags.example.com/api/v1/projects/shop/environments/production/rulesets/4137a8076dbf...d79e7?flag=new-checkout"
 ```
 
@@ -99,7 +99,7 @@ curl -s -H "Authorization: Bearer $FEATURESLASH_READ_TOKEN" \
 }
 ```
 
-The same with the CLI: `featureslash rulesets show <hash> --project shop --env production --flag new-checkout`.
+The same with the CLI: `toggleslash rulesets show <hash> --project shop --env production --flag new-checkout`.
 
 - `{hash}` is the 64 lowercase hex characters **without quotes**. The quoted `ETag` header value is a 404.
 - `?flag=<key>` narrows the answer to that flag and the segments its rules name. Without it, you get every flag.
@@ -108,7 +108,7 @@ The same with the CLI: `featureslash rulesets show <hash> --project shop --env p
   `GET /sdk/v1/ruleset` with a `200`. An SDK that only ever received `304`s for a tag (it held it from before
   snapshots existed) never caused one to be kept, and a tag the stream announced but nobody fetched is not kept
   either. A new process starts with a `200`, which is the usual case. The server also deletes a snapshot once a newer ruleset has replaced it for longer than
-  `FEATURESLASH_RULESET_RETENTION_DAYS` (90 by default; `0` keeps every one), unless it is the environment's current
+  `TOGGLESLASH_RULESET_RETENTION_DAYS` (90 by default; `0` keeps every one), unless it is the environment's current
   ruleset again after a rollback. So a hash that was in use within the last 90 days still answers, and one replaced longer ago can be a 404. A rolled-back old body is kept only while it is current.
 
 ## Jaeger: a link from the event
@@ -128,9 +128,9 @@ side, so the token never reaches the browser or the link:
   "linkPatterns": [
     {
       "type": "logs",
-      "key": "featureslash.ruleset.etag",
-      "url": "https://dashboard.internal.example.com/rulesets/#{featureslash.ruleset.etag}?project=#{featureslash.project}&env=#{featureslash.environment}",
-      "text": "What were the flags under #{featureslash.ruleset.etag}?"
+      "key": "toggleslash.ruleset.etag",
+      "url": "https://dashboard.internal.example.com/rulesets/#{toggleslash.ruleset.etag}?project=#{toggleslash.project}&env=#{toggleslash.environment}",
+      "text": "What were the flags under #{toggleslash.ruleset.etag}?"
     }
   ]
 }
@@ -143,7 +143,7 @@ served shows a not-found page. A `url` that points at the server's own lookup ro
 needs a token the link cannot carry, so it only works through a proxy of your own that adds
 `Authorization: Bearer <read token>`; the dashboard page needs none.
 
-To ask why, not only what, `featureslash diagnose <flag> --project shop --env production --context '{"key":"u1"}' --etag <hash>`
+To ask why, not only what, `toggleslash diagnose <flag> --project shop --env production --context '{"key":"u1"}' --etag <hash>`
 evaluates a context against that ruleset, as the server evaluated it then. It is the admin route
 `POST /api/v1/projects/{project}/environments/{env}/evaluate` with `"etag": "<hash>"` in the body, it records nothing,
 and a hash the environment never served is a 404.
@@ -154,8 +154,8 @@ In Grafana's Tempo data source, *Trace correlations* can add a link in the span 
 an **External URL**; its variables include `tags` (span attributes) and `logs` (span events), both objects that
 "must be parsed into a value variable with a regular expression transformation"
 ([trace correlations](https://grafana.com/docs/grafana/latest/datasources/tempo/configure-tempo-data-source/trace-correlations/)).
-So the dashboard URL above, with a transformation for each of the three `featureslash.*` values, is the way to go. The
-link carries no token, and the dashboard's own sign-in is what protects the page. No FeatureSlash-specific Grafana
+So the dashboard URL above, with a transformation for each of the three `toggleslash.*` values, is the way to go. The
+link carries no token, and the dashboard's own sign-in is what protects the page. No ToggleSlash-specific Grafana
 configuration is shipped.
 
 ## What was checked, and what was not
@@ -164,9 +164,9 @@ Run against a real server built from this tree:
 
 - The `curl` request above, on a hash taken from the `ETag` header of `GET /sdk/v1/ruleset`, with a `read` token:
   `200` with the body shape shown. The same URL with no header is `401`; with an SDK key `403`; with the quoted
-  `ETag` value `404`. `featureslash rulesets show` answers the same.
+  `ETag` value `404`. `toggleslash rulesets show` answers the same.
 - `packages/e2e/test/tracing.test.ts` (`bun run test:e2e`): a real evaluation by the real SDK produces a span event whose
-  `featureslash.ruleset.etag` equals `client.status().etag`, and `rulesets show` on it returns a flag whose
+  `toggleslash.ruleset.etag` equals `client.status().etag`, and `rulesets show` on it returns a flag whose
   `fallthrough` and `targets` hold the variation the SDK served.
 - `packages/sdk-otel/test`: the attributes, the defaults and the options, with an in-memory exporter.
 

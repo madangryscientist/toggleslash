@@ -28,7 +28,7 @@ const configSetToken: Command = {
     const piped = await ctx.readStdin();
     if (piped === null) {
       throw new UsageError(
-        "pipe the token in (`featureslash config set-token < token-file`); it is never an argument, so it stays out of your shell history.",
+        "pipe the token in (`toggleslash config set-token < token-file`); it is never an argument, so it stays out of your shell history.",
       );
     }
     const token = piped.trim();

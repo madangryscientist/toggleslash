@@ -1,5 +1,5 @@
 {
-  "name": "featureslash-workspace",
+  "name": "toggleslash-workspace",
   "private": true,
   "license": "MIT",
   "workspaces": [
@@ -8,7 +8,7 @@
   ],
   "type": "module",
   "scripts": {
-    "featureslash": "bun packages/cli/src/index.ts",
+    "toggleslash": "bun packages/cli/src/index.ts",
     "typecheck": "bun scripts/nx.ts run-many -t typecheck",
     "lint": "bun scripts/nx.ts run-many -t lint",
     "format": "oxfmt",

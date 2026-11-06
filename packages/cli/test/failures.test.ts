@@ -53,7 +53,7 @@ describe("server and network failures", () => {
       const server = fakeServer({ [`GET ${P}`]: reply });
       const result = await cli(args, { fetch: server.fetch, env: CONNECTED });
       expect(result.code).toBe(1);
-      expect(result.stderr).toMatch(/^featureslash: the server answered (500|503|302)/);
+      expect(result.stderr).toMatch(/^toggleslash: the server answered (500|503|302)/);
     }
   });
 
@@ -88,7 +88,7 @@ describe("server and network failures", () => {
     expect(server.seen[0]?.path).toBe(`${P}/shop/flags/..%2F..%2Fkeys`);
   });
 
-  it("uses --url over FEATURESLASH_URL", async () => {
+  it("uses --url over TOGGLESLASH_URL", async () => {
     let called = "";
     await cli(["projects", "list", "--url", "http://localhost:5000/"], {
       env: CONNECTED,

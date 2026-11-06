@@ -1,6 +1,6 @@
 name: Release
 
-# Publishes the `@hackcove/featureslash` npm package (packages/cli) when a `v*` tag is pushed: the CI
+# Publishes the `@hackcove/toggleslash` npm package (packages/cli) when a `v*` tag is pushed: the CI
 # gate first (ci.yml, called as it is), then `npm publish --provenance`. There is no NPM_TOKEN
 # anywhere: npm trusted publishing (OIDC) lets this workflow publish with a short-lived token that
 # npm checks against the trusted publisher set on the package's npm settings page (repository,
