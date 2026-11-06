@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { API_PORT, E2E_OPERATOR_PASSWORD, PAST_RULESET_HASH } from "./constants.ts";
+import { API_PORT, E2E_OPERATOR_PASSWORD, PAST_RULESET_HASH, PLANTED_SALT } from "./constants.ts";
 
 const API = `http://127.0.0.1:${API_PORT}`;
 const PAGE = `/rulesets/${PAST_RULESET_HASH}?project=shop&env=production`;
@@ -22,11 +22,22 @@ test("shows the flags as they were under the hash, not as they are now", async (
 });
 
 test("shows no salt, and no token is in the page or its address", async ({ page }) => {
-  await page.goto(PAGE);
+  const response = await page.goto(PAGE);
   await expect(page.getByTestId("past-flag-checkout-v2")).toBeVisible();
-  const text = (await page.content()).toLowerCase();
-  expect(text).not.toContain("salt");
-  expect(text).not.toContain("bearer");
+  // The server render is the document the browser was sent, and it is where a leaked loader value would show up.
+  // The DOM after hydration is checked too; the loader data is not in it, so it is the weaker of the two.
+  const served = (await response?.text()) ?? "";
+  expect(served).toContain("checkout-v2");
+  const rendered = await page.content();
+  for (const html of [served, rendered]) {
+    expect(html).not.toContain(PLANTED_SALT);
+    expect(html).not.toContain('"salt"');
+    // A header has "bearer " with the space; a generated name or nonce cannot.
+    expect(html.toLowerCase()).not.toContain("bearer ");
+  }
+  // A generated name or nonce can hold the letters, but not the bare word as visible text.
+  const visible = (await page.locator("body").innerText()).toLowerCase();
+  expect(visible).not.toContain("salt");
   expect(page.url()).not.toMatch(/token|authorization/i);
 });
 

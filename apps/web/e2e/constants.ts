@@ -12,3 +12,5 @@ export const E2E_SESSION_SECRET = "e2e-session-secret-4c81a6f09be3d275";
 export const SIGNED_IN_STATE = ".wrangler/e2e/signed-in.json";
 /** A ruleset hash the fake API says shop/production served: `GET .../rulesets/<hash>` answers it, any other hash is a 404. */
 export const PAST_RULESET_HASH = "5e7a1c0b9d3f4a68b2c1d0e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9";
+/** A salt the fake API plants in the past ruleset, so the no-salt check can show the page does not pass one on. */
+export const PLANTED_SALT = "E2E_PLANTED_SALT_7f3a";

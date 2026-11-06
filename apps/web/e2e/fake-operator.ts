@@ -1,5 +1,5 @@
 /** The fake API's operator routes: environments, SDK keys, segments and the project audit log. */
-import { PAST_RULESET_HASH } from "./constants.ts";
+import { PAST_RULESET_HASH, PLANTED_SALT } from "./constants.ts";
 import { asBody, failure, type Body, type Reply } from "./fake-config.ts";
 import { db, type KeyRow, type SegmentRow } from "./fake-data.ts";
 
@@ -153,7 +153,8 @@ export function auditPage(project: string, query: URLSearchParams): Reply {
 /**
  * `GET .../environments/<env>/rulesets/<hash>[?flag=]`: what shop/production served under one hash. The flags are
  * as they were then, not as the fake's current configs are: checkout-v2 was off with no rules and dark-mode on.
- * Like the real route it has no salt, and a hash it never served (or another environment's) is a 404.
+ * The real route has no salt. The fake sends one anyway (PLANTED_SALT, on each flag and segment) so the spec can show
+ * the dashboard would not pass it on. A hash it never served (or another environment's) is a 404.
  */
 export function rulesetAt(
   project: string,
@@ -187,6 +188,7 @@ export function rulesetAt(
         ],
         fallthrough: { variation: 1 },
         version: 2,
+        salt: PLANTED_SALT,
       },
       {
         key: "dark-mode",
@@ -198,6 +200,7 @@ export function rulesetAt(
         rules: [],
         fallthrough: { variation: 1 },
         version: 1,
+        salt: PLANTED_SALT,
       },
     ],
     segments: [
@@ -206,6 +209,7 @@ export function rulesetAt(
         included: ["alice"],
         excluded: [],
         rules: [{ clauses: [{ op: "in", attribute: "country", values: ["NL"] }] }],
+        salt: PLANTED_SALT,
       },
     ],
   };
