@@ -45,6 +45,8 @@ toggleslash projects create <key> [--name <name>] create a project (the name def
 
 toggleslash envs list --project <project>                          list a project's environments
 toggleslash envs create <key> --project <project> [--name <name>]  create an environment
+toggleslash envs rename <key> --project <project> --name <name>    rename an environment (its key never changes)
+toggleslash envs delete <key> --project <project> --yes            delete an environment (see below)
 
 toggleslash flags list --project <project> [--tag <tag>] [--archived false|true|all]
 toggleslash flags show <flag> --project <project> [--env <env>]    with --env, also its targeting there
@@ -74,6 +76,12 @@ toggleslash rulesets show <hash> --project <project> --env <env> [--flag <flag>]
   a JSON array (`--variations '["control","a","b"]'`). `flags on` and `flags off` use the server's `toggle`:
   they change `on` and nothing else, so they cannot undo someone else's targeting edit. `flags history`
   prints a page, newest first; when there is another page it ends with `more: add --cursor <cursor>`.
+- **Environments**: `envs rename` changes the name and never the key, which audit rows, clients and `?env=` URLs use; it
+  needs `--name`, and the ruleset does not change. `envs delete` deletes the environment with its flags' settings
+  there, its segments, its revoked keys, its usage counts and its kept rulesets; the audit trail stays readable. There is
+  no prompt, because the CLI is scripted: without `--yes` it exits 2 and sends nothing. The server refuses (exit 1, with
+  its message) while the environment has any SDK key that is not revoked, so revoke them with `keys revoke` first. A
+  write-scoped token may do both for its own project.
 - **SDK keys** (`keys create`) print the plain key **once**. The server keeps only a hash and a prefix, so
   `keys list` shows prefixes and `keys revoke` takes the id from that list.
 - **Scoped API tokens** (`tokens create`) are for Terraform and CI: one project, `read` or `write`, always with an

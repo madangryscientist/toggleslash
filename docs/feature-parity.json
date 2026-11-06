@@ -146,6 +146,8 @@
           "cli:projects create",
           "cli:envs list",
           "cli:envs create",
+          "cli:envs rename",
+          "cli:envs delete",
           "dashboard:/environments"
         ]
       },

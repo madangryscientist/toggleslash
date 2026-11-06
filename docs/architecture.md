@@ -151,6 +151,8 @@ Under `/api/v1`, every route behind the `admin` policy, so for the root token an
 | --- | --- |
 | `POST`, `GET /projects`; `GET /projects/{project}` | create (`key`, `name`), list, read |
 | `POST`, `GET /projects/{project}/environments`; `GET .../environments/{env}` | create, list, read |
+| `PATCH .../environments/{env}` | rename: body `{ "name" }`, trimmed; only the name changes (the key is fixed, and a `key` in the body is ignored like any unknown field); answers 200 with the environment, records one `updated` event, and the ruleset's ETag does not move because a ruleset does not carry the name (a `write` token) |
+| `DELETE .../environments/{env}` | delete an environment; 204, or 409 while any of its SDK keys is not revoked (below) (a `write` token) |
 | `POST`, `GET /projects/{project}/flags`; `GET`, `PATCH .../flags/{flag}` | create, list (`?tag=`, `?archived=false\|true\|all`, default `false`), read, update metadata |
 | `POST .../flags/{flag}/archive`, `.../restore` | archive and restore; both are idempotent |
 | `GET`, `PUT .../flags/{flag}/environments/{env}` | read and replace a flag's config in one environment |
@@ -183,6 +185,18 @@ Under `/api/v1`, every route behind the `admin` policy, so for the root token an
   though the tag does not move. It returns the actor, type, id and action of the
   event and no snapshot. The audit read and the ruleset read are not one transaction; the audit is read first, so
   the tag is never older than `lastChange`.
+- **Environment delete** (`DELETE /projects/{project}/environments/{env}`, a write). It holds the targeting lock and checks
+  and deletes in one transaction. It is refused with a 409 that says how many while the environment has any SDK key with no
+  `revoked_at`: a live key means something may be running against it, and revoked keys do not block. It removes the
+  `environments` row, and every table with a foreign key to it cascades: `flag_environment_configs`, `segments`, `api_keys`
+  (only revoked ones are left by then), `flag_usage_daily` and `ruleset_snapshots` lose that environment's rows, and the
+  other environments of the project keep theirs. **It keeps the audit trail**: `audit_events` has no foreign key and
+  addresses an environment by key, so its history stays readable, and the delete adds one `deleted` event (before the
+  environment, after null) and the cascaded rows get none. The last environment of a project may go; flags then have no
+  config until an environment is created, and creating one gives every flag an off config. An environment created later
+  with the same key is a new one: a new id, off configs, no usage and no snapshots. The ruleset lookup and `runtime` answer
+  the environment 404 for it. Nothing is pushed to a running stream: a stream ends at its next wake-up, when its key is no
+  longer live, as after a revoke (at the latest the next 25 second heartbeat).
 - **Ruleset lookup** (`GET /projects/{project}/environments/{env}/rulesets/{hash}`, a read, so a `read` or `write` token
   of the project may call it; no SDK key can, and it has no CORS). Anything holding the ruleset's `ETag`, such as a trace an application wrote it into, can ask, and this answers
   "what were the flags under that hash". `{hash}` is the tag's lowercase hex without its quotes; anything else is a 404.
@@ -378,8 +392,8 @@ Four more routes take `?project=&env=` like the list; their server functions are
 and their client calls in `src/api/operator.server.ts`. The nav in the shell moves between them and keeps
 the project and environment.
 
-- **`/environments`**: the project's environments, and create (key and name). The server has no edit or
-  delete for an environment, so the page has none.
+- **`/environments`**: the project's environments, and create (key and name). The server can now rename and
+  delete an environment, and the page does not use either yet (FS-60).
 - **`/keys`**: the environment's SDK keys with their prefix, kind and whether revoked. Creating one
   returns the plaintext once. It is held in the keys panel's component state only: it is not in a
   loader, the router cache or the URL, so leaving the page, reloading or dismissing the callout removes it,
