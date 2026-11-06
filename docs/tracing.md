@@ -107,7 +107,9 @@ The same with the CLI: `featureslash rulesets show <hash> --project shop --env p
 - **A hash can be a 404 even though it is on a real trace.** The server keeps a ruleset the first time it answers
   `GET /sdk/v1/ruleset` with a `200`. An SDK that only ever received `304`s for a tag (it held it from before
   snapshots existed) never caused one to be kept, and a tag the stream announced but nobody fetched is not kept
-  either. A new process starts with a `200`, which is the usual case. Snapshots are kept with no pruning.
+  either. A new process starts with a `200`, which is the usual case. The server also deletes a snapshot once a newer ruleset has replaced it for longer than
+  `FEATURESLASH_RULESET_RETENTION_DAYS` (90 by default; `0` keeps every one), unless it is the environment's current
+  ruleset again after a rollback. So a hash that was in use within the last 90 days still answers, and one replaced longer ago can be a 404. A rolled-back old body is kept only while it is current.
 
 ## Jaeger: a link from the event
 

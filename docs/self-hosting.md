@@ -50,6 +50,7 @@ every `*.db` file and the other apps out of it.
 | --- | --- | --- |
 | `FEATURESLASH_ADMIN_TOKEN` | environment, required by `compose.yaml` | the root admin token for `/api/v1`; scoped tokens are created through the API and live in the database |
 | `FEATURESLASH_DB_PATH` | environment, `/data/featureslash.db` in the image | the SQLite file; keep it on the `/data` volume |
+| `FEATURESLASH_RULESET_RETENTION_DAYS` | environment, optional, default `90` | how long a replaced ruleset is kept for lookup by its hash (`.../rulesets/{hash}`, `diagnose --etag`, the dashboard page), counted from when a newer one took its place; `0` keeps every one and the table grows without limit; anything but a whole number stops the server at startup |
 
 To set anything else, such as the rate limits below, add a line under `environment:` in `compose.yaml`.
 
