@@ -41,7 +41,7 @@ function SignIn() {
     );
   }
   return (
-    <CenteredLayout title="Sign in to FeatureSlash">
+    <CenteredLayout title="Sign in to ToggleSlash">
       {/* A plain form: the Worker answers the POST with the cookie and a redirect. */}
       <form method="post" action="/sign-in">
         <Stack gap="sm">

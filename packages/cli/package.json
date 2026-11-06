@@ -1,13 +1,12 @@
 {
-  "name": "@hackcove/featureslash",
+  "name": "@hackcove/toggleslash",
   "version": "0.0.0",
-  "description": "The FeatureSlash command line: feature flags from the terminal.",
+  "description": "The ToggleSlash command line: feature flags from the terminal.",
   "keywords": [
     "cli",
     "feature-flags",
     "feature-toggles"
   ],
-  "homepage": "https://featureslash.dev",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -15,7 +14,7 @@
     "directory": "packages/cli"
   },
   "bin": {
-    "featureslash": "dist/index.js"
+    "toggleslash": "dist/index.js"
   },
   "files": [
     "dist",
@@ -27,7 +26,7 @@
     "access": "public"
   },
   "devDependencies": {
-    "@hackcove/featureslash-engine": "workspace:*",
+    "@hackcove/toggleslash-engine": "workspace:*",
     "@types/bun": "1.4.4",
     "vitest": "5.0.5"
   },

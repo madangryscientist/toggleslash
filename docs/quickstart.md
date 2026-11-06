@@ -12,11 +12,11 @@ From a checkout of this repository:
 
 ```bash
 bun install
-bun run featureslash --version
+bun run toggleslash --version
 ```
 
 ```
-featureslash 0.0.0 (featureslash-engine 0.0.0)
+toggleslash 0.0.0 (toggleslash-engine 0.0.0)
 ```
 
 `bun run` prints the command it ran before the output (`$ bun packages/cli/src/index.ts ...`), and the CLI
@@ -25,14 +25,14 @@ below show the command's output on stdout, with its notices where they appear.
 
 ## 2. Start the server
 
-Pick an admin token and keep it in your shell. The server reads it from `FEATURESLASH_ADMIN_TOKEN`; the
+Pick an admin token and keep it in your shell. The server reads it from `TOGGLESLASH_ADMIN_TOKEN`; the
 CLI and the dashboard need the same value. Put the server's database in a file the repo ignores (`*.db`).
 
 ```bash
-export FEATURESLASH_ADMIN_TOKEN="$(openssl rand -hex 32)"
-export FEATURESLASH_DB_PATH="$PWD/quickstart.db"
-echo "$FEATURESLASH_ADMIN_TOKEN"
-ASPNETCORE_URLS=http://127.0.0.1:8080 dotnet run --project apps/server/FeatureSlash.Server
+export TOGGLESLASH_ADMIN_TOKEN="$(openssl rand -hex 32)"
+export TOGGLESLASH_DB_PATH="$PWD/quickstart.db"
+echo "$TOGGLESLASH_ADMIN_TOKEN"
+ASPNETCORE_URLS=http://127.0.0.1:8080 dotnet run --project apps/server/ToggleSlash.Server
 ```
 
 The `echo` prints the token, which step 3 needs in a second terminal. Copy it before the server takes over
@@ -57,29 +57,29 @@ In the second terminal, export the token that step 2 printed, and save the serve
 CLI's config file (mode 600):
 
 ```bash
-export FEATURESLASH_ADMIN_TOKEN="<the token printed by echo in step 2>"
-bun run featureslash config set-url http://127.0.0.1:8080
-printf '%s' "$FEATURESLASH_ADMIN_TOKEN" | bun run featureslash config set-token
+export TOGGLESLASH_ADMIN_TOKEN="<the token printed by echo in step 2>"
+bun run toggleslash config set-url http://127.0.0.1:8080
+printf '%s' "$TOGGLESLASH_ADMIN_TOKEN" | bun run toggleslash config set-token
 ```
 
 ```
-saved the server URL (http://127.0.0.1:8080) in …/featureslash/config.json
-saved the admin token in …/featureslash/config.json (mode 600)
+saved the server URL (http://127.0.0.1:8080) in …/toggleslash/config.json
+saved the admin token in …/toggleslash/config.json (mode 600)
 ```
 
-The file is `~/.config/featureslash/config.json`, or under `$XDG_CONFIG_HOME` when that is set, and the
+The file is `~/.config/toggleslash/config.json`, or under `$XDG_CONFIG_HOME` when that is set, and the
 CLI prints its full path.
 
-`config set-token` reads the token from stdin, so it is not on the command line. You can use the `FEATURESLASH_URL` and
-`FEATURESLASH_TOKEN` environment variables instead of the config file.
+`config set-token` reads the token from stdin, so it is not on the command line. You can use the `TOGGLESLASH_URL` and
+`TOGGLESLASH_TOKEN` environment variables instead of the config file.
 
 ## 4. Create a project, an environment and a flag
 
 ```bash
-bun run featureslash projects create shop --name Shop
-bun run featureslash envs create production --project shop
-bun run featureslash flags create new-checkout --project shop
-bun run featureslash flags list --project shop
+bun run toggleslash projects create shop --name Shop
+bun run toggleslash envs create production --project shop
+bun run toggleslash flags create new-checkout --project shop
+bun run toggleslash flags list --project shop
 ```
 
 ```
@@ -98,7 +98,7 @@ A new flag is a boolean (`[true, false]`) and is off in every environment. `flag
 An SDK reads one environment. The server key is the one that reads rules; the server shows it once:
 
 ```bash
-bun run featureslash keys create --project shop --env production --kind server --name quickstart
+bun run toggleslash keys create --project shop --env production --kind server --name quickstart
 ```
 
 ```
@@ -106,13 +106,13 @@ id:    1
 kind:  server
 name:  quickstart
 key:   fs_server_…
-featureslash: store the key now; the server keeps only a hash and will not show it again.
+toggleslash: store the key now; the server keeps only a hash and will not show it again.
 ```
 
 Copy the `key:` value into your shell (the `…` above stands for the rest of it):
 
 ```bash
-export FEATURESLASH_SDK_KEY="fs_server_…"
+export TOGGLESLASH_SDK_KEY="fs_server_…"
 ```
 
 Keep it out of the repo: a server key reads the whole ruleset of its environment.
@@ -125,7 +125,7 @@ there and nowhere else. Delete it when you are done.
 ```ts
 import { createClient } from "./packages/sdk/src/index.ts";
 
-const client = createClient({ url: "http://127.0.0.1:8080", sdkKey: process.env.FEATURESLASH_SDK_KEY ?? "" });
+const client = createClient({ url: "http://127.0.0.1:8080", sdkKey: process.env.TOGGLESLASH_SDK_KEY ?? "" });
 console.log("ready:", await client.ready());
 console.log("variation:", client.variation("new-checkout", { key: "user-42", attributes: { plan: "pro" } }, false));
 console.log("detail:", JSON.stringify(client.variationDetail("new-checkout", { key: "user-42" }, false)));
@@ -150,7 +150,7 @@ fallback you pass (`false` here) is used only when the SDK cannot evaluate the f
 ## 7. Turn the flag on
 
 ```bash
-bun run featureslash flags on new-checkout --project shop --env production
+bun run toggleslash flags on new-checkout --project shop --env production
 ```
 
 ```
@@ -171,6 +171,6 @@ the change when it arrives. `flags off` turns it back off.
 ## Clean up
 
 Stop the server with Ctrl-C and delete `read-flag.ts`. To start over from nothing, delete `quickstart.db`
-(and `quickstart.db-wal` and `quickstart.db-shm`, if they exist). Remove `~/.config/featureslash/config.json`
+(and `quickstart.db-wal` and `quickstart.db-shm`, if they exist). Remove `~/.config/toggleslash/config.json`
 too if you do not want the URL and token kept there.
 

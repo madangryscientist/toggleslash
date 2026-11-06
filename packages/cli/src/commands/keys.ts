@@ -31,7 +31,7 @@ const keysCreate: Command = {
       ]),
     );
     ctx.err(
-      "featureslash: store the key now; the server keeps only a hash and will not show it again.\n",
+      "toggleslash: store the key now; the server keeps only a hash and will not show it again.\n",
     );
   },
 };

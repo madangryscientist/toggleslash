@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { parseArgs } from "node:util";
-import { describeEngine } from "@hackcove/featureslash-engine";
+import { describeEngine } from "@hackcove/toggleslash-engine";
 import pkg from "../package.json" with { type: "json" };
 import { createApi, type Fetch } from "./api.ts";
 import type { Command, Context } from "./command.ts";
@@ -32,23 +32,23 @@ const processDeps: Deps = {
 function commandLines(): string {
   const width = Math.max(...COMMANDS.map((c) => `${c.name} ${c.usage}`.trimEnd().length));
   return COMMANDS.map(
-    (c) => `  featureslash ${`${c.name} ${c.usage}`.trimEnd().padEnd(width)}  ${c.summary}`,
+    (c) => `  toggleslash ${`${c.name} ${c.usage}`.trimEnd().padEnd(width)}  ${c.summary}`,
   ).join("\n");
 }
 
-const HELP = `featureslash: feature flags from the terminal.
+const HELP = `toggleslash: feature flags from the terminal.
 
 Usage:
-  featureslash --version   print the version
-  featureslash --help      print this help
+  toggleslash --version   print the version
+  toggleslash --help      print this help
 
 Commands (every command that calls the server also takes --url <url> and --json):
 ${commandLines()}
 
 Connection:
-  The server URL is --url, else FEATURESLASH_URL, else \`config set-url\`.
-  The admin token is FEATURESLASH_TOKEN, else \`config set-token\`. An environment variable wins over the
-  config file, which is $XDG_CONFIG_HOME/featureslash/config.json (default ~/.config/...), mode 600.
+  The server URL is --url, else TOGGLESLASH_URL, else \`config set-url\`.
+  The admin token is TOGGLESLASH_TOKEN, else \`config set-token\`. An environment variable wins over the
+  config file, which is $XDG_CONFIG_HOME/toggleslash/config.json (default ~/.config/...), mode 600.
   The token is never a flag, so it stays out of your shell history and the process list.
 
 Output:
@@ -149,7 +149,7 @@ export async function run(args: readonly string[], deps: Deps = processDeps): Pr
   const stderr = guardedWriter(deps.stderr, secrets);
   const [first] = args;
   if (first === "--version" || first === "-v") {
-    stdout(`featureslash ${pkg.version} (${describeEngine()})\n`);
+    stdout(`toggleslash ${pkg.version} (${describeEngine()})\n`);
     return EXIT_OK;
   }
   if (first === undefined || args.some((a) => a === "--help" || a === "-h")) {
@@ -161,12 +161,12 @@ export async function run(args: readonly string[], deps: Deps = processDeps): Pr
     return EXIT_OK;
   } catch (error) {
     if (error instanceof CliError) {
-      stderr(`featureslash: ${error.message}\n`);
+      stderr(`toggleslash: ${error.message}\n`);
       return error.exitCode;
     }
     // A bug or a full disk: still one line, still no token.
     stderr(
-      `featureslash: unexpected error: ${error instanceof Error ? error.message : "unknown"}\n`,
+      `toggleslash: unexpected error: ${error instanceof Error ? error.message : "unknown"}\n`,
     );
     return EXIT_FAILURE;
   }

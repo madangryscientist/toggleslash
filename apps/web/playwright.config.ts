@@ -10,17 +10,17 @@ import {
 } from "./e2e/constants.ts";
 
 const WORKER_ENV = {
-  FEATURESLASH_E2E: "1",
+  TOGGLESLASH_E2E: "1",
   CLOUDFLARE_ENV: "e2e",
   // The web server starts before `globalSetup` scopes TMPDIR, so it gets its own under
   // .wrangler/e2e, which the next run clears: miniflare and wrangler leave nothing in /tmp.
   TMPDIR: ".wrangler/e2e/tmp",
   // Lets the Worker read these from the process environment, as a deployed one reads its secrets.
   // It binds this process's whole environment into the preview Worker, which only the dashboard's
-  // FEATURESLASH_* reads touch; every value is a throwaway (e2e/constants.ts), never a real one.
+  // TOGGLESLASH_* reads touch; every value is a throwaway (e2e/constants.ts), never a real one.
   CLOUDFLARE_INCLUDE_PROCESS_ENV: "true",
-  FEATURESLASH_API_URL: `http://127.0.0.1:${API_PORT}`,
-  FEATURESLASH_ADMIN_TOKEN: E2E_ADMIN_TOKEN,
+  TOGGLESLASH_API_URL: `http://127.0.0.1:${API_PORT}`,
+  TOGGLESLASH_ADMIN_TOKEN: E2E_ADMIN_TOKEN,
 };
 
 // A local production build, with a fake admin API (`e2e/fake-api.ts`) standing in for the C# server,
@@ -63,8 +63,8 @@ export default defineConfig({
       ].join(" && "),
       env: {
         ...WORKER_ENV,
-        FEATURESLASH_OPERATOR_PASSWORD: E2E_OPERATOR_PASSWORD,
-        FEATURESLASH_SESSION_SECRET: E2E_SESSION_SECRET,
+        TOGGLESLASH_OPERATOR_PASSWORD: E2E_OPERATOR_PASSWORD,
+        TOGGLESLASH_SESSION_SECRET: E2E_SESSION_SECRET,
       },
       url: `http://localhost:${PORT}`,
       reuseExistingServer: false,
@@ -76,8 +76,8 @@ export default defineConfig({
       command: `vite preview --port ${UNCONFIGURED_PORT} --strictPort`,
       env: {
         ...WORKER_ENV,
-        FEATURESLASH_OPERATOR_PASSWORD: "",
-        FEATURESLASH_SESSION_SECRET: "",
+        TOGGLESLASH_OPERATOR_PASSWORD: "",
+        TOGGLESLASH_SESSION_SECRET: "",
       },
       url: `http://localhost:${UNCONFIGURED_PORT}`,
       reuseExistingServer: false,

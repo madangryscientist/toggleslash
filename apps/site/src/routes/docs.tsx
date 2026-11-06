@@ -1,10 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { canonicalUrl } from "#/content/canonical";
 
 export const Route = createFileRoute("/docs")({
   head: () => ({
-    meta: [{ title: "Docs: FeatureSlash" }],
-    links: [{ rel: "canonical", href: canonicalUrl("/docs") }],
+    meta: [{ title: "Docs: ToggleSlash" }],
   }),
   component: Docs,
 });

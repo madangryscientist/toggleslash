@@ -240,7 +240,7 @@ describe("readConnection", () => {
   ])("says which variable is missing or wrong, never a value (%s, %s)", (url, token) => {
     const result = readConnection(url, token);
     expect(result.ok).toBe(false);
-    expect(JSON.stringify(result)).toMatch(/FEATURESLASH_/);
+    expect(JSON.stringify(result)).toMatch(/TOGGLESLASH_/);
     expect(JSON.stringify(result)).not.toContain("secret-value");
   });
 });

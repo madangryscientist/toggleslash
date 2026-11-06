@@ -13,7 +13,7 @@ import { signOut } from "#/api/session";
 import type { Environment, Failure, Project } from "#/api/types";
 
 const FAILURE_TITLES: Record<Failure["kind"], string> = {
-  unreachable: "The FeatureSlash server is not reachable",
+  unreachable: "The ToggleSlash server is not reachable",
   unconfigured: "The dashboard is not configured",
   unauthorized: "The server rejected the admin token",
   error: "The server could not answer",
@@ -21,11 +21,11 @@ const FAILURE_TITLES: Record<Failure["kind"], string> = {
 
 const FAILURE_HELP: Record<Failure["kind"], string> = {
   unreachable:
-    "The dashboard could not get an answer from the server. Check that it is running and that FEATURESLASH_API_URL points at it, then try again.",
+    "The dashboard could not get an answer from the server. Check that it is running and that TOGGLESLASH_API_URL points at it, then try again.",
   unconfigured:
     "The dashboard reads the server's address and the admin token from its environment. Set both, then try again.",
   unauthorized:
-    "The server answered, but not to this token. Check FEATURESLASH_ADMIN_TOKEN against the token the server was started with.",
+    "The server answered, but not to this token. Check TOGGLESLASH_ADMIN_TOKEN against the token the server was started with.",
   error: "The server answered with an error. Try again; if it persists, look at the server's log.",
 };
 
@@ -170,8 +170,8 @@ export function Shell({ controls, children, ...nav }: ShellProps) {
     <AppShell
       brand={
         <AppShellBrand
-          logo={<Avatar name="FeatureSlash" size="sm" />}
-          label="FeatureSlash"
+          logo={<Avatar name="ToggleSlash" size="sm" />}
+          label="ToggleSlash"
           href="/"
         />
       }

@@ -1,8 +1,8 @@
-import type { DetailReason, EvaluationEvent, Hooks } from "@hackcove/featureslash-sdk";
+import type { DetailReason, EvaluationEvent, Hooks } from "@hackcove/toggleslash-sdk";
 import { type Attributes, trace } from "@opentelemetry/api";
 
 const EVENT_NAME = "feature_flag.evaluation";
-const PROVIDER_NAME = "FeatureSlash";
+const PROVIDER_NAME = "ToggleSlash";
 
 export interface TracingOptions {
   /** The project key the SDK key belongs to: the `{project}` of the lookup route. */
@@ -87,15 +87,15 @@ export function createTracingHooks(options: TracingOptions): Hooks {
         "feature_flag.key": event.flagKey,
         "feature_flag.provider.name": PROVIDER_NAME,
         "feature_flag.result.reason": REASONS[event.reason.kind],
-        "featureslash.project": project,
-        "featureslash.environment": environment,
+        "toggleslash.project": project,
+        "toggleslash.environment": environment,
       };
       if (event.variationIndex !== null) {
         attributes["feature_flag.result.variant"] = String(event.variationIndex);
       }
       if (event.flagVersion !== null)
         attributes["feature_flag.version"] = String(event.flagVersion);
-      if (event.etag !== null) attributes["featureslash.ruleset.etag"] = hashOf(event.etag);
+      if (event.etag !== null) attributes["toggleslash.ruleset.etag"] = hashOf(event.etag);
       const type = errorType(event.reason);
       if (type !== null) attributes["error.type"] = type;
       if (includeContextId && typeof event.context.key === "string") {

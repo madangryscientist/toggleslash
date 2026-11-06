@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { fakeServer, json } from "./fake-server.ts";
 import { TOKEN, URL_BASE, cli, tempDir } from "./harness.ts";
 
-const file = (home: string): string => join(home, "featureslash", "config.json");
+const file = (home: string): string => join(home, "toggleslash", "config.json");
 
 describe("config set-url", () => {
   it("saves a normalised URL and prints where", async () => {
@@ -36,9 +36,9 @@ describe("config set-token", () => {
     const result = await cli(["config", "set-token"], { configHome: home, stdin: `${TOKEN}\n` });
     expect(result.code).toBe(0);
     expect(statSync(file(home)).mode & 0o777).toBe(0o600);
-    expect(statSync(join(home, "featureslash")).mode & 0o777).toBe(0o700);
+    expect(statSync(join(home, "toggleslash")).mode & 0o777).toBe(0o700);
     expect(JSON.parse(readFileSync(file(home), "utf8"))).toEqual({ token: TOKEN });
-    expect(readdirSync(join(home, "featureslash"))).toEqual(["config.json"]);
+    expect(readdirSync(join(home, "toggleslash"))).toEqual(["config.json"]);
     expect(result.stdout + result.stderr).not.toContain(TOKEN);
   });
 
@@ -53,7 +53,7 @@ describe("config set-token", () => {
 
   it("tightens a file that already exists with looser permissions", async () => {
     const home = tempDir();
-    mkdirSync(join(home, "featureslash"), { recursive: true });
+    mkdirSync(join(home, "toggleslash"), { recursive: true });
     writeFileSync(file(home), "{}", { mode: 0o644 });
     await cli(["config", "set-token"], { configHome: home, stdin: TOKEN });
     expect(statSync(file(home)).mode & 0o777).toBe(0o600);
@@ -88,7 +88,7 @@ describe("config set-token", () => {
       stderr: (t) => void outputs.push(t),
     });
     expect(code).toBe(0);
-    expect(existsSync(join(home, ".config", "featureslash", "config.json"))).toBe(true);
+    expect(existsSync(join(home, ".config", "toggleslash", "config.json"))).toBe(true);
   });
 });
 
@@ -122,12 +122,12 @@ describe("using the saved config", () => {
     await cli(["projects", "list"], {
       configHome: home,
       fetch,
-      env: { FEATURESLASH_URL: URL_BASE },
+      env: { TOGGLESLASH_URL: URL_BASE },
     });
     await cli(["projects", "list"], {
       configHome: home,
       fetch,
-      env: { FEATURESLASH_TOKEN: TOKEN },
+      env: { TOGGLESLASH_TOKEN: TOKEN },
     });
     expect(urls).toEqual([
       "https://from-file.test/api/v1/projects",
@@ -149,17 +149,17 @@ describe("using the saved config", () => {
     const result = await cli(["projects", "list"], {
       configHome: home,
       fetch: fake.fetch,
-      env: { FEATURESLASH_URL: "", FEATURESLASH_TOKEN: "  " },
+      env: { TOGGLESLASH_URL: "", TOGGLESLASH_TOKEN: "  " },
     });
     expect(result.code).toBe(0);
     expect(fake.seen[0]?.headers["authorization"]).toBe(`Bearer ${TOKEN}`);
   });
 
   it("exits 2 naming what is missing", async () => {
-    const urlOnly = await cli(["projects", "list"], { env: { FEATURESLASH_URL: URL_BASE } });
+    const urlOnly = await cli(["projects", "list"], { env: { TOGGLESLASH_URL: URL_BASE } });
     expect(urlOnly.code).toBe(2);
     expect(urlOnly.stderr).toContain("no admin token");
-    const tokenOnly = await cli(["projects", "list"], { env: { FEATURESLASH_TOKEN: TOKEN } });
+    const tokenOnly = await cli(["projects", "list"], { env: { TOGGLESLASH_TOKEN: TOKEN } });
     expect(tokenOnly.code).toBe(2);
     expect(tokenOnly.stderr).toContain("no server URL");
     expect(tokenOnly.stderr).not.toContain(TOKEN);
@@ -167,7 +167,7 @@ describe("using the saved config", () => {
 
   it("exits 2 for a config file that is not JSON, without printing its contents", async () => {
     const home = tempDir();
-    mkdirSync(join(home, "featureslash"), { recursive: true });
+    mkdirSync(join(home, "toggleslash"), { recursive: true });
     writeFileSync(file(home), `token=${TOKEN}`);
     const result = await cli(["projects", "list"], { configHome: home });
     expect(result.code).toBe(2);
@@ -177,13 +177,13 @@ describe("using the saved config", () => {
 
   it("does not read the file when the environment has both settings", async () => {
     const home = tempDir();
-    mkdirSync(join(home, "featureslash"), { recursive: true });
+    mkdirSync(join(home, "toggleslash"), { recursive: true });
     writeFileSync(file(home), "not json");
     const fake = server();
     const result = await cli(["projects", "list"], {
       configHome: home,
       fetch: fake.fetch,
-      env: { FEATURESLASH_URL: URL_BASE, FEATURESLASH_TOKEN: TOKEN },
+      env: { TOGGLESLASH_URL: URL_BASE, TOGGLESLASH_TOKEN: TOKEN },
     });
     expect(result.code).toBe(0);
   });

@@ -147,8 +147,8 @@ export function RulesetNotFound({
           {message} Looked up: <code>{hash}</code> in {env} of {project}.
         </Text>
         <Text>
-          A hash comes from a trace's <code>featureslash.ruleset.etag</code>, with its{" "}
-          <code>featureslash.project</code> and <code>featureslash.environment</code>. The server
+          A hash comes from a trace's <code>toggleslash.ruleset.etag</code>, with its{" "}
+          <code>toggleslash.project</code> and <code>toggleslash.environment</code>. The server
           keeps a ruleset the first time it answers an SDK with a 200, so a hash only ever seen as a
           304 has nothing kept.
         </Text>

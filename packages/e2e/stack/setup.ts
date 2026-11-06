@@ -10,12 +10,12 @@ export interface StackInfo {
   operatorPassword: string;
 }
 
-export const STACK_ENV = "FEATURESLASH_STACK";
-export const SKIP_ENV = "FEATURESLASH_STACK_SKIP";
+export const STACK_ENV = "TOGGLESLASH_STACK";
+export const SKIP_ENV = "TOGGLESLASH_STACK_SKIP";
 
 /** The stack's logs, for `logs-reporter.ts` to print when the run fails. */
 declare global {
-  var featureslashStackLogs: (() => string) | undefined;
+  var toggleslashStackLogs: (() => string) | undefined;
 }
 
 /**
@@ -37,6 +37,6 @@ export default async function setup(): Promise<() => Promise<void>> {
     operatorPassword: stack.operatorPassword,
   };
   process.env[STACK_ENV] = JSON.stringify(info);
-  globalThis.featureslashStackLogs = () => stack.logs();
+  globalThis.toggleslashStackLogs = () => stack.logs();
   return () => stack.stop();
 }

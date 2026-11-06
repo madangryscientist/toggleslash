@@ -90,18 +90,18 @@ describe("failing closed", () => {
   const value = async () => `${SESSION_COOKIE}=${await signSession(SECRET, NOW)}`;
 
   test.each([
-    ["both unset", {}, ["FEATURESLASH_OPERATOR_PASSWORD", "FEATURESLASH_SESSION_SECRET"]],
-    ["no password", { sessionSecret: SECRET }, ["FEATURESLASH_OPERATOR_PASSWORD"]],
-    ["no session secret", { password: PASSWORD }, ["FEATURESLASH_SESSION_SECRET"]],
+    ["both unset", {}, ["TOGGLESLASH_OPERATOR_PASSWORD", "TOGGLESLASH_SESSION_SECRET"]],
+    ["no password", { sessionSecret: SECRET }, ["TOGGLESLASH_OPERATOR_PASSWORD"]],
+    ["no session secret", { password: PASSWORD }, ["TOGGLESLASH_SESSION_SECRET"]],
     [
       "a password of 15 characters",
       { password: "p".repeat(15), sessionSecret: SECRET },
-      ["FEATURESLASH_OPERATOR_PASSWORD"],
+      ["TOGGLESLASH_OPERATOR_PASSWORD"],
     ],
     [
       "a session secret of 31 characters",
       { password: PASSWORD, sessionSecret: "s".repeat(31) },
-      ["FEATURESLASH_SESSION_SECRET"],
+      ["TOGGLESLASH_SESSION_SECRET"],
     ],
   ])("%s names the variables and lets nobody in", async (_name, partial, variables) => {
     const config = { password: undefined, sessionSecret: undefined, ...partial };

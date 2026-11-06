@@ -125,7 +125,7 @@ export function createAdminApi(connection: Connection, doFetch: Fetch) {
 export type AdminApi = ReturnType<typeof createAdminApi>;
 
 /**
- * The connection from the Worker's environment (`FEATURESLASH_API_URL`, `FEATURESLASH_ADMIN_TOKEN`), or
+ * The connection from the Worker's environment (`TOGGLESLASH_API_URL`, `TOGGLESLASH_ADMIN_TOKEN`), or
  * why there is none. The message names the variable, never a value.
  */
 export function readConnection(
@@ -133,19 +133,19 @@ export function readConnection(
   token: unknown,
 ): { ok: true; connection: Connection } | { ok: false; message: string } {
   if (typeof url !== "string" || url.trim() === "") {
-    return { ok: false, message: "FEATURESLASH_API_URL is not set." };
+    return { ok: false, message: "TOGGLESLASH_API_URL is not set." };
   }
   if (typeof token !== "string" || token === "") {
-    return { ok: false, message: "FEATURESLASH_ADMIN_TOKEN is not set." };
+    return { ok: false, message: "TOGGLESLASH_ADMIN_TOKEN is not set." };
   }
   let parsed: URL;
   try {
     parsed = new URL(url.trim());
   } catch {
-    return { ok: false, message: "FEATURESLASH_API_URL is not a URL." };
+    return { ok: false, message: "TOGGLESLASH_API_URL is not a URL." };
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return { ok: false, message: "FEATURESLASH_API_URL must be an http or https URL." };
+    return { ok: false, message: "TOGGLESLASH_API_URL must be an http or https URL." };
   }
   return {
     ok: true,

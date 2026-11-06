@@ -5,7 +5,7 @@
  */
 import { signInPath } from "./return-path.ts";
 
-export const SESSION_COOKIE = "featureslash_session";
+export const SESSION_COOKIE = "toggleslash_session";
 export const SESSION_SECONDS = 12 * 60 * 60;
 
 const MIN_PASSWORD_LENGTH = 16;
@@ -27,12 +27,12 @@ export function configProblems(secrets: AuthSecrets): ConfigProblem[] {
   const problems: ConfigProblem[] = [];
   if ((secrets.password ?? "").length < MIN_PASSWORD_LENGTH) {
     problems.push({
-      variable: "FEATURESLASH_OPERATOR_PASSWORD",
+      variable: "TOGGLESLASH_OPERATOR_PASSWORD",
       minimumLength: MIN_PASSWORD_LENGTH,
     });
   }
   if ((secrets.sessionSecret ?? "").length < MIN_SECRET_LENGTH) {
-    problems.push({ variable: "FEATURESLASH_SESSION_SECRET", minimumLength: MIN_SECRET_LENGTH });
+    problems.push({ variable: "TOGGLESLASH_SESSION_SECRET", minimumLength: MIN_SECRET_LENGTH });
   }
   return problems;
 }

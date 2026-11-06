@@ -12,12 +12,12 @@ from the SDK. This page covers the parts it leaves out.
 ## The dashboard
 
 The dashboard (`apps/web`) has a `dev` script: run `bun run dev` in `apps/web` (it serves on port 3000).
-It reads `FEATURESLASH_API_URL` (the C# server's address) and `FEATURESLASH_ADMIN_TOKEN` (the same admin
+It reads `TOGGLESLASH_API_URL` (the C# server's address) and `TOGGLESLASH_ADMIN_TOKEN` (the same admin
 token the server was started with) For `dev`, put them in `apps/web/.dev.vars`,
 which is git-ignored. Without them it shows a "The dashboard is not configured" page.
 
-Sign-in needs two more in the same file: `FEATURESLASH_OPERATOR_PASSWORD` (at least 16 characters, what you
-type at sign-in) and `FEATURESLASH_SESSION_SECRET` (at least 32). Without them nobody can sign in, and the
+Sign-in needs two more in the same file: `TOGGLESLASH_OPERATOR_PASSWORD` (at least 16 characters, what you
+type at sign-in) and `TOGGLESLASH_SESSION_SECRET` (at least 32). Without them nobody can sign in, and the
 sign-in page names what is missing. There is one operator and no accounts; see
 [`self-hosting.md`](self-hosting.md#dashboard-sign-in).
 

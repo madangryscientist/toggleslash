@@ -1,4 +1,4 @@
-import type { ClientStatus, DetailReason } from "@hackcove/featureslash-sdk";
+import type { ClientStatus, DetailReason } from "@hackcove/toggleslash-sdk";
 import { describe, expect, it } from "vitest";
 import { createApp, type FlagClient } from "../src/app.ts";
 import { FLAGS } from "../src/flags.ts";

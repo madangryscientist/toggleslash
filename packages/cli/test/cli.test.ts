@@ -10,7 +10,7 @@ describe("run", () => {
     const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
       expect(await run(["--version"])).toBe(0);
-      expect(String(write.mock.calls[0]?.[0])).toContain(`featureslash ${pkg.version}`);
+      expect(String(write.mock.calls[0]?.[0])).toContain(`toggleslash ${pkg.version}`);
     } finally {
       write.mockRestore();
     }
@@ -49,8 +49,8 @@ describe("--help and README.md list every command", () => {
   const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
 
   it.each(COMMANDS.map((c) => c.name))("%s", async (name) => {
-    expect((await cli(["--help"])).stdout).toContain(`featureslash ${name}`);
-    expect(readme).toContain(`featureslash ${name}`);
+    expect((await cli(["--help"])).stdout).toContain(`toggleslash ${name}`);
+    expect(readme).toContain(`toggleslash ${name}`);
   });
 
   it("documents the three exit codes", async () => {

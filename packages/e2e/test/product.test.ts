@@ -1,4 +1,4 @@
-import { createClient, type Client, type Fetch } from "@hackcove/featureslash-sdk";
+import { createClient, type Client, type Fetch } from "@hackcove/toggleslash-sdk";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -68,11 +68,11 @@ describe.skipIf(skip)("server, CLI and SDK end to end", () => {
 
   beforeAll(async () => {
     // TMPDIR is a scoped directory for the run (scripts/test-tmp-scope.ts); it is removed after it.
-    scratch = mkdtempSync(join(tmpdir(), "featureslash-e2e-"));
+    scratch = mkdtempSync(join(tmpdir(), "toggleslash-e2e-"));
     mkdirSync(join(scratch, "home"));
     const assembly = await buildServer();
     server = await startServer(assembly, {
-      dbPath: join(scratch, "featureslash.db"),
+      dbPath: join(scratch, "toggleslash.db"),
       adminToken: ADMIN_TOKEN,
     });
     cli = createCli({ url: server.url, token: ADMIN_TOKEN, home: join(scratch, "home") });

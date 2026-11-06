@@ -38,7 +38,7 @@ const tokensCreate: Command = {
       ]),
     );
     ctx.err(
-      "featureslash: store the token now; the server keeps only a hash and will not show it again.\n",
+      "toggleslash: store the token now; the server keeps only a hash and will not show it again.\n",
     );
   },
 };

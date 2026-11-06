@@ -121,7 +121,7 @@ export function checkSurfaces(data: ParityData, surfaces: Surfaces, root: string
   const errors: string[] = [];
   const used: UsedSurfaces = { api: new Set(), cli: new Set(), dashboard: new Set() };
   for (const feature of data.features) {
-    for (const entry of feature.featureslash.evidence) {
+    for (const entry of feature.toggleslash.evidence) {
       const error = checkOne(entry, surfaces, used, root);
       if (error !== undefined) errors.push(`${feature.id}: ${error}`);
     }

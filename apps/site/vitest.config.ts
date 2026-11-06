@@ -7,6 +7,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.{ts,tsx}"],
+    // The site has no unit tests: its checks are the Playwright smoke test.
+    passWithNoTests: true,
     globalSetup: ["../../scripts/test-tmp-scope.ts"],
   },
 });

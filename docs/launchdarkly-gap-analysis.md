@@ -1,4 +1,4 @@
-# FeatureSlash vs LaunchDarkly: what is left
+# ToggleSlash vs LaunchDarkly: what is left
 
 A comparison of what this repository ships today against what LaunchDarkly offers, as documented in
 November 2026. The point is not to copy LaunchDarkly. It is to separate the gaps that block real use
@@ -10,7 +10,7 @@ from the gaps that are simply a different product.
 **Method.** I read this repository's `README.md`, `AGENTS.md`, `docs/architecture.md`,
 `docs/evaluation.md`, `docs/api.md`, `docs/sdk.md` and the committed OpenAPI document, then mapped
 each LaunchDarkly product area from its public documentation and pricing page. LaunchDarkly numbers
-below are the vendor's published claims, not measurements. FeatureSlash numbers come from the tree.
+below are the vendor's published claims, not measurements. ToggleSlash numbers come from the tree.
 
 **Short version.** We have built the **evaluation kernel and the admin CRUD** well. LaunchDarkly's
 product is the **platform around that kernel**: 25+ SDKs, release automation, experimentation,
@@ -22,7 +22,7 @@ product surface a buyer compares, we are much closer to the beginning.
 
 ## 1. The two products
 
-| | LaunchDarkly (2026) | FeatureSlash (today) |
+| | LaunchDarkly (2026) | ToggleSlash (today) |
 | --- | --- | --- |
 | What it is | A hosted runtime-control platform: flags, release automation (Release Autopilot), experimentation, observability, AgentControl for LLM apps, and enterprise governance | A self-hosted, MIT-licensed feature-flag service: one C# server, a TypeScript engine, a TypeScript server SDK, a CLI, a dashboard and a site |
 | Delivery | SaaS, global edge, 70T+ evaluations/day, <200 ms config propagation, 99.99% claimed | One process with SQLite behind it; Docker/compose for self-hosting; no published image |
@@ -31,7 +31,7 @@ product surface a buyer compares, we are much closer to the beginning.
 | Commercial model | Free Developer tier, pay-as-you-go Foundation, custom Enterprise; no per-seat pricing | MIT, self-hosted, no vendor, no usage meter |
 | Governance | SSO/SAML, SCIM, custom RBAC, teams, views, approvals, unlimited audit history, critical environments, SOC 2 / ISO 27001 / ISO 27701 / FedRAMP Moderate | One bootstrap admin token, hashed SDK keys, an audit log, no user accounts |
 
-The honest framing: **LaunchDarkly is a control plane; FeatureSlash is a flag server.** Most of what
+The honest framing: **LaunchDarkly is a control plane; ToggleSlash is a flag server.** Most of what
 follows is the control plane.
 
 ---
@@ -40,7 +40,7 @@ follows is the control plane.
 
 Maturity: 0 none, 1 minimal, 2 usable for a small team, 3 strong, 4 LaunchDarkly-class.
 
-| Area | FeatureSlash | LaunchDarkly | The gap in one sentence |
+| Area | ToggleSlash | LaunchDarkly | The gap in one sentence |
 | --- | ---: | ---: | --- |
 | Evaluation semantics | 2.5 | 4 | Rigorous and cross-language-tested, but one context kind, eight operators and no experiments |
 | Targeting and segments | 2 | 4 | Rules, prerequisites and segments exist; list/big/synced segments, attribute rollouts, bulk targeting and 5,000-rule limits do not |
@@ -66,7 +66,7 @@ This is our strongest area, so it is worth being precise about what "parity" wou
 
 ### 3.1 Contexts
 
-| Capability | LaunchDarkly | FeatureSlash |
+| Capability | LaunchDarkly | ToggleSlash |
 | --- | --- | --- |
 | Context object | `{ kind, key, ...attributes }`; many kinds (user, org, device, custom) | `{ key, attributes }`; **one kind** |
 | Multi-context | `kind: "multi"` combining several kinds in one evaluation | No |
@@ -88,7 +88,7 @@ private/anonymous semantics (or a documented equivalent), and a decision on cont
 
 ### 3.2 Targeting operators
 
-| Operator family | LaunchDarkly | FeatureSlash |
+| Operator family | LaunchDarkly | ToggleSlash |
 | --- | --- | --- |
 | Exact match | `in` over string/number/boolean/date | `in` over string/number/boolean |
 | String | contains, startsWith, endsWith | contains, startsWith, endsWith |
@@ -111,7 +111,7 @@ document the divergence. Do not adopt each language's native regex and call it p
 
 ### 3.3 Segments
 
-| Capability | LaunchDarkly | FeatureSlash |
+| Capability | LaunchDarkly | ToggleSlash |
 | --- | --- | --- |
 | Rule-based segments | Yes | Yes (attribute clauses, included/excluded, weighted rules) |
 | List-based (≤15k) | Yes | Included/excluded lists, no bulk import |
@@ -128,7 +128,7 @@ segments that does not bloat every ruleset.
 
 ### 3.4 Rollouts and bucketing
 
-| Capability | LaunchDarkly | FeatureSlash |
+| Capability | LaunchDarkly | ToggleSlash |
 | --- | --- | --- |
 | Percentage rollout | Yes, optionally by context kind and attribute | Yes, by context key only |
 | Consistent bucketing | Yes (flag/segment salt, context key or attribute) | Yes, spec'd SHA-256/100000 bucket |
@@ -143,7 +143,7 @@ percentage, when, and what stops it. That is a workflow problem more than an eva
 
 ### 3.5 Flag types and variations
 
-| Capability | LaunchDarkly | FeatureSlash |
+| Capability | LaunchDarkly | ToggleSlash |
 | --- | --- | --- |
 | Boolean / string / number / JSON | Yes, four types | Yes in the data model (2–100 variations, one JSON type, no `null`), but the dashboard creates booleans only |
 | Multivariate | Yes | Yes |
@@ -178,7 +178,7 @@ self-hosted product with multiple SDKs later.
 
 ## 4. Flag management and lifecycle
 
-| Capability | LaunchDarkly | FeatureSlash |
+| Capability | LaunchDarkly | ToggleSlash |
 | --- | --- | --- |
 | Projects / environments | Multiple, unlimited on paid plans, two environments by default | Multiple, no environment edit/delete |
 | Per-environment config | Yes | Yes, versioned compare-and-set |
@@ -227,7 +227,7 @@ LaunchDarkly's 2026 release surface:
   **user feedback** tied to a variation, and **applications/app versions** for organising what a
   release delivers.
 
-FeatureSlash has **none of this**. The closest pieces are a toggle endpoint and a version check.
+ToggleSlash has **none of this**. The closest pieces are a toggle endpoint and a version check.
 
 This is the largest product gap and the one most visible in a demo. It is also mostly workflow and
 scheduling on top of data we already have, not new evaluation semantics.
@@ -243,7 +243,7 @@ PHP, Python, Ruby and Rust; client-side for JavaScript, React Web, Vue, Electron
 Android, C++, Flutter, iOS, React Native and Roku; edge for Akamai, Cloudflare, Fastly and Vercel;
 AI SDKs for .NET, Go, Node.js, Python and Ruby; and OpenFeature providers.
 
-FeatureSlash has **one**: `packages/sdk`, TypeScript server-side. The C# evaluator is not a public
+ToggleSlash has **one**: `packages/sdk`, TypeScript server-side. The C# evaluator is not a public
 SDK. There is no browser SDK, no mobile SDK, no edge SDK and no OpenFeature provider.
 
 This is the distribution gap. A feature-flag service is bought by the language you already use. One
@@ -251,7 +251,7 @@ SDK means one kind of buyer.
 
 ### 6.2 Delivery and runtime behaviour
 
-| Capability | LaunchDarkly | FeatureSlash |
+| Capability | LaunchDarkly | ToggleSlash |
 | --- | --- | --- |
 | Initial payload | Full ruleset (server-side) / evaluated values (client-side) | Full ruleset per environment |
 | Updates | Streaming with deltas, polling fallback | SSE ETag signal + refetch; polling fallback |
@@ -302,7 +302,7 @@ randomization units, traffic reshuffling, warehouse-native experiments (Snowflak
 Databricks, BigQuery, ClickHouse) and custom SQL metrics. Metrics can be clicks, page views, numeric,
 conversion, custom events or groups, with measurement windows and winsorization.
 
-FeatureSlash records **daily counts per flag, variation and environment**. It accepts no custom
+ToggleSlash records **daily counts per flag, variation and environment**. It accepts no custom
 events, stores no context, computes no metric and runs no experiment. There is no event pipeline at
 all beyond `POST /sdk/v1/events`, which is a count sink.
 
@@ -322,7 +322,7 @@ alternative", it is a second product.
 
 ## 8. Governance, security and compliance
 
-| Capability | LaunchDarkly | FeatureSlash |
+| Capability | LaunchDarkly | ToggleSlash |
 | --- | --- | --- |
 | User accounts | Yes | No |
 | Login | Email/password, 2FA, SSO/SAML on Enterprise | One operator password, 12-hour signed session; no 2FA, no SSO |
@@ -353,7 +353,7 @@ LaunchDarkly: 80+ integrations, a REST API, a Terraform provider, a CLI, a hoste
 a GitHub app and Copilot/IDE extensions, Slack/Teams/Trello, CI/CD, observability and warehouse
 integrations, data export, and edge/CDN integrations.
 
-FeatureSlash: a committed OpenAPI document, 17 admin routes and 4 SDK routes, a CLI covering
+ToggleSlash: a committed OpenAPI document, 17 admin routes and 4 SDK routes, a CLI covering
 projects/environments/flags/keys, and a dashboard. No Terraform provider, no MCP server, no GitHub
 app, no chat integration, no data export, no webhooks.
 
@@ -374,7 +374,7 @@ These are whole product lines, not checkbox features:
 - **Vega**: an AI agent that investigates issues, manages flags, cleans up stale references and opens
   pull requests, including from Slack.
 
-FeatureSlash has none of these, and should not pretend otherwise. Building any of them is a different company.
+ToggleSlash has none of these, and should not pretend otherwise. Building any of them is a different company.
 The only reason to touch this space is a narrow integration: allow a flag variation to carry an LLM
 prompt/model config as JSON. That is already possible with a JSON flag; it is not AgentControl.
 
@@ -382,7 +382,7 @@ prompt/model config as JSON. That is already possible with a JSON flag; it is no
 
 ## 11. Operations and scale
 
-| Capability | LaunchDarkly | FeatureSlash |
+| Capability | LaunchDarkly | ToggleSlash |
 | --- | --- | --- |
 | Storage | Managed, globally distributed | SQLite via EF Core |
 | Horizontal scale | Yes | No: one process owns one file |
@@ -483,7 +483,7 @@ experienced engineer. They are planning aids, not commitments.
 - 80+ integrations and marketplace billing.
 - A global multi-region control plane.
 
-Each is a company-sized product. The strategic question is whether FeatureSlash is "self-hosted
+Each is a company-sized product. The strategic question is whether ToggleSlash is "self-hosted
 feature flags, done well" or "a LaunchDarkly clone". The first is achievable; the second is not, and
 chasing it would dilute the parts that are already good.
 
@@ -507,7 +507,7 @@ chasing it would dilute the parts that are already good.
 
 ## 14. What "done" means by audience
 
-| Audience | What they need before FeatureSlash is a real option |
+| Audience | What they need before ToggleSlash is a real option |
 | --- | --- |
 | A solo developer / small side project | Docker run, one server key, a server SDK, a dashboard they can reach safely (auth), and a browser SDK if the flags are client-side |
 | A small team (5–20 engineers) | Users/roles, approvals or required comments, flag lifecycle, browser + 2–3 server SDKs, Postgres/HA story, audit export |
@@ -522,7 +522,7 @@ Legend: **Yes** = shipped; **Partial** = some of it; **No** = absent.
 
 ### Evaluation
 
-| Capability | LaunchDarkly | FeatureSlash |
+| Capability | LaunchDarkly | ToggleSlash |
 | --- | --- | --- |
 | Boolean / string / number / JSON flags | Yes | Yes (API); boolean-only create UI |
 | Multivariate variations | Yes | Yes |
@@ -549,7 +549,7 @@ Legend: **Yes** = shipped; **Partial** = some of it; **No** = absent.
 
 ### Management
 
-| Capability | LaunchDarkly | FeatureSlash |
+| Capability | LaunchDarkly | ToggleSlash |
 | --- | --- | --- |
 | Projects / environments | Yes | Yes |
 | Environment edit/delete | Yes | No |
@@ -576,7 +576,7 @@ Legend: **Yes** = shipped; **Partial** = some of it; **No** = absent.
 
 ### Platform
 
-| Capability | LaunchDarkly | FeatureSlash |
+| Capability | LaunchDarkly | ToggleSlash |
 | --- | --- | --- |
 | Server SDKs | 13 languages | 1 (TypeScript) |
 | Client-side SDKs | 12 | No |
@@ -637,6 +637,6 @@ LaunchDarkly public documentation and pricing, read 2026-11-05:
 - Terraform provider: https://launchdarkly.com/docs/integrations/terraform
 - Pricing and plan gating: https://launchdarkly.com/pricing/
 
-FeatureSlash sources: `README.md`, `AGENTS.md`, `docs/architecture.md`, `docs/evaluation.md`,
+ToggleSlash sources: `README.md`, `AGENTS.md`, `docs/architecture.md`, `docs/evaluation.md`,
 `docs/api.md`, `docs/sdk.md`, `apps/server/openapi/v1.json` (22 paths: 17 admin, 4 SDK, plus
 `/health`).

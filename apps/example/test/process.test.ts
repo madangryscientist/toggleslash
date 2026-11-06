@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 /**
- * The real entry point (`src/server.ts`) as a subprocess, against a fake FeatureSlash server on
+ * The real entry point (`src/server.ts`) as a subprocess, against a fake ToggleSlash server on
  * loopback: the wiring is where a server key could leak, and where SIGTERM has to close the client.
  */
 const SERVER_KEY = "fs_server_a-key-that-must-stay-on-the-server";
@@ -31,7 +31,7 @@ interface Seen {
   body: unknown;
 }
 
-function fakeFeatureSlash() {
+function fakeToggleSlash() {
   const seen: Seen[] = [];
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -77,13 +77,13 @@ async function startExample(env: Record<string, string>) {
 
 describe("src/server.ts", () => {
   it("never puts the server key in the page or /state, and closes the client on SIGTERM", async () => {
-    const fake = fakeFeatureSlash();
+    const fake = fakeToggleSlash();
     cleanups.push(fake.stop);
     const { child, url } = await startExample({
-      FEATURESLASH_URL: fake.url,
-      FEATURESLASH_SDK_KEY: SERVER_KEY,
-      FEATURESLASH_CLIENT_KEY: CLIENT_KEY,
-      FEATURESLASH_FLUSH_INTERVAL_MS: "600000",
+      TOGGLESLASH_URL: fake.url,
+      TOGGLESLASH_SDK_KEY: SERVER_KEY,
+      TOGGLESLASH_CLIENT_KEY: CLIENT_KEY,
+      TOGGLESLASH_FLUSH_INTERVAL_MS: "600000",
     });
 
     // The SDK loads the ruleset (the server key is in use) before the state shows the flag.

@@ -1,7 +1,7 @@
 # Flag evaluation
 
 This page is normative. It defines what a flag evaluates to, for every implementation:
-`packages/engine` (TypeScript) and `apps/server/FeatureSlash.Evaluation` (C#). The shared vectors in
+`packages/engine` (TypeScript) and `apps/server/ToggleSlash.Evaluation` (C#). The shared vectors in
 [`fixtures/evaluation/`](../fixtures/evaluation) are the executable form of it. If an implementation
 and this page disagree, the implementation is wrong; if this page and a vector disagree, that is a
 bug in the spec, and both change together.

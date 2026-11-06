@@ -1,8 +1,8 @@
 /** Renders docs/feature-parity.md from the parsed data. Deterministic: no dates, no git state. */
 
-import type { Feature, FeatureSlashStatus, ParityData, Status } from "./parity-schema.ts";
+import type { Feature, ToggleSlashStatus, ParityData, Status } from "./parity-schema.ts";
 
-const SYMBOL: Record<FeatureSlashStatus, string> = {
+const SYMBOL: Record<ToggleSlashStatus, string> = {
   yes: "✅",
   partial: "🟡",
   planned: "🚧",
@@ -11,7 +11,7 @@ const SYMBOL: Record<FeatureSlashStatus, string> = {
 
 const LEGEND = "✅ yes · 🟡 partial · 🚧 planned · — no";
 
-function symbol(status: FeatureSlashStatus): string {
+function symbol(status: ToggleSlashStatus): string {
   return SYMBOL[status];
 }
 
@@ -30,7 +30,7 @@ function categories(features: Feature[]): Map<string, Feature[]> {
 }
 
 function count(data: ParityData, status: Status): number {
-  return data.features.filter((feature) => feature.featureslash.status === status).length;
+  return data.features.filter((feature) => feature.toggleslash.status === status).length;
 }
 
 function competitorCount(data: ParityData, competitorId: string, status: Status): number {
@@ -45,7 +45,7 @@ function statusLabel(status: Status): string {
 
 function summaryTable(data: ParityData): string[] {
   const header = [
-    "| Metric | FS |",
+    "| Metric | ToggleSlash |",
     ...data.competitors.map((competitor) => ` ${competitor.short} |`),
   ].join("");
   const divider = ["| --- | ---: |", ...data.competitors.map(() => " ---: |")].join("");
@@ -61,23 +61,23 @@ function summaryTable(data: ParityData): string[] {
 
 function matrixTable(data: ParityData, features: Feature[]): string[] {
   const columns = data.competitors.map((competitor) => competitor.short);
-  const header = `| Capability | FS | ${columns.join(" | ")} |`;
+  const header = `| Capability | ToggleSlash | ${columns.join(" | ")} |`;
   const divider = `| --- | :---: | ${columns.map(() => ":---:").join(" | ")} |`;
   const rows = features.map((feature) => {
     const cells = data.competitors.map((competitor) =>
       symbol(feature.competitors[competitor.id] ?? "no"),
     );
-    return `| ${cell(feature.name)} | ${symbol(feature.featureslash.status)} | ${cells.join(" | ")} |`;
+    return `| ${cell(feature.name)} | ${symbol(feature.toggleslash.status)} | ${cells.join(" | ")} |`;
   });
   return [header, divider, ...rows];
 }
 
 function evidenceCell(feature: Feature): string {
-  if (feature.featureslash.evidence.length === 0) return feature.featureslash.note ?? "—";
-  const evidence = feature.featureslash.evidence.map((entry) => `\`${entry}\``).join("<br>");
-  return feature.featureslash.note === undefined
+  if (feature.toggleslash.evidence.length === 0) return feature.toggleslash.note ?? "—";
+  const evidence = feature.toggleslash.evidence.map((entry) => `\`${entry}\``).join("<br>");
+  return feature.toggleslash.note === undefined
     ? evidence
-    : `${evidence}<br>${cell(feature.featureslash.note)}`;
+    : `${evidence}<br>${cell(feature.toggleslash.note)}`;
 }
 
 function detailTable(features: Feature[]): string[] {
@@ -85,7 +85,7 @@ function detailTable(features: Feature[]): string[] {
   const divider = "| --- | :---: | --- |";
   const rows = features.map(
     (feature) =>
-      `| ${cell(feature.name)} | ${symbol(feature.featureslash.status)} | ${evidenceCell(feature)} |`,
+      `| ${cell(feature.name)} | ${symbol(feature.toggleslash.status)} | ${evidenceCell(feature)} |`,
   );
   return [header, divider, ...rows];
 }
@@ -117,7 +117,7 @@ export function renderParity(data: ParityData): string {
   for (const [category, features] of categories(data.features)) {
     lines.push(`### ${category}`, "", ...matrixTable(data, features), "");
   }
-  lines.push("## Where FeatureSlash stands", "");
+  lines.push("## Where ToggleSlash stands", "");
   for (const [category, features] of categories(data.features)) {
     lines.push(`### ${category}`, "", ...detailTable(features), "");
   }

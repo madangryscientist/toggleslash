@@ -1,14 +1,14 @@
 # Server-side SDK (TypeScript)
 
-`packages/sdk` (`@hackcove/featureslash-sdk`, Nx project `sdk`) is the server-side SDK for TypeScript: it keeps
-a copy of one environment's ruleset current and evaluates flags **locally** with `@hackcove/featureslash-engine`,
+`packages/sdk` (`@hackcove/toggleslash-sdk`, Nx project `sdk`) is the server-side SDK for TypeScript: it keeps
+a copy of one environment's ruleset current and evaluates flags **locally** with `@hackcove/toggleslash-engine`,
 to [`evaluation.md`](evaluation.md). It needs a **server** key (`ruleset` and `stream` refuse a client key). The
 package is private and unpublished; publishing waits for the maintainer.
 
 ```ts
-import { createClient } from "@hackcove/featureslash-sdk";
+import { createClient } from "@hackcove/toggleslash-sdk";
 
-const client = createClient({ url: "https://flags.example.com", sdkKey: process.env.FEATURESLASH_SDK_KEY ?? "" });
+const client = createClient({ url: "https://flags.example.com", sdkKey: process.env.TOGGLESLASH_SDK_KEY ?? "" });
 await client.ready(); // optional: true once a ruleset has loaded, false if the server could not be reached
 
 client.variation("new-checkout", { key: user.id, attributes: { plan: "pro" } }, false);

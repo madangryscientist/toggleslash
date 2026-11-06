@@ -14,7 +14,7 @@ const API = `http://127.0.0.1:${API_PORT}`;
 const UNCONFIGURED = `http://localhost:${UNCONFIGURED_PORT}`;
 const ORIGIN = `http://localhost:${PORT}`;
 const CLIENT_BUILD = join(import.meta.dirname, "../dist/client");
-const COOKIE = "featureslash_session";
+const COOKIE = "toggleslash_session";
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -153,8 +153,8 @@ test.describe("with neither secret set", () => {
     await page.goto(`${UNCONFIGURED}/`);
     await expect(page).toHaveURL(/\/sign-in/);
     const message = page.getByTestId("sign-in-unconfigured");
-    await expect(message).toContainText("FEATURESLASH_OPERATOR_PASSWORD");
-    await expect(message).toContainText("FEATURESLASH_SESSION_SECRET");
+    await expect(message).toContainText("TOGGLESLASH_OPERATOR_PASSWORD");
+    await expect(message).toContainText("TOGGLESLASH_SESSION_SECRET");
     await expect(page.getByLabel("Password")).toHaveCount(0);
 
     const answer = await request.post(`${UNCONFIGURED}/sign-in`, {
@@ -177,7 +177,7 @@ test("no secret is in anything the browser is served", () => {
     for (const value of [E2E_ADMIN_TOKEN, E2E_OPERATOR_PASSWORD, E2E_SESSION_SECRET]) {
       expect({ file, leaked: text.includes(value) }).toEqual({ file, leaked: false });
     }
-    expect(text).not.toContain("FEATURESLASH_SESSION_SECRET");
-    expect(text).not.toContain("FEATURESLASH_OPERATOR_PASSWORD");
+    expect(text).not.toContain("TOGGLESLASH_SESSION_SECRET");
+    expect(text).not.toContain("TOGGLESLASH_OPERATOR_PASSWORD");
   }
 });

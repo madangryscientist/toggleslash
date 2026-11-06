@@ -1,4 +1,4 @@
-# Contributing to FeatureSlash
+# Contributing to ToggleSlash
 
 Thanks for helping. This page is the short version of [`AGENTS.md`](AGENTS.md), the full operating
 agreement for people and coding agents working here. Read it before a large change.
