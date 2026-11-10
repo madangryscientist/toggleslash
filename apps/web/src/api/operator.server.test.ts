@@ -32,6 +32,48 @@ describe("SDK keys", () => {
   });
 });
 
+describe("environments", () => {
+  const path = "/api/v1/projects/shop/environments/staging";
+
+  test("renaming sends PATCH with only the name and maps the answer", async () => {
+    let seen: { method?: string; path: string; body: unknown } | undefined;
+    const doFetch: Fetch = (input, init) => {
+      seen = {
+        ...(init.method === undefined ? {} : { method: init.method }),
+        path: new URL(input).pathname,
+        body: typeof init.body === "string" ? JSON.parse(init.body) : undefined,
+      };
+      return Promise.resolve(
+        json({ key: "staging", name: "Pre-production", createdAt: "2026-11-05T08:00:00Z" }),
+      );
+    };
+    const renamed = await createAdminApi(connection, doFetch).renameEnvironment(
+      "shop",
+      "staging",
+      "Pre-production",
+    );
+    expect(seen).toEqual({ method: "PATCH", path, body: { name: "Pre-production" } });
+    expect(renamed).toEqual({
+      key: "staging",
+      name: "Pre-production",
+      createdAt: "2026-11-05T08:00:00Z",
+    });
+  });
+
+  test("an answer that is not an environment is a failure", async () => {
+    const { api } = fakeFetch({ [`PATCH ${path}`]: () => json([]) });
+    await expect(api.renameEnvironment("shop", "staging", "X")).rejects.toBeInstanceOf(ApiFailure);
+  });
+
+  test("deleting sends DELETE to the environment's path", async () => {
+    const { api, seen } = fakeFetch({
+      [`DELETE ${path}`]: () => new Response(null, { status: 204 }),
+    });
+    await api.deleteEnvironment("shop", "staging");
+    expect(seen).toEqual([path]);
+  });
+});
+
 describe("segments", () => {
   const path = "/api/v1/projects/shop/environments/production/segments";
 

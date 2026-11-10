@@ -148,7 +148,8 @@
           "cli:envs create",
           "cli:envs rename",
           "cli:envs delete",
-          "dashboard:/environments"
+          "dashboard:/environments",
+          "test:apps/web/e2e/environments.spec.ts"
         ]
       },
       "competitors": {

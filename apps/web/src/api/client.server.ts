@@ -14,7 +14,8 @@ import {
   type Call,
 } from "./http.server.ts";
 import { createDetailApi } from "./detail.server.ts";
-import { createOperatorApi, toEnvironment } from "./operator.server.ts";
+import { createEnvironmentApi, toEnvironment } from "./environments.server.ts";
+import { createOperatorApi } from "./operator.server.ts";
 import type { Environment, FlagRow, NewFlag, Project } from "./types.ts";
 
 export { ApiFailure, apiPath };
@@ -75,6 +76,7 @@ export function createAdminApi(connection: Connection, doFetch: Fetch) {
 
   return {
     ...createDetailApi(call),
+    ...createEnvironmentApi(call),
     ...createOperatorApi(call),
     async projects(): Promise<Project[]> {
       return (await list(call, apiPath("projects"))).map((p) => ({
