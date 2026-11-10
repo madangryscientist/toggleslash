@@ -4,7 +4,7 @@
 
 **Last verified:** 2026-11-05. Competitor cells are coarse and were read from public product and documentation pages on 2026-11-05. yes = documented first-class capability; partial = limited, plan-gated, adjacent, or not a core strength; no = not documented. Verify before using this in sales material. ToggleSlash cells are backed by evidence in this repository and are checked by scripts/parity.ts.
 
-**Legend:** ✅ yes · 🟡 partial · 🚧 planned · — no.
+**Legend:** ✅ yes · 🟡 partial · 🚧 planned · ❌ no.
 
 ## At a glance
 
@@ -15,7 +15,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | ✅ yes | 22 | 63 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
 | 🟡 partial | 10 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
-| — no | 34 | 3 | 9 | 7 | 6 | 7 | 7 | 9 | 17 |
+| ❌ no | 34 | 3 | 9 | 7 | 6 | 7 | 7 | 9 | 17 |
 
 ## Matrix
 
@@ -28,15 +28,15 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Per-environment configuration | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Projects and environments | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Archive and restore | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 |
-| Permanent delete | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Permanent delete | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Flag lifecycle and stale detection | 🟡 | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ | 🟡 | 🟡 |
-| Code references | — | ✅ | — | ✅ | — | ✅ | 🟡 | — | ✅ |
+| Code references | ❌ | ✅ | ❌ | ✅ | ❌ | ✅ | 🟡 | ❌ | ✅ |
 | Change history and restore | 🟡 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | 🟡 |
-| Clone, compare and copy | — | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 |
-| Bulk targeting | — | ✅ | 🟡 | ✅ | 🟡 | ✅ | 🟡 | 🟡 | 🟡 |
+| Clone, compare and copy | ❌ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 |
+| Bulk targeting | ❌ | ✅ | 🟡 | ✅ | 🟡 | ✅ | 🟡 | 🟡 | 🟡 |
 | Tags | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Scheduled changes | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 |
-| Flag templates | — | ✅ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | — | — |
+| Scheduled changes | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 |
+| Flag templates | ❌ | ✅ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | ❌ | ❌ |
 
 ### Targeting
 
@@ -45,56 +45,56 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Individual targeting | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Rule-based targeting | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Reusable segments | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Segment versioning | ✅ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | — | — |
-| Large or synced segments | — | ✅ | 🟡 | 🟡 | 🟡 | ✅ | 🟡 | 🟡 | — |
-| Prerequisites and dependencies | ✅ | ✅ | ✅ | ✅ | — | ✅ | 🟡 | — | — |
-| Multi-context and context kinds | — | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 |
-| Nested attribute paths | — | ✅ | — | — | 🟡 | — | — | 🟡 | — |
-| Regex operator | — | ✅ | ✅ | 🟡 | ✅ | 🟡 | 🟡 | ✅ | 🟡 |
-| Semantic-version operator | ✅ | ✅ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | — | — |
-| Date and time operator | — | ✅ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 |
+| Segment versioning | ✅ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ❌ | ❌ |
+| Large or synced segments | ❌ | ✅ | 🟡 | 🟡 | 🟡 | ✅ | 🟡 | 🟡 | ❌ |
+| Prerequisites and dependencies | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | 🟡 | ❌ | ❌ |
+| Multi-context and context kinds | ❌ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 |
+| Nested attribute paths | ❌ | ✅ | ❌ | ❌ | 🟡 | ❌ | ❌ | 🟡 | ❌ |
+| Regex operator | ❌ | ✅ | ✅ | 🟡 | ✅ | 🟡 | 🟡 | ✅ | 🟡 |
+| Semantic-version operator | ✅ | ✅ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | ❌ | ❌ |
+| Date and time operator | ❌ | ✅ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 |
 | Percentage rollouts | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Attribute-based rollouts | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 |
-| Progressive rollouts | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | 🟡 |
-| Guarded rollouts | — | ✅ | 🟡 | 🟡 | ✅ | ✅ | ✅ | 🟡 | — |
+| Attribute-based rollouts | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 |
+| Progressive rollouts | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | 🟡 |
+| Guarded rollouts | ❌ | ✅ | 🟡 | 🟡 | ✅ | ✅ | ✅ | 🟡 | ❌ |
 
 ### Release
 
 | Capability | ToggleSlash | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| Approvals and change requests | — | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ | 🟡 | 🟡 |
-| Required comments and confirmation | — | ✅ | 🟡 | 🟡 | 🟡 | ✅ | 🟡 | 🟡 | 🟡 |
+| Approvals and change requests | ❌ | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ | 🟡 | 🟡 |
+| Required comments and confirmation | ❌ | ✅ | 🟡 | 🟡 | 🟡 | ✅ | 🟡 | 🟡 | 🟡 |
 | Audit log | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Dashboard sign-in and sessions | 🟡 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Role-based access control | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| SSO and SCIM | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ |
+| Role-based access control | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| SSO and SCIM | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ |
 | Scoped API tokens | 🟡 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | SDK keys | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Private attributes | — | ✅ | — | — | — | — | — | — | — |
-| Secure mode and signed contexts | — | ✅ | — | — | — | — | — | — | — |
+| Private attributes | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Secure mode and signed contexts | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 ### Experimentation
 
 | Capability | ToggleSlash | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| Experiments | — | ✅ | 🟡 | 🟡 | ✅ | ✅ | ✅ | ✅ | 🟡 |
-| Holdouts and multi-armed bandits | — | ✅ | — | — | ✅ | 🟡 | 🟡 | 🟡 | — |
+| Experiments | ❌ | ✅ | 🟡 | 🟡 | ✅ | ✅ | ✅ | ✅ | 🟡 |
+| Holdouts and multi-armed bandits | ❌ | ✅ | ❌ | ❌ | ✅ | 🟡 | 🟡 | 🟡 | ❌ |
 | Metrics and analytics | 🟡 | ✅ | 🟡 | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 |
-| Warehouse-native experiments | — | ✅ | — | — | ✅ | 🟡 | 🟡 | ✅ | — |
+| Warehouse-native experiments | ❌ | ✅ | ❌ | ❌ | ✅ | 🟡 | 🟡 | ✅ | ❌ |
 
 ### SDKs and delivery
 
 | Capability | ToggleSlash | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | Server SDKs | 🟡 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Browser SDKs | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Mobile SDKs | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Edge SDKs | — | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ | 🟡 | ✅ |
-| OpenFeature providers | — | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | 🟡 | 🟡 |
+| Browser SDKs | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Mobile SDKs | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Edge SDKs | ❌ | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ | 🟡 | ✅ |
+| OpenFeature providers | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | 🟡 | 🟡 |
 | Streaming updates | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ | ✅ | 🟡 |
 | Polling fallback | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Bootstrap and offline mode | 🟡 | ✅ | 🟡 | 🟡 | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Relay or persistent store | — | ✅ | ✅ | ✅ | 🟡 | ✅ | 🟡 | 🟡 | ✅ |
+| Relay or persistent store | ❌ | ✅ | ✅ | ✅ | 🟡 | ✅ | 🟡 | 🟡 | ✅ |
 | Server-side evaluation API | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Usage counts | ✅ | ✅ | 🟡 | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 |
 
@@ -102,23 +102,23 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 
 | Capability | ToggleSlash | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| Self-hosted | ✅ | — | ✅ | ✅ | ✅ | — | — | ✅ | ✅ |
-| Open source | ✅ | — | ✅ | ✅ | ✅ | — | — | ✅ | — |
-| HA and shared database | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Rate limits | ✅ | ✅ | — | — | — | — | — | — | — |
-| Security headers, body limits and timeouts | ✅ | — | — | — | — | — | — | — | — |
-| Terraform provider | — | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ |
-| MCP server | — | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ | 🟡 |
+| Self-hosted | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ |
+| Open source | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
+| HA and shared database | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Rate limits | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Security headers, body limits and timeouts | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Terraform provider | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ |
+| MCP server | ❌ | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ | 🟡 |
 | CLI | 🟡 | ✅ | ✅ | ✅ | 🟡 | ✅ | 🟡 | ✅ | ✅ |
 
 ### Platform
 
 | Capability | ToggleSlash | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| Observability | 🟡 | ✅ | — | 🟡 | 🟡 | ✅ | 🟡 | ✅ | — |
-| AI configs and prompt management | — | ✅ | 🟡 | 🟡 | 🟡 | ✅ | 🟡 | 🟡 | — |
-| Release automation | — | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | — |
-| Compliance certifications | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Observability | 🟡 | ✅ | ❌ | 🟡 | 🟡 | ✅ | 🟡 | ✅ | ❌ |
+| AI configs and prompt management | ❌ | ✅ | 🟡 | 🟡 | 🟡 | ✅ | 🟡 | 🟡 | ❌ |
+| Release automation | ❌ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | ❌ |
+| Compliance certifications | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ## Where ToggleSlash stands
 
@@ -127,19 +127,19 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Capability | Status | Evidence and note |
 | --- | :---: | --- |
 | Boolean flags | ✅ | `api:/api/v1/projects/{project}/flags`<br>`api:/api/v1/projects/{project}/flags/{flag}`<br>`api:/api/v1/projects/{project}/flags/{flag}/environments/{env}/toggle`<br>`cli:flags create`<br>`cli:flags show`<br>`cli:flags on`<br>`cli:flags off`<br>`dashboard:/` |
-| Multivariate flags | 🟡 | `api:/api/v1/projects/{project}/flags`<br>`cli:flags create`<br>`doc:docs/evaluation.md`<br>The API takes 2–100 variations of one JSON type, but the dashboard only creates boolean flags. |
+| Multivariate flags | 🟡 | `api:/api/v1/projects/{project}/flags`<br>`cli:flags create`<br>`doc:docs/evaluation.md`<br>The API takes 2 to 100 variations of one JSON type, but the dashboard only creates boolean flags. |
 | Per-environment configuration | ✅ | `api:/api/v1/projects/{project}/flags/{flag}/environments/{env}`<br>`api:/api/v1/projects/{project}/environments/{env}/flag-states`<br>`doc:docs/architecture.md` |
 | Projects and environments | ✅ | `api:/api/v1/projects`<br>`api:/api/v1/projects/{project}`<br>`api:/api/v1/projects/{project}/environments`<br>`api:/api/v1/projects/{project}/environments/{env}`<br>`cli:projects list`<br>`cli:projects create`<br>`cli:envs list`<br>`cli:envs create`<br>`cli:envs rename`<br>`cli:envs delete`<br>`dashboard:/environments` |
 | Archive and restore | ✅ | `api:/api/v1/projects/{project}/flags/{flag}/archive`<br>`api:/api/v1/projects/{project}/flags/{flag}/restore`<br>`cli:flags archive` |
-| Permanent delete | — | — |
+| Permanent delete | ❌ | none |
 | Flag lifecycle and stale detection | 🟡 | `api:/api/v1/projects/{project}/flags/{flag}/usage`<br>`doc:docs/architecture.md`<br>Only lastEvaluated (the latest day with a count) exists; there is no computed lifecycle stage. |
-| Code references | — | — |
+| Code references | ❌ | none |
 | Change history and restore | 🟡 | `api:/api/v1/projects/{project}/flags/{flag}/history`<br>`cli:flags history`<br>History is readable but there is no restore action. |
-| Clone, compare and copy | — | — |
-| Bulk targeting | — | — |
+| Clone, compare and copy | ❌ | none |
+| Bulk targeting | ❌ | none |
 | Tags | ✅ | `api:/api/v1/projects/{project}/flags`<br>`cli:flags list` |
-| Scheduled changes | — | — |
-| Flag templates | — | — |
+| Scheduled changes | ❌ | none |
+| Flag templates | ❌ | none |
 
 ### Targeting
 
@@ -149,55 +149,55 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Rule-based targeting | ✅ | `api:/api/v1/projects/{project}/flags/{flag}/environments/{env}`<br>`dashboard:/flags/$flag`<br>`doc:docs/evaluation.md` |
 | Reusable segments | ✅ | `api:/api/v1/projects/{project}/environments/{env}/segments`<br>`api:/api/v1/projects/{project}/environments/{env}/segments/{segment}`<br>`dashboard:/segments`<br>`doc:docs/evaluation.md` |
 | Segment versioning | ✅ | `api:/api/v1/projects/{project}/environments/{env}/segments/{segment}`<br>`dashboard:/segments`<br>`doc:docs/architecture.md` |
-| Large or synced segments | — | — |
+| Large or synced segments | ❌ | none |
 | Prerequisites and dependencies | ✅ | `api:/api/v1/projects/{project}/flags/{flag}/environments/{env}`<br>`doc:docs/evaluation.md` |
-| Multi-context and context kinds | — | — |
-| Nested attribute paths | — | — |
-| Regex operator | — | — |
+| Multi-context and context kinds | ❌ | none |
+| Nested attribute paths | ❌ | none |
+| Regex operator | ❌ | none |
 | Semantic-version operator | ✅ | `doc:docs/evaluation.md`<br>`test:fixtures/evaluation/semver.json` |
-| Date and time operator | — | — |
+| Date and time operator | ❌ | none |
 | Percentage rollouts | ✅ | `doc:docs/evaluation.md`<br>`test:fixtures/evaluation/rollouts.json` |
-| Attribute-based rollouts | — | — |
-| Progressive rollouts | — | — |
-| Guarded rollouts | — | — |
+| Attribute-based rollouts | ❌ | none |
+| Progressive rollouts | ❌ | none |
+| Guarded rollouts | ❌ | none |
 
 ### Release
 
 | Capability | Status | Evidence and note |
 | --- | :---: | --- |
-| Approvals and change requests | — | — |
-| Required comments and confirmation | — | — |
+| Approvals and change requests | ❌ | none |
+| Required comments and confirmation | ❌ | none |
 | Audit log | ✅ | `api:/api/v1/projects/{project}/audit`<br>`api:/api/v1/projects/{project}/flags/{flag}/history`<br>`cli:flags history`<br>`dashboard:/audit` |
 | Dashboard sign-in and sessions | 🟡 | `dashboard:/sign-in`<br>`path:apps/web/src/api/auth.server.ts`<br>`path:apps/web/src/api/session-middleware.ts`<br>`test:apps/web/e2e/sign-in.spec.ts`<br>`doc:docs/self-hosting.md` |
-| Role-based access control | — | — |
-| SSO and SCIM | — | — |
+| Role-based access control | ❌ | none |
+| SSO and SCIM | ❌ | none |
 | Scoped API tokens | 🟡 | `api:/api/v1/projects/{project}/tokens`<br>`api:/api/v1/projects/{project}/tokens/{id}`<br>`cli:tokens create`<br>`cli:tokens list`<br>`cli:tokens revoke`<br>`doc:docs/architecture.md`<br>A token is limited to one project and to read or write, and always expires; there are no per-environment scopes or custom permissions. |
 | SDK keys | ✅ | `api:/api/v1/projects/{project}/environments/{env}/keys`<br>`api:/api/v1/projects/{project}/environments/{env}/keys/{id}`<br>`cli:keys list`<br>`cli:keys create`<br>`cli:keys revoke`<br>`dashboard:/keys` |
-| Private attributes | — | — |
-| Secure mode and signed contexts | — | — |
+| Private attributes | ❌ | none |
+| Secure mode and signed contexts | ❌ | none |
 
 ### Experimentation
 
 | Capability | Status | Evidence and note |
 | --- | :---: | --- |
-| Experiments | — | — |
-| Holdouts and multi-armed bandits | — | — |
+| Experiments | ❌ | none |
+| Holdouts and multi-armed bandits | ❌ | none |
 | Metrics and analytics | 🟡 | `api:/api/v1/projects/{project}/flags/{flag}/usage`<br>`api:/sdk/v1/events`<br>`path:apps/server/ToggleSlash.Server/Usage`<br>`doc:docs/architecture.md`<br>Only daily counts per flag, variation and environment; no custom events or metrics. |
-| Warehouse-native experiments | — | — |
+| Warehouse-native experiments | ❌ | none |
 
 ### SDKs and delivery
 
 | Capability | Status | Evidence and note |
 | --- | :---: | --- |
 | Server SDKs | 🟡 | `path:packages/sdk`<br>`path:packages/engine`<br>`doc:docs/sdk.md`<br>One TypeScript server SDK. The C# evaluator is internal to the server, not a public SDK. |
-| Browser SDKs | — | — |
-| Mobile SDKs | — | — |
-| Edge SDKs | — | — |
-| OpenFeature providers | — | — |
+| Browser SDKs | ❌ | none |
+| Mobile SDKs | ❌ | none |
+| Edge SDKs | ❌ | none |
+| OpenFeature providers | ❌ | none |
 | Streaming updates | ✅ | `api:/sdk/v1/ruleset`<br>`api:/sdk/v1/stream`<br>`path:packages/sdk`<br>`doc:docs/sdk.md`<br>SSE carries the ETag only and the SDK refetches; one server process only. |
 | Polling fallback | ✅ | `path:packages/sdk`<br>`doc:docs/sdk.md`<br>`test:packages/sdk/test/status.test.ts` |
 | Bootstrap and offline mode | 🟡 | `path:packages/sdk`<br>`doc:docs/sdk.md`<br>The SDK keeps the last ruleset in memory but has no explicit bootstrap input. |
-| Relay or persistent store | — | — |
+| Relay or persistent store | ❌ | none |
 | Server-side evaluation API | ✅ | `api:/sdk/v1/evaluate`<br>`api:/api/v1/projects/{project}/environments/{env}/evaluate`<br>`api:/api/v1/projects/{project}/environments/{env}/runtime`<br>`api:/api/v1/projects/{project}/environments/{env}/rulesets/{hash}`<br>`cli:diagnose`<br>`cli:runtime`<br>`cli:rulesets show`<br>`dashboard:/rulesets/$hash`<br>`path:apps/server/ToggleSlash.Evaluation` |
 | Usage counts | ✅ | `api:/sdk/v1/events`<br>`api:/api/v1/projects/{project}/flags/{flag}/usage`<br>`path:apps/server/ToggleSlash.Server/Usage`<br>Counts only; no context, context key or attribute is stored. |
 
@@ -207,11 +207,11 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | --- | :---: | --- |
 | Self-hosted | ✅ | `path:apps/server/Dockerfile`<br>`path:compose.yaml`<br>`doc:docs/self-hosting.md` |
 | Open source | ✅ | `path:LICENSE` |
-| HA and shared database | — | SQLite and one process per database; the in-memory lock and notifier do not cross processes. |
+| HA and shared database | ❌ | SQLite and one process per database; the in-memory lock and notifier do not cross processes. |
 | Rate limits | ✅ | `path:apps/server/ToggleSlash.Server/Limits/RequestLimiter.cs`<br>`doc:docs/self-hosting.md`<br>`test:apps/server/ToggleSlash.Server.Tests/RateLimitTests.cs`<br>`test:packages/sdk/test/rate-limit.test.ts`<br>In memory, one process; a restart resets the counts. No per-route admin limits or per-plan quotas. Only LaunchDarkly was read for this row; the other vendors' cells are not assessed. |
 | Security headers, body limits and timeouts | ✅ | `path:apps/server/ToggleSlash.Server/Hardening/SecurityHeaders.cs`<br>`path:apps/server/ToggleSlash.Server/Hardening/RequestLimits.cs`<br>`path:apps/web/src/api/security-headers.server.ts`<br>`test:apps/server/ToggleSlash.Server.Tests/HardeningTests.cs`<br>`test:apps/server/ToggleSlash.Server.Tests/CorsTests.cs`<br>`test:apps/web/e2e/security-headers.spec.ts`<br>`doc:docs/self-hosting.md`<br>No HSTS from either: terminate TLS in front and set it there. Request timeouts are cooperative: a handler that ignores its cancellation token runs to completion. Not compared with other vendors. |
-| Terraform provider | — | — |
-| MCP server | — | — |
+| Terraform provider | ❌ | none |
+| MCP server | ❌ | none |
 | CLI | 🟡 | `path:packages/cli`<br>`cli:config set-url`<br>`cli:config set-token`<br>Projects, environments, flags (no targeting edit) and keys; no segments, audit or usage commands. |
 
 ### Platform
@@ -219,9 +219,9 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Capability | Status | Evidence and note |
 | --- | :---: | --- |
 | Observability | 🟡 | `path:packages/sdk-otel`<br>`doc:docs/tracing.md`<br>`test:packages/sdk-otel/test/hooks.test.ts`<br>`test:packages/sdk/test/hooks.test.ts`<br>`test:packages/e2e/test/tracing.test.ts`<br>Only traces: an SDK hook puts each evaluation and the ruleset hash on the active OpenTelemetry span, and the hash answers on the lookup route. No session replay, error tracking, metrics or alerts. |
-| AI configs and prompt management | — | — |
-| Release automation | — | — |
-| Compliance certifications | — | — |
+| AI configs and prompt management | ❌ | none |
+| Release automation | ❌ | none |
+| Compliance certifications | ❌ | none |
 
 ## Sources
 

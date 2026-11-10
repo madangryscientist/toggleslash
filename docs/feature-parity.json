@@ -93,7 +93,7 @@
           "cli:flags create",
           "doc:docs/evaluation.md"
         ],
-        "note": "The API takes 2–100 variations of one JSON type, but the dashboard only creates boolean flags."
+        "note": "The API takes 2 to 100 variations of one JSON type, but the dashboard only creates boolean flags."
       },
       "competitors": {
         "launchdarkly": "yes",

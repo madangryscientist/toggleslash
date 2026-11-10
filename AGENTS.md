@@ -29,7 +29,7 @@ A small Nx workspace on Bun workspaces:
 | `server` | `apps/server` | the C# server: ASP.NET Core minimal API on .NET 10 (`ToggleSlash.Server`, xunit in `ToggleSlash.Server.Tests`); owns all flag data and the API. `apps/server/openapi/v1.json` is its generated OpenAPI document; `apps/server/Dockerfile` and the root `compose.yaml` containerise it (below) |
 | `evaluation` | `apps/server/ToggleSlash.Evaluation` | the C# implementation of `docs/evaluation.md`: a class library with no ASP.NET or database dependency (xunit in `ToggleSlash.Evaluation.Tests`, which runs every vector); the server references it for `POST /sdk/v1/evaluate` |
 | `e2e` | `packages/e2e` | the cross-language end-to-end test (`test:e2e`, not `test`): builds and starts the real C# server on a port the OS picks with a SQLite file under `$TMPDIR`, drives it with the real CLI (a subprocess) and the real TS SDK, and checks a CLI flip arrives through the stream and that `POST /sdk/v1/evaluate` and the SDK's local evaluation agree over a set of contexts. It also holds the seed (`src/seed.ts`: a shop with five flags and a segment) and `bun run stack` (`src/stack.ts`, `src/stack-cli.ts`): the server, the seed, the dashboard on 4440 and the example app on 4441, with secrets made per run; `test/example.test.ts` proves the example against the real server. `bun run test:stack` (`test:stack`, not `test:e2e`; `playwright.config.ts`, `stack/journey.spec.ts`) starts that stack and walks one journey in a browser: sign in to the dashboard, two shoppers on the example, a flag created through the UI, a toggle that reaches both shoppers through the stream, `runtime` and `diagnose` from the CLI, the usage count, the audit log, and a read-scoped token refused a write; on a failure it prints the stack's logs. Loopback only; skips with a printed line when no `dotnet` runs (in CI, where `CI` is set, a missing SDK fails instead). Private |
-| `scripts` | `scripts` | `check-slop.ts`, `test-tmp-scope.ts`, `nx.ts` and `dotnet.ts` (typecheck + lint only) |
+| `scripts` | `scripts` | `check-slop.ts`, `check-dashes.ts`, `test-tmp-scope.ts`, `nx.ts` and `dotnet.ts` (typecheck + lint only) |
 
 `bunfig.toml` sets `[install] linker = "isolated"` and `globalStore = true` (the shared package store that
 makes a warm worktree install fast): a package sees its own declared dependencies and the root's, not
@@ -40,7 +40,7 @@ A change is green when all of these pass **from the worktree**:
 ```bash
 bun install                       # FIRST: a fresh worktree has no node_modules
 bun run typecheck                 # nx run-many -t typecheck  (tsc, strict)
-bun run lint                      # nx run-many -t lint  (oxlint --type-aware --deny-warnings + check-slop)
+bun run lint                      # nx run-many -t lint  (oxlint --type-aware --deny-warnings + check-slop), then check-dashes over every tracked file
 bun run format:check              # oxfmt --check  (`bun run format` fixes)
 bun run parity:check              # the feature parity matrix matches this tree
 bun run test                      # nx run-many -t test  (Vitest under the Bun runtime)
