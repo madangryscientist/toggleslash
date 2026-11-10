@@ -15,4 +15,4 @@ export {
 export type { Clock } from "./clock.ts";
 export type { Fetch } from "./http.ts";
 export type { ClientStatus, StreamState, SyncErrorCode } from "./sync.ts";
-export type { Context } from "@hackcove/toggleslash-engine";
+export type { Context, SingleContext } from "@hackcove/toggleslash-engine";

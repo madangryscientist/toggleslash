@@ -41,26 +41,30 @@ that environment by the time they get here.
 | `salt` | string | part of the bucket hash |
 | `version` | count | carried for the API; evaluation does not read it |
 
-- **Target:** `{ "variation": <index>, "contextKeys": [<string>...] }`.
+- **Target:** `{ "variation": <index>, "contextKeys": [<string>...], "contextKind": <kind> }`.
+  `contextKind` is optional (see "Context kinds"); the target lists keys of that kind.
 - **Prerequisite:** `{ "flagKey": <key>, "variation": <count> }`. The variation is an index into the
   *prerequisite's* variations, so it is not range-checked here; one that does not exist can never be
   met.
 - **Serve:** exactly one of `"variation": <index>` or `"rollout": <rollout>`.
-- **Rollout:** `{ "variations": [{ "variation": <index>, "weight": <count> }...] }`, at least one
-  entry. Weights are thousandths of a percent and sum to exactly 100000. A weight of 0 is legal, and a
+- **Rollout:** `{ "variations": [{ "variation": <index>, "weight": <count> }...], "contextKind": <kind> }`,
+  with at least one entry in `variations`. `contextKind` is optional and picks the key the rollout
+  buckets by (see "Bucketing"). Weights are thousandths of a percent and sum to exactly 100000. A weight of 0 is legal, and a
   variation may be listed twice.
 - **Rule:** `{ "clauses": [<clause>...] }` plus a serve. All clauses must match. No clauses always
   matches.
 
 ### Clause
 
-An attribute clause is `{ "attribute": <key>, "op": <op>, "values": [...], "negate": <boolean> }`.
-`attribute` is a name or a `/` reference; see "Reading the attribute".
+An attribute clause is `{ "attribute": <key>, "op": <op>, "values": [...], "negate": <boolean>, "contextKind": <kind> }`.
+`attribute` is a name or a `/` reference; see "Reading the attribute". `contextKind` is optional and
+names the context the attribute is read from; a value that is not a valid kind makes the flag
+malformed (or, in a segment rule, the segment).
 `op` is one of `in`, `contains`, `startsWith`, `endsWith`, `lt`, `lte`, `gt`, `gte`, `semverEq`,
 `semverLt`, `semverLte`, `semverGt`, `semverGte`, `before`, `after`. `negate` is optional. Each value is a string, a finite number or a boolean; anything else is malformed.
 
 A segment clause is `{ "op": "segmentMatch", "values": [<string>...], "negate": <boolean> }`. Its
-values are segment keys. An `attribute` on it is ignored.
+values are segment keys. An `attribute` or a `contextKind` on it is ignored.
 
 There is no regex op, by design: a regex is a ReDoS risk on a hot path, and JavaScript and .NET do not
 agree on regex semantics. An unknown op makes the flag malformed.
@@ -71,21 +75,78 @@ agree on regex semantics. An unknown op makes the flag malformed.
 | --- | --- | --- |
 | `key` | key | |
 | `salt` | string | |
-| `included` | array of string | |
-| `excluded` | array of string | |
+| `included` | array of string | user keys |
+| `excluded` | array of string | user keys |
+| `includedContexts` | array of context list, optional | keys of any kind |
+| `excludedContexts` | array of context list, optional | keys of any kind |
 | `rules` | array of segment rule | |
 
-A segment rule is `{ "clauses": [<attribute clause>...], "weight": <count up to 100000> }`. `weight` is
-optional. A `segmentMatch` clause inside a segment rule makes the segment malformed, so segments do not
+A context list is `{ "contextKind": <kind>, "values": [<string>...] }`. Here `contextKind` is required.
+
+A segment rule is `{ "clauses": [<attribute clause>...], "weight": <count up to 100000>, "rolloutContextKind": <kind> }`.
+`weight` and `rolloutContextKind` are optional; `rolloutContextKind` picks the key `weight` buckets by. A `segmentMatch` clause inside a segment rule makes the segment malformed, so segments do not
 nest and cannot form a cycle.
+
+### Context kinds
+
+A **kind** is a string that matches `^[A-Za-z0-9._-]+$` (ASCII letters, digits, `.`, `_` and `-`, at
+least one) and is neither `kind` nor `multi`. Everywhere a kind is read and is absent, it means
+`"user"`. A kind is a free string: there is no list of kinds to declare.
+
+In a flag or a segment, a `contextKind` on an attribute clause, a target or a rollout, or a
+`rolloutContextKind`, that is present and is not a valid kind is malformed (a segment clause ignores
+its `contextKind`), as is an `includedContexts` or `excludedContexts` that is not an array, or one whose
+entry is not an object, has no valid `contextKind`, or has `values` that are not an array of strings.
+They are checked at load with the other fields: the flag is `ERROR MALFORMED_FLAG`, and a segment
+is malformed, so a flag that refers to it is `ERROR MALFORMED_SEGMENT`.
 
 ### Context
 
+A context is one of two shapes.
+
+**Single:**
+
 ```json
-{ "key": "user-1", "attributes": { "plan": "pro", "age": 30, "tags": ["a", "b"] } }
+{ "kind": "user", "key": "user-1", "attributes": { "plan": "pro", "age": 30, "tags": ["a", "b"] } }
 ```
 
-`key` is a required key. `attributes` is an optional object. There is one context kind.
+`kind` is optional, and absent is `"user"`, so `{ "key": "user-1" }` is a user context. `key` is a
+required key. `attributes` is an optional object.
+
+**Multi:**
+
+```json
+{
+  "kind": "multi",
+  "contexts": {
+    "user": { "key": "user-1", "attributes": { "plan": "pro" } },
+    "org": { "key": "acme", "attributes": { "seats": 40 } }
+  }
+}
+```
+
+`contexts` is an object with at least one property. Each property name is the entry's kind, and each
+entry is `{ "key": <key>, "attributes": <object> }` with `attributes` optional. An entry has no `kind`
+of its own.
+
+**Valid.** A context is valid when it is an object and one of these holds:
+
+- It has no `kind`, or a `kind` that is a valid kind; a `key` that is a non-empty string; and an
+  `attributes` that is an object or absent.
+- Its `kind` is `"multi"`; it has no `key` and no `attributes`; its `contexts` is an object with at
+  least one property; every property name is a valid kind; and every entry is an object with a key
+  that is a non-empty string, an `attributes` that is an object or absent, and no `kind`.
+
+Anything else is not valid: a `kind` that is not a string, does not match the pattern, or is `kind`;
+a multi context with a `key` or `attributes`, or whose `contexts` is not an object or is empty, or
+names a kind that is not valid, or holds an entry that is not an object, has no valid key, has
+`attributes` that are not an object, or has a `kind`. Null is absent here as everywhere, so
+`"kind": null` is a user context. Other unknown properties are ignored, as elsewhere.
+
+**Normalising.** Evaluation reads a valid context as a map from kind to `{ key, attributes }`: a single
+context is one entry under its kind, and a multi context is its `contexts`. Everything below reads
+that map. "The context has kind K" means the map has an entry for K, and "the key of kind K" is that
+entry's key.
 
 ### Loading a ruleset
 
@@ -100,8 +161,8 @@ to, and is dropped.
 `evaluate(ruleset, flagKey, context)` returns a result and **never throws**. This is the order, and the
 first step that decides, decides:
 
-1. **Context.** Not an object, a missing, empty or non-string `key`, or `attributes` that is neither an
-   object nor absent: `ERROR INVALID_CONTEXT`. This comes first, before the flag is looked up.
+1. **Context.** A context that is not valid (see "Context"): `ERROR INVALID_CONTEXT`. This comes
+   first, before the flag is looked up.
 2. **Lookup.** No such flag: `ERROR FLAG_NOT_FOUND`.
 3. **Header.** `key`, `on`, `variations` or `offVariation` invalid: `ERROR MALFORMED_FLAG`. These are
    what serving the off variation needs.
@@ -115,7 +176,9 @@ first step that decides, decides:
    decides the code.
 6. **Prerequisites**, see below. `PREREQUISITE_FAILED`, serving `offVariation`, or the prerequisite's
    `ERROR`.
-7. **Targets.** The first target in array order that lists the context key: `TARGET_MATCH`.
+7. **Targets.** The first target in array order that matches: `TARGET_MATCH`. A target matches when
+   the context has the target's kind (`contextKind`, absent is `user`) and the key of that kind is in
+   its `contextKeys`. So a user target never matches a context with no user kind.
 8. **Rules.** The first rule in array order whose clauses all match: `RULE_MATCH`, with its index in
    `rules`.
 9. **Fallthrough.** `FALLTHROUGH`.
@@ -183,6 +246,9 @@ The limit also bounds recursion. No ruleset can overflow an implementation's sta
 
 ### Reading the attribute
 
+- **Which context.** The attribute is read from the context of the clause's `contextKind` (absent is
+  `user`), and everything below, `key` included, reads that context. If the context has no such kind,
+  the attribute is missing, so the clause fails whatever `negate` says (see "Matching").
 - **A name that does not start with `/` is a literal name, unchanged.** `a.b` still reads the attribute
   named `a.b`, and `a/b` reads the attribute named `a/b`. `key` reads the context key.
 - **A name that starts with `/` is a reference.** Drop the leading `/` and split the rest on `/` into
@@ -339,11 +405,17 @@ No values means false, and under `negate` true.
 
 **In a segment,** in this order:
 
-1. The context key in `excluded`: not in the segment.
-2. The context key in `included`: in the segment.
-3. Any rule whose clauses all match, and whose `weight` is absent or above
-   `bucket(segmentKey, segmentSalt, contextKey)`: in the segment.
+1. Excluded: the key of kind `user` is in `excluded`, or for any entry of `excludedContexts` the
+   context has that entry's `contextKind` and the key of that kind is in its `values`. Not in the
+   segment.
+2. Included: the same test with `included` and `includedContexts`. In the segment.
+3. Any rule whose clauses all match (each reading its own `contextKind`), and whose `weight` is absent
+   or above the rule's bucket: in the segment. The bucket is computed as for a rollout (see
+   "Bucketing"), with the segment's key and salt and the kind `rolloutContextKind` (absent is `user`).
 4. Otherwise not in the segment.
+
+So exclusion wins over inclusion across kinds: an org key in `excludedContexts` keeps the context out
+even when its user key is in `included`.
 
 ## Bucketing
 
@@ -356,6 +428,16 @@ bucket(key, salt, contextKey) =
 The result is an integer from 0 to 99999, read as an unsigned value: a sign-extended `int` gets every
 hash with the top bit set wrong, which is why the pins include one. A flag uses its own key and salt; a
 segment rule uses the segment's.
+
+**The context key and its kind.** A rollout buckets by the kind in its `contextKind`, and a segment
+rule by the kind in its `rolloutContextKind`; absent is `user`. The `contextKey` passed to `bucket` is:
+
+- the key of that kind as it is, when the kind is `user`, so every user bucket is what it was before
+  kinds existed;
+- `<kind>:<key>` for any other kind, so the same key in two kinds lands in independent buckets.
+
+If the context does not have that kind, the bucket is 0, and no hash is computed. So a rollout serves
+its first entry with a non-zero weight, and a segment rule with a `weight` above 0 matches.
 
 A rollout walks its entries in array order, adding each weight to a running total, and serves the first
 entry where `bucket < total`. The weights sum to 100000 and the bucket is below that, so the walk always
@@ -372,6 +454,19 @@ bucket    498645874 % 100000 = 45874
 
 Against a rollout of 25000 / 25000 / 50000, the running totals are 25000, 50000 and 100000. 45874 is
 below 50000 and not below 25000, so the second entry is served.
+
+**Worked example for another kind.** Flag `checkout`, salt `a1b2c3`, a rollout with `contextKind`
+`org`, and an org key `acme`:
+
+```text
+input     checkout.a1b2c3.org:acme
+SHA-256   9dca54cd ...
+uint32    0x9dca54cd = 2647282893
+bucket    2647282893 % 100000 = 82893
+```
+
+Against the same 25000 / 25000 / 50000 rollout, 82893 is not below 50000, so the third entry is
+served.
 
 Edge cases:
 
@@ -428,6 +523,7 @@ with `expected`, deeply.
 | `segments.json` | `segmentMatch`, excluded and included, segment rules and weights, bad segments |
 | `rollouts.json` | the cumulative walk at bucket boundaries, hash inputs, malformed rollouts |
 | `errors.json` | invalid contexts, malformed flags, what happens on load |
+| `kinds.json` | context kinds and multi-contexts: valid and invalid contexts, `contextKind` on clauses, targets and rollouts, `includedContexts` and `excludedContexts`, `rolloutContextKind`, malformed kind fields |
 | `buckets.json` | `{ flagKey, salt, contextKey, uint32, bucket }` pins from an independent SHA-256 |
 
 Numbers that a loose reader would normalize are spelled literally, so read these files with a real JSON

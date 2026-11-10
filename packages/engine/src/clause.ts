@@ -1,20 +1,16 @@
+import { type Contexts, DEFAULT_KIND, type KindContext } from "./context.ts";
 import { toInstant } from "./date.ts";
 import { parseReference } from "./reference.ts";
 import { compareSemanticVersions, parseSemanticVersion } from "./semver.ts";
 import { isRecord } from "./validate.ts";
 import type { AttributeClause, AttributeOp, ClauseValue } from "./validate.ts";
 
-export interface Context {
-  key: string;
-  attributes?: Readonly<Record<string, unknown>> | null;
-}
-
 function ownValue(source: Readonly<Record<string, unknown>>, name: string): unknown {
   return Object.hasOwn(source, name) ? source[name] : undefined;
 }
 
 /** The value a name or a `/` reference reaches, or undefined when it is missing. */
-function readAttribute(context: Context, name: string): unknown {
+function readAttribute(context: KindContext, name: string): unknown {
   const components = name.startsWith("/") ? parseReference(name) : [name];
   const [first, ...rest] = components ?? [];
   if (first === undefined) return undefined;
@@ -108,8 +104,13 @@ function matchesValue(op: AttributeOp, attribute: unknown, value: ClauseValue): 
   return order !== null && matchesOrder(op, order);
 }
 
-/** Does one attribute clause hold? A missing attribute fails it, whatever `negate` says. */
-export function attributeClauseMatches(clause: AttributeClause, context: Context): boolean {
+/**
+ * Does one attribute clause hold? It reads the context of its `contextKind`. A missing attribute,
+ * or a missing kind, fails it, whatever `negate` says.
+ */
+export function attributeClauseMatches(clause: AttributeClause, contexts: Contexts): boolean {
+  const context = contexts.get(clause.contextKind ?? DEFAULT_KIND);
+  if (context === undefined) return false;
   const attribute = readAttribute(context, clause.attribute);
   if (attribute === undefined || attribute === null) return false;
   const candidates: readonly unknown[] = Array.isArray(attribute) ? attribute : [attribute];

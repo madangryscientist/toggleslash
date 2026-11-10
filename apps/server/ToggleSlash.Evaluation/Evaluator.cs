@@ -11,34 +11,24 @@ public static class Evaluator
     /// <summary>Prerequisite links from the requested flag; docs/evaluation.md pins the limit.</summary>
     private const int MaxPrerequisiteDepth = 32;
 
-    private sealed class Run(Ruleset ruleset, JsonElement context, string contextKey)
+    private sealed class Run(Ruleset ruleset, IReadOnlyDictionary<string, KindContext> contexts)
     {
         public Ruleset Ruleset { get; } = ruleset;
-        public JsonElement Context { get; } = context;
-        public string ContextKey { get; } = contextKey;
+        public IReadOnlyDictionary<string, KindContext> Contexts { get; } = contexts;
         public HashSet<string> Active { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, EvaluationResult> Completed { get; } = new(StringComparer.Ordinal);
     }
 
     /// <summary>
-    /// Evaluates one flag. <paramref name="context"/> is the context as JSON,
-    /// <c>{ "key": "user-1", "attributes": { ... } }</c>; one that is not valid is <c>INVALID_CONTEXT</c>.
+    /// Evaluates one flag. <paramref name="context"/> is the context as JSON, single
+    /// (<c>{ "kind": "org", "key": "acme", "attributes": { ... } }</c>, no <c>kind</c> is <c>user</c>) or multi
+    /// (<c>{ "kind": "multi", "contexts": { "user": { "key": ... }, ... } }</c>); one that is not valid is
+    /// <c>INVALID_CONTEXT</c>.
     /// </summary>
     public static EvaluationResult Evaluate(Ruleset ruleset, string flagKey, JsonElement context)
     {
-        if (!TryContextKey(context, out var contextKey)) return EvaluationResult.Failure(ErrorCode.InvalidContext);
-        return EvaluateFlag(new Run(ruleset, context, contextKey), flagKey, 0);
-    }
-
-    private static bool TryContextKey(JsonElement context, out string key)
-    {
-        key = "";
-        if (context.ValueKind != JsonValueKind.Object) return false;
-        if (!context.TryGetProperty("key", out var raw) || raw.ValueKind != JsonValueKind.String) return false;
-        key = JsonStrings.Read(raw);
-        if (key.Length == 0) return false;
-        return !context.TryGetProperty("attributes", out var attributes)
-            || attributes.ValueKind is JsonValueKind.Null or JsonValueKind.Object;
+        if (ContextKinds.Normalise(context) is not { } contexts) return EvaluationResult.Failure(ErrorCode.InvalidContext);
+        return EvaluateFlag(new Run(ruleset, contexts), flagKey, 0);
     }
 
     private static EvaluationResult Served(FlagHeader header, int index, Reason reason) =>
@@ -62,30 +52,46 @@ public static class Evaluator
         return chosen;
     }
 
-    private static EvaluationResult ServeResult(Flag flag, Serve serve, string contextKey, Reason reason)
+    private static EvaluationResult ServeResult(Flag flag, Serve serve, Run run, Reason reason)
     {
         var index = serve.Rollout is { } rollout
-            ? RolloutVariation(rollout, Bucketing.Bucket(flag.Header.Key, flag.Salt, contextKey))
+            ? RolloutVariation(rollout, ContextKinds.Bucket(flag.Header.Key, flag.Salt, serve.RolloutKind, run.Contexts))
             : serve.Variation!.Value;
         return Served(flag.Header, index, reason);
     }
 
     private static bool SegmentRuleMatches(SegmentRule rule, Segment segment, Run run)
     {
-        if (!rule.Clauses.All(clause => ClauseMatcher.AttributeClauseMatches(clause, run.Context))) return false;
-        return rule.Weight is not { } weight || Bucketing.Bucket(segment.Key, segment.Salt, run.ContextKey) < weight;
+        if (!rule.Clauses.All(clause => ClauseMatcher.AttributeClauseMatches(clause, run.Contexts))) return false;
+        return rule.Weight is not { } weight || ContextKinds.Bucket(segment.Key, segment.Salt, rule.RolloutKind, run.Contexts) < weight;
     }
+
+    /// <summary>Does the context have, in any of its kinds, a key that <paramref name="keys"/> lists for that kind?</summary>
+    private static bool Lists(IReadOnlyDictionary<string, HashSet<string>> keys, Run run) =>
+        run.Contexts.Any(entry => keys.TryGetValue(entry.Key, out var listed) && listed.Contains(entry.Value.Key));
 
     private static bool SegmentMatches(Segment segment, Run run)
     {
-        if (segment.Excluded.Contains(run.ContextKey)) return false;
-        if (segment.Included.Contains(run.ContextKey)) return true;
+        if (Lists(segment.Excluded, run)) return false;
+        if (Lists(segment.Included, run)) return true;
         return segment.Rules.Any(rule => SegmentRuleMatches(rule, segment, run));
+    }
+
+    /// <summary>The variation of the first target in array order that matches the context, or null.</summary>
+    private static int? TargetedVariation(Flag flag, Run run)
+    {
+        TargetHit? first = null;
+        foreach (var (kind, context) in run.Contexts)
+        {
+            if (!flag.Targets.TryGetValue(kind, out var keys) || !keys.TryGetValue(context.Key, out var hit)) continue;
+            if (first is not { } current || hit.Order < current.Order) first = hit;
+        }
+        return first?.Variation;
     }
 
     private static bool ClauseMatches(Clause clause, Run run)
     {
-        if (clause.Op != Op.SegmentMatch) return ClauseMatcher.AttributeClauseMatches(clause, run.Context);
+        if (clause.Op != Op.SegmentMatch) return ClauseMatcher.AttributeClauseMatches(clause, run.Contexts);
         var matched = clause.SegmentKeys.Any(key =>
             run.Ruleset.TryGetSegment(key, out var segment) && segment is not null && SegmentMatches(segment, run));
         return clause.Negate ? !matched : matched;
@@ -123,7 +129,7 @@ public static class Evaluator
             case ReadyEntry { Flag: var flag }:
                 if (!flag.Header.On) return OffResult(flag.Header, new Reason(ReasonKind.Off));
                 if (CheckPrerequisites(flag, run, depth) is { } blocked) return blocked;
-                if (flag.Targets.TryGetValue(run.ContextKey, out var targeted))
+                if (TargetedVariation(flag, run) is { } targeted)
                 {
                     return Served(flag.Header, targeted, new Reason(ReasonKind.TargetMatch));
                 }
@@ -131,9 +137,9 @@ public static class Evaluator
                 {
                     var rule = flag.Rules[ruleIndex];
                     if (!rule.Clauses.All(clause => ClauseMatches(clause, run))) continue;
-                    return ServeResult(flag, rule.Serve, run.ContextKey, new Reason(ReasonKind.RuleMatch, RuleIndex: ruleIndex));
+                    return ServeResult(flag, rule.Serve, run, new Reason(ReasonKind.RuleMatch, RuleIndex: ruleIndex));
                 }
-                return ServeResult(flag, flag.Fallthrough, run.ContextKey, new Reason(ReasonKind.Fallthrough));
+                return ServeResult(flag, flag.Fallthrough, run, new Reason(ReasonKind.Fallthrough));
             default:
                 throw new InvalidOperationException("unreachable: FlagEntry is closed");
         }

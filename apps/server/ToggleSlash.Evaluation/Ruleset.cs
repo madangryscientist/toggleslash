@@ -196,9 +196,20 @@ internal static class Validation
     private static string? OpName(JsonElement value) =>
         value.TryGetProperty("op", out var op) && op.ValueKind == JsonValueKind.String ? JsonStrings.Read(op) : null;
 
+    /// <summary>An optional kind: absent is valid and null, anything but a valid kind is not.</summary>
+    private static bool TryOptionalKind(JsonElement? value, out string? kind)
+    {
+        kind = null;
+        if (IsAbsent(value)) return true;
+        if (!TryString(value, out var text) || !ContextKinds.IsKind(text)) return false;
+        kind = text;
+        return true;
+    }
+
     private static Clause? ReadAttributeClause(JsonElement value)
     {
         if (value.ValueKind != JsonValueKind.Object || AttributeOp(OpName(value)) is not { } op) return null;
+        if (!TryOptionalKind(Get(value, "contextKind"), out var contextKind)) return null;
         if (!TryKey(Get(value, "attribute"), out var attribute)) return null;
         if (attribute.StartsWith('/') && AttributeReference.Parse(attribute) is null) return null;
         if (!TryNegate(Get(value, "negate"), out var negate)) return null;
@@ -209,7 +220,7 @@ internal static class Validation
             if (!TryClauseValue(item, out var clauseValue)) return null;
             parsed.Add(clauseValue);
         }
-        return new Clause(op, attribute, parsed, [], negate);
+        return new Clause(op, attribute, parsed, [], negate, contextKind);
     }
 
     private static Clause? ReadSegmentClause(JsonElement value)
@@ -232,10 +243,12 @@ internal static class Validation
         return items;
     }
 
-    private static bool TryRollout(JsonElement? value, int variationCount, out List<WeightedVariation> rollout)
+    private static bool TryRollout(JsonElement? value, int variationCount, out List<WeightedVariation> rollout, out string? kind)
     {
         rollout = [];
+        kind = null;
         if (value is not { ValueKind: JsonValueKind.Object } obj) return false;
+        if (!TryOptionalKind(Get(obj, "contextKind"), out kind)) return false;
         if (Get(obj, "variations") is not { ValueKind: JsonValueKind.Array } variations || variations.GetArrayLength() == 0) return false;
         double total = 0;
         foreach (var item in variations.EnumerateArray())
@@ -259,7 +272,7 @@ internal static class Validation
         {
             return TryIndex(variation, variationCount, out var index) ? new Serve(index, null) : null;
         }
-        return IsAbsent(variation) && TryRollout(rollout, variationCount, out var weighted) ? new Serve(null, weighted) : null;
+        return IsAbsent(variation) && TryRollout(rollout, variationCount, out var weighted, out var kind) ? new Serve(null, weighted, kind) : null;
     }
 
     private static Rule? ReadRule(JsonElement value, int variationCount)
@@ -296,13 +309,14 @@ internal static class Validation
         if (!TryString(Get(value, "salt"), out var salt)) return null;
         if (!TryCount(Get(value, "version"), out _)) return null;
 
-        var targets = new Dictionary<string, int>(StringComparer.Ordinal);
+        var targets = new Dictionary<string, Dictionary<string, TargetHit>>(StringComparer.Ordinal);
         var rawTargets = ReadAll(Get(value, "targets"), item => ReadTarget(item, count));
         if (rawTargets is null) return null;
-        foreach (var target in rawTargets)
-        foreach (var contextKey in target.ContextKeys)
+        for (var order = 0; order < rawTargets.Count; order++)
         {
-            targets.TryAdd(contextKey, target.Variation);
+            var target = rawTargets[order];
+            if (!targets.TryGetValue(target.Kind, out var keys)) targets[target.Kind] = keys = new(StringComparer.Ordinal);
+            foreach (var contextKey in target.ContextKeys) keys.TryAdd(contextKey, new TargetHit(order, target.Variation));
         }
 
         var prerequisites = ReadAll(Get(value, "prerequisites"), ReadPrerequisite);
@@ -316,7 +330,8 @@ internal static class Validation
     {
         if (value.ValueKind != JsonValueKind.Object) return null;
         if (!TryIndex(Get(value, "variation"), variationCount, out var variation)) return null;
-        return TryStrings(Get(value, "contextKeys"), out var keys) ? new Target(variation, keys) : null;
+        if (!TryOptionalKind(Get(value, "contextKind"), out var kind)) return null;
+        return TryStrings(Get(value, "contextKeys"), out var keys) ? new Target(variation, keys, kind ?? ContextKinds.Default) : null;
     }
 
     private static Prerequisite? ReadPrerequisite(JsonElement value)
@@ -336,8 +351,32 @@ internal static class Validation
             if (!TryCount(weight, out var count) || count > Bucketing.BucketCount) return null;
             parsedWeight = count;
         }
+        if (!TryOptionalKind(Get(value, "rolloutContextKind"), out var rolloutKind)) return null;
         var clauses = ReadAll(Get(value, "clauses"), ReadAttributeClause);
-        return clauses is null ? null : new SegmentRule(clauses, parsedWeight);
+        return clauses is null ? null : new SegmentRule(clauses, parsedWeight, rolloutKind);
+    }
+
+    /// <summary>
+    /// Keys by kind: <paramref name="userKeys"/> under <c>user</c>, merged with an optional array of
+    /// <c>{ contextKind, values }</c>. Null when the array is present and malformed.
+    /// </summary>
+    private static Dictionary<string, HashSet<string>>? ReadKeysByKind(List<string> userKeys, JsonElement? lists)
+    {
+        var index = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal)
+        {
+            [ContextKinds.Default] = userKeys.ToHashSet(StringComparer.Ordinal),
+        };
+        if (IsAbsent(lists)) return index;
+        if (lists is not { ValueKind: JsonValueKind.Array } array) return null;
+        foreach (var item in array.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object) return null;
+            if (!TryString(Get(item, "contextKind"), out var kind) || !ContextKinds.IsKind(kind)) return null;
+            if (!TryStrings(Get(item, "values"), out var values)) return null;
+            if (!index.TryGetValue(kind, out var keys)) index[kind] = keys = new(StringComparer.Ordinal);
+            keys.UnionWith(values);
+        }
+        return index;
     }
 
     /// <summary>A segment, or null when it is malformed.</summary>
@@ -346,7 +385,10 @@ internal static class Validation
         if (value.ValueKind != JsonValueKind.Object) return null;
         if (!TryKey(Get(value, "key"), out var key) || !TryString(Get(value, "salt"), out var salt)) return null;
         if (!TryStrings(Get(value, "included"), out var included) || !TryStrings(Get(value, "excluded"), out var excluded)) return null;
+        var includedByKind = ReadKeysByKind(included, Get(value, "includedContexts"));
+        var excludedByKind = ReadKeysByKind(excluded, Get(value, "excludedContexts"));
+        if (includedByKind is null || excludedByKind is null) return null;
         var rules = ReadAll(Get(value, "rules"), ReadSegmentRule);
-        return rules is null ? null : new Segment(key, salt, included.ToHashSet(StringComparer.Ordinal), excluded.ToHashSet(StringComparer.Ordinal), rules);
+        return rules is null ? null : new Segment(key, salt, includedByKind, excludedByKind, rules);
     }
 }

@@ -2,7 +2,7 @@
  * The ToggleSlash engine: flag evaluation for TypeScript, implementing `docs/evaluation.md`. It uses
  * nothing runtime-specific, so it runs in Workers, Bun, Node and browsers.
  */
-export type { Context } from "./clause.ts";
+export type { Context, SingleContext } from "./context.ts";
 export { evaluate } from "./evaluate.ts";
 export type { ErrorCode, EvaluationResult, Reason } from "./result.ts";
 export { createRuleset, type Ruleset } from "./ruleset.ts";

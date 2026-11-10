@@ -28,6 +28,7 @@ export interface AttributeClause {
   attribute: string;
   values: readonly ClauseValue[];
   negate?: boolean | null;
+  contextKind?: string | null;
 }
 interface SegmentClause {
   op: "segmentMatch";
@@ -42,6 +43,7 @@ interface WeightedVariation {
 }
 export interface Rollout {
   variations: readonly WeightedVariation[];
+  contextKind?: string | null;
 }
 export type Serve = { variation: number; rollout?: null } | { rollout: Rollout; variation?: null };
 type Rule = Serve & { clauses: readonly Clause[] };
@@ -49,6 +51,7 @@ type Rule = Serve & { clauses: readonly Clause[] };
 interface Target {
   variation: number;
   contextKeys: readonly string[];
+  contextKind?: string | null;
 }
 export interface Prerequisite {
   flagKey: string;
@@ -73,12 +76,20 @@ export type Flag = FlagHeader & FlagBody;
 export interface SegmentRule {
   clauses: readonly AttributeClause[];
   weight?: number | null;
+  rolloutContextKind?: string | null;
+}
+/** The keys of one kind that a segment includes or excludes. */
+export interface ContextList {
+  contextKind: string;
+  values: readonly string[];
 }
 export interface Segment {
   key: string;
   salt: string;
   included: readonly string[];
   excluded: readonly string[];
+  includedContexts?: readonly ContextList[] | null;
+  excludedContexts?: readonly ContextList[] | null;
   rules: readonly SegmentRule[];
 }
 
@@ -104,8 +115,22 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isAbsent(value: unknown): value is null | undefined {
+export function isAbsent(value: unknown): value is null | undefined {
   return value === null || value === undefined;
+}
+
+// ASCII only, and `$` in JavaScript is the end of the input; the C# side walks the characters.
+const KIND_PATTERN = /^[A-Za-z0-9._-]+$/;
+
+/** `^[A-Za-z0-9._-]+$`, and neither `kind` nor `multi`. */
+export function isKind(value: unknown): value is string {
+  return (
+    typeof value === "string" && KIND_PATTERN.test(value) && value !== "kind" && value !== "multi"
+  );
+}
+
+function isOptionalKind(value: unknown): boolean {
+  return isAbsent(value) || isKind(value);
 }
 
 function isKey(value: unknown): value is string {
@@ -144,6 +169,7 @@ function isAttributeClause(value: unknown): value is AttributeClause {
   return (
     isAttributeName(value["attribute"]) &&
     isNegate(value["negate"]) &&
+    isOptionalKind(value["contextKind"]) &&
     Array.isArray(values) &&
     values.every(isClauseValue)
   );
@@ -165,7 +191,7 @@ function isWeightedVariation(value: unknown, variationCount: number): value is W
 }
 
 function isRollout(value: unknown, variationCount: number): value is Rollout {
-  if (!isRecord(value)) return false;
+  if (!isRecord(value) || !isOptionalKind(value["contextKind"])) return false;
   const variations: unknown = value["variations"];
   if (!Array.isArray(variations) || variations.length === 0) return false;
   let total = 0;
@@ -197,7 +223,9 @@ function isRule(value: unknown, variationCount: number): value is Rule {
 function isTarget(value: unknown, variationCount: number): value is Target {
   if (!isRecord(value)) return false;
   return (
-    isVariationIndex(value["variation"], variationCount) && isStringArray(value["contextKeys"])
+    isVariationIndex(value["variation"], variationCount) &&
+    isStringArray(value["contextKeys"]) &&
+    isOptionalKind(value["contextKind"])
   );
 }
 
@@ -234,7 +262,19 @@ function isSegmentRule(value: unknown): value is SegmentRule {
   if (!isRecord(value)) return false;
   const weight = value["weight"];
   const weightIsValid = isAbsent(weight) || (isCount(weight) && weight <= BUCKET_COUNT);
-  return weightIsValid && everyItem(value["clauses"], isAttributeClause);
+  return (
+    weightIsValid &&
+    isOptionalKind(value["rolloutContextKind"]) &&
+    everyItem(value["clauses"], isAttributeClause)
+  );
+}
+
+function isContextList(value: unknown): value is ContextList {
+  return isRecord(value) && isKind(value["contextKind"]) && isStringArray(value["values"]);
+}
+
+function isOptionalContextLists(value: unknown): boolean {
+  return isAbsent(value) || everyItem(value, isContextList);
 }
 
 export function isSegment(value: unknown): value is Segment {
@@ -244,6 +284,8 @@ export function isSegment(value: unknown): value is Segment {
     typeof value["salt"] === "string" &&
     isStringArray(value["included"]) &&
     isStringArray(value["excluded"]) &&
+    isOptionalContextLists(value["includedContexts"]) &&
+    isOptionalContextLists(value["excludedContexts"]) &&
     everyItem(value["rules"], isSegmentRule)
   );
 }

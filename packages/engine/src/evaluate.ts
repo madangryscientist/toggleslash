@@ -1,12 +1,17 @@
-import { bucket } from "./bucket.ts";
-import { attributeClauseMatches, type Context } from "./clause.ts";
+import { attributeClauseMatches } from "./clause.ts";
+import { type Context, type Contexts, kindBucket, normaliseContext } from "./context.ts";
 import type { ErrorCode, EvaluationResult, Reason } from "./result.ts";
-import type { FlagEntry, ReadySegment, Ruleset } from "./ruleset.ts";
+import {
+  type FlagEntry,
+  listsContext,
+  type ReadySegment,
+  type Ruleset,
+  targetedVariation,
+} from "./ruleset.ts";
 import {
   type Clause,
   type Flag,
   type FlagHeader,
-  isRecord,
   type Prerequisite,
   type Rollout,
   type Serve,
@@ -18,7 +23,7 @@ const MAX_PREREQUISITE_DEPTH = 32;
 
 interface Run {
   ruleset: Ruleset;
-  context: Context;
+  contexts: Contexts;
   active: Set<string>;
   completed: Map<string, EvaluationResult>;
 }
@@ -48,30 +53,32 @@ function rolloutVariation(rollout: Rollout, position: number): number {
   return chosen;
 }
 
-function serveResult(flag: Flag, serve: Serve, contextKey: string, reason: Reason) {
-  const index = serve.rollout
-    ? rolloutVariation(serve.rollout, bucket(flag.key, flag.salt, contextKey))
+function serveResult(flag: Flag, serve: Serve, contexts: Contexts, reason: Reason) {
+  const { rollout } = serve;
+  const index = rollout
+    ? rolloutVariation(rollout, kindBucket(flag.key, flag.salt, rollout.contextKind, contexts))
     : serve.variation;
   return served(flag.variations, index, reason);
 }
 
-function segmentRuleMatches(rule: SegmentRule, ready: ReadySegment, context: Context): boolean {
-  if (!rule.clauses.every((clause) => attributeClauseMatches(clause, context))) return false;
+function segmentRuleMatches(rule: SegmentRule, ready: ReadySegment, contexts: Contexts): boolean {
+  if (!rule.clauses.every((clause) => attributeClauseMatches(clause, contexts))) return false;
   if (rule.weight === null || rule.weight === undefined) return true;
-  return bucket(ready.segment.key, ready.segment.salt, context.key) < rule.weight;
+  const { key, salt } = ready.segment;
+  return kindBucket(key, salt, rule.rolloutContextKind, contexts) < rule.weight;
 }
 
-function segmentMatches(ready: ReadySegment, context: Context): boolean {
-  if (ready.excluded.has(context.key)) return false;
-  if (ready.included.has(context.key)) return true;
-  return ready.segment.rules.some((rule) => segmentRuleMatches(rule, ready, context));
+function segmentMatches(ready: ReadySegment, contexts: Contexts): boolean {
+  if (listsContext(ready.excluded, contexts)) return false;
+  if (listsContext(ready.included, contexts)) return true;
+  return ready.segment.rules.some((rule) => segmentRuleMatches(rule, ready, contexts));
 }
 
 function clauseMatches(clause: Clause, run: Run): boolean {
-  if (clause.op !== "segmentMatch") return attributeClauseMatches(clause, run.context);
+  if (clause.op !== "segmentMatch") return attributeClauseMatches(clause, run.contexts);
   const matched = clause.values.some((key) => {
     const ready = run.ruleset.segments.get(key);
-    return ready !== undefined && ready !== "malformed" && segmentMatches(ready, run.context);
+    return ready !== undefined && ready !== "malformed" && segmentMatches(ready, run.contexts);
   });
   return clause.negate === true ? !matched : matched;
 }
@@ -100,14 +107,14 @@ function evaluateEntry(entry: FlagEntry, run: Run, depth: number): EvaluationRes
   const { flag, targets } = entry;
   const blocked = checkPrerequisites(flag, run, depth);
   if (blocked) return blocked;
-  const targeted = targets.get(run.context.key);
+  const targeted = targetedVariation(targets, run.contexts);
   if (targeted !== undefined) return served(flag.variations, targeted, { kind: "TARGET_MATCH" });
   const ruleIndex = flag.rules.findIndex((rule) =>
     rule.clauses.every((clause) => clauseMatches(clause, run)),
   );
   const rule = flag.rules[ruleIndex];
-  if (rule) return serveResult(flag, rule, run.context.key, { kind: "RULE_MATCH", ruleIndex });
-  return serveResult(flag, flag.fallthrough, run.context.key, { kind: "FALLTHROUGH" });
+  if (rule) return serveResult(flag, rule, run.contexts, { kind: "RULE_MATCH", ruleIndex });
+  return serveResult(flag, flag.fallthrough, run.contexts, { kind: "FALLTHROUGH" });
 }
 
 function evaluateFlag(run: Run, key: string, depth: number): EvaluationResult {
@@ -124,17 +131,12 @@ function evaluateFlag(run: Run, key: string, depth: number): EvaluationResult {
   return result;
 }
 
-function isContext(value: unknown): value is Context {
-  if (!isRecord(value) || typeof value["key"] !== "string" || value["key"] === "") return false;
-  const attributes = value["attributes"];
-  return attributes === undefined || attributes === null || isRecord(attributes);
-}
-
 /**
  * Evaluates one flag for one context. It never throws: every failure, including a prerequisite
  * cycle, is an `ERROR` result. The order and the comparison rules are in docs/evaluation.md.
  */
 export function evaluate(ruleset: Ruleset, flagKey: string, context: Context): EvaluationResult {
-  if (!isContext(context)) return failure("INVALID_CONTEXT");
-  return evaluateFlag({ ruleset, context, active: new Set(), completed: new Map() }, flagKey, 0);
+  const contexts = normaliseContext(context);
+  if (contexts === null) return failure("INVALID_CONTEXT");
+  return evaluateFlag({ ruleset, contexts, active: new Set(), completed: new Map() }, flagKey, 0);
 }

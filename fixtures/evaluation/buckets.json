@@ -97,6 +97,27 @@
       "contextKey": "high-2",
       "uint32": 2734137369,
       "bucket": 37369
+    },
+    {
+      "flagKey": "checkout",
+      "salt": "a1b2c3",
+      "contextKey": "org:acme",
+      "uint32": 2647282893,
+      "bucket": 82893
+    },
+    {
+      "flagKey": "f",
+      "salt": "s",
+      "contextKey": "org:acme",
+      "uint32": 3525720865,
+      "bucket": 20865
+    },
+    {
+      "flagKey": "seg",
+      "salt": "ss",
+      "contextKey": "org:acme",
+      "uint32": 966843945,
+      "bucket": 43945
     }
   ]
 }
