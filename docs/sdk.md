@@ -113,6 +113,11 @@ createClient({
 | `onError` | ignore | called with each failure; it may throw, and it is ignored if it does |
 | `fetch`, `clock`, `random` | the platform's | injected by the tests |
 
+## OpenFeature
+
+`packages/sdk-openfeature` is a server-side OpenFeature provider over this client: `new ToggleSlashProvider(client)`.
+It evaluates nothing itself; see its [README](../packages/sdk-openfeature/README.md) for the context, reason and error mapping.
+
 ## Tests
 
 `packages/sdk/test` runs against a fake server (`fake-server.ts`) and a fake clock (`fake-clock.ts`), so there is
