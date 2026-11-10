@@ -12,9 +12,6 @@ using Microsoft.Extensions.DependencyInjection;
 /// <c>errors.json</c> is left out on purpose: its flags are malformed, which the admin API refuses to save, so
 /// the database can never hold them. The evaluator's own tests run that file. Its INVALID_CONTEXT cases are
 /// answered as a 400 by the server and are covered in <see cref="SdkApiTests"/>.
-/// <c>kinds.json</c> is left out too, until FS-80: the server answers its invalid contexts with a
-/// 400, and a stored segment has no column for <c>includedContexts</c> or <c>excludedContexts</c>. FS-80 stores
-/// those fields and brings the file back.
 /// </remarks>
 public sealed class SdkVectorTests(ApiServer server) : IClassFixture<ApiServer>
 {
@@ -33,10 +30,44 @@ public sealed class SdkVectorTests(ApiServer server) : IClassFixture<ApiServer>
         ["duplicate segment keys: the first wins"] = "segment keys are unique per environment",
         ["strings: a lone surrogate in a context key is kept, not replaced"] = "a lone surrogate is not valid UTF-8 JSON",
         ["in: a lone surrogate is not U+FFFD"] = "a lone surrogate is not valid UTF-8 JSON",
+        ["invalid: kind is a number"] = "the server answers an invalid context with a 400; SdkApiTests covers that",
+        ["invalid: kind is empty"] = "the server answers an invalid context with a 400; SdkApiTests covers that",
+        ["invalid: kind has a space"] = "the server answers an invalid context with a 400; SdkApiTests covers that",
+        ["invalid: kind has a colon"] = "the server answers an invalid context with a 400; SdkApiTests covers that",
+        ["invalid: kind is not ASCII"] = "the server answers an invalid context with a 400; SdkApiTests covers that",
+        ["invalid: kind is kind"] = "the server answers an invalid context with a 400; SdkApiTests covers that",
+        ["invalid: multi with a top-level key"] = "the server answers an invalid context with a 400; SdkApiTests covers that",
+        ["invalid: multi with top-level attributes"] = "the server answers an invalid context with a 400; SdkApiTests covers that",
+        ["invalid: multi with no contexts"] = "the server answers an invalid context with a 400; SdkApiTests covers that",
+        ["invalid: multi whose contexts is an array"] = "the server answers an invalid context with a 400; SdkApiTests covers that",
+        ["invalid: multi whose contexts is empty"] = "the server answers an invalid context with a 400; SdkApiTests covers that",
+        ["invalid: multi with a kind named multi"] = "the server answers an invalid context with a 400; SdkApiTests covers that",
+        ["invalid: multi with a kind named kind"] = "the server answers an invalid context with a 400; SdkApiTests covers that",
+        ["invalid: multi with a kind that does not match the pattern"] = "the server answers an invalid context with a 400; SdkApiTests covers that",
+        ["invalid: multi entry is not an object"] = "the server answers an invalid context with a 400; SdkApiTests covers that",
+        ["invalid: multi entry has no key"] = "the server answers an invalid context with a 400; SdkApiTests covers that",
+        ["invalid: multi entry has an empty key"] = "the server answers an invalid context with a 400; SdkApiTests covers that",
+        ["invalid: multi entry has a number key"] = "the server answers an invalid context with a 400; SdkApiTests covers that",
+        ["invalid: multi entry has array attributes"] = "the server answers an invalid context with a 400; SdkApiTests covers that",
+        ["invalid: multi entry has a kind"] = "the server answers an invalid context with a 400; SdkApiTests covers that",
+        ["invalid: one bad entry spoils the multi context"] = "the server answers an invalid context with a 400; SdkApiTests covers that",
+        ["malformed: clause contextKind is not a valid kind"] = "a malformed kind field is refused on save",
+        ["malformed: clause contextKind is a number"] = "a malformed kind field is refused on save",
+        ["malformed: clause contextKind is multi"] = "a malformed kind field is refused on save",
+        ["malformed: target contextKind is kind"] = "a malformed kind field is refused on save",
+        ["malformed: rollout contextKind is empty"] = "a malformed kind field is refused on save",
+        ["malformed: a malformed flag stays off"] = "a malformed kind field is refused on save",
+        ["malformed segment: includedContexts is not an array"] = "a malformed segment is refused on save",
+        ["malformed segment: excludedContexts entry has no contextKind"] = "a malformed segment is refused on save",
+        ["malformed segment: includedContexts entry has a bad kind"] = "a malformed segment is refused on save",
+        ["malformed segment: includedContexts values are not strings"] = "a malformed segment is refused on save",
+        ["malformed segment: includedContexts entry is not an object"] = "a malformed segment is refused on save",
+        ["malformed segment: rolloutContextKind is not a valid kind"] = "a malformed segment is refused on save",
+        ["malformed segment: a rule clause contextKind is not a valid kind"] = "a malformed segment is refused on save",
     };
 
     public static IEnumerable<object[]> StorableVectors() =>
-        Fixtures.VectorFiles.Where(file => file is not ("errors.json" or "kinds.json")).SelectMany(file =>
+        Fixtures.VectorFiles.Where(file => file != "errors.json").SelectMany(file =>
             Fixtures.Vectors(file).EnumerateArray()
                 .Select(vector => vector.GetProperty("name").GetString()!)
                 .Where(name => !Unstorable.ContainsKey(name))
@@ -75,6 +106,10 @@ public sealed class SdkVectorTests(ApiServer server) : IClassFixture<ApiServer>
         Assert.True(JsonElement.DeepEquals(expected.GetProperty("variationIndex"), actual.GetProperty("variationIndex")), "variationIndex");
         Assert.True(JsonElement.DeepEquals(expected.GetProperty("reason"), actual.GetProperty("reason")), $"reason: expected {expected.GetProperty("reason")}, got {actual.GetProperty("reason")}");
     }
+
+    /// <summary>A segment's per-kind list as the admin API stores it: absent and JSON null are empty.</summary>
+    private static string ContextLists(JsonElement segment, string name) =>
+        segment.TryGetProperty(name, out var lists) && lists.ValueKind != JsonValueKind.Null ? lists.GetRawText() : "[]";
 
     private static StringContent JsonContent(object body) =>
         new(JsonSerializer.Serialize(body), System.Text.Encoding.UTF8, "application/json");
@@ -132,6 +167,8 @@ public sealed class SdkVectorTests(ApiServer server) : IClassFixture<ApiServer>
                     Included = segment.GetProperty("included").GetRawText(),
                     Excluded = segment.GetProperty("excluded").GetRawText(),
                     Rules = segment.GetProperty("rules").GetRawText(),
+                    IncludedContexts = ContextLists(segment, "includedContexts"),
+                    ExcludedContexts = ContextLists(segment, "excludedContexts"),
                 });
             }
             await database.SaveChangesAsync();

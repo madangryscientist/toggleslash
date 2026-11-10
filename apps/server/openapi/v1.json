@@ -3389,6 +3389,24 @@
           }
         }
       },
+      "ContextList": {
+        "required": [
+          "contextKind",
+          "values"
+        ],
+        "type": "object",
+        "properties": {
+          "contextKind": {
+            "type": "string"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "CreateEnvironmentRequest": {
         "required": [
           "key",
@@ -3563,7 +3581,9 @@
                 "$ref": "#/components/schemas/JsonElement"
               }
             ]
-          }
+          },
+          "includedContexts": {},
+          "excludedContexts": {}
         },
         "additionalProperties": false
       },
@@ -4033,7 +4053,9 @@
               "integer"
             ],
             "format": "int64"
-          }
+          },
+          "includedContexts": {},
+          "excludedContexts": {}
         },
         "additionalProperties": false
       },
@@ -4240,6 +4262,26 @@
           },
           "rules": {
             "$ref": "#/components/schemas/JsonElement"
+          },
+          "includedContexts": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonElement"
+              }
+            ]
+          },
+          "excludedContexts": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonElement"
+              }
+            ]
           }
         }
       },
@@ -4294,6 +4336,26 @@
           },
           "rules": {
             "$ref": "#/components/schemas/JsonElement"
+          },
+          "includedContexts": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonElement"
+              }
+            ]
+          },
+          "excludedContexts": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonElement"
+              }
+            ]
           }
         }
       },
@@ -4334,6 +4396,8 @@
           "key",
           "included",
           "excluded",
+          "includedContexts",
+          "excludedContexts",
           "rules",
           "version"
         ],
@@ -4352,6 +4416,18 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "includedContexts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContextList"
+            }
+          },
+          "excludedContexts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContextList"
             }
           },
           "rules": {

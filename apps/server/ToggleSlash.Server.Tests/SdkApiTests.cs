@@ -141,6 +141,28 @@ public sealed class SdkApiTests : IDisposable
     }
 
     [Fact]
+    public async Task A_segment_serves_its_per_kind_lists_only_when_they_are_not_empty()
+    {
+        await Seed();
+        const string Segments = "/api/v1/projects/shop/environments/prod/segments";
+        var lists = new[] { new { contextKind = "org", values = new[] { "acme" } } };
+        await ApiServer.Expect(HttpStatusCode.Created, await server.Post(Segments, new { key = "a-plain", included = new[] { "u1" }, excluded = Array.Empty<string>(), rules = Array.Empty<object>() }));
+        await ApiServer.Expect(HttpStatusCode.Created, await server.Post(Segments, new { key = "b-orgs", included = Array.Empty<string>(), excluded = Array.Empty<string>(), rules = Array.Empty<object>(), includedContexts = lists, excludedContexts = Array.Empty<object>() }));
+
+        var response = await GetRuleset(await Key("server"));
+        await ApiServer.Expect(HttpStatusCode.OK, response);
+        var raw = await response.Content.ReadAsStringAsync();
+        var segments = JsonDocument.Parse(raw).RootElement.GetProperty("segments");
+
+        // A segment with no per-kind lists is the bytes it was before the server knew of them, so no ETag moves on upgrade.
+        Assert.Equal(
+            $$"""{"key":"a-plain","salt":"{{server.Salt("segments", "shop", "a-plain")}}","included":["u1"],"excluded":[],"rules":[]}""",
+            segments[0].GetRawText());
+        Assert.Equal(["key", "salt", "included", "excluded", "rules", "includedContexts"], segments[1].EnumerateObject().Select(p => p.Name));
+        Assert.Equal("""[{"contextKind":"org","values":["acme"]}]""", segments[1].GetProperty("includedContexts").GetRawText());
+    }
+
+    [Fact]
     public async Task Archived_flags_are_left_out_and_come_back_when_restored()
     {
         await Seed("dark-mode", "old-flag");
@@ -400,6 +422,43 @@ public sealed class SdkApiTests : IDisposable
         Assert.Equal(
             """{"value":null,"variationIndex":null,"reason":{"kind":"ERROR","code":"FLAG_NOT_FOUND"}}""",
             body.GetProperty("flags").GetProperty("child").GetRawText());
+    }
+
+    [Fact]
+    public async Task A_multi_context_evaluates_against_a_target_on_its_org_key()
+    {
+        await Seed("dark-mode");
+        await Save("dark-mode", """
+            { "on": true, "offVariation": 1,
+              "targets": [{ "variation": 0, "contextKeys": ["acme"], "contextKind": "org" }],
+              "prerequisites": [], "rules": [], "fallthrough": { "variation": 1 } }
+            """);
+        var client = await Key("client");
+        var multi = JsonDocument.Parse("""
+            { "kind": "multi", "contexts": { "user": { "key": "u1" }, "org": { "key": "acme", "attributes": { "seats": 40 } } } }
+            """).RootElement;
+
+        var org = await ApiServer.Json(await Post(client, new { flagKey = "dark-mode", context = multi }));
+        var user = await ApiServer.Json(await Post(client, new { flagKey = "dark-mode", context = new { key = "acme" } }));
+
+        Assert.Equal("""{"value":true,"variationIndex":0,"reason":{"kind":"TARGET_MATCH"}}""", org.GetProperty("flags").GetProperty("dark-mode").GetRawText());
+        Assert.Equal("""{"value":false,"variationIndex":1,"reason":{"kind":"FALLTHROUGH"}}""", user.GetProperty("flags").GetProperty("dark-mode").GetRawText());
+    }
+
+    [Theory]
+    [InlineData("""{ "kind": "multi", "contexts": {} }""")]
+    [InlineData("""{ "kind": "multi", "contexts": { "org": { "key": "acme", "kind": "multi" } } }""")]
+    [InlineData("""{ "kind": "a b", "key": "u1" }""")]
+    public async Task An_invalid_context_kind_or_multi_context_is_a_400_naming_both_shapes(string context)
+    {
+        await Seed("dark-mode");
+
+        var response = await Post(await Key("client"), new { context = JsonDocument.Parse(context).RootElement });
+
+        await ApiServer.ExpectError(HttpStatusCode.BadRequest, "bad_request", response);
+        var message = (await ApiServer.Json(response)).GetProperty("error").GetProperty("message").GetString()!;
+        Assert.StartsWith("The context is not valid.", message);
+        Assert.Contains("\"kind\": \"multi\", \"contexts\"", message);
     }
 
     [Theory]

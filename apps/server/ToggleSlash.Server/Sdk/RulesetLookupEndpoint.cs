@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using ToggleSlash.Server.Auth;
 using ToggleSlash.Server.Catalogue;
 using ToggleSlash.Server.Data;
@@ -30,7 +31,15 @@ public static class RulesetLookupEndpoint
         JsonElement Fallthrough,
         long Version);
 
-    public sealed record RulesetLookupSegment(string Key, string[] Included, string[] Excluded, JsonElement Rules);
+    /// <summary><c>includedContexts</c> and <c>excludedContexts</c> are here when the ruleset served them, as there.</summary>
+    public sealed record RulesetLookupSegment(string Key, string[] Included, string[] Excluded, JsonElement Rules)
+    {
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public JsonElement? IncludedContexts { get; init; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public JsonElement? ExcludedContexts { get; init; }
+    }
 
     public static void MapRulesetLookupEndpoint(this IEndpointRouteBuilder routes)
     {
@@ -79,6 +88,10 @@ public static class RulesetLookupEndpoint
             $"\"{stored.Hash}\"",
             stored.FirstServedAt,
             [.. flags.Select(f => new RulesetLookupFlag(f.Key, f.Variations, f.On, f.OffVariation, f.Targets, f.Prerequisites, f.Rules, f.Fallthrough, f.Version))],
-            [.. segments.Select(s => new RulesetLookupSegment(s.Key, s.Included, s.Excluded, s.Rules))]));
+            [.. segments.Select(s => new RulesetLookupSegment(s.Key, s.Included, s.Excluded, s.Rules)
+            {
+                IncludedContexts = s.IncludedContexts,
+                ExcludedContexts = s.ExcludedContexts,
+            })]));
     }
 }

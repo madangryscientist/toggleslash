@@ -492,6 +492,48 @@ public sealed class ConfigApiTests : IDisposable
         Assert.Equal(1767225600000d, clause.GetProperty("values")[1].GetDouble());
     }
 
+    [Fact]
+    public async Task A_target_clause_and_rollout_with_a_context_kind_save_and_read_back()
+    {
+        await Seed("dark-mode", "base");
+        var targets = """[{"variation":0,"contextKeys":["acme"],"contextKind":"org"}]""";
+        var rules = """[{"clauses":[{"attribute":"seats","op":"gt","values":[10],"contextKind":"org"},{"op":"segmentMatch","values":[],"contextKind":"ignored here"}],"variation":0}]""";
+        var fallthrough = """{"rollout":{"variations":[{"variation":0,"weight":100000}],"contextKind":"device.v2_x-1"}}""";
+
+        await ApiServer.Expect(HttpStatusCode.OK, await Put("dark-mode", Body(1, ("targets", targets), ("rules", rules), ("fallthrough", fallthrough))));
+
+        var read = await ApiServer.Json(await server.Get(Config("dark-mode")));
+        Assert.Equal(targets, read.GetProperty("targets").GetRawText());
+        Assert.Equal(rules, read.GetProperty("rules").GetRawText());
+        Assert.Equal(fallthrough, read.GetProperty("fallthrough").GetRawText());
+    }
+
+    [Fact]
+    public async Task A_null_context_kind_is_the_same_as_none()
+    {
+        await Seed("dark-mode", "base");
+
+        await ApiServer.Expect(HttpStatusCode.OK, await Put("dark-mode", Body(1, ("targets", """[{"variation":0,"contextKeys":["u1"],"contextKind":null}]"""))));
+    }
+
+    [Theory]
+    [InlineData("targets", """[{"variation":0,"contextKeys":["acme"],"contextKind":"multi"}]""", "targets[0].contextKind")]
+    [InlineData("rules", """[{"clauses":[{"attribute":"a","op":"in","values":[],"contextKind":"a b"}],"variation":0}]""", "rules[0].clauses[0].contextKind")]
+    [InlineData("rules", """[{"clauses":[],"rollout":{"variations":[{"variation":0,"weight":100000}],"contextKind":7}}]""", "rules[0].rollout.contextKind")]
+    [InlineData("fallthrough", """{"rollout":{"variations":[{"variation":0,"weight":100000}],"contextKind":"org:x"}}""", "fallthrough.rollout.contextKind")]
+    public async Task A_context_kind_that_is_not_a_kind_is_400_naming_the_path(string field, string json, string path)
+    {
+        await Seed("dark-mode", "base");
+
+        var response = await Put("dark-mode", Body(1, (field, json)));
+
+        await ExpectBadRequest(response);
+        Assert.Equal(
+            $"{path} must match [A-Za-z0-9._-]+ and not be \"kind\" or \"multi\".",
+            (await ApiServer.Json(response)).GetProperty("error").GetProperty("message").GetString());
+        Assert.Equal(1, await Version("dark-mode"));
+    }
+
     private static string ReferenceRule(string attribute) =>
         $$"""[{"clauses":[{"attribute":{{JsonSerializer.Serialize(attribute)}},"op":"in","values":["Paris"]}],"variation":0}]""";
 

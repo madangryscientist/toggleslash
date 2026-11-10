@@ -83,6 +83,12 @@ public sealed class Segment
     /// <summary>JSON array of context keys.</summary>
     public string Excluded { get; set; } = "[]";
 
+    /// <summary>JSON array of context lists, <c>{ "contextKind", "values" }</c>: keys of any kind always in.</summary>
+    public string IncludedContexts { get; set; } = "[]";
+
+    /// <summary>JSON array of context lists, <c>{ "contextKind", "values" }</c>: keys of any kind always out.</summary>
+    public string ExcludedContexts { get; set; } = "[]";
+
     /// <summary>JSON array of segment rules.</summary>
     public string Rules { get; set; } = "[]";
 

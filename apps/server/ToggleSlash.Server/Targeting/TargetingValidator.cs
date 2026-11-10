@@ -31,9 +31,13 @@ internal sealed class TargetingValidator(int variationCount)
         for (var i = 0; i < items.Count; i++)
         {
             var path = $"targets[{i}]";
-            if (Fields(items[i], path, "variation", "contextKeys") is { } fields)
+            if (Fields(items[i], path, "variation", "contextKeys", "contextKind") is { } fields)
             {
                 return fields;
+            }
+            if (Kind(items[i], "contextKind", path) is { } kind)
+            {
+                return kind;
             }
             if (Index(items[i], "variation", path) is { } index)
             {
@@ -144,9 +148,13 @@ internal sealed class TargetingValidator(int variationCount)
         {
             var path = $"rules[{i}]";
             var rule = items[i];
-            if (Fields(rule, path, "clauses", "weight") is { } fields)
+            if (Fields(rule, path, "clauses", "weight", "rolloutContextKind") is { } fields)
             {
                 return fields;
+            }
+            if (Kind(rule, "rolloutContextKind", path) is { } kind)
+            {
+                return kind;
             }
             if (rule.TryGetProperty("weight", out var weight) && weight.ValueKind != JsonValueKind.Null
                 && (!TryInteger(weight, out var count) || count < 0 || count > MaxWeight))
@@ -164,6 +172,40 @@ internal sealed class TargetingValidator(int variationCount)
                 {
                     return clauseFault;
                 }
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// A segment's <c>includedContexts</c> or <c>excludedContexts</c>: absent and JSON null pass, otherwise an array
+    /// whose every entry is exactly <c>{ "contextKind": &lt;kind&gt;, "values": [&lt;context key&gt;...] }</c>.
+    /// </summary>
+    public static string? ContextLists(JsonElement? value, string field)
+    {
+        var (problem, items) = Items(value, field);
+        if (problem is not null)
+        {
+            return problem;
+        }
+        for (var i = 0; i < items.Count; i++)
+        {
+            var path = $"{field}[{i}]";
+            if (Fields(items[i], path, "contextKind", "values") is { } fields)
+            {
+                return fields;
+            }
+            if (!items[i].TryGetProperty("contextKind", out var kind) || kind.ValueKind == JsonValueKind.Null)
+            {
+                return $"{path}.contextKind is required.";
+            }
+            if (Kind(items[i], "contextKind", path) is { } badKind)
+            {
+                return badKind;
+            }
+            if (Strings(items[i], "values", path, required: true) is { } values)
+            {
+                return values;
             }
         }
         return null;
@@ -190,8 +232,8 @@ internal sealed class TargetingValidator(int variationCount)
             {
                 return $"{path}.op: a segment rule cannot use segmentMatch, so segments do not nest.";
             }
-            // The spec ignores an attribute here; allowing it keeps a clause that evaluates the same one that saves.
-            if (Fields(clause, path, "op", "values", "negate", "attribute") is { } fields)
+            // The spec ignores an attribute and a contextKind here; allowing them keeps a clause that evaluates the same one that saves.
+            if (Fields(clause, path, "op", "values", "negate", "attribute", "contextKind") is { } fields)
             {
                 return fields;
             }
@@ -213,9 +255,13 @@ internal sealed class TargetingValidator(int variationCount)
         {
             return $"{path}.op must be one of {string.Join(", ", AttributeOps)}{(allowSegmentMatch ? ", segmentMatch" : "")}.";
         }
-        if (Fields(clause, path, "op", "attribute", "values", "negate") is { } attributeFields)
+        if (Fields(clause, path, "op", "attribute", "values", "negate", "contextKind") is { } attributeFields)
         {
             return attributeFields;
+        }
+        if (Kind(clause, "contextKind", path) is { } attributeKind)
+        {
+            return attributeKind;
         }
         if (Negate(clause, path) is { } attributeNegate)
         {
@@ -271,6 +317,24 @@ internal sealed class TargetingValidator(int variationCount)
         return null;
     }
 
+    /// <summary>
+    /// An optional kind at <paramref name="name"/>: absent and JSON null pass, anything else must be a kind of
+    /// <c>docs/evaluation.md</c>, a string matching <c>^[A-Za-z0-9._-]+$</c> that is not <c>kind</c> or <c>multi</c>.
+    /// </summary>
+    public static string? Kind(JsonElement item, string name, string path)
+    {
+        if (!item.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+        return value.ValueKind == JsonValueKind.String && IsKind(value.GetString()!)
+            ? null
+            : $"{path}.{name} must match [A-Za-z0-9._-]+ and not be \"kind\" or \"multi\".";
+    }
+
+    private static bool IsKind(string kind) =>
+        kind.Length > 0 && kind is not ("kind" or "multi") && kind.All(c => c is (>= 'A' and <= 'Z') or (>= 'a' and <= 'z') or (>= '0' and <= '9') or '.' or '_' or '-');
+
     private static string? Negate(JsonElement clause, string path) =>
         clause.TryGetProperty("negate", out var negate) && negate.ValueKind is not (JsonValueKind.True or JsonValueKind.False or JsonValueKind.Null)
             ? $"{path}.negate must be a boolean."
@@ -297,9 +361,13 @@ internal sealed class TargetingValidator(int variationCount)
         {
             return $"{path}.rollout must be an object.";
         }
-        if (Fields(rollout, $"{path}.rollout", "variations") is { } fields)
+        if (Fields(rollout, $"{path}.rollout", "variations", "contextKind") is { } fields)
         {
             return fields;
+        }
+        if (Kind(rollout, "contextKind", $"{path}.rollout") is { } kind)
+        {
+            return kind;
         }
         if (!rollout.TryGetProperty("variations", out var entries) || entries.ValueKind != JsonValueKind.Array || entries.GetArrayLength() == 0)
         {

@@ -114,6 +114,67 @@ public sealed class SegmentApiTests : IDisposable
         Assert.Equal("""[{"clauses":[]}]""", read.GetProperty("rules").GetRawText());
     }
 
+    private const string OrgLists = """[{"contextKind":"org","values":["acme","globex"]}]""";
+
+    [Fact]
+    public async Task Create_without_per_kind_lists_has_them_empty_and_with_them_reads_them_back()
+    {
+        await Seed();
+
+        var plain = await ApiServer.Json(await server.Post(Prod, Segment("plain")));
+        var withLists = await RawPost(Prod, $$"""{"key":"orgs","included":[],"excluded":[],"rules":[{"clauses":[{"attribute":"seats","op":"gt","values":[10],"contextKind":"org"}],"weight":5000,"rolloutContextKind":"org"}],"includedContexts":{{OrgLists}},"excludedContexts":null}""");
+
+        Assert.Equal("[]", plain.GetProperty("includedContexts").GetRawText());
+        Assert.Equal("[]", plain.GetProperty("excludedContexts").GetRawText());
+        await ApiServer.Expect(HttpStatusCode.Created, withLists);
+        var read = await ApiServer.Json(await server.Get($"{Prod}/orgs"));
+        Assert.Equal(OrgLists, read.GetProperty("includedContexts").GetRawText());
+        Assert.Equal("[]", read.GetProperty("excludedContexts").GetRawText());
+        Assert.Equal("org", read.GetProperty("rules")[0].GetProperty("rolloutContextKind").GetString());
+    }
+
+    [Fact]
+    public async Task A_put_without_per_kind_lists_keeps_them_and_a_put_with_them_replaces_them()
+    {
+        await Seed();
+        await ApiServer.Expect(HttpStatusCode.Created, await RawPost(Prod, $$"""{"key":"beta","included":[],"excluded":[],"rules":[],"includedContexts":{{OrgLists}},"excludedContexts":{{OrgLists}}}"""));
+
+        await ApiServer.Expect(HttpStatusCode.OK, await server.Put($"{Prod}/beta", Members(1, "carol")));
+        var kept = await ApiServer.Json(await server.Get($"{Prod}/beta"));
+        await ApiServer.Expect(HttpStatusCode.OK, await Raw(HttpMethod.Put, $"{Prod}/beta", """{"included":[],"excluded":[],"rules":[],"version":2,"includedContexts":[]}"""));
+        var cleared = await ApiServer.Json(await server.Get($"{Prod}/beta"));
+
+        Assert.Equal("""["carol"]""", kept.GetProperty("included").GetRawText());
+        Assert.Equal(OrgLists, kept.GetProperty("includedContexts").GetRawText());
+        Assert.Equal(OrgLists, kept.GetProperty("excludedContexts").GetRawText());
+        Assert.Equal("[]", cleared.GetProperty("includedContexts").GetRawText());
+        Assert.Equal(OrgLists, cleared.GetProperty("excludedContexts").GetRawText());
+        // The audit trail carries the lists in its before and after.
+        Assert.Contains("\"includedContexts\":[]", SegmentUpdates()[^1].After!);
+    }
+
+    [Theory]
+    [InlineData("""{"includedContexts":{}}""", "includedContexts must be an array.")]
+    [InlineData("""{"includedContexts":[{"values":["acme"]}]}""", "includedContexts[0].contextKind is required.")]
+    [InlineData("""{"excludedContexts":[{"contextKind":"org","values":[7]}]}""", "excludedContexts[0].values must be an array of non-empty strings.")]
+    [InlineData("""{"includedContexts":[{"contextKind":"multi","values":[]}]}""", "includedContexts[0].contextKind must match [A-Za-z0-9._-]+ and not be \"kind\" or \"multi\".")]
+    [InlineData("""{"rules":[{"clauses":[],"rolloutContextKind":"a b"}]}""", "rules[0].rolloutContextKind must match [A-Za-z0-9._-]+ and not be \"kind\" or \"multi\".")]
+    public async Task A_bad_per_kind_field_is_400_naming_it(string fieldsJson, string message)
+    {
+        await Seed();
+        var body = System.Text.Json.Nodes.JsonNode.Parse("""{"key":"beta","included":[],"excluded":[],"rules":[]}""")!.AsObject();
+        foreach (var field in System.Text.Json.Nodes.JsonNode.Parse(fieldsJson)!.AsObject().ToList())
+        {
+            body[field.Key] = field.Value?.DeepClone();
+        }
+
+        var response = await RawPost(Prod, body.ToJsonString());
+
+        await ExpectBadRequest(response);
+        Assert.Equal(message, (await ApiServer.Json(response)).GetProperty("error").GetProperty("message").GetString());
+        Assert.Equal(0, (await ApiServer.Json(await server.Get(Prod))).GetArrayLength());
+    }
+
     private static object Members(long? version, params string[] included) =>
         new { included, excluded = new string[0], rules = new object[0], version };
 
@@ -141,7 +202,7 @@ public sealed class SegmentApiTests : IDisposable
         Assert.Equal(
             [(1L, 2L), (2L, 3L)],
             SegmentUpdates().Select(r => (JsonDocument.Parse(r.Before!).RootElement.GetProperty("version").GetInt64(), JsonDocument.Parse(r.After!).RootElement.GetProperty("version").GetInt64())));
-        Assert.Contains("carol", SegmentUpdates()[^1].After);
+        Assert.Contains("carol", SegmentUpdates()[^1].After!);
     }
 
     [Fact]

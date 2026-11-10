@@ -1,6 +1,7 @@
 using System.Data;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using ToggleSlash.Evaluation;
 using ToggleSlash.Server.Data;
 using Microsoft.Data.Sqlite;
@@ -21,7 +22,18 @@ public sealed record RulesetFlag(
     string Salt,
     long Version);
 
-public sealed record RulesetSegment(string Key, string Salt, string[] Included, string[] Excluded, JsonElement Rules);
+/// <summary>
+/// A segment in the ruleset. <c>includedContexts</c> and <c>excludedContexts</c> are served only when not empty, so a
+/// ruleset with no per-kind lists is the same bytes, and has the same ETag, as before the server knew of them.
+/// </summary>
+public sealed record RulesetSegment(string Key, string Salt, string[] Included, string[] Excluded, JsonElement Rules)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public JsonElement? IncludedContexts { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public JsonElement? ExcludedContexts { get; init; }
+}
 
 /// <summary>One environment's non-archived flags and its segments, in the shape of <c>docs/evaluation.md</c>.</summary>
 public sealed record RulesetResponse(RulesetFlag[] Flags, RulesetSegment[] Segments);
@@ -106,7 +118,11 @@ internal sealed class RulesetReader(ToggleSlashDbContext database, ILogger<Rules
                 s.Salt,
                 JsonSerializer.Deserialize<string[]>(s.Included)!,
                 JsonSerializer.Deserialize<string[]>(s.Excluded)!,
-                Json(s.Rules)))]));
+                Json(s.Rules))
+            {
+                IncludedContexts = NonEmpty(s.IncludedContexts),
+                ExcludedContexts = NonEmpty(s.ExcludedContexts),
+            })]));
     }
 
     /// <summary>
@@ -134,6 +150,9 @@ internal sealed class RulesetReader(ToggleSlashDbContext database, ILogger<Rules
             logger.LogWarning(exception, "Could not keep a served ruleset; it was served, and its hash cannot be looked up yet.");
         }
     }
+
+    /// <summary>A stored JSON array, or null when it is empty, so it is left out of the body.</summary>
+    private static JsonElement? NonEmpty(string text) => Json(text) is var array && array.GetArrayLength() == 0 ? null : array;
 
     private static JsonElement Json(string text)
     {

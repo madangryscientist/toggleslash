@@ -15,19 +15,30 @@ public static class SegmentEndpoints
 {
     /// <summary>
     /// A segment of one environment: the context keys always in or out, and rules that bring in the rest.
+    /// <c>included</c> and <c>excluded</c> are user keys; <c>includedContexts</c> and <c>excludedContexts</c> are keys of any kind.
     /// <c>version</c> starts at 1 and goes up by one on every save, and is also the <c>ETag</c> of a single segment (<c>"3"</c>).
     /// </summary>
-    public sealed record SegmentResponse(string Key, string[] Included, string[] Excluded, JsonElement Rules, long Version);
+    public sealed record SegmentResponse(
+        string Key, string[] Included, string[] Excluded, ContextList[] IncludedContexts, ContextList[] ExcludedContexts, JsonElement Rules, long Version);
 
+    /// <summary>The keys of one kind, as <c>docs/evaluation.md</c> spells a context list.</summary>
+    public sealed record ContextList(string ContextKind, string[] Values);
+
+    /// <summary><c>includedContexts</c> and <c>excludedContexts</c> are optional; left out, each is empty.</summary>
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-    public sealed record CreateSegmentRequest(string? Key, string[]? Included, string[]? Excluded, JsonElement? Rules);
+    public sealed record CreateSegmentRequest(
+        string? Key, string[]? Included, string[]? Excluded, JsonElement? Rules, JsonElement? IncludedContexts = null, JsonElement? ExcludedContexts = null);
 
     /// <summary>
     /// A PUT replaces the segment's members and rules; send all three (an empty array clears one).
+    /// <c>includedContexts</c> and <c>excludedContexts</c> are replaced when sent and kept as stored when left out.
     /// The version being replaced goes in <c>version</c> or in <c>If-Match</c>; one is required.
     /// </summary>
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-    public sealed record PutSegmentRequest(string[]? Included, string[]? Excluded, JsonElement? Rules, long? Version = null);
+    public sealed record PutSegmentRequest(
+        string[]? Included, string[]? Excluded, JsonElement? Rules, long? Version = null, JsonElement? IncludedContexts = null, JsonElement? ExcludedContexts = null);
+
+    private static readonly JsonSerializerOptions StoredOptions = new(JsonSerializerDefaults.Web);
 
     public static void MapSegmentEndpoints(this IEndpointRouteBuilder routes)
     {
@@ -64,7 +75,7 @@ public static class SegmentEndpoints
 
     private static async Task<IResult> Create(string project, string env, CreateSegmentRequest request, ToggleSlashDbContext database, TargetingLock targetingLock, RulesetNotifier notifier, CancellationToken cancellation)
     {
-        var problem = Validation.Key(request.Key, "key") ?? Shape(request.Included, request.Excluded, request.Rules);
+        var problem = Validation.Key(request.Key, "key") ?? Shape(request.Included, request.Excluded, request.Rules, request.IncludedContexts, request.ExcludedContexts);
         if (problem is not null)
         {
             return Failures.BadRequest(problem);
@@ -89,6 +100,8 @@ public static class SegmentEndpoints
             Included = JsonSerializer.Serialize(request.Included),
             Excluded = JsonSerializer.Serialize(request.Excluded),
             Rules = JsonSerializer.Serialize(request.Rules!.Value),
+            IncludedContexts = Stored(request.IncludedContexts) ?? "[]",
+            ExcludedContexts = Stored(request.ExcludedContexts) ?? "[]",
             Version = 1,
         };
         database.Segments.Add(segment);
@@ -143,7 +156,7 @@ public static class SegmentEndpoints
         TargetingLock targetingLock,
         RulesetNotifier notifier, CancellationToken cancellation)
     {
-        if (Shape(request.Included, request.Excluded, request.Rules) is { } problem)
+        if (Shape(request.Included, request.Excluded, request.Rules, request.IncludedContexts, request.ExcludedContexts) is { } problem)
         {
             return Failures.BadRequest(problem);
         }
@@ -170,6 +183,9 @@ public static class SegmentEndpoints
         var included = JsonSerializer.Serialize(request.Included);
         var excluded = JsonSerializer.Serialize(request.Excluded);
         var rules = JsonSerializer.Serialize(request.Rules!.Value);
+        // Left out, the per-kind lists keep what is stored, so a client that does not know them cannot wipe them.
+        var includedContexts = Stored(request.IncludedContexts) ?? found.IncludedContexts;
+        var excludedContexts = Stored(request.ExcludedContexts) ?? found.ExcludedContexts;
         // The compare-and-set and its event commit together. The targeting lock keeps `found` the row's true
         // "before" whenever the compare-and-set succeeds; a stale version changed no row, so it records nothing.
         await using var transaction = await database.Database.BeginTransactionAsync(cancellation);
@@ -179,6 +195,8 @@ public static class SegmentEndpoints
                 .SetProperty(s => s.Included, included)
                 .SetProperty(s => s.Excluded, excluded)
                 .SetProperty(s => s.Rules, rules)
+                .SetProperty(s => s.IncludedContexts, includedContexts)
+                .SetProperty(s => s.ExcludedContexts, excludedContexts)
                 .SetProperty(s => s.Version, s => s.Version + 1), cancellation);
         var saved = Describe(await database.Segments.AsNoTracking().SingleAsync(s => s.Id == found.Id, cancellation));
         if (rows == 0)
@@ -275,7 +293,7 @@ public static class SegmentEndpoints
     private static Task<Segment?> Find(ToggleSlashDbContext database, Located scope, string key, CancellationToken cancellation) =>
         database.Segments.AsNoTracking().SingleOrDefaultAsync(s => s.EnvironmentId == scope.Environment.Id && s.Key == key, cancellation);
 
-    private static string? Shape(string[]? included, string[]? excluded, JsonElement? rules)
+    private static string? Shape(string[]? included, string[]? excluded, JsonElement? rules, JsonElement? includedContexts, JsonElement? excludedContexts)
     {
         if (included is null || excluded is null || rules is not { ValueKind: JsonValueKind.Array })
         {
@@ -283,8 +301,18 @@ public static class SegmentEndpoints
         }
         return TargetingValidator.Guard(() => TargetingValidator.ContextKeys(included, "included")
             ?? TargetingValidator.ContextKeys(excluded, "excluded")
+            ?? TargetingValidator.ContextLists(includedContexts, "includedContexts")
+            ?? TargetingValidator.ContextLists(excludedContexts, "excludedContexts")
             ?? new TargetingValidator(0).SegmentRules(rules));
     }
+
+    /// <summary>A context list field as stored, or null when it was left out (absent or JSON null). It has passed <see cref="Shape"/>.</summary>
+    private static string? Stored(JsonElement? lists) =>
+        lists is { ValueKind: JsonValueKind.Array } array
+            ? JsonSerializer.Serialize(array.Deserialize<ContextList[]>(StoredOptions), StoredOptions)
+            : null;
+
+    private static ContextList[] ContextLists(string stored) => JsonSerializer.Deserialize<ContextList[]>(stored, StoredOptions)!;
 
     private static IResult NoSuchSegment() => ApiError.Result(StatusCodes.Status404NotFound, "not_found", "No such segment.");
 
@@ -300,6 +328,8 @@ public static class SegmentEndpoints
         segment.Key,
         JsonSerializer.Deserialize<string[]>(segment.Included)!,
         JsonSerializer.Deserialize<string[]>(segment.Excluded)!,
+        ContextLists(segment.IncludedContexts),
+        ContextLists(segment.ExcludedContexts),
         JsonSerializer.Deserialize<JsonElement>(segment.Rules),
         segment.Version);
 }

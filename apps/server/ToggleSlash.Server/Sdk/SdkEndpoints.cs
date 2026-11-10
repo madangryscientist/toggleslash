@@ -19,8 +19,14 @@ public static class SdkEndpoints
     /// <summary>The CORS policy of the routes a browser calls with a client key: <c>evaluate</c> and <c>events</c>.</summary>
     internal const string ClientCors = "sdk-client";
 
+    /// <summary>The two shapes of a context, for a 400 that refuses one.</summary>
+    internal const string ContextShapes =
+        "It must be { \"kind\"?, \"key\", \"attributes\"? } or { \"kind\": \"multi\", \"contexts\": { \"<kind>\": { \"key\", \"attributes\"? } } }, where a kind matches [A-Za-z0-9._-]+ and is not \"kind\" or \"multi\"; see docs/evaluation.md.";
+
     /// <summary>
-    /// <c>context</c> is a context of <c>docs/evaluation.md</c>: <c>{ "key": "user-1", "attributes": { ... } }</c>.
+    /// <c>context</c> is a context of <c>docs/evaluation.md</c>, one of two shapes: a single context,
+    /// <c>{ "kind": "user", "key": "user-1", "attributes": { ... } }</c> (<c>kind</c> optional, absent is <c>user</c>), or a multi-context,
+    /// <c>{ "kind": "multi", "contexts": { "user": { "key": "user-1" }, "org": { "key": "acme", "attributes": { ... } } } }</c>.
     /// Send <c>flagKey</c> to evaluate that one flag; leave it out for every flag that is not archived.
     /// </summary>
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
@@ -142,7 +148,7 @@ public static class SdkEndpoints
     {
         if (request.Context is not { } context)
         {
-            return Rejected(Failures.BadRequest("A \"context\" is required: { \"key\": \"user-1\", \"attributes\": { } }."));
+            return Rejected(Failures.BadRequest($"A \"context\" is required. {ContextShapes}"));
         }
         var snapshot = await readSnapshot();
 
@@ -150,7 +156,7 @@ public static class SdkEndpoints
         // The spec checks the context before it looks anything up, so any key tells a bad context from a good one.
         if (Evaluator.Evaluate(ruleset, "", context).Reason.Code == ErrorCode.InvalidContext)
         {
-            return Rejected(Failures.BadRequest("The context needs a non-empty string \"key\", and \"attributes\", if sent, must be an object."));
+            return Rejected(Failures.BadRequest($"The context is not valid. {ContextShapes}"));
         }
 
         IReadOnlyList<string> keys = snapshot.FlagKeys;
