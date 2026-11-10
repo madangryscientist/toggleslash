@@ -579,8 +579,8 @@
       "name": "Date and time operator",
       "description": "Target before or after a point in time.",
       "toggleslash": {
-        "status": "no",
-        "evidence": []
+        "status": "yes",
+        "evidence": ["doc:docs/evaluation.md", "test:fixtures/evaluation/dates.json"]
       },
       "competitors": {
         "launchdarkly": "yes",

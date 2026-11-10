@@ -1,3 +1,4 @@
+import { toInstant } from "./date.ts";
 import { compareSemanticVersions, parseSemanticVersion } from "./semver.ts";
 import type { AttributeClause, AttributeOp, ClauseValue } from "./validate.ts";
 
@@ -52,6 +53,30 @@ function matchesSemver(op: AttributeOp, attribute: unknown, value: ClauseValue):
   return op === "semverGt" ? order > 0 : order >= 0;
 }
 
+function matchesDate(op: AttributeOp, attribute: unknown, value: ClauseValue): boolean {
+  const candidate = toInstant(attribute);
+  const target = toInstant(value);
+  if (candidate === null || target === null) return false;
+  return op === "before" ? candidate < target : candidate > target;
+}
+
+const TYPED_OPS: ReadonlySet<AttributeOp> = new Set<AttributeOp>([
+  "semverEq",
+  "semverLt",
+  "semverLte",
+  "semverGt",
+  "semverGte",
+  "before",
+  "after",
+]);
+
+/** The ops that read a candidate and a value as a version or as an instant. */
+function matchesTyped(op: AttributeOp, attribute: unknown, value: ClauseValue): boolean {
+  return op === "before" || op === "after"
+    ? matchesDate(op, attribute, value)
+    : matchesSemver(op, attribute, value);
+}
+
 function matchesValue(op: AttributeOp, attribute: unknown, value: ClauseValue): boolean {
   if (op === "in") {
     return typeof attribute === "boolean" ? attribute === value : compare(attribute, value) === 0;
@@ -63,7 +88,7 @@ function matchesValue(op: AttributeOp, attribute: unknown, value: ClauseValue): 
       matchesString(op, attribute, value)
     );
   }
-  if (op.startsWith("semver")) return matchesSemver(op, attribute, value);
+  if (TYPED_OPS.has(op)) return matchesTyped(op, attribute, value);
   const order = compare(attribute, value);
   return order !== null && matchesOrder(op, order);
 }
