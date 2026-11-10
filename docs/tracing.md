@@ -45,7 +45,7 @@ conventions (status *Development*; its attributes are *Release Candidate*).
 | `toggleslash.project` | the `project` option | always |
 | `toggleslash.environment` | the `environment` option | always |
 | `error.type` | `flag_not_found`, `invalid_context`, `provider_not_ready`, `type_mismatch` or `general` | only when the reason is `error` |
-| `feature_flag.context.id` | the context's `key` | **only with `includeContextId: true`** |
+| `feature_flag.context.id` | the context's `key`; none for a multi context | **only with `includeContextId: true`** |
 | `feature_flag.result.value` | the value the caller got (a JSON object or array as JSON text) | **only with `includeValue: true`** |
 
 - **Nothing identifying is on the span by default.** The context key is an end user's identifier and a value can

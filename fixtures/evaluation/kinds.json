@@ -1,0 +1,3951 @@
+{
+  "vectors": [
+    {
+      "name": "single: no kind is a user context",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "single: kind user is the same as no kind",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "user",
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "single: kind null is a user context",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": null,
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "single: an org context is not a user context",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "org",
+        "key": "acme",
+        "attributes": {
+          "tier": "gold",
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "single: a kind with every allowed character",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "a-Z_0.9",
+        "key": "k"
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "multi: the user entry is the user context",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "user-1",
+            "attributes": {
+              "plan": "pro"
+            }
+          },
+          "org": {
+            "key": "acme",
+            "attributes": {
+              "tier": "gold"
+            }
+          }
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "invalid: kind is a number",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": 1,
+        "key": "user-1"
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "INVALID_CONTEXT"
+        }
+      }
+    },
+    {
+      "name": "invalid: kind is empty",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "",
+        "key": "user-1"
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "INVALID_CONTEXT"
+        }
+      }
+    },
+    {
+      "name": "invalid: kind has a space",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "my org",
+        "key": "user-1"
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "INVALID_CONTEXT"
+        }
+      }
+    },
+    {
+      "name": "invalid: kind has a colon",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "org:x",
+        "key": "user-1"
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "INVALID_CONTEXT"
+        }
+      }
+    },
+    {
+      "name": "invalid: kind is not ASCII",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "orgé",
+        "key": "user-1"
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "INVALID_CONTEXT"
+        }
+      }
+    },
+    {
+      "name": "invalid: kind is kind",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "kind",
+        "key": "user-1"
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "INVALID_CONTEXT"
+        }
+      }
+    },
+    {
+      "name": "invalid: multi with a top-level key",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "key": "user-1",
+        "contexts": {
+          "user": {
+            "key": "user-1"
+          }
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "INVALID_CONTEXT"
+        }
+      }
+    },
+    {
+      "name": "invalid: multi with top-level attributes",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "attributes": {},
+        "contexts": {
+          "user": {
+            "key": "user-1"
+          }
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "INVALID_CONTEXT"
+        }
+      }
+    },
+    {
+      "name": "invalid: multi with no contexts",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi"
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "INVALID_CONTEXT"
+        }
+      }
+    },
+    {
+      "name": "invalid: multi whose contexts is an array",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": [
+          {
+            "key": "user-1"
+          }
+        ]
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "INVALID_CONTEXT"
+        }
+      }
+    },
+    {
+      "name": "invalid: multi whose contexts is empty",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {}
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "INVALID_CONTEXT"
+        }
+      }
+    },
+    {
+      "name": "invalid: multi with a kind named multi",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "multi": {
+            "key": "user-1"
+          }
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "INVALID_CONTEXT"
+        }
+      }
+    },
+    {
+      "name": "invalid: multi with a kind named kind",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "kind": {
+            "key": "user-1"
+          }
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "INVALID_CONTEXT"
+        }
+      }
+    },
+    {
+      "name": "invalid: multi with a kind that does not match the pattern",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "o/rg": {
+            "key": "acme"
+          }
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "INVALID_CONTEXT"
+        }
+      }
+    },
+    {
+      "name": "invalid: multi entry is not an object",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": "user-1"
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "INVALID_CONTEXT"
+        }
+      }
+    },
+    {
+      "name": "invalid: multi entry has no key",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "attributes": {}
+          }
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "INVALID_CONTEXT"
+        }
+      }
+    },
+    {
+      "name": "invalid: multi entry has an empty key",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": ""
+          }
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "INVALID_CONTEXT"
+        }
+      }
+    },
+    {
+      "name": "invalid: multi entry has a number key",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": 1
+          }
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "INVALID_CONTEXT"
+        }
+      }
+    },
+    {
+      "name": "invalid: multi entry has array attributes",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "user-1",
+            "attributes": []
+          }
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "INVALID_CONTEXT"
+        }
+      }
+    },
+    {
+      "name": "invalid: multi entry has a kind",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "org": {
+            "kind": "org",
+            "key": "acme"
+          }
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "INVALID_CONTEXT"
+        }
+      }
+    },
+    {
+      "name": "invalid: one bad entry spoils the multi context",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "user-1"
+          },
+          "org": {
+            "key": ""
+          }
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "INVALID_CONTEXT"
+        }
+      }
+    },
+    {
+      "name": "clause on org: matches a multi context",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "tier",
+                  "op": "in",
+                  "values": ["gold"],
+                  "contextKind": "org"
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "user-1",
+            "attributes": {
+              "plan": "pro"
+            }
+          },
+          "org": {
+            "key": "acme",
+            "attributes": {
+              "tier": "gold"
+            }
+          }
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "clause on org: matches a single org context",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "tier",
+                  "op": "in",
+                  "values": ["gold"],
+                  "contextKind": "org"
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "org",
+        "key": "acme",
+        "attributes": {
+          "tier": "gold",
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "clause on org: a user context lacks it, so false",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "tier",
+                  "op": "in",
+                  "values": ["gold"],
+                  "contextKind": "org"
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "tier": "gold"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "clause on org: a missing kind is false under negate too",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "tier",
+                  "op": "in",
+                  "values": ["gold"],
+                  "contextKind": "org",
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "tier": "silver"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "clause on org: negate flips a present value",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "tier",
+                  "op": "in",
+                  "values": ["gold"],
+                  "contextKind": "org",
+                  "negate": true
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "org": {
+            "key": "acme",
+            "attributes": {
+              "tier": "silver"
+            }
+          }
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "clause on org: does not read the user's attributes",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "tier",
+                  "op": "in",
+                  "values": ["gold"],
+                  "contextKind": "org"
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "u",
+            "attributes": {
+              "tier": "gold"
+            }
+          },
+          "org": {
+            "key": "acme"
+          }
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "clause with no contextKind reads the user entry of a multi context",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "u",
+            "attributes": {
+              "plan": "pro"
+            }
+          },
+          "org": {
+            "key": "acme",
+            "attributes": {
+              "plan": "free"
+            }
+          }
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "clause with contextKind user is the same as none",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"],
+                  "contextKind": "user"
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "clause on org: key reads the org key",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "key",
+                  "op": "in",
+                  "values": ["acme"],
+                  "contextKind": "org"
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "user-1",
+            "attributes": {
+              "plan": "pro"
+            }
+          },
+          "org": {
+            "key": "acme",
+            "attributes": {
+              "tier": "gold"
+            }
+          }
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "clause on org: /key reads the org key",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "/key",
+                  "op": "in",
+                  "values": ["acme"],
+                  "contextKind": "org"
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "user-1",
+            "attributes": {
+              "plan": "pro"
+            }
+          },
+          "org": {
+            "key": "acme",
+            "attributes": {
+              "tier": "gold"
+            }
+          }
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "clause on org: key is not the user key",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "key",
+                  "op": "in",
+                  "values": ["user-1"],
+                  "contextKind": "org"
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "user-1",
+            "attributes": {
+              "plan": "pro"
+            }
+          },
+          "org": {
+            "key": "acme",
+            "attributes": {
+              "tier": "gold"
+            }
+          }
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "clause on a segmentMatch ignores contextKind",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"],
+                  "contextKind": "not a kind"
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": ["user-1"],
+          "excluded": [],
+          "rules": []
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "target on org: matches",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": ["off", "a", "b"],
+          "on": true,
+          "offVariation": 0,
+          "targets": [
+            {
+              "variation": 2,
+              "contextKeys": ["acme"],
+              "contextKind": "org"
+            }
+          ],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "user-1",
+            "attributes": {
+              "plan": "pro"
+            }
+          },
+          "org": {
+            "key": "acme",
+            "attributes": {
+              "tier": "gold"
+            }
+          }
+        }
+      },
+      "expected": {
+        "value": "b",
+        "variationIndex": 2,
+        "reason": {
+          "kind": "TARGET_MATCH"
+        }
+      }
+    },
+    {
+      "name": "target on org: another key does not",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": ["off", "a", "b"],
+          "on": true,
+          "offVariation": 0,
+          "targets": [
+            {
+              "variation": 2,
+              "contextKeys": ["globex"],
+              "contextKind": "org"
+            }
+          ],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "user-1",
+            "attributes": {
+              "plan": "pro"
+            }
+          },
+          "org": {
+            "key": "acme",
+            "attributes": {
+              "tier": "gold"
+            }
+          }
+        }
+      },
+      "expected": {
+        "value": "off",
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "target on org: the user key does not match it",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": ["off", "a", "b"],
+          "on": true,
+          "offVariation": 0,
+          "targets": [
+            {
+              "variation": 2,
+              "contextKeys": ["acme"],
+              "contextKind": "org"
+            }
+          ],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "acme",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": "off",
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "target with no kind does not match an org-only context",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": ["off", "a", "b"],
+          "on": true,
+          "offVariation": 0,
+          "targets": [
+            {
+              "variation": 1,
+              "contextKeys": ["acme"]
+            }
+          ],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "org",
+        "key": "acme",
+        "attributes": {
+          "tier": "gold",
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": "off",
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "targets: first in array order wins across kinds",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": ["off", "a", "b"],
+          "on": true,
+          "offVariation": 0,
+          "targets": [
+            {
+              "variation": 1,
+              "contextKeys": ["user-1"]
+            },
+            {
+              "variation": 2,
+              "contextKeys": ["acme"],
+              "contextKind": "org"
+            }
+          ],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "user-1",
+            "attributes": {
+              "plan": "pro"
+            }
+          },
+          "org": {
+            "key": "acme",
+            "attributes": {
+              "tier": "gold"
+            }
+          }
+        }
+      },
+      "expected": {
+        "value": "a",
+        "variationIndex": 1,
+        "reason": {
+          "kind": "TARGET_MATCH"
+        }
+      }
+    },
+    {
+      "name": "targets: first in array order wins across kinds, reversed",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": ["off", "a", "b"],
+          "on": true,
+          "offVariation": 0,
+          "targets": [
+            {
+              "variation": 2,
+              "contextKeys": ["acme"],
+              "contextKind": "org"
+            },
+            {
+              "variation": 1,
+              "contextKeys": ["user-1"]
+            }
+          ],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "user-1",
+            "attributes": {
+              "plan": "pro"
+            }
+          },
+          "org": {
+            "key": "acme",
+            "attributes": {
+              "tier": "gold"
+            }
+          }
+        }
+      },
+      "expected": {
+        "value": "b",
+        "variationIndex": 2,
+        "reason": {
+          "kind": "TARGET_MATCH"
+        }
+      }
+    },
+    {
+      "name": "rollout by org: buckets org:acme (20865)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": ["x", "a", "b"],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 0,
+                  "weight": 20000
+                },
+                {
+                  "variation": 1,
+                  "weight": 30000
+                },
+                {
+                  "variation": 2,
+                  "weight": 50000
+                }
+              ],
+              "contextKind": "org"
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "user-1",
+            "attributes": {
+              "plan": "pro"
+            }
+          },
+          "org": {
+            "key": "acme",
+            "attributes": {
+              "tier": "gold"
+            }
+          }
+        }
+      },
+      "expected": {
+        "value": "a",
+        "variationIndex": 1,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "rollout by user: the same key in another kind is another bucket (96637)",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": ["x", "a", "b"],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 0,
+                  "weight": 20000
+                },
+                {
+                  "variation": 1,
+                  "weight": 30000
+                },
+                {
+                  "variation": 2,
+                  "weight": 50000
+                }
+              ]
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "acme"
+          },
+          "org": {
+            "key": "acme"
+          }
+        }
+      },
+      "expected": {
+        "value": "b",
+        "variationIndex": 2,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "rollout by org in a rule",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": ["x", "a", "b"],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [],
+              "rollout": {
+                "variations": [
+                  {
+                    "variation": 0,
+                    "weight": 20000
+                  },
+                  {
+                    "variation": 1,
+                    "weight": 30000
+                  },
+                  {
+                    "variation": 2,
+                    "weight": 50000
+                  }
+                ],
+                "contextKind": "org"
+              }
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "user-1",
+            "attributes": {
+              "plan": "pro"
+            }
+          },
+          "org": {
+            "key": "acme",
+            "attributes": {
+              "tier": "gold"
+            }
+          }
+        }
+      },
+      "expected": {
+        "value": "a",
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "rollout by a kind the context lacks is bucket 0",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": ["x", "a", "b"],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 1,
+                  "weight": 0
+                },
+                {
+                  "variation": 2,
+                  "weight": 30000
+                },
+                {
+                  "variation": 0,
+                  "weight": 70000
+                }
+              ],
+              "contextKind": "device"
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": "b",
+        "variationIndex": 2,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "rollout with no kind and an org-only context is bucket 0",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": ["x", "a", "b"],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 1,
+                  "weight": 0
+                },
+                {
+                  "variation": 2,
+                  "weight": 30000
+                },
+                {
+                  "variation": 0,
+                  "weight": 70000
+                }
+              ],
+              "contextKind": null
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "kind": "org",
+        "key": "acme",
+        "attributes": {
+          "tier": "gold",
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": "b",
+        "variationIndex": 2,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "includedContexts: an org key is in",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [],
+          "includedContexts": [
+            {
+              "contextKind": "org",
+              "values": ["acme"]
+            }
+          ]
+        }
+      ],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "user-1",
+            "attributes": {
+              "plan": "pro"
+            }
+          },
+          "org": {
+            "key": "acme",
+            "attributes": {
+              "tier": "gold"
+            }
+          }
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "includedContexts: a user key of the same value is not",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [],
+          "includedContexts": [
+            {
+              "contextKind": "org",
+              "values": ["acme"]
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "acme",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "includedContexts: a user entry works like included",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [],
+          "includedContexts": [
+            {
+              "contextKind": "user",
+              "values": ["user-1"]
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "excludedContexts: an org key is out despite a matching rule",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": []
+            }
+          ],
+          "excludedContexts": [
+            {
+              "contextKind": "org",
+              "values": ["acme"]
+            }
+          ]
+        }
+      ],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "user-1",
+            "attributes": {
+              "plan": "pro"
+            }
+          },
+          "org": {
+            "key": "acme",
+            "attributes": {
+              "tier": "gold"
+            }
+          }
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "exclusion wins across kinds: org excluded, user included",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": ["user-1"],
+          "excluded": [],
+          "rules": [],
+          "excludedContexts": [
+            {
+              "contextKind": "org",
+              "values": ["acme"]
+            }
+          ]
+        }
+      ],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "user-1",
+            "attributes": {
+              "plan": "pro"
+            }
+          },
+          "org": {
+            "key": "acme",
+            "attributes": {
+              "tier": "gold"
+            }
+          }
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "exclusion wins across kinds: user excluded, org included",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": ["user-1"],
+          "rules": [],
+          "includedContexts": [
+            {
+              "contextKind": "org",
+              "values": ["acme"]
+            }
+          ]
+        }
+      ],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "user-1",
+            "attributes": {
+              "plan": "pro"
+            }
+          },
+          "org": {
+            "key": "acme",
+            "attributes": {
+              "tier": "gold"
+            }
+          }
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "excludedContexts: a kind the context lacks excludes nothing",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": ["user-1"],
+          "excluded": [],
+          "rules": [],
+          "excludedContexts": [
+            {
+              "contextKind": "org",
+              "values": ["acme"]
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "segment rule clause on org",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "tier",
+                  "op": "in",
+                  "values": ["gold"],
+                  "contextKind": "org"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "user-1",
+            "attributes": {
+              "plan": "pro"
+            }
+          },
+          "org": {
+            "key": "acme",
+            "attributes": {
+              "tier": "gold"
+            }
+          }
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "segment rule rolloutContextKind org: 43945 is below 50000",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [],
+              "weight": 50000,
+              "rolloutContextKind": "org"
+            }
+          ]
+        }
+      ],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "user-1",
+            "attributes": {
+              "plan": "pro"
+            }
+          },
+          "org": {
+            "key": "acme",
+            "attributes": {
+              "tier": "gold"
+            }
+          }
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "segment rule rolloutContextKind org: 43945 is not below 40000",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [],
+              "weight": 40000,
+              "rolloutContextKind": "org"
+            }
+          ]
+        }
+      ],
+      "context": {
+        "kind": "multi",
+        "contexts": {
+          "user": {
+            "key": "user-1",
+            "attributes": {
+              "plan": "pro"
+            }
+          },
+          "org": {
+            "key": "acme",
+            "attributes": {
+              "tier": "gold"
+            }
+          }
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "FALLTHROUGH"
+        }
+      }
+    },
+    {
+      "name": "segment rule rolloutContextKind a kind the context lacks is bucket 0",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [],
+              "weight": 1,
+              "rolloutContextKind": "org"
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    },
+    {
+      "name": "malformed: clause contextKind is not a valid kind",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"],
+                  "contextKind": "o rg"
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_FLAG"
+        }
+      }
+    },
+    {
+      "name": "malformed: clause contextKind is a number",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"],
+                  "contextKind": 1
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_FLAG"
+        }
+      }
+    },
+    {
+      "name": "malformed: clause contextKind is multi",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "plan",
+                  "op": "in",
+                  "values": ["pro"],
+                  "contextKind": "multi"
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_FLAG"
+        }
+      }
+    },
+    {
+      "name": "malformed: target contextKind is kind",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [
+            {
+              "variation": 1,
+              "contextKeys": ["x"],
+              "contextKind": "kind"
+            }
+          ],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_FLAG"
+        }
+      }
+    },
+    {
+      "name": "malformed: rollout contextKind is empty",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "rollout": {
+              "variations": [
+                {
+                  "variation": 0,
+                  "weight": 100000
+                }
+              ],
+              "contextKind": ""
+            }
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_FLAG"
+        }
+      }
+    },
+    {
+      "name": "malformed: a malformed flag stays off",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": false,
+          "offVariation": 0,
+          "targets": [
+            {
+              "variation": 1,
+              "contextKeys": ["x"],
+              "contextKind": 7
+            }
+          ],
+          "prerequisites": [],
+          "rules": [],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": false,
+        "variationIndex": 0,
+        "reason": {
+          "kind": "OFF"
+        }
+      }
+    },
+    {
+      "name": "malformed segment: includedContexts is not an array",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [],
+          "includedContexts": {
+            "contextKind": "org",
+            "values": ["acme"]
+          }
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_SEGMENT"
+        }
+      }
+    },
+    {
+      "name": "malformed segment: excludedContexts entry has no contextKind",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [],
+          "excludedContexts": [
+            {
+              "values": ["acme"]
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_SEGMENT"
+        }
+      }
+    },
+    {
+      "name": "malformed segment: includedContexts entry has a bad kind",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [],
+          "includedContexts": [
+            {
+              "contextKind": "multi",
+              "values": ["acme"]
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_SEGMENT"
+        }
+      }
+    },
+    {
+      "name": "malformed segment: includedContexts values are not strings",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [],
+          "includedContexts": [
+            {
+              "contextKind": "org",
+              "values": [1]
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_SEGMENT"
+        }
+      }
+    },
+    {
+      "name": "malformed segment: includedContexts entry is not an object",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [],
+          "includedContexts": ["org"]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_SEGMENT"
+        }
+      }
+    },
+    {
+      "name": "malformed segment: rolloutContextKind is not a valid kind",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [],
+              "weight": 1,
+              "rolloutContextKind": "o:rg"
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_SEGMENT"
+        }
+      }
+    },
+    {
+      "name": "malformed segment: a rule clause contextKind is not a valid kind",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": [],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "attribute": "tier",
+                  "op": "in",
+                  "values": ["gold"],
+                  "contextKind": ""
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": null,
+        "variationIndex": null,
+        "reason": {
+          "kind": "ERROR",
+          "code": "MALFORMED_SEGMENT"
+        }
+      }
+    },
+    {
+      "name": "segment: null kind fields are absent",
+      "flagKey": "f",
+      "flags": [
+        {
+          "key": "f",
+          "variations": [false, true],
+          "on": true,
+          "offVariation": 0,
+          "targets": [],
+          "prerequisites": [],
+          "rules": [
+            {
+              "clauses": [
+                {
+                  "op": "segmentMatch",
+                  "values": ["seg"]
+                }
+              ],
+              "variation": 1
+            }
+          ],
+          "fallthrough": {
+            "variation": 0
+          },
+          "salt": "s",
+          "version": 1
+        }
+      ],
+      "segments": [
+        {
+          "key": "seg",
+          "salt": "ss",
+          "included": ["user-1"],
+          "excluded": [],
+          "rules": [
+            {
+              "clauses": [],
+              "rolloutContextKind": null
+            }
+          ],
+          "includedContexts": null,
+          "excludedContexts": null
+        }
+      ],
+      "context": {
+        "key": "user-1",
+        "attributes": {
+          "plan": "pro"
+        }
+      },
+      "expected": {
+        "value": true,
+        "variationIndex": 1,
+        "reason": {
+          "kind": "RULE_MATCH",
+          "ruleIndex": 0
+        }
+      }
+    }
+  ]
+}

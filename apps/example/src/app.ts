@@ -1,6 +1,6 @@
 import type {
   ClientStatus,
-  Context,
+  SingleContext,
   DetailReason,
   VariationDetail,
 } from "@hackcove/toggleslash-sdk";
@@ -10,7 +10,11 @@ import { USERS, userFor } from "./users.ts";
 
 /** The two things the app uses from the SDK (a `Client` fits), so a test can stand a fake in. */
 export interface FlagClient {
-  variationDetail(flagKey: string, context: Context, fallback: unknown): VariationDetail<unknown>;
+  variationDetail(
+    flagKey: string,
+    context: SingleContext,
+    fallback: unknown,
+  ): VariationDetail<unknown>;
   status(): ClientStatus;
 }
 
@@ -22,7 +26,7 @@ interface FlagState {
 }
 
 export interface State {
-  user: Context;
+  user: SingleContext;
   flags: FlagState[];
   status: ClientStatus;
 }
@@ -42,7 +46,7 @@ const FLAG_KEY = /^[a-z0-9][a-z0-9_-]{0,63}$/;
  * What the shop knows for one user, from the SDK's memory: no request is made. `extraFlag` is one
  * more flag to read, with a `null` fallback, for a flag the shop does not know yet.
  */
-function stateFor(client: FlagClient, user: Context, extraFlag: string | null): State {
+function stateFor(client: FlagClient, user: SingleContext, extraFlag: string | null): State {
   const known = extraFlag === null || FLAGS.some(({ key }) => key === extraFlag);
   const read = known ? FLAGS : [...FLAGS, { key: extraFlag, fallback: null }];
   const flags = read.map(({ key, fallback }) => {

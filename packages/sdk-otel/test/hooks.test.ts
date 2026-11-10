@@ -146,6 +146,19 @@ describe("the feature_flag.evaluation event", () => {
     );
   });
 
+  it("records no context id for a multi context, even when asked", async () => {
+    const { client } = await start({ includeContextId: true });
+    const multi = {
+      kind: "multi" as const,
+      contexts: { user: { key: "user-1" }, org: { key: "acme" } },
+    };
+    const span = inSpan(() => client.variation("checkout", multi, false));
+
+    expect(span.events).toHaveLength(1);
+    expect(Object.keys(span.events[0]?.attributes ?? {})).not.toContain("feature_flag.context.id");
+    expect(JSON.stringify(span.events)).not.toContain("acme");
+  });
+
   it("adds the value when asked, and only that", async () => {
     const { client } = await start({ includeValue: true });
     const span = inSpan(() => client.variation("checkout", { key: "user-1" }, false));

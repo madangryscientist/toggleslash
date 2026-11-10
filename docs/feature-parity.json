@@ -524,8 +524,9 @@
       "name": "Multi-context and context kinds",
       "description": "Combine user, organisation, device and custom context kinds in one evaluation.",
       "toggleslash": {
-        "status": "no",
-        "evidence": []
+        "status": "partial",
+        "evidence": ["doc:docs/evaluation.md", "test:fixtures/evaluation/kinds.json"],
+        "note": "Evaluation supports context kinds and multi-contexts; the admin API and dashboard do not yet (FS-80, FS-81)."
       },
       "competitors": {
         "launchdarkly": "yes",

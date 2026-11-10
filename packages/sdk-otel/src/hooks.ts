@@ -9,7 +9,7 @@ export interface TracingOptions {
   project: string;
   /** The environment key the SDK key belongs to: the `{env}` of the lookup route. */
   environment: string;
-  /** Add `feature_flag.context.id`, the context's key (default false: it is an end user's identifier). */
+  /** Add `feature_flag.context.id`, a single context's key (default false: it is an end user's identifier). */
   includeContextId?: boolean;
   /** Add `feature_flag.result.value`, the value the caller got (default false: it can be large or private). */
   includeValue?: boolean;
@@ -65,6 +65,11 @@ function requireText(name: string, value: unknown): string {
   return value;
 }
 
+/** A single context's key; a multi context has no one key to record, so it records none. */
+function contextIdOf(context: EvaluationEvent["context"]): string | null {
+  return "key" in context && typeof context.key === "string" ? context.key : null;
+}
+
 /**
  * The SDK hooks that put each evaluation on the active span. Pass the result as the client's `hooks`:
  * `createClient({ url, sdkKey, hooks: createTracingHooks({ project, environment }) })`.
@@ -98,8 +103,9 @@ export function createTracingHooks(options: TracingOptions): Hooks {
       if (event.etag !== null) attributes["toggleslash.ruleset.etag"] = hashOf(event.etag);
       const type = errorType(event.reason);
       if (type !== null) attributes["error.type"] = type;
-      if (includeContextId && typeof event.context.key === "string") {
-        attributes["feature_flag.context.id"] = event.context.key;
+      const contextId = contextIdOf(event.context);
+      if (includeContextId && contextId !== null) {
+        attributes["feature_flag.context.id"] = contextId;
       }
       if (includeValue) attributes["feature_flag.result.value"] = attributeValue(event.value);
 

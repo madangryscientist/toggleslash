@@ -9,15 +9,14 @@ internal static class ClauseMatcher
     /// The value a name or a <c>/</c> reference reaches, or null when it is missing or null. Only the context's
     /// own <c>attributes</c> count, <c>key</c> always reads the context key, and a step goes into an object only.
     /// </summary>
-    private static JsonElement? ReadAttribute(JsonElement context, string name)
+    private static JsonElement? ReadAttribute(KindContext context, string name)
     {
         // Load refused an invalid reference, so Parse does not return null here.
         var components = name.StartsWith('/') ? AttributeReference.Parse(name) ?? [] : [name];
         if (components.Count == 0) return null;
         JsonElement current;
-        if (components[0] == "key") current = context.GetProperty("key");
-        else if (!context.TryGetProperty("attributes", out var attributes) || attributes.ValueKind != JsonValueKind.Object
-            || !attributes.TryGetProperty(components[0], out current)) return null;
+        if (components[0] == "key") current = context.KeyElement;
+        else if (context.Attributes is not { } attributes || !attributes.TryGetProperty(components[0], out current)) return null;
         for (var i = 1; i < components.Count; i++)
         {
             if (current.ValueKind != JsonValueKind.Object || !current.TryGetProperty(components[i], out current)) return null;
@@ -25,9 +24,13 @@ internal static class ClauseMatcher
         return current.ValueKind == JsonValueKind.Null ? null : current;
     }
 
-    /// <summary>Does one attribute clause hold? A missing attribute fails it, whatever <c>negate</c> says.</summary>
-    public static bool AttributeClauseMatches(Clause clause, JsonElement context)
+    /// <summary>
+    /// Does one attribute clause hold? It reads the context of its <c>contextKind</c>. A missing attribute, or a
+    /// missing kind, fails it, whatever <c>negate</c> says.
+    /// </summary>
+    public static bool AttributeClauseMatches(Clause clause, IReadOnlyDictionary<string, KindContext> contexts)
     {
+        if (!contexts.TryGetValue(clause.ContextKind ?? ContextKinds.Default, out var context)) return false;
         if (ReadAttribute(context, clause.Attribute) is not { } attribute) return false;
         var matched = attribute.ValueKind == JsonValueKind.Array
             ? attribute.EnumerateArray().Any(candidate => AnyValueMatches(clause, candidate))

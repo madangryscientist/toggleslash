@@ -12,6 +12,9 @@ using Microsoft.Extensions.DependencyInjection;
 /// <c>errors.json</c> is left out on purpose: its flags are malformed, which the admin API refuses to save, so
 /// the database can never hold them. The evaluator's own tests run that file. Its INVALID_CONTEXT cases are
 /// answered as a 400 by the server and are covered in <see cref="SdkApiTests"/>.
+/// <c>kinds.json</c> is left out too, until FS-80: the server answers its invalid contexts with a
+/// 400, and a stored segment has no column for <c>includedContexts</c> or <c>excludedContexts</c>. FS-80 stores
+/// those fields and brings the file back.
 /// </remarks>
 public sealed class SdkVectorTests(ApiServer server) : IClassFixture<ApiServer>
 {
@@ -33,7 +36,7 @@ public sealed class SdkVectorTests(ApiServer server) : IClassFixture<ApiServer>
     };
 
     public static IEnumerable<object[]> StorableVectors() =>
-        Fixtures.VectorFiles.Where(file => file != "errors.json").SelectMany(file =>
+        Fixtures.VectorFiles.Where(file => file is not ("errors.json" or "kinds.json")).SelectMany(file =>
             Fixtures.Vectors(file).EnumerateArray()
                 .Select(vector => vector.GetProperty("name").GetString()!)
                 .Where(name => !Unstorable.ContainsKey(name))
