@@ -77,7 +77,8 @@ not list is skipped and reported as skipped.
 **Accessors.** `evaluate` names the accessor the service calls: `bool`, `string`, `number`, `int` (only
 with `integer-accessor`), `json` or `any` (the generic method, or the closest the language has). Each
 answers `variationDetail`'s three fields. A service maps these onto its SDK's methods and says how in a
-README next to it.
+README next to it. The `json` accessor applies contract 4's mismatch rule like the others: it compares
+kinds (array and object are distinct, a null fallback accepts any kind), never the fallback's contents.
 
 **Hook events** are `{ flagKey, context, value, variationIndex, reason, etag, flagVersion }`, in the
 language's own field names mapped back to these.
