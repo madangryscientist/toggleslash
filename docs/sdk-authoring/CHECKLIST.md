@@ -67,7 +67,9 @@ Each line is a native test in `$L`, named in `RUN.md`.
 - [ ] An `afterEvaluation` hook and an `onError` that call back into the client (`status`, `variation`) do
   not deadlock (contract 6.4, SHOULD).
 - [ ] A stream that gets no bytes for 60 s is dropped as `timeout`, and a keep-alive restarts the 60 s,
-  tested through a seam, not by waiting (contract 7.2, "Bounds").
+  tested through a seam, not by waiting: the seam sets the watchdog's length, and the test
+  reads a real loopback socket that goes quiet, because a seam-only test can pass while the timeout never
+  reaches the socket (contract 7.2, "Bounds").
 - [ ] A `Retry-After` above 300 is held for 300 s, on the ruleset, stream and events routes, tested through a
   seam (contract 7.4).
 - [ ] Counts recorded either side of a UTC midnight go out as two days (contract 9, "What is kept").
@@ -75,9 +77,8 @@ Each line is a native test in `$L`, named in `RUN.md`.
   `onError` call (contract 4, step 5).
 - [ ] Where hooks may return a future, one that fails later goes to `onError` and changes neither the
   answer nor the count (contract 10; a hook that raises at once is the harness's `hooks.json`).
-- [ ] With a bounded integer type, a served number outside its range is `TYPE_MISMATCH` on the integer
-  accessor (contract 4, "Typed languages"). Not applicable where integers are unbounded (Python, Ruby):
-  say so in `RUN.md`.
+- [ ] With `integer-accessor`, a served number outside signed 64 bits is `TYPE_MISMATCH` on the integer
+  accessor, in a language with unbounded integers too (contract 4, "Typed languages"; the `huge` scenario).
 - [ ] A client that is never closed does not keep the process from exiting, where the runtime has daemon
   threads or background tasks (contract 6.6, SHOULD).
 
