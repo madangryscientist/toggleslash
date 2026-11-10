@@ -441,6 +441,7 @@
           "cli:segments create",
           "cli:segments set",
           "cli:segments delete",
+          "test:apps/web/e2e/segments.spec.ts",
           "doc:docs/evaluation.md"
         ]
       },

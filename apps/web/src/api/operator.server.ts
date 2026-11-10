@@ -161,6 +161,17 @@ export function createOperatorApi(call: Call) {
       return toSegment(await call("PUT", path, body));
     },
 
+    /** Creates an empty segment (no members, no rules) for the operator to fill in. */
+    async createSegment(project: string, env: string, key: string): Promise<Segment> {
+      const path = apiPath("projects", project, "environments", env, "segments");
+      return toSegment(await call("POST", path, { key, included: [], excluded: [], rules: [] }));
+    },
+
+    /** Deletes a segment no flag rule names; the server refuses otherwise, naming the flags. */
+    async deleteSegment(project: string, env: string, segment: string): Promise<void> {
+      await call("DELETE", apiPath("projects", project, "environments", env, "segments", segment));
+    },
+
     /**
      * What the flags were under a ruleset hash the environment served, without salts. A hash it never served is a
      * value (`found.ok` false) with the server's own words, not a throw: that is a page, not a failure.

@@ -147,7 +147,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | --- | :---: | --- |
 | Individual targeting | ✅ | `api:/api/v1/projects/{project}/flags/{flag}/environments/{env}`<br>`dashboard:/flags/$flag`<br>`cli:targeting show`<br>`cli:targeting set`<br>`doc:docs/evaluation.md` |
 | Rule-based targeting | ✅ | `api:/api/v1/projects/{project}/flags/{flag}/environments/{env}`<br>`dashboard:/flags/$flag`<br>`cli:targeting show`<br>`cli:targeting set`<br>`doc:docs/evaluation.md` |
-| Reusable segments | ✅ | `api:/api/v1/projects/{project}/environments/{env}/segments`<br>`api:/api/v1/projects/{project}/environments/{env}/segments/{segment}`<br>`dashboard:/segments`<br>`cli:segments list`<br>`cli:segments show`<br>`cli:segments create`<br>`cli:segments set`<br>`cli:segments delete`<br>`doc:docs/evaluation.md` |
+| Reusable segments | ✅ | `api:/api/v1/projects/{project}/environments/{env}/segments`<br>`api:/api/v1/projects/{project}/environments/{env}/segments/{segment}`<br>`dashboard:/segments`<br>`cli:segments list`<br>`cli:segments show`<br>`cli:segments create`<br>`cli:segments set`<br>`cli:segments delete`<br>`test:apps/web/e2e/segments.spec.ts`<br>`doc:docs/evaluation.md` |
 | Segment versioning | ✅ | `api:/api/v1/projects/{project}/environments/{env}/segments/{segment}`<br>`dashboard:/segments`<br>`doc:docs/architecture.md` |
 | Large or synced segments | ❌ | none |
 | Prerequisites and dependencies | ✅ | `api:/api/v1/projects/{project}/flags/{flag}/environments/{env}`<br>`doc:docs/evaluation.md` |

@@ -32,6 +32,37 @@ describe("SDK keys", () => {
   });
 });
 
+describe("segments", () => {
+  const path = "/api/v1/projects/shop/environments/production/segments";
+
+  test("creating posts an empty segment and maps the answer", async () => {
+    let sent: unknown;
+    const doFetch: Fetch = (input, init) => {
+      sent = typeof init.body === "string" ? JSON.parse(init.body) : null;
+      expect(init.method).toBe("POST");
+      expect(new URL(input).pathname).toBe(path);
+      return Promise.resolve(
+        json({ key: "vip", included: [], excluded: [], rules: [], version: 1 }, 201),
+      );
+    };
+    const segment = await createAdminApi(connection, doFetch).createSegment(
+      "shop",
+      "production",
+      "vip",
+    );
+    expect(sent).toEqual({ key: "vip", included: [], excluded: [], rules: [] });
+    expect(segment).toEqual({ key: "vip", included: [], excluded: [], rules: "[]", version: 1 });
+  });
+
+  test("deleting sends DELETE to the segment's path", async () => {
+    const { api, seen } = fakeFetch({
+      [`DELETE ${path}/vip`]: () => new Response(null, { status: 204 }),
+    });
+    await api.deleteSegment("shop", "production", "vip");
+    expect(seen).toEqual([`${path}/vip`]);
+  });
+});
+
 describe("audit", () => {
   test("asks for a page with only the filters that are set, and a day as midnight UTC", async () => {
     const { api, seen } = fakeFetch({
