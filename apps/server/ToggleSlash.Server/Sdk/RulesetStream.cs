@@ -16,29 +16,60 @@ public class StreamHeartbeat
 
 /// <summary>
 /// <c>GET /sdk/v1/stream</c>: Server-Sent Events saying what the environment's ruleset's ETag is, on connect
-/// and on every change. Written by hand because a keep-alive is a comment, which <c>TypedResults.ServerSentEvents</c>
-/// cannot send. A stream outlives any one read, so it holds no database context: each read gets its own scope.
+/// and on every change. <c>GET /sdk/v1/changes</c> is the same stream for a client key, with the same events and
+/// <c>{}</c> for data: it still compares ETags inside the server, so it says "changed" only when the served bytes did,
+/// but it tells the client nothing about the ruleset. Written by hand because a keep-alive is a comment, which
+/// <c>TypedResults.ServerSentEvents</c> cannot send. A stream outlives any one read, so it holds no database context:
+/// each read gets its own scope.
 /// </summary>
 internal static class RulesetStream
 {
     private const string Connected = "connected";
     private const string Changed = "changed";
 
-    public static async Task Run(
+    /// <summary>The data of a change signal: nothing about the ruleset.</summary>
+    private const string NoData = "{}";
+
+    /// <summary>The server-key stream: every event carries the ruleset's ETag.</summary>
+    public static Task Run(
         HttpContext http,
         RulesetNotifier notifier,
         StreamHeartbeat heartbeat,
         IServiceScopeFactory scopes,
         IHostApplicationLifetime lifetime,
-        RequestLimiter limiter)
+        RequestLimiter limiter) =>
+        Serve(http, notifier, heartbeat, scopes, lifetime, carriesETag: true,
+            () => limiter.TryOpenStream(ServerAuth.KeyId(http.User)), "This key has too many streams open.");
+
+    /// <summary>The client-key signal: the same events, each with <c>{}</c> for data, and a slot per key and per IP.</summary>
+    public static Task RunChanges(
+        HttpContext http,
+        RulesetNotifier notifier,
+        StreamHeartbeat heartbeat,
+        IServiceScopeFactory scopes,
+        IHostApplicationLifetime lifetime,
+        RequestLimiter limiter) =>
+        Serve(http, notifier, heartbeat, scopes, lifetime, carriesETag: false,
+            () => limiter.TryOpenClientStream(ServerAuth.KeyId(http.User), RateLimiting.ClientAddress(http)),
+            "This key or address has too many streams open.");
+
+    private static async Task Serve(
+        HttpContext http,
+        RulesetNotifier notifier,
+        StreamHeartbeat heartbeat,
+        IServiceScopeFactory scopes,
+        IHostApplicationLifetime lifetime,
+        bool carriesETag,
+        Func<IDisposable?> openSlot,
+        string refusal)
     {
         var environmentId = ServerAuth.EnvironmentId(http.User);
         var keyId = ServerAuth.KeyId(http.User);
         // A using, so the slot comes back on every way out: the client leaving, an error, the host stopping.
-        using var slot = limiter.TryOpenStream(keyId);
+        using var slot = openSlot();
         if (slot is null)
         {
-            await RateLimiting.Write(http, RequestLimiter.StreamRetryAfterSeconds, "This key has too many streams open.");
+            await RateLimiting.Write(http, RequestLimiter.StreamRetryAfterSeconds, refusal);
             return;
         }
         // The host waits for open requests when it stops, so a stream has to end on the stopping signal too.
@@ -53,7 +84,7 @@ internal static class RulesetStream
             http.Response.Headers.CacheControl = "no-cache";
 
             var sent = await CurrentETag(scopes, environmentId, cancellation);
-            await Write(http, Event(Connected, sent), cancellation);
+            await Write(http, Event(Connected, carriesETag ? sent : NoData), cancellation);
 
             var change = subscription.Next(cancellation);
             var beat = heartbeat.Next(cancellation);
@@ -79,7 +110,7 @@ internal static class RulesetStream
                 if (current != sent)
                 {
                     sent = current;
-                    await Write(http, Event(Changed, current), cancellation);
+                    await Write(http, Event(Changed, carriesETag ? current : NoData), cancellation);
                 }
             }
         }
@@ -89,8 +120,8 @@ internal static class RulesetStream
         }
     }
 
-    /// <summary>The data is the tag exactly as the ruleset route's <c>ETag</c> header gives it, quotes included.</summary>
-    private static string Event(string name, string etag) => $"event: {name}\ndata: {etag}\n\n";
+    /// <summary>On the server stream the data is the tag exactly as the ruleset route's <c>ETag</c> header gives it, quotes included.</summary>
+    private static string Event(string name, string data) => $"event: {name}\ndata: {data}\n\n";
 
     private static async Task Write(HttpContext http, string text, CancellationToken cancellation)
     {

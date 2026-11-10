@@ -194,7 +194,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Mobile SDKs | ❌ | none |
 | Edge SDKs | ❌ | none |
 | OpenFeature providers | 🟡 | `path:packages/sdk-openfeature`<br>`test:packages/sdk-openfeature/test/provider.test.ts`<br>A server-side TypeScript provider over the SDK; no provider events, and no browser or other-language providers. |
-| Streaming updates | ✅ | `api:/sdk/v1/ruleset`<br>`api:/sdk/v1/stream`<br>`path:packages/sdk`<br>`doc:docs/sdk.md`<br>SSE carries the ETag only and the SDK refetches; one server process only. |
+| Streaming updates | ✅ | `api:/sdk/v1/ruleset`<br>`api:/sdk/v1/stream`<br>`api:/sdk/v1/changes`<br>`path:packages/sdk`<br>`doc:docs/sdk.md`<br>SSE carries the ETag only and the SDK refetches; a client key gets a separate signal with no data. One server process only. |
 | Polling fallback | ✅ | `path:packages/sdk`<br>`doc:docs/sdk.md`<br>`test:packages/sdk/test/status.test.ts` |
 | Bootstrap and offline mode | 🟡 | `path:packages/sdk`<br>`doc:docs/sdk.md`<br>The SDK keeps the last ruleset in memory but has no explicit bootstrap input. |
 | Relay or persistent store | ❌ | none |

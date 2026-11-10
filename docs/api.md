@@ -15,16 +15,17 @@ There are two kinds of credential, and each is accepted only where its routes sa
 | --- | --- | --- |
 | Admin token | the server's `TOGGLESLASH_ADMIN_TOKEN` | `/api/v1` (the admin API) |
 | Server SDK key (`fs_server_…`) | `toggleslash keys create --kind server`, or the admin API | `/sdk/v1/ruleset`, `/sdk/v1/stream`, `/sdk/v1/evaluate`, `/sdk/v1/events` |
-| Client SDK key (`fs_client_…`) | `toggleslash keys create --kind client`, or the admin API | `/sdk/v1/evaluate`, `/sdk/v1/events` |
+| Client SDK key (`fs_client_…`) | `toggleslash keys create --kind client`, or the admin API | `/sdk/v1/changes`, `/sdk/v1/evaluate`, `/sdk/v1/events` |
 
 A key is bound to one environment of one project. The server stores only a hash and a prefix of each key,
 so a lost key cannot be shown again; create a new one and revoke the old one. The server never generates, stores or logs the admin token. `GET /health` takes no credential.
 
-A client key never reads the ruleset or the stream, and `evaluate` returns only each flag's value, its
+A client key never reads the ruleset or the stream. It may open `GET /sdk/v1/changes`, which says only that something
+changed and carries no ETag, no flag key and no count. `evaluate` returns only each flag's value, its
 variation index and its reason, never the rules, targets or salts behind them.
 
 Any route that takes a credential can answer `429` with `Retry-After` in whole seconds and the error code `rate_limited`: an
-IP has sent too many wrong credentials, or a key has reached its limit on evaluate, events or open streams. The numbers
+IP has sent too many wrong credentials, or a key or an IP has reached its limit on evaluate, events or open streams. The numbers
 are in [`self-hosting.md`](self-hosting.md#rate-limits).
 
 ## SDK read API (`/sdk/v1`)
@@ -33,6 +34,7 @@ are in [`self-hosting.md`](self-hosting.md#rate-limits).
 | --- | --- |
 | `GET /sdk/v1/ruleset` | the environment's ruleset, with an `ETag`; send `If-None-Match` to get a `304` when it has not changed |
 | `GET /sdk/v1/stream` | Server-Sent Events: a `connected` event, then a `changed` event per change, each carrying the ETag |
+| `GET /sdk/v1/changes` | client key only. Server-Sent Events: a `connected` event, then a `changed` event per change, each with `{}` as its data and nothing about the ruleset. A browser calls `evaluate` again on `changed`; it has CORS, like `evaluate` and `events` |
 | `POST /sdk/v1/evaluate` | evaluates the environment's flags for a context and returns each result (value, variation index, reason) |
 | `POST /sdk/v1/events` | adds a batch of usage counts for the key's environment; counts only, never a context or a user |
 

@@ -1106,10 +1106,11 @@
         "evidence": [
           "api:/sdk/v1/ruleset",
           "api:/sdk/v1/stream",
+          "api:/sdk/v1/changes",
           "path:packages/sdk",
           "doc:docs/sdk.md"
         ],
-        "note": "SSE carries the ETag only and the SDK refetches; one server process only."
+        "note": "SSE carries the ETag only and the SDK refetches; a client key gets a separate signal with no data. One server process only."
       },
       "competitors": {
         "launchdarkly": "yes",
@@ -1300,7 +1301,7 @@
       "id": "rate-limits",
       "category": "Operations",
       "name": "Rate limits",
-      "description": "Per-key limits on evaluation and usage writes, per-IP limits on failed authentication, and a cap on streams per key.",
+      "description": "Per-key limits on evaluation and usage writes, per-IP limits on failed authentication, and caps on streams per key and per IP.",
       "toggleslash": {
         "status": "yes",
         "evidence": [
@@ -1319,7 +1320,7 @@
       "id": "http-hardening",
       "category": "Operations",
       "name": "Security headers, body limits and timeouts",
-      "description": "Response headers on every answer from the server and the dashboard, a content security policy with a per-request nonce, a request body cap, request and header timeouts, and CORS on exactly two routes.",
+      "description": "Response headers on every answer from the server and the dashboard, a content security policy with a per-request nonce, a request body cap, request and header timeouts, and CORS on exactly three routes.",
       "toggleslash": {
         "status": "yes",
         "evidence": [

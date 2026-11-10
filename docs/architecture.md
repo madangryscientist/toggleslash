@@ -1,7 +1,7 @@
 # Architecture
 
 This page records the design the later tickets build on. It is a decision record, not a description
-of what exists: today `apps/server` migrates its database, answers `GET /health` and serves the admin API (SDK keys, scoped API tokens, projects, environments, flags, targeting, segments and the audit trail) and the SDK read API (the ruleset, its live-update stream and server-side evaluate), and usage counts (`POST /sdk/v1/events`, the per-flag usage read and `lastEvaluated`), and nothing else. Where a section says
+of what exists: today `apps/server` migrates its database, answers `GET /health` and serves the admin API (SDK keys, scoped API tokens, projects, environments, flags, targeting, segments and the audit trail) and the SDK read API (the ruleset, its live-update stream, a data-free change signal for client keys and server-side evaluate), and usage counts (`POST /sdk/v1/events`, the per-flag usage read and `lastEvaluated`), and nothing else. Where a section says
 "will", the code arrives in its own ticket.
 
 ## Who owns what
@@ -62,10 +62,10 @@ The two kinds of SDK key:
 | Kind | Looks like | Policy | Who holds it | What it may do |
 | --- | --- | --- | --- | --- |
 | server | `fs_server_<64 hex>` | `server-key` | a backend you run | read the ruleset, follow its stream, evaluate locally and report usage counts |
-| client | `fs_client_<64 hex>` | `client-key` | a browser or a mobile app, so assume it is public | ask the server to evaluate and report usage counts; **never** read the ruleset or its stream |
+| client | `fs_client_<64 hex>` | `client-key` | a browser or a mobile app, so assume it is public | ask the server to evaluate, report usage counts and hear that something changed (`GET /sdk/v1/changes`, no data); **never** read the ruleset or its stream |
 
 The kind that counts is the one stored with the key; the text in front is for people and secret
-scanners. The ruleset and stream routes are gated on `server-key`; the evaluate and events routes on `sdk-key`, which is either kind.
+scanners. The ruleset and stream routes are gated on `server-key`, the changes route on `client-key`; the evaluate and events routes on `sdk-key`, which is either kind.
 
 The policies are `admin`, `server-key` and `client-key`, and none includes another: an admin credential
 is not an SDK key, and neither kind of key passes for the other. (`sdk-key` is not a third kind of key:
@@ -114,6 +114,9 @@ shared store. Defaults, variables and proxies are in [`self-hosting.md`](self-ho
   the count first, so a locked-out IP cannot have a guess confirmed. A missing header and the `503` for an unset admin
   token do not count.
 - **Streams, per key:** a slot taken at the top of the route and released by a `using` on every way out.
+- **Change signal, per IP and per key:** `GET /sdk/v1/changes` takes one slot from each, together or not at all. One client
+  key is shared by every visitor of an app, so the per-key number is a high ceiling and the per-IP number is what holds
+  one visitor to a few connections. Same `429`, same 30 seconds.
 - **Client IP:** `RemoteIpAddress`. ASP.NET's forwarded headers middleware is installed only when
   `TOGGLESLASH_TRUSTED_PROXIES` lists something, because with an empty list it trusts everyone. IPv6 is grouped by /64.
 - **Bounded:** each table has a cap and drops its least recently used entry. Open stream slots cannot be dropped, so past
@@ -121,7 +124,7 @@ shared store. Defaults, variables and proxies are in [`self-hosting.md`](self-ho
   writes neither to the database or a log.
 
 Each answer is a `429` with `Retry-After` in whole seconds, rounded up, and the one error shape. A refused stream has no
-refill to compute, so it always says 30 seconds. `Retry-After` is exposed to browsers on the two CORS routes.
+refill to compute, so it always says 30 seconds. `Retry-After` is exposed to browsers on the CORS routes.
 
 ## Response headers, body size and timeouts
 
@@ -130,9 +133,8 @@ not before `next`, so an exception handler that clears the response, a `401` fro
 from Kestrel's body cap and the open stream all still carry them. It never writes a CORS header and never touches the
 ruleset's `ETag`. `Hardening/RequestLimits.cs` holds the Kestrel limits (a 1 MiB body, 30 s for headers, 2 minutes of
 keep-alive) and the request timeout policy (30 s, answered in the error shape). `UseRequestTimeouts` runs after the
-routing `WebApplication` puts first, because it reads each endpoint's metadata, and `GET /sdk/v1/stream` opts out with
-`DisableRequestTimeout`. A test holds that the stream is the only route that does, and another that exactly `evaluate`
-and `events` carry CORS.
+routing `WebApplication` puts first, because it reads each endpoint's metadata, and `GET /sdk/v1/stream` and `GET /sdk/v1/changes` opt out with
+`DisableRequestTimeout`. A test holds that exactly `evaluate`, `events` and `changes` carry CORS.
 
 The dashboard does the same in `apps/web/src/server.ts` (`src/api/security-headers.server.ts`): one wrapper around
 the gate and TanStack Start's handler, so a redirect and the gate's own answers are covered. The nonce is made per
@@ -255,7 +257,12 @@ Under `/api/v1`, every route behind the `admin` policy, so for the root token an
       requests at shutdown. Either way its subscriber is removed.
     - Writes that signal are the ones the ruleset can see: config, toggle, segment, flag create, archive and restore.
       A flag `PATCH` (its name and description are not in the ruleset) and a new environment (no keys yet) do not.
-  - `POST /sdk/v1/evaluate` (server or client key) takes `{ "context": { "key", "attributes" }, "flagKey"? }`
+  - `GET /sdk/v1/changes` (client key only; a server key is 403) is the same Server-Sent Events for a browser, which must
+    not read the ruleset or its ETag. It runs the stream's loop (`RulesetStream`) and sends the same `connected`, `changed`
+    and keep-alive, but every event's `data` is `{}`: no tag, no flag key, no count. It still compares tags inside the
+    server, so a write that leaves the served bytes as they were sends nothing. The client calls `evaluate` again on
+    `changed`. It is the one stream route with CORS, and its connections are limited per IP and per key (see Rate limits).
+  - `POST /sdk/v1/evaluate` (server or client key) takes `{ "context: { "key", "attributes" }, "flagKey"? }`
     and returns `{ "flags": { "<key>": { "value", "variationIndex", "reason" } } }`, from the same
     `ToggleSlash.Evaluation` the vectors run against, for the key's environment: every flag that is
     not archived, or only `flagKey`. `reason` is `kind` plus whichever of `ruleIndex`, `flagKey` (the
@@ -269,9 +276,9 @@ Under `/api/v1`, every route behind the `admin` policy, so for the root token an
     flag, variation and day. It answers `{ "accepted", "unknownFlags" }`. See **Usage counts** below. It is for
     evaluations the server did not perform (a server SDK evaluating locally): `evaluate` counts its own, so an SDK
     that calls `evaluate` and also reports the result here counts it twice.
-  - **CORS is on `evaluate` and `events` only**: any origin, `POST`, the `Authorization` and `Content-Type` headers, a ten-minute
+  - **CORS is on `evaluate`, `events` and `changes` only**: any origin, `GET` and `POST`, the `Authorization` and `Content-Type` headers, a ten-minute
     preflight, and no credentials (the key travels in a header, never a cookie). The preflight is answered without
-    a token. The ruleset, the stream and the admin API send no CORS headers, so a browser cannot read them.
+    a token. The ruleset, the server stream and the admin API send no CORS headers, so a browser cannot read them.
   - Each request reads the environment in one transaction, so a ruleset (and its ETag) is one consistent
     snapshot, and there is no cache in the server to go stale: a write is visible on the next read.
 - **Usage counts.** `flag_usage_daily` holds one row per environment, flag, variation and UTC day, with a

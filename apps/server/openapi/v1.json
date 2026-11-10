@@ -2,7 +2,7 @@
   "openapi": "3.1.1",
   "info": {
     "title": "ToggleSlash API",
-    "description": "The ToggleSlash server\u0027s admin API and SDK read API. Every route under /api/v1 takes \u0060Authorization: Bearer \u003Cadmin token\u003E\u0060, or a scoped token where its project and permission allow it. GET /sdk/v1/ruleset and GET /sdk/v1/stream take a server SDK key; POST /sdk/v1/evaluate takes a server or a client SDK key.",
+    "description": "The ToggleSlash server\u0027s admin API and SDK read API. Every route under /api/v1 takes \u0060Authorization: Bearer \u003Cadmin token\u003E\u0060, or a scoped token where its project and permission allow it. GET /sdk/v1/ruleset and GET /sdk/v1/stream take a server SDK key; GET /sdk/v1/changes takes a client SDK key; POST /sdk/v1/evaluate takes a server or a client SDK key.",
     "version": "v1"
   },
   "paths": {
@@ -172,6 +172,70 @@
         ],
         "summary": "Server-Sent Events: a \u0060connected\u0060 event, then a \u0060changed\u0060 event per change, each carrying the ruleset\u0027s ETag; a comment every 25 seconds.",
         "operationId": "streamRuleset",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/sdk/v1/changes": {
+      "get": {
+        "tags": [
+          "SDK"
+        ],
+        "summary": "Server-Sent Events for a client key: a \u0060connected\u0060 event, then a \u0060changed\u0060 event per change, each with \u0060{}\u0060 as its data; a comment every 25 seconds.",
+        "operationId": "clientChanges",
         "responses": {
           "200": {
             "description": "OK",
