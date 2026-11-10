@@ -63,8 +63,15 @@ async function shoppersDiffer({ free, pro }: Journey) {
 
 async function createFlagWithRule({ dashboard, free, pro }: Journey) {
   await dashboard.getByTestId("nav-flags").click();
-  await dashboard.getByTestId("new-flag").click();
-  await dashboard.getByLabel("Name").fill("Journey flag");
+  // A click can land while the navigation above is still settling and be dropped, so click again
+  // only while the field is hidden. The form is idempotent to open, so a retry cannot close it.
+  const name = dashboard.getByLabel("Name");
+  await expect(async () => {
+    if (!(await name.isVisible()))
+      await dashboard.getByTestId("new-flag").click({ timeout: 2_000 });
+    await expect(name).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 15_000 });
+  await name.fill("Journey flag");
   await dashboard.getByLabel("Key").fill(FLAG);
   await dashboard.getByRole("button", { name: "Create flag" }).click();
   await expect(dashboard.getByTestId(`flag-${FLAG}`)).toBeVisible();
