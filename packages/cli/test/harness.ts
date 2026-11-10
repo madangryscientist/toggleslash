@@ -30,7 +30,7 @@ export function tempDir(): string {
 export interface Options {
   fetch?: Fetch;
   env?: Record<string, string | undefined>;
-  stdin?: string | null;
+  stdin?: string | null | undefined;
   configHome?: string;
 }
 

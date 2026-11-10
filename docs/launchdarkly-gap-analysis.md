@@ -354,8 +354,8 @@ a GitHub app and Copilot/IDE extensions, Slack/Teams/Trello, CI/CD, observabilit
 integrations, data export, and edge/CDN integrations.
 
 ToggleSlash: a committed OpenAPI document, 17 admin routes and 4 SDK routes, a CLI covering
-projects/environments/flags/keys, and a dashboard. No Terraform provider, no MCP server, no GitHub
-app, no chat integration, no data export, no webhooks.
+projects, environments, flags and their targeting, segments and keys, and a dashboard. No
+Terraform provider, no MCP server, no GitHub app, no chat integration, no data export, no webhooks.
 
 The OpenAPI-first choice is the right foundation. A Terraform provider and an MCP server are
 relatively cheap once the API is stable; the GitHub app and Release Autopilot are not.

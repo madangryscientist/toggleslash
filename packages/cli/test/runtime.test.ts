@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { P } from "./cases.ts";
+import { P } from "./case.ts";
 import { runtime } from "./runtime-cases.ts";
 import { fakeServer, json } from "./fake-server.ts";
 import { CONNECTED, TOKEN, cli } from "./harness.ts";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { P } from "./cases.ts";
+import { P } from "./case.ts";
 import { HASH, snapshot } from "./ruleset-cases.ts";
 import { fakeServer, json } from "./fake-server.ts";
 import { CONNECTED, cli } from "./harness.ts";

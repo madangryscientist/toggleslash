@@ -376,6 +376,8 @@
         "evidence": [
           "api:/api/v1/projects/{project}/flags/{flag}/environments/{env}",
           "dashboard:/flags/$flag",
+          "cli:targeting show",
+          "cli:targeting set",
           "doc:docs/evaluation.md"
         ]
       },
@@ -400,6 +402,8 @@
         "evidence": [
           "api:/api/v1/projects/{project}/flags/{flag}/environments/{env}",
           "dashboard:/flags/$flag",
+          "cli:targeting show",
+          "cli:targeting set",
           "doc:docs/evaluation.md"
         ]
       },
@@ -425,6 +429,11 @@
           "api:/api/v1/projects/{project}/environments/{env}/segments",
           "api:/api/v1/projects/{project}/environments/{env}/segments/{segment}",
           "dashboard:/segments",
+          "cli:segments list",
+          "cli:segments show",
+          "cli:segments create",
+          "cli:segments set",
+          "cli:segments delete",
           "doc:docs/evaluation.md"
         ]
       },
@@ -1348,11 +1357,11 @@
       "id": "cli",
       "category": "Operations",
       "name": "CLI",
-      "description": "Manage projects, environments, flags and keys from a terminal.",
+      "description": "Manage projects, environments, flags, targeting, segments and keys from a terminal.",
       "toggleslash": {
         "status": "partial",
         "evidence": ["path:packages/cli", "cli:config set-url", "cli:config set-token"],
-        "note": "Projects, environments, flags (no targeting edit) and keys; no segments, audit or usage commands."
+        "note": "Projects, environments, flags with their targeting, segments, keys, tokens, diagnose and runtime; no audit log or usage commands."
       },
       "competitors": {
         "launchdarkly": "yes",
