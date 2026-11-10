@@ -32,11 +32,13 @@ A small Nx workspace on Bun workspaces:
 | `server` | `apps/server` | the C# server: ASP.NET Core minimal API on .NET 10 (`ToggleSlash.Server`, xunit in `ToggleSlash.Server.Tests`); owns all flag data and the API. `apps/server/openapi/v1.json` is its generated OpenAPI document; `apps/server/Dockerfile` and the root `compose.yaml` containerise it (below) |
 | `evaluation` | `apps/server/ToggleSlash.Evaluation` | the C# implementation of `docs/evaluation.md`: a class library with no ASP.NET or database dependency (xunit in `ToggleSlash.Evaluation.Tests`, which runs every vector); the server references it for `POST /sdk/v1/evaluate` |
 | `e2e` | `packages/e2e` | the cross-language end-to-end test (`test:e2e`, not `test`): builds and starts the real C# server on a port the OS picks with a SQLite file under `$TMPDIR`, drives it with the real CLI (a subprocess) and the real TS SDK, and checks a CLI flip arrives through the stream and that `POST /sdk/v1/evaluate` and the SDK's local evaluation agree over a set of contexts. It also holds the seed (`src/seed.ts`: a shop with five flags and a segment) and `bun run stack` (`src/stack.ts`, `src/stack-cli.ts`): the server, the seed, the dashboard on 4440 and the example app on 4441, with secrets made per run; `test/example.test.ts` proves the example against the real server. `bun run test:stack` (`test:stack`, not `test:e2e`; `playwright.config.ts`, `stack/journey.spec.ts`) starts that stack and walks one journey in a browser: sign in to the dashboard, two shoppers on the example, a flag created through the UI, a toggle that reaches both shoppers through the stream and, in the browser SDK's table, through the change signal, `runtime` and `diagnose` from the CLI, the usage count, the audit log, and a read-scoped token refused a write; on a failure it prints the stack's logs. Loopback only; skips with a printed line when no `dotnet` runs (in CI, where `CI` is set, a missing SDK fails instead). Private |
-| `scripts` | `scripts` | `check-slop.ts`, `check-dashes.ts`, `test-tmp-scope.ts`, `nx.ts` and `dotnet.ts` (typecheck + lint only) |
+| `scripts` | `scripts` | `check-slop.ts`, `check-dashes.ts`, `check-workflows.ts`, `test-tmp-scope.ts`, `nx.ts` and `dotnet.ts` (typecheck + lint only) |
 
 `bunfig.toml` sets `[install] linker = "isolated"` and `globalStore = true` (the shared package store that
 makes a warm worktree install fast): a package sees its own declared dependencies and the root's, not
 another package's. Declare what a package imports in that package's `package.json`.
+
+CI runs on the self-hosted `proxmox` runner (a Proxmox container for the owner's own commits; every job carries a same-repo guard that `scripts/check-workflows.ts` holds, so `ci.yml` takes only `push` and `pull_request`).
 
 A change is green when all of these pass **from the worktree**:
 
