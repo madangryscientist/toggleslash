@@ -5,7 +5,7 @@ Every line is a check you can run or point at. Each names where its rule comes f
 "$L/bin/test-service"`, whose scenarios are in `fixtures/sdk/`. A line that says "the harness" is checked
 when phase 4's check passes; every other line needs its own evidence in `RUN.md` (a test name, a command, or
 a file and line). A line marked SHOULD comes from a contract SHOULD: missing it is a decision in `RUN.md`
-with its reason, not a stuck point. A line that does not apply to your language says why, in `RUN.md`.
+with its reason, not a stuck point. A line that does not apply to your language is marked `n/a: <reason>` in `RUN.md`.
 
 The harness is necessary and not sufficient: the lines under "Native tests" and "Code and documents" are
 what it cannot see.
@@ -76,9 +76,11 @@ Each line is a native test in `$L`, named in `RUN.md`.
 - [ ] An evaluation that raises inside the SDK gives the fallback, `ERROR EVALUATION_FAILED` and one
   `onError` call (contract 4, step 5).
 - [ ] Where hooks may return a future, one that fails later goes to `onError` and changes neither the
-  answer nor the count (contract 10; a hook that raises at once is the harness's `hooks.json`).
+  answer nor the count (contract 10; a hook that raises at once is the harness's `hooks.json`). A language
+  whose hook is a plain function marks the line `n/a: no futures`.
 - [ ] With `integer-accessor`, a served number outside signed 64 bits is `TYPE_MISMATCH` on the integer
-  accessor, in a language with unbounded integers too (contract 4, "Typed languages"; the `huge` scenario).
+  accessor, whether the language's integers are fixed-width (`int64`) or unbounded (contract 4, "Typed
+  languages"; the `huge` scenario).
 - [ ] A client that is never closed does not keep the process from exiting, where the runtime has daemon
   threads or background tasks (contract 6.6, SHOULD).
 
@@ -93,8 +95,10 @@ Each line is a native test in `$L`, named in `RUN.md`.
 - [ ] Every runtime dependency has a line in `DESIGN.md` saying why the standard library will not do
   (PROMPT.md, phase 1).
 - [ ] The SDK sends no telemetry and adds no header that identifies a user or a machine: a search of the
-  source for request headers finds only `Authorization`, `Accept`, `If-None-Match` and `Content-Type`,
-  and any other header set is shown in `RUN.md` not to identify a user or a machine (contract 12).
+  source for request headers finds only `Authorization`, `Accept`, `If-None-Match` and `Content-Type`.
+  Headers the HTTP client adds on its own (`User-Agent`, `Accept-Encoding`, `Host`, `Content-Length`,
+  `Connection`) are allowed when `RUN.md` lists each with why it does not identify a user or a machine;
+  a `User-Agent` that names the host or user, not just the library and version, is not (contract 12).
 - [ ] Every extra beyond the contract is one contract 13 allows, and none weakens contract 5 or sends
   anything new (contract 13).
 - [ ] Test seams are options on `create` (which may be internal to the package) or the language's

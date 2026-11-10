@@ -192,6 +192,11 @@ as received, quotes included>`; it sends the header in no other case.
 | a network failure | `network`. |
 | no answer within `requestTimeout` | `timeout`. The limit covers the whole request, **reading the body included**. |
 
+Reading the `200` body: a duplicate key in a JSON object keeps the last value, a leading byte order mark is
+skipped, and there is no size cap (`requestTimeout` bounds the read). Redirects are not specified: an SDK may
+follow them (the TypeScript SDK's `fetch` does) or not, and a `3xx` it does not follow is an `http_<status>`
+error like any other status.
+
 A **sync** sets `lastSyncAt` to now and clears `lastError`. An error sets `lastError` and calls `onError`,
 and leaves the ruleset and ETag as they were.
 

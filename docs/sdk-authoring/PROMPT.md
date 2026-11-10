@@ -74,11 +74,13 @@ Every SDK has the same three executable `sh` scripts, so CI and people run any l
 Each starts with `#!/bin/sh` and `set -eu`, does `cd "$(dirname "$0")/.."` before anything else, calls
 each tool through `mise exec -- <tool>` when `mise` is on `PATH` (a mise shim fails in a directory where
 its tool is not active, and the root `.tool-versions` is a different set) and plainly otherwise (in CI a
-setup step puts the tools on `PATH`; `sdks/python/bin/*` are the example), and needs nothing beyond what `$L/mise.toml` pins and a stock
+setup step puts the tools on `PATH`; `sdks/python/bin/*` and `sdks/go/bin/*` are examples), and needs nothing beyond what `$L/mise.toml` pins and a stock
 `ubuntu-latest` runner has (`sh`, a C compiler). Build output goes in a directory `$L/.gitignore` ignores.
 `bin/test` builds every time (the test service included), never reports a cached result, runs under the
 language's race detector where it has one, and prints `vectors: <n> pins: <n>` even when all pass. `bin/lint`
-runs native tools only. `bin/test-service` ends with `exec` so the harness's kill reaches the service itself. `chmod +x`
+runs native tools only. `bin/test-service` ends with `exec` so the harness's kill reaches the service itself. In a
+compiled language `bin/test` builds the test service's binary as its last step, and `bin/test-service` runs that binary and builds
+it only when it is missing (the harness waits 30 s for `listening`, which a cold compile can exceed). `chmod +x`
 all three and commit them with the executable bit.
 
 ## Phase 0: read and set up

@@ -41,6 +41,9 @@ that environment by the time they get here.
 | `salt` | string | part of the bucket hash |
 | `version` | count | carried for the API; evaluation does not read it |
 
+Both `salt` and `version` are required: a flag without a `salt`, or with a `version` that is not a count, is
+invalid like any other field here (`ERROR MALFORMED_FLAG`, step 5 of "Evaluation").
+
 - **Target:** `{ "variation": <index>, "contextKeys": [<string>...], "contextKind": <kind> }`.
   `contextKind` is optional (see "Context kinds"); the target lists keys of that kind.
 - **Prerequisite:** `{ "flagKey": <key>, "variation": <count> }`. The variation is an index into the
