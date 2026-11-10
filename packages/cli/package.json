@@ -10,7 +10,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/madangryscientist/featureslash.git",
+    "url": "git+https://github.com/madangryscientist/toggleslash.git",
     "directory": "packages/cli"
   },
   "bin": {

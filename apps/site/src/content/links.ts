@@ -1,1 +1,1 @@
-export const REPO_URL = "https://github.com/madangryscientist/featureslash";
+export const REPO_URL = "https://github.com/madangryscientist/toggleslash";
