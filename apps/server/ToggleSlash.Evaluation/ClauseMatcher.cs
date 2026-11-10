@@ -77,6 +77,10 @@ internal static class ClauseMatcher
                 if (SemanticVersion.Parse(JsonStrings.Read(attribute)) is not { } candidate || SemanticVersion.Parse(value.String) is not { } target) return false;
                 var versionOrder = candidate.CompareTo(target);
                 return op == Op.SemverEq ? versionOrder == 0 : MatchesOrder(op, versionOrder);
+            case Op.Matches:
+                // Compiled per call; an invalid pattern does not match.
+                if (attribute.ValueKind != JsonValueKind.String || value.Kind != ValueKind.String) return false;
+                return Pattern.Compile(value.String) is { } pattern && pattern.IsMatch(JsonStrings.Read(attribute));
             case Op.Before or Op.After:
                 if (ToInstant(attribute) is not { } instant || ToInstant(value) is not { } limit) return false;
                 return op == Op.Before ? instant < limit : instant > limit;

@@ -61,13 +61,12 @@ An attribute clause is `{ "attribute": <key>, "op": <op>, "values": [...], "nega
 names the context the attribute is read from; a value that is not a valid kind makes the flag
 malformed (or, in a segment rule, the segment).
 `op` is one of `in`, `contains`, `startsWith`, `endsWith`, `lt`, `lte`, `gt`, `gte`, `semverEq`,
-`semverLt`, `semverLte`, `semverGt`, `semverGte`, `before`, `after`. `negate` is optional. Each value is a string, a finite number or a boolean; anything else is malformed.
+`semverLt`, `semverLte`, `semverGt`, `semverGte`, `before`, `after`, `matches`. `negate` is optional. Each value is a string, a finite number or a boolean; anything else is malformed.
 
 A segment clause is `{ "op": "segmentMatch", "values": [<string>...], "negate": <boolean> }`. Its
 values are segment keys. An `attribute` or a `contextKind` on it is ignored.
 
-There is no regex op, by design: a regex is a ReDoS risk on a hot path, and JavaScript and .NET do not
-agree on regex semantics. An unknown op makes the flag malformed.
+An unknown op makes the flag malformed.
 
 ### Segment
 
@@ -305,6 +304,7 @@ For an attribute candidate `a` and a clause value `v`:
 | `lt`, `lte`, `gt`, `gte` | both finite numbers, or both strings, and `a` orders that way against `v` |
 | `semverEq`, `semverLt`, `semverLte`, `semverGt`, `semverGte` | both strings, both valid versions (below), and `a` equals or orders that way against `v` |
 | `before`, `after` | `a` and `v` are both instants (below), and `a` is strictly earlier (`before`) or strictly later (`after`) than `v` |
+| `matches` | both strings, `v` is a valid pattern (below), and the pattern matches somewhere in `a` |
 
 - **Number equality and order are IEEE-754.** `1` equals `1.0`, and `-0` equals `0`.
 - **String equality and the three substring ops are ordinal:** the same UTF-16 code units, case-sensitive,
@@ -397,6 +397,89 @@ dates carry different offsets or formats. Evaluation never reads a clock, so the
 Implementations read the string with a hand-written walk over the characters: no regular expression, no
 `Date.parse`, `DateTime.Parse` or `DateTimeOffset.Parse`, and no date library, because each brings its own
 idea of what is valid and which calendar and culture apply.
+
+### Patterns
+
+`matches` tests a string against a pattern: a small regular expression dialect, defined here and
+nowhere else. It is a search, not a full match: `b` matches `"abc"`. Anchor with `^` and `$` to match
+the whole string.
+
+**Strings are code points.** The pattern and the candidate are both read as Unicode code points. A valid
+UTF-16 surrogate pair is one code point; a lone surrogate (U+D800 to U+DFFF on its own) is one code point
+too, with that value. So one `.` matches `"😀"`, and `x{2}` after a pair repeats the whole pair.
+
+**The dialect.** Anything not described here is not a valid pattern.
+
+- **Literals.** The fourteen metacharacters are `\ . [ ] ( ) | * + ? { } ^ $`. Every other code point is
+  a literal that matches itself, case-sensitive and with no normalization. A bare `]` or `}` is invalid
+  (write `\]` or `\}`), as is any `{` that does not start a valid quantifier.
+- **`.`** matches any one code point except U+000A.
+- **Escapes.** `\` may precede only these, inside a class or outside one:
+  - the fourteen metacharacters and `-`: that character;
+  - `n t r f v`: U+000A, U+0009, U+000D, U+000C, U+000B;
+  - `d w s`: `\d` is `[0-9]`, `\w` is `[A-Za-z0-9_]`, `\s` is U+0020 and U+0009 to U+000D. All three are
+    ASCII only (U+0661 is not `\d`, U+00E9 is not `\w`, U+00A0 is not `\s`), unlike .NET;
+  - `D W S`: the complements of those three, so `\D` matches U+0661.
+
+  Any other code point after `\` (`\b`, `\x41`, `A`, `\p{L}`, `\1`, `\/`), and a trailing `\`, is
+  invalid.
+- **Classes.** `[` then an optional `^` (negated), then one or more members, then `]`. Inside a class:
+  `]` closes it; `[` and `\` are invalid unescaped (`\` starts an escape); `^` after the first position is
+  a literal; every other code point, `.`, `*`, `(`, `|` and `$` included, is a literal. Members are read
+  left to right: read one atom A; if the next code point is `-` and the one after it is not `]`, read one
+  more atom B and the member is the range A to B (by code point; A above B is invalid); otherwise the
+  member is A alone. An unescaped `-` read as an atom is a literal only when it is the first member or
+  directly before `]`, and invalid anywhere else: `[-a]`, `[a-]` and `[!--]` (the range U+0021 to
+  U+002D) are valid, `[a-z-9]` is not. A range endpoint is one code point, a literal or a single-character
+  escape, so `[\d-z]` and `[a-\d]` are invalid. `[]` and `[^]` are invalid. A negated class matches any
+  code point it does not list, U+000A included.
+- **Groups and alternation.** `(` ... `)` groups and captures nothing; `(?` is invalid, so there is no
+  lookaround and no non-capturing syntax. An unmatched `(` or `)` is invalid. `|` separates alternatives
+  and binds loosest: `^a|b$` is `^a` or `b$`. An empty side is allowed and matches the empty string, and
+  so is the empty group `()`. The empty pattern is valid and matches every string.
+- **Quantifiers.** `*` (0 or more), `+` (1 or more), `?` (0 or 1), `{n}`, `{n,}` and `{n,m}`. `n` and `m`
+  are ASCII digits with no spaces and no leading zero (`0` is fine, `{01}` is not), each at most 100, and
+  `n <= m`; `{,m}` is invalid. A quantifier applies to the item just before it: a literal, `.`, an escape,
+  a class or a group. A quantifier at the start, after `(`, after `|`, after `^` or `$`, or after another
+  quantifier is invalid, so there are no lazy or possessive forms (`a+?`, `a*+`, `a**`). A repeated empty
+  group, such as `()*` or `(|a)*`, is valid and terminates.
+- **Anchors.** `^` matches only at the start of the whole string and `$` only at its very end, not before
+  a final U+000A. There is no multiline mode and there are no flags of any kind.
+
+**Limits.** A pattern of more than 1024 code points is invalid. So is one whose size is above 10000,
+where size is computed from the parse, the same way everywhere:
+
+| Item | Size |
+| --- | --- |
+| a literal, `.`, an escape, a class, `^`, `$` | 1 |
+| a concatenation | the sum of its parts; 0 when empty (the empty pattern, `()`, an empty side of `\|`) |
+| an alternation | the sum of its sides, plus 1 for each `\|` |
+| a group | its contents |
+| `x*`, `x+`, `x?` | size(x) + 1 |
+| `x{n}` | n x size(x) |
+| `x{n,}` | (n + 1) x size(x) |
+| `x{n,m}` | m x size(x) |
+
+Each quantifier's size is at least 1, so `(){100}` and `a{0}` are 1. `x{0,}` (size(x)) and `x*`
+(size(x) + 1) differ: the table is the rule, not an equivalence. `(a{100}){100}` is exactly 10000 and
+valid, and `(a{100}){100}b` is 10001 and invalid. An alternation counts each `|` rather than once because
+each one costs the matcher a branch, which keeps the work a pattern can cause proportional to its size.
+
+**No match, no error.** A pair where the candidate or the value is not a string, or the value is not a
+valid pattern, does not match. So the rules under "Matching" hold: under `negate` a present attribute that
+is not a string matches, a missing attribute fails whatever `negate` says, and an array attribute is one
+candidate per element. A `matches` clause with an invalid pattern in `values` does not make a flag
+malformed. Writing will be stricter: the server's targeting API is to refuse a `matches` clause whose
+`values` hold anything but a valid pattern. Until it accepts `matches` at all, it refuses the op as it
+refuses any op it does not know.
+
+**Cost.** Matching is O(size x input code points x class members) in time, where a class has at most as many
+members as the pattern has code points, and O(size + input code points) in space, whatever the pattern and
+the input: there is no backtracking, so `(a*)*b` against 5000 `a`s is as quick as `ab`. Implementations
+are written by hand, as a Thompson NFA simulation (a parser to a small program, run as a Pike VM that
+visits each instruction at most once per input position), and use no platform regular expression:
+JavaScript and .NET differ on `\d`, `\w`, `.`, Unicode and anchors, and a backtracking engine on the
+evaluation hot path is a ReDoS risk.
 
 ### segmentMatch
 
@@ -519,6 +602,7 @@ with `expected`, deeply.
 | `prerequisites.json` | met, failed, cycles, the depth limit, reuse within an evaluation |
 | `semver.json` | the five `semver` ops: the section 11 order, short forms, build, big numbers, what is not a version, `negate`, arrays |
 | `dates.json` | `before` and `after`: equal instants, offsets, fractions, the calendar and leap years, the range ends, numbers as Unix milliseconds, what is not an instant, `negate`, arrays |
+| `regex.json` | `matches`: every rule of the dialect, valid and invalid patterns, search and anchors, code points and surrogates, the ASCII-only classes, counted repetition, the length and size limits, patterns a backtracking engine would hang on, non-strings, `negate`, arrays |
 | `attributes.json` | `/` references: nesting, escapes, `key`, arrays and non-objects on the way, own properties, invalid references |
 | `segments.json` | `segmentMatch`, excluded and included, segment rules and weights, bad segments |
 | `rollouts.json` | the cumulative walk at bucket boundaries, hash inputs, malformed rollouts |

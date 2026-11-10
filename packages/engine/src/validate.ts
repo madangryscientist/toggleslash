@@ -21,7 +21,8 @@ export type AttributeOp =
   | "semverGt"
   | "semverGte"
   | "before"
-  | "after";
+  | "after"
+  | "matches";
 
 export interface AttributeClause {
   op: AttributeOp;
@@ -109,6 +110,7 @@ const ATTRIBUTE_OPS: ReadonlySet<unknown> = new Set<AttributeOp>([
   "semverGte",
   "before",
   "after",
+  "matches",
 ]);
 
 export function isRecord(value: unknown): value is Record<string, unknown> {

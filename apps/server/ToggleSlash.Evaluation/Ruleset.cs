@@ -190,6 +190,7 @@ internal static class Validation
         "semverGte" => Op.SemverGte,
         "before" => Op.Before,
         "after" => Op.After,
+        "matches" => Op.Matches,
         _ => null,
     };
 
