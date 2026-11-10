@@ -178,8 +178,9 @@ loop or wait on a promise, future or timer.
 ## 7. Sync protocol
 
 The SDK keeps a **ruleset** and the **ETag** the server gave it. All requests carry
-`Authorization: Bearer <sdkKey>` and go to `url` plus the path below. The URL is not parsed beyond
-removing trailing `/` characters.
+`Authorization: Bearer <sdkKey>` and go to `url` plus the path below. The SDK does not validate or rewrite the
+URL beyond removing trailing `/` characters; it may split it into scheme, host, port and path prefix where its
+HTTP client needs them, and a URL it cannot use makes each request a `network` error, never a raise.
 
 ### 7.1 The ruleset
 

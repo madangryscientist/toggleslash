@@ -184,8 +184,10 @@ test "$missing" = 0
 
 Port [`docs/evaluation.md`](../evaluation.md) into the SDK as its own module with no network code in it.
 The spec and the vectors are normative. You MAY read the two existing implementations as references,
-`packages/engine/src` (TypeScript) and `apps/server/ToggleSlash.Evaluation` (C#); where either disagrees
-with the spec, the spec wins, and you report the disagreement under guesses with both readings.
+`packages/engine/src` (TypeScript) and `apps/server/ToggleSlash.Evaluation` (C#). Where either, or any
+other implementation in this repository you read, disagrees with the spec or the contract, the spec or the
+contract wins and you record the disagreement in `DESIGN.md` with both readings and the file and line of
+each. It is not a guess: the rule settles it.
 
 - **`matches` follows the spec's own matcher** ("Patterns": a parser to a small program run as a Pike VM),
   never the language's regular expression engine, not even as a fast path. The spec says why: platform
@@ -285,12 +287,14 @@ server recorded; read those before you change code.
    format:check` (not `bin/lint`): format those with `bunx oxfmt <file>`. If a native tool and `oxfmt` disagree about one file, that is a stuck point.
 4. `.github/workflows/sdk-<lang>.yml`, from this skeleton. Fill in only the toolchain step: pin every
    action by its full commit SHA with the tag in a comment, as `ci.yml` does (`gh api
-   repos/<owner>/<repo>/commits/<tag> --jq .sha` resolves one), and install the version `$L/mise.toml` pins
+   repos/<owner>/<repo>/commits/<tag> --jq .sha` resolves one; an action `ci.yml` does not use, such as
+   `jdx/mise-action`, is resolved the same way, that answer is the pin, and a sibling `sdk-<lang>.yml` that
+   uses it may be read for its inputs), and install the version `$L/mise.toml` pins
    and every tool the `bin/` scripts call. Either the language's official setup action, with the same
    version as `mise.toml` and a comment saying so, or `jdx/mise-action` limited to the tools in
    `$L/mise.toml` (unlimited, it also installs the root `.tool-versions`: .NET and a second Bun). Which one
    is a decision. For `jdx/mise-action` the inputs are `working_directory: sdks/<lang>` and `install_args` naming
-   the tools, so a run does not read a sibling's workflow. Copy the checkout and Bun lines and `BUN_VERSION` from `ci.yml` as they are when you run.
+   the tools, so a run need not read a sibling's workflow. Copy the checkout and Bun lines and `BUN_VERSION` from `ci.yml` as they are when you run.
 
 ```yaml
 name: SDK (<Language>)
@@ -354,7 +358,8 @@ dash check reads only files git tracks, hence the `git add`):
    point where the prompt or a document should have told you and did not. Before listing one, search the
    contract, the protocol page, the checklist and the language notes for it: a point one of them answers is not a
    guess (cite it in `DESIGN.md` if it mattered). A tool the prompt does not name (a test framework, a linter,
-   a type checker) is a decision, not a guess.
+   a type checker), and its configuration (a rule set, an ignore list), is a decision, not a guess. Something
+   the prompt asks for that is slow or costly is not a guess either.
 
 **Check.** The report has every section, and nothing outside your two paths changed:
 

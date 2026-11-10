@@ -72,7 +72,8 @@ Each line is a native test in `$L`, named in `RUN.md`.
 - [ ] A reader sees one ruleset or the other across a swap: a hook's `etag` and `flagVersion` belong to the
   same ruleset under concurrent swaps (contract 6.3; the swap is a MUST, the `etag` pairing a SHOULD).
 - [ ] An `afterEvaluation` hook and an `onError` that call back into the client (`status`, `variation`) do
-  not deadlock (contract 6.4, SHOULD).
+  not deadlock, and a `ready` called from inside such a callback on the SDK's own thread returns without
+  waiting (contract 6.4, SHOULD).
 - [ ] A stream that gets no bytes for 60 s is dropped as `timeout`, and a keep-alive restarts the 60 s,
   tested through a seam, not by waiting: the seam sets the watchdog's length, and the test
   reads a real loopback socket that goes quiet, because a seam-only test can pass while the timeout never
@@ -99,6 +100,8 @@ Each line is a native test in `$L`, named in `RUN.md`.
   codes, stream states and `lastError` codes keep their spelling in the public API (contract 2).
 - [ ] The evaluator has no regular expression from the platform: a search of the evaluator's source for the
   language's regex module or type finds nothing (evaluation.md, "Patterns", "Cost").
+- [ ] The lint configuration names the rule set it enables, and each rule it ignores carries a reason in a
+  comment beside it.
 - [ ] Every runtime dependency has a line in `DESIGN.md` saying why the standard library will not do
   (PROMPT.md, phase 1).
 - [ ] The SDK sends no telemetry and adds no header that identifies a user or a machine: a search of the
