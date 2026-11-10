@@ -13,12 +13,17 @@ export interface Environment {
   createdAt: string;
 }
 
+/** Where a flag is in its life, as the server computes it. */
+export type Lifecycle = "new" | "active" | "inactive" | "archived";
+
 export interface FlagRow {
   key: string;
   name: string;
   description: string;
   tags: string[];
   temporary: boolean;
+  /** `null` when the answer carries none or a word this dashboard does not know. */
+  lifecycle: Lifecycle | null;
   /** `yyyy-mm-dd`, or `null` when the flag has never been evaluated. */
   lastEvaluated: string | null;
   /** Whether targeting is on in the chosen environment; `null` when its config could not be read. */
@@ -36,6 +41,7 @@ export interface FlagDetail {
   tags: string[];
   temporary: boolean;
   archived: boolean;
+  lifecycle: Lifecycle | null;
   /** Each variation's value as JSON text (`true`, `"blue"`, `42`); the index is what targeting refers to. */
   variations: string[];
   lastEvaluated: string | null;
@@ -87,6 +93,8 @@ export type Loaded =
       environments: Environment[];
       environment: Environment | null;
       flags: FlagRow[];
+      /** Whether `flags` are the archived ones. */
+      archived: boolean;
     };
 
 export type DetailLoaded =

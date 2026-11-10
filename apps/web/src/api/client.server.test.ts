@@ -6,6 +6,7 @@ const connection = { url: "http://api.test", token: TOKEN };
 
 interface Seen {
   method: string;
+  search: string;
   auth: string | null;
   body: unknown;
 }
@@ -15,7 +16,12 @@ function fakeFetch(routes: Record<string, () => Response>) {
   const doFetch: Fetch = (input, init) => {
     const method = init.method ?? "GET";
     const body = typeof init.body === "string" ? JSON.parse(init.body) : undefined;
-    seen.push({ method, auth: new Headers(init.headers).get("authorization"), body });
+    seen.push({
+      method,
+      search: new URL(input).search,
+      auth: new Headers(init.headers).get("authorization"),
+      body,
+    });
     const route = routes[`${method} ${new URL(input).pathname}`];
     return Promise.resolve(route === undefined ? new Response("", { status: 404 }) : route());
   };
@@ -144,6 +150,83 @@ describe("flags", () => {
     await expect(createAdminApi(connection, doFetch).flags("shop", "prod")).rejects.toMatchObject({
       kind: "unreachable",
     });
+  });
+});
+
+describe("lifecycle", () => {
+  const flagsPath = "GET /api/v1/projects/shop/flags";
+  const statesPath = "GET /api/v1/projects/shop/environments/prod/flag-states";
+
+  test("the list reads each flag's stage, and an unknown or missing word is null", async () => {
+    const { doFetch } = fakeFetch({
+      [flagsPath]: () =>
+        json([
+          { key: "a", name: "A", lifecycle: "new" },
+          { key: "b", name: "B", lifecycle: "active" },
+          { key: "c", name: "C", lifecycle: "inactive" },
+          { key: "d", name: "D", lifecycle: "archived" },
+          { key: "e", name: "E", lifecycle: "stale" },
+          { key: "f", name: "F" },
+        ]),
+      [statesPath]: () => json([]),
+    });
+    const flags = await createAdminApi(connection, doFetch).flags("shop", "prod");
+    expect(flags.map((f) => f.lifecycle)).toEqual([
+      "new",
+      "active",
+      "inactive",
+      "archived",
+      null,
+      null,
+    ]);
+  });
+
+  test("the detail reads the stage, and an unknown or missing word is null", async () => {
+    const answers = [{ lifecycle: "inactive" }, { lifecycle: 3 }, {}];
+    const stages = [];
+    for (const extra of answers) {
+      const { doFetch } = fakeFetch({
+        "GET /api/v1/projects/shop/flags/a": () => json({ key: "a", name: "A", ...extra }),
+      });
+      stages.push((await createAdminApi(connection, doFetch).flag("shop", "a")).lifecycle);
+    }
+    expect(stages).toEqual(["inactive", null, null]);
+  });
+});
+
+describe("archived flags", () => {
+  test("flags with archived lists ?archived=true and reads no states", async () => {
+    const { doFetch, seen } = fakeFetch({
+      "GET /api/v1/projects/shop/flags": () =>
+        json([{ key: "a", name: "A", lifecycle: "archived", archivedAt: "2026-11-01T00:00:00Z" }]),
+    });
+    const flags = await createAdminApi(connection, doFetch).flags("shop", "prod", {
+      archived: true,
+    });
+    expect(seen.map((s) => s.search)).toEqual(["?archived=true"]);
+    expect(flags.map((f) => [f.key, f.lifecycle, f.on, f.version, f.lastEvaluated])).toEqual([
+      ["a", "archived", null, null, null],
+    ]);
+  });
+
+  test("restore posts to the flag's restore route", async () => {
+    const { doFetch, seen } = fakeFetch({
+      "POST /api/v1/projects/shop/flags/a/restore": () => json({}),
+    });
+    await createAdminApi(connection, doFetch).restoreFlag("shop", "a");
+    expect(seen.map((s) => s.method)).toEqual(["POST"]);
+  });
+
+  test("delete sends DELETE to the flag, and a 409 keeps the server's message", async () => {
+    const { doFetch, seen } = fakeFetch({
+      "DELETE /api/v1/projects/shop/flags/a": () => new Response(null, { status: 204 }),
+      "DELETE /api/v1/projects/shop/flags/b": () =>
+        json({ error: { code: "conflict", message: '"b" is a prerequisite of "a".' } }, 409),
+    });
+    const api = createAdminApi(connection, doFetch);
+    await api.deleteFlag("shop", "a");
+    await expect(api.deleteFlag("shop", "b")).rejects.toMatchObject({ status: 409 });
+    expect(seen.map((s) => s.method)).toEqual(["DELETE", "DELETE"]);
   });
 });
 

@@ -1,6 +1,6 @@
 /** The admin API calls the flag detail page makes: one flag, its config, history and usage. Worker only. */
 import { ApiFailure, apiPath, list, type Call } from "./http.server.ts";
-import { isRecord, str, strings, type Json } from "./json.ts";
+import { isRecord, lifecycleOf, str, strings, type Json } from "./json.ts";
 import { parseConfig, type Config } from "../targeting/model.ts";
 import type { Wire } from "../targeting/wire.ts";
 import type { FlagDetail, HistoryEvent, Sibling, Usage } from "./types.ts";
@@ -26,6 +26,7 @@ function toDetail(raw: unknown): FlagDetail {
     tags: strings(raw["tags"]),
     temporary: raw["temporary"] === true,
     archived: typeof raw["archivedAt"] === "string",
+    lifecycle: lifecycleOf(raw["lifecycle"]),
     variations: variationLabels(raw["variations"]),
     lastEvaluated: typeof raw["lastEvaluated"] === "string" ? raw["lastEvaluated"] : null,
   };

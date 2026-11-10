@@ -130,9 +130,9 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Multivariate flags | 🟡 | `api:/api/v1/projects/{project}/flags`<br>`cli:flags create`<br>`doc:docs/evaluation.md`<br>The API takes 2 to 100 variations of one JSON type, but the dashboard only creates boolean flags. |
 | Per-environment configuration | ✅ | `api:/api/v1/projects/{project}/flags/{flag}/environments/{env}`<br>`api:/api/v1/projects/{project}/environments/{env}/flag-states`<br>`doc:docs/architecture.md` |
 | Projects and environments | ✅ | `api:/api/v1/projects`<br>`api:/api/v1/projects/{project}`<br>`api:/api/v1/projects/{project}/environments`<br>`api:/api/v1/projects/{project}/environments/{env}`<br>`cli:projects list`<br>`cli:projects create`<br>`cli:envs list`<br>`cli:envs create`<br>`cli:envs rename`<br>`cli:envs delete`<br>`dashboard:/environments` |
-| Archive and restore | ✅ | `api:/api/v1/projects/{project}/flags/{flag}/archive`<br>`api:/api/v1/projects/{project}/flags/{flag}/restore`<br>`cli:flags archive` |
-| Permanent delete | ✅ | `api:/api/v1/projects/{project}/flags/{flag}`<br>`cli:flags delete` |
-| Flag lifecycle and stale detection | ✅ | `api:/api/v1/projects/{project}/flags/{flag}/usage`<br>`doc:docs/architecture.md`<br>Every flag answer carries a computed lifecycle: archived, active (counted in the last 7 UTC days), new (created in the last 7 days) or inactive; one stage per flag, not per environment, and no code-removal stage. |
+| Archive and restore | ✅ | `api:/api/v1/projects/{project}/flags/{flag}/archive`<br>`api:/api/v1/projects/{project}/flags/{flag}/restore`<br>`cli:flags archive`<br>`dashboard:/` |
+| Permanent delete | ✅ | `api:/api/v1/projects/{project}/flags/{flag}`<br>`cli:flags delete`<br>`dashboard:/` |
+| Flag lifecycle and stale detection | ✅ | `api:/api/v1/projects/{project}/flags/{flag}/usage`<br>`dashboard:/`<br>`dashboard:/flags/$flag`<br>`doc:docs/architecture.md`<br>Every flag answer carries a computed lifecycle: archived, active (counted in the last 7 UTC days), new (created in the last 7 days) or inactive; one stage per flag, not per environment, and no code-removal stage. |
 | Code references | ❌ | none |
 | Change history and restore | 🟡 | `api:/api/v1/projects/{project}/flags/{flag}/history`<br>`cli:flags history`<br>History is readable but there is no restore action. |
 | Clone, compare and copy | ❌ | none |

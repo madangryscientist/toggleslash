@@ -172,7 +172,8 @@
         "evidence": [
           "api:/api/v1/projects/{project}/flags/{flag}/archive",
           "api:/api/v1/projects/{project}/flags/{flag}/restore",
-          "cli:flags archive"
+          "cli:flags archive",
+          "dashboard:/"
         ]
       },
       "competitors": {
@@ -193,7 +194,11 @@
       "description": "Remove an archived flag completely.",
       "toggleslash": {
         "status": "yes",
-        "evidence": ["api:/api/v1/projects/{project}/flags/{flag}", "cli:flags delete"]
+        "evidence": [
+          "api:/api/v1/projects/{project}/flags/{flag}",
+          "cli:flags delete",
+          "dashboard:/"
+        ]
       },
       "competitors": {
         "launchdarkly": "yes",
@@ -215,6 +220,8 @@
         "status": "yes",
         "evidence": [
           "api:/api/v1/projects/{project}/flags/{flag}/usage",
+          "dashboard:/",
+          "dashboard:/flags/$flag",
           "doc:docs/architecture.md"
         ],
         "note": "Every flag answer carries a computed lifecycle: archived, active (counted in the last 7 UTC days), new (created in the last 7 days) or inactive; one stage per flag, not per environment, and no code-removal stage."

@@ -11,12 +11,16 @@ import type { FlagPatch } from "./client.server.ts";
 import { adminApi } from "./env.server.ts";
 import { failureOf, mutate, save } from "./result.server.ts";
 
+function dashboardInput(data: unknown) {
+  return { ...selection(data), archived: recordOf(data)["archived"] === true };
+}
+
 /**
  * Everything the flag list needs for the chosen project and environment (the first of each when none
  * is chosen). A down, misconfigured or unauthorised server is a value, not a throw, so the page can say so.
  */
 export const loadDashboard = createServerFn({ method: "GET" })
-  .validator(selection)
+  .validator(dashboardInput)
   .handler(async ({ data }): Promise<Loaded> => {
     const made = adminApi();
     if (!made.ok) return { ok: false, failure: { kind: "unconfigured", message: made.message } };
@@ -31,12 +35,24 @@ export const loadDashboard = createServerFn({ method: "GET" })
           environments: [],
           environment: null,
           flags: [],
+          archived: data.archived,
         };
       }
       const environments = await made.api.environments(project.key);
       const environment = environments.find((e) => e.key === data.env) ?? environments[0] ?? null;
-      const flags = environment === null ? [] : await made.api.flags(project.key, environment.key);
-      return { ok: true, projects, project, environments, environment, flags };
+      const flags =
+        environment === null
+          ? []
+          : await made.api.flags(project.key, environment.key, { archived: data.archived });
+      return {
+        ok: true,
+        projects,
+        project,
+        environments,
+        environment,
+        flags,
+        archived: data.archived,
+      };
     } catch (error) {
       return { ok: false, failure: failureOf(error) };
     }
@@ -97,6 +113,15 @@ function archiveInput(data: unknown): { project: string; flag: string } {
 export const archiveFlag = createServerFn({ method: "POST" })
   .validator(archiveInput)
   .handler(({ data }) => mutate((api) => api.archiveFlag(data.project, data.flag)));
+
+export const restoreFlag = createServerFn({ method: "POST" })
+  .validator(archiveInput)
+  .handler(({ data }) => mutate((api) => api.restoreFlag(data.project, data.flag)));
+
+/** Deletes an archived flag; the server refuses one that is not archived, or that another flag needs. */
+export const deleteFlag = createServerFn({ method: "POST" })
+  .validator(archiveInput)
+  .handler(({ data }) => mutate((api) => api.deleteFlag(data.project, data.flag)));
 
 interface DetailInput {
   project: string;

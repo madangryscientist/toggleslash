@@ -1,3 +1,5 @@
+import type { Lifecycle } from "./types.ts";
+
 /** Narrowing for values that arrive as JSON, so nothing needs a type assertion. */
 export type Json = Record<string, unknown>;
 
@@ -18,6 +20,13 @@ export function strings(value: unknown): string[] {
 /** `value` when it is an object, else an empty one, so a handler can read fields off untrusted input. */
 export function recordOf(value: unknown): Json {
   return isRecord(value) ? value : {};
+}
+
+/** The flag lifecycle stage in `value`, or `null` for anything else. */
+export function lifecycleOf(value: unknown): Lifecycle | null {
+  return value === "new" || value === "active" || value === "inactive" || value === "archived"
+    ? value
+    : null;
 }
 
 export interface Selection {
