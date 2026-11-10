@@ -1,0 +1,5 @@
+# dotnet build and test output (UseArtifactsOutput in Directory.Build.props)
+artifacts/
+TestResults/
+*.user
+.vs/
