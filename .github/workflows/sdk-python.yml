@@ -1,0 +1,47 @@
+name: SDK (Python)
+
+on:
+  pull_request:
+    paths: &paths
+      - "sdks/python/**"
+      - "fixtures/**"
+      - "docs/sdk-contract.md"
+      - "docs/sdk-test-service.md"
+      - "packages/sdk-conformance/**"
+      - ".github/workflows/sdk-python.yml"
+  push:
+    branches: [main]
+    paths: *paths
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdk-python-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUN_VERSION: "1.4.2"
+
+jobs:
+  sdk:
+    name: Python SDK (lint, test, conformance)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      # The toolchain step: python and ruff at the versions sdks/python/mise.toml pins. Limited to those two
+      # tools, so the root .tool-versions (.NET, a second Bun) is not installed.
+      - uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
+        with:
+          working_directory: sdks/python
+          install_args: python ruff
+      - run: bun install --frozen-lockfile
+      - run: sdks/python/bin/lint
+      - run: sdks/python/bin/test
+      - run: bun run conformance -- --service sdks/python/bin/test-service
