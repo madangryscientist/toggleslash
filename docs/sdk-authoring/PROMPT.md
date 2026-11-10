@@ -99,7 +99,7 @@ Read these in this order. Read the contract and the test-service page in full; y
 7. [`docs/sdk.md`](../sdk.md): the TypeScript SDK's page, an example of the mapping table you will write.
 8. [`docs/api.md`](../api.md), "SDK read API" only: the wire, where the contract leaves a detail open.
 9. `docs/sdk-authoring/language-notes/<lang>.md`, if it exists: what earlier runs learned. It never
-   overrides the contract.
+   overrides the contract. If there is none, say so in `RUN.md`: every language choice is then a decision.
 10. [`CHECKLIST.md`](CHECKLIST.md) and [`RUN-TEMPLATE.md`](RUN-TEMPLATE.md): what you are checked against.
 
 Record the prompt version for your report before you change anything:
@@ -109,10 +109,11 @@ git log -1 --format=%H -- docs/sdk-authoring
 ```
 
 Then set up. Pin the toolchain in `$L/mise.toml`: a `[tools]` table with the exact current stable release
-(look it up; do not copy a version from this page), plus any build or lint tool the `bin/` scripts call
+(look it up with the toolchain manager, such as `mise ls-remote <tool>`, and the vendor's release or support
+page, and record what you used in `RUN.md`; do not copy a version from this page), plus any build or lint tool the `bin/` scripts call
 that mise installs. That pin is what you develop and test on. For a language with long-term-support releases, pin the
 newest LTS and say so in `DESIGN.md`. The minimum version is separate: the SDK declares it in its
-package metadata, and `DESIGN.md` says why. Trust and install the pin, and install the
+package metadata, and `DESIGN.md` says why. A release whose support ends on the run date or earlier is not in support. Trust and install the pin, and install the
 repository's own packages, which the harness needs:
 
 ```sh
@@ -206,7 +207,8 @@ Write a native test that, at test time, reads every file in `fixtures/evaluation
 
 Create `$L/bin/test` now.
 
-**Check.** All pass, and the counts match the files (the second command prints vectors, then pins):
+**Check.** All pass, and the counts match the files (the second command prints vectors, then pins). Write the
+client after this check passes.
 
 ```sh
 "$L/bin/test"
@@ -224,7 +226,9 @@ be internal to the package, or the language's standard test facility for fake ti
 environment variable the SDK reads.
 
 Write native unit tests for what the harness cannot reach: the "Native tests" lines of
-[`CHECKLIST.md`](CHECKLIST.md). Test long timers through the seams, never by waiting real minutes.
+[`CHECKLIST.md`](CHECKLIST.md). Test long timers through the seams, never by waiting real minutes. Step a fake clock only when the SDK is
+waiting on it (for example count the clock's armed timers), never after a fixed real pause: a pause passes on a quiet
+machine and fails on a loaded one.
 
 **Check.** All native tests pass, the phase 2 vectors included:
 
@@ -236,7 +240,7 @@ Write native unit tests for what the harness cannot reach: the "Native tests" li
 
 Write `$L/test-service/` to the protocol in [`docs/sdk-test-service.md`](../sdk-test-service.md), and
 `$L/bin/test-service` to start it. Put the test service where your build tool compiles it with the
-tests, and say where in `$L/test-service/README.md`. The reference is `packages/sdk/test-service/main.ts`.
+tests (where the build is several projects, it is one more project), and say where in `$L/test-service/README.md`. The reference is `packages/sdk/test-service/main.ts`.
 What the protocol page says and a cold reader misses:
 
 - Listen on `127.0.0.1`, port `0` (the OS picks), and print `listening http://127.0.0.1:<port>` with the

@@ -27,6 +27,10 @@ With `--service`, the harness runs the command with `sh -c` from the repository 
 the line `listening http://127.0.0.1:<port>` on its stdout, and kills the command's whole process group at
 the end. If no such line comes, the harness fails and prints what the service wrote to stderr.
 
+A scenario's `dropStreams` step ends each open stream body cleanly (`dropStreams` in
+`packages/sdk-conformance/src/server.ts` closes the stream's controller); it never resets the socket. The
+`down` step is separate: it drops the streams and stops the listener.
+
 It prints one line per scenario (`pass`, `skip` with the capability it needs, or `FAIL` with the reason,
 the steps up to the one that failed, and every request the fake server recorded), then any failed vector,
 then a summary:
