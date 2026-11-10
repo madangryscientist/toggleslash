@@ -116,7 +116,8 @@ wants). A **null served value against a non-null fallback is a mismatch.**
 integer accessor: if the served number has a fractional part, or is outside the integer type's range,
 the caller gets its fallback with `TYPE_MISMATCH`. A language whose integer type is unbounded (Python,
 Ruby) uses the signed 64-bit range. `2.0` counts as the integer `2`. This is deliberately
-stricter than the TypeScript SDK, which has one number type.
+stricter than the TypeScript SDK, which has one number type. A served number is read as binary64, so the largest
+integer within signed 64 bits that a test can serve is `2^63 - 1024`; the literal `2^63 - 1` reads as `2^63`, out of range.
 
 A language MAY choose any of these shapes, and its mapping table names the one it chose: typed methods
 (`boolVariation`, `stringVariation`, `intVariation`, `floatVariation`, `jsonVariation` or the language's
@@ -163,7 +164,9 @@ New, and a MUST for every language it names.
    and the ETag that names it SHOULD swap together, so the `etag` a hook reports belongs to the ruleset
    the evaluation used.
 4. The SDK's callbacks (`afterEvaluation`, `onError`) SHOULD NOT be called while the SDK holds a lock of
-   its own, so a callback that calls back into the client cannot deadlock it.
+   its own, so a callback that calls back into the client cannot deadlock it. A `ready` called from such a
+   callback on the SDK's own thread SHOULD NOT wait for the load that thread runs: it returns at once with the
+   state held.
 5. `status` SHOULD be one consistent snapshot, not four reads at four moments.
 6. A client that is never closed SHOULD NOT keep a process alive by itself where the runtime has the idea
    (a daemon thread, a background task).
@@ -421,6 +424,9 @@ thread calls it is the SDK's choice, and the language's mapping documents it.
 
 `close` never fails, and it is **safe to call twice** (or concurrently): every call waits for the same
 shutdown and returns when it is done. A `ready` that had not settled settles false.
+
+`close` SHOULD return within about twice `requestTimeout` even when a request it waits for hangs (an
+in-flight request, then the final flush), and the mapping states the bound it keeps.
 
 After `close` begins: evaluation **still answers from the ruleset held**; nothing is counted; `status`
 reads `closed` for `stream`; no ruleset or stream request reaches the server (only the usage requests of step 4 and one already in flight); and nothing reaches `onError` for the
