@@ -55,7 +55,7 @@ Maturity: 0 none, 1 minimal, 2 usable for a small team, 3 strong, 4 LaunchDarkly
 | Operations and scale | 1.5 | 4 | SQLite, one process, in-memory rate limits, no HA, no multi-region; LaunchDarkly sells global delivery as the product |
 | Openness / self-hosting | 4 | 1 | MIT and self-hosted, which LaunchDarkly is not (its Relay Proxy is open source; the platform is not) |
 
-Rough overall: **~65% of the core flag primitive, ~15–20% of the product surface** a LaunchDarkly
+Rough overall: **~65% of the core flag primitive, ~15 to 20% of the product surface** a LaunchDarkly
 buyer evaluates.
 
 ---
@@ -145,7 +145,7 @@ percentage, when, and what stops it. That is a workflow problem more than an eva
 
 | Capability | LaunchDarkly | ToggleSlash |
 | --- | --- | --- |
-| Boolean / string / number / JSON | Yes, four types | Yes in the data model (2–100 variations, one JSON type, no `null`), but the dashboard creates booleans only |
+| Boolean / string / number / JSON | Yes, four types | Yes in the data model (2 to 100 variations, one JSON type, no `null`), but the dashboard creates booleans only |
 | Multivariate | Yes | Yes |
 | Variation size | 32 KB per string/JSON value | No explicit per-value limit (payload-size bound) |
 | Flag templates | Release, kill switch, experiment, migration, custom | No templates; create is one shape |
@@ -220,7 +220,7 @@ LaunchDarkly's 2026 release surface:
   after one approval, then auto-releases, auto-cleans and auto-archives; guarded releases with
   auto-fix PRs.
 - **Approvals**: flag, config, experiment and segment changes; required per environment or tag on
-  Enterprise; 1–5 reviewers on Foundation.
+  Enterprise; 1 to 5 reviewers on Foundation.
 - **Scheduled flag and segment changes**.
 - **Flag triggers**: change a flag from a webhook, integration or metric threshold.
 - **Health checks**, **release dashboard**, **feature monitoring**, **flag audiences**, **live events**,
@@ -408,10 +408,10 @@ and an HA deployment recipe.
 
 ## 12. What is left, prioritised
 
-Sizes are rough: **S** days, **M** 1–3 weeks, **L** 1–2 months, **XL** a quarter or more, for one
+Sizes are rough: **S** days, **M** 1 to 3 weeks, **L** 1 to 2 months, **XL** a quarter or more, for one
 experienced engineer. They are planning aids, not commitments.
 
-### Phase 0 — make it safe to expose (do first)
+### Phase 0: make it safe to expose (do first)
 
 | Item | Why | Size |
 | --- | --- | --- |
@@ -420,7 +420,7 @@ experienced engineer. They are planning aids, not commitments.
 | Security headers, CORS review, body/time limits | Basic hardening before exposure | S |
 | Audit actor from the authenticated principal | The audit trail is only useful with real actors | S |
 
-### Phase 1 — core flag parity (the credible small-team product)
+### Phase 1: core flag parity (the credible small-team product)
 
 | Item | Why | Size |
 | --- | --- | --- |
@@ -437,7 +437,7 @@ experienced engineer. They are planning aids, not commitments.
 | CLI targeting and segment commands | The CLI stops at flags/keys | M |
 | Dashboard full CRUD (restore, segment create/delete, env edit) | The UI is narrower than the API | M |
 
-### Phase 2 — release workflow (the LaunchDarkly-shaped demo)
+### Phase 2: release workflow (the LaunchDarkly-shaped demo)
 
 | Item | Why | Size |
 | --- | --- | --- |
@@ -450,17 +450,17 @@ experienced engineer. They are planning aids, not commitments.
 | Tags and views | Organise large flag sets; later payload filtering | M |
 | Release policies / pipelines | Standardise the path to 100% | L |
 
-### Phase 3 — measurement
+### Phase 3: measurement
 
 | Item | Why | Size |
 | --- | --- | --- |
 | Custom event ingestion | Needed for any metric beyond a count | L |
 | Metric model and aggregation | Conversions, numerics, ratios | L |
 | Experiment assignment and exposure | Randomization units, allocation, holdouts | XL |
-| Statistics / warehouse export | Analysis without building a stats engine | L–XL |
+| Statistics / warehouse export | Analysis without building a stats engine | L to XL |
 | Guarded rollouts and auto-rollback | Depends on metrics + release workflow | XL |
 
-### Phase 4 — enterprise and scale
+### Phase 4: enterprise and scale
 
 | Item | Why | Size |
 | --- | --- | --- |
@@ -475,7 +475,7 @@ experienced engineer. They are planning aids, not commitments.
 | Mobile SDKs | Mobile is a large share of client-side use | XL |
 | Edge/CDN delivery | Latency-sensitive client-side use | XL |
 
-### Phase 5 — platform expansion (recommended non-goals for now)
+### Phase 5: platform expansion (recommended non-goals for now)
 
 - Full observability (session replay, errors, logs, traces, metrics, alerts).
 - AgentControl (AI configs, evals, judges, agent graphs).
@@ -510,13 +510,13 @@ chasing it would dilute the parts that are already good.
 | Audience | What they need before ToggleSlash is a real option |
 | --- | --- |
 | A solo developer / small side project | Docker run, one server key, a server SDK, a dashboard they can reach safely (auth), and a browser SDK if the flags are client-side |
-| A small team (5–20 engineers) | Users/roles, approvals or required comments, flag lifecycle, browser + 2–3 server SDKs, Postgres/HA story, audit export |
+| A small team (5 to 20 engineers) | Users/roles, approvals or required comments, flag lifecycle, browser + 2 to 3 server SDKs, Postgres/HA story, audit export |
 | A company comparing against LaunchDarkly | Everything above, plus progressive/guarded rollouts, experiments or a warehouse story, SSO/SCIM, Terraform, code references, 99.9%+ operations, and a support/compliance answer |
 | A regulated / federal buyer | Self-hosted deployment, SSO, RBAC, audit retention, encryption/FIPS story, signed releases, an SBOM, and a security programme. Self-hosting helps; the paperwork does not exist yet |
 
 ---
 
-## Appendix A — parity checklist
+## Appendix A: parity checklist
 
 Legend: **Yes** = shipped; **Partial** = some of it; **No** = absent.
 
@@ -609,7 +609,7 @@ Legend: **Yes** = shipped; **Partial** = some of it; **No** = absent.
 | AgentControl | Yes | No |
 | Self-hosted / open source | Relay only | Yes (MIT) |
 
-## Appendix B — sources
+## Appendix B: sources
 
 LaunchDarkly public documentation and pricing, read 2026-11-05:
 

@@ -6,10 +6,10 @@ const SYMBOL: Record<ToggleSlashStatus, string> = {
   yes: "✅",
   partial: "🟡",
   planned: "🚧",
-  no: "—",
+  no: "❌",
 };
 
-const LEGEND = "✅ yes · 🟡 partial · 🚧 planned · — no";
+const LEGEND = "✅ yes · 🟡 partial · 🚧 planned · ❌ no";
 
 function symbol(status: ToggleSlashStatus): string {
   return SYMBOL[status];
@@ -40,7 +40,7 @@ function competitorCount(data: ParityData, competitorId: string, status: Status)
 function statusLabel(status: Status): string {
   if (status === "yes") return "✅ yes";
   if (status === "partial") return "🟡 partial";
-  return "— no";
+  return "❌ no";
 }
 
 function summaryTable(data: ParityData): string[] {
@@ -73,7 +73,7 @@ function matrixTable(data: ParityData, features: Feature[]): string[] {
 }
 
 function evidenceCell(feature: Feature): string {
-  if (feature.toggleslash.evidence.length === 0) return feature.toggleslash.note ?? "—";
+  if (feature.toggleslash.evidence.length === 0) return feature.toggleslash.note ?? "none";
   const evidence = feature.toggleslash.evidence.map((entry) => `\`${entry}\``).join("<br>");
   return feature.toggleslash.note === undefined
     ? evidence

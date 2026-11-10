@@ -10,7 +10,7 @@
   "scripts": {
     "toggleslash": "bun packages/cli/src/index.ts",
     "typecheck": "bun scripts/nx.ts run-many -t typecheck",
-    "lint": "bun scripts/nx.ts run-many -t lint",
+    "lint": "bun scripts/nx.ts run-many -t lint && bun scripts/check-dashes.ts",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "parity": "bun scripts/parity.ts --write",
