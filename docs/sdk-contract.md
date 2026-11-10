@@ -4,7 +4,8 @@ This page is normative. It defines what every ToggleSlash **server SDK** does, i
 language. The TypeScript SDK (`packages/sdk`, [`sdk.md`](sdk.md)) is the reference implementation: every
 rule below that is not marked "new" is something it does today, and where this page and that code were
 written apart, the code won. A [conformance harness](sdk-test-service.md) drives an SDK from outside and checks it
-against this page; a test of an SDK is a test of this page.
+against this page; a test of an SDK is a test of this page. To build an SDK in a new language, start from
+[`sdk-authoring/PROMPT.md`](sdk-authoring/PROMPT.md).
 
 The words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are used as in RFC 2119. Every number is stated.
 Durations are written in seconds (s) or milliseconds (ms); a language uses its own duration type for

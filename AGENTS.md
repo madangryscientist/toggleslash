@@ -128,6 +128,15 @@ the drizzle migrations and the `dotnet-tools.json` manifest. Add a pattern when 
   not clean it. Do not turn it on and do not run `nx daemon`.
 - Scratch goes under `$TMPDIR`, never a hardcoded `/tmp`.
 
+## SDKs in `sdks/`
+
+`sdks/<lang>` is where a server SDK per language goes (Python, Go, Java, C#, Ruby to start), each built from
+[`docs/sdk-authoring/PROMPT.md`](docs/sdk-authoring/PROMPT.md); see [`sdks/README.md`](sdks/README.md).
+They are **not** in the gate above: `.nxignore` keeps `sdks/` out of Nx (the `@nx/dotnet` plugin would
+otherwise take a C# SDK's `.csproj` as a project). Each has its own workflow, `.github/workflows/sdk-<lang>.yml`,
+which runs on a change to the fixtures, the contract, the test-service protocol or the harness too. So such a
+change must keep every `sdks/*` green, and a pull request with one red is not merged.
+
 ## Cloudflare, domains and publishing are human steps
 
 Pushing a container image to a registry is a human step too. The repo adds no Worker route and no custom domain: the product has no domain yet. The
