@@ -11,6 +11,8 @@ export interface ClauseDraft {
   attribute: string;
   values: string;
   negate: boolean;
+  /** The context kind as typed; `""` is `user`. */
+  contextKind: string;
 }
 
 export interface RolloutDraft {
@@ -21,7 +23,7 @@ export interface RolloutDraft {
 
 export type ServeDraft =
   | { kind: "variation"; variation: number }
-  | { kind: "rollout"; entries: RolloutDraft[] };
+  | { kind: "rollout"; entries: RolloutDraft[]; contextKind: string };
 
 export interface RuleDraft {
   clauses: ClauseDraft[];
@@ -32,6 +34,8 @@ export interface TargetDraft {
   variation: number;
   /** One context key per line. */
   keys: string;
+  /** `undefined` is a user target; a string is a target for another kind (typed, so possibly blank or invalid). */
+  contextKind?: string;
 }
 
 export interface Draft {
@@ -66,7 +70,7 @@ function serveDraft(serve: Serve, variationCount: number): ServeDraft {
   for (let v = 0; v < variationCount; v++) {
     if (!entries.some((e) => e.variation === v)) entries.push({ variation: v, percent: "0" });
   }
-  return { kind: "rollout", entries };
+  return { kind: "rollout", entries, contextKind: serve.contextKind ?? "" };
 }
 
 export function toDraft(config: Config, variationCount: number): Draft {
@@ -76,6 +80,9 @@ export function toDraft(config: Config, variationCount: number): Draft {
     targets: config.targets.map((t) => ({
       variation: t.variation,
       keys: t.contextKeys.join("\n"),
+      ...(t.contextKind === undefined || t.contextKind === "user"
+        ? {}
+        : { contextKind: t.contextKind }),
     })),
     prerequisites: config.prerequisites.map((p) => ({ ...p })),
     rules: config.rules.map((r) => ({
@@ -84,6 +91,7 @@ export function toDraft(config: Config, variationCount: number): Draft {
         attribute: c.attribute,
         values: formatValues(c.values),
         negate: c.negate,
+        contextKind: c.contextKind ?? "",
       })),
       serve: serveDraft(r.serve, variationCount),
     })),
@@ -105,6 +113,7 @@ export function switchServe(
         variation: v,
         percent: v === serve.variation ? "100" : "0",
       })),
+      contextKind: "",
     };
   }
   if (to === "rollout") return serve;
@@ -116,7 +125,7 @@ export function switchServe(
 }
 
 export function emptyClause(): ClauseDraft {
-  return { op: "in", attribute: "", values: "", negate: false };
+  return { op: "in", attribute: "", values: "", negate: false, contextKind: "" };
 }
 
 export function isDirty(a: Draft, b: Draft): boolean {

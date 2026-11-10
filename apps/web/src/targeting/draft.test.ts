@@ -104,6 +104,7 @@ describe("toDraft and toWire", () => {
       attribute: "",
       values: "beta",
       negate: true,
+      contextKind: "",
     });
     const sent = toWire(draft);
     if (!sent.ok) throw new Error("fixture");
@@ -118,6 +119,7 @@ describe("toDraft and toWire", () => {
       attribute: "",
       values: "007, true",
       negate: false,
+      contextKind: "",
     });
     const sent = toWire(draft);
     if (!sent.ok) throw new Error("fixture");
@@ -126,8 +128,14 @@ describe("toDraft and toWire", () => {
   test("a version typed bare under a semver op is sent as a string, and stays a number under gte", () => {
     const draft = toDraft(config, 2);
     draft.rules[0]?.clauses.push(
-      { op: "semverGte", attribute: "appVersion", values: "2.1, 1.2.3", negate: false },
-      { op: "gte", attribute: "age", values: "2.1, 1.2.3", negate: false },
+      {
+        op: "semverGte",
+        attribute: "appVersion",
+        values: "2.1, 1.2.3",
+        negate: false,
+        contextKind: "",
+      },
+      { op: "gte", attribute: "age", values: "2.1, 1.2.3", negate: false, contextKind: "" },
     );
     const sent = toWire(draft);
     if (!sent.ok) throw new Error("fixture");
@@ -142,6 +150,7 @@ describe("toDraft and toWire", () => {
       attribute: "signedUp",
       values: "2026-01-01T00:00:00Z, 1767225600000",
       negate: false,
+      contextKind: "",
     });
     const sent = toWire(draft);
     if (!sent.ok) throw new Error("fixture");
@@ -181,6 +190,7 @@ describe("switchServe", () => {
         { variation: 1, percent: "100" },
         { variation: 2, percent: "0" },
       ],
+      contextKind: "",
     });
   });
   test("a rollout becomes its biggest variation", () => {
@@ -190,8 +200,17 @@ describe("switchServe", () => {
         { variation: 0, percent: "30" },
         { variation: 1, percent: "70" },
       ],
+      contextKind: "org",
     };
     expect(switchServe(rollout, "variation", 2)).toEqual({ kind: "variation", variation: 1 });
+  });
+  test("a variation drops the rollout's context kind", () => {
+    const rollout: ServeDraft = {
+      kind: "rollout",
+      entries: [{ variation: 0, percent: "100" }],
+      contextKind: "org",
+    };
+    expect(switchServe(rollout, "variation", 2)).toEqual({ kind: "variation", variation: 0 });
   });
   test("switching to the same kind changes nothing", () => {
     const serve: ServeDraft = { kind: "variation", variation: 0 };
@@ -215,6 +234,12 @@ describe("isDirty, rolloutTotal, emptyClause", () => {
     ).toBe(40_000);
   });
   test("a new clause is an empty `in`", () => {
-    expect(emptyClause()).toEqual({ op: "in", attribute: "", values: "", negate: false });
+    expect(emptyClause()).toEqual({
+      op: "in",
+      attribute: "",
+      values: "",
+      negate: false,
+      contextKind: "",
+    });
   });
 });

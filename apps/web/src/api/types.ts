@@ -145,11 +145,19 @@ export interface CreatedKey extends ApiKey {
   plaintext: string;
 }
 
+/** Segment members of a context kind other than user. */
+export interface KindMembers {
+  contextKind: string;
+  values: string[];
+}
+
 /** A segment of one environment. `rules` is the JSON text the editor works on. */
 export interface Segment {
   key: string;
   included: string[];
   excluded: string[];
+  includedContexts: KindMembers[];
+  excludedContexts: KindMembers[];
   rules: string;
   /** What a save sends back, so a stale one is refused. */
   version: number;
@@ -223,6 +231,8 @@ export interface PastSegment {
   key: string;
   included: string[];
   excluded: string[];
+  includedContexts: KindMembers[];
+  excludedContexts: KindMembers[];
   rules: string;
 }
 

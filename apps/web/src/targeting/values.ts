@@ -1,4 +1,5 @@
 /** Clause values and context keys as a person types them. Pure. */
+import type { KindMembers } from "../api/types.ts";
 import type { ClauseValue } from "./model.ts";
 
 const NEEDS_QUOTES = /^(true|false)$|^-?\d+(\.\d+)?([eE][+-]?\d+)?$|^\s|\s$|[",]|^$/;
@@ -54,4 +55,51 @@ export function parseKeys(text: string): string[] {
     .split(/[\n,]/)
     .map((k) => k.trim())
     .filter((k) => k !== "");
+}
+
+const KIND = /^[A-Za-z0-9._-]+$/;
+
+/** A context kind as the spec allows it: letters, digits, `.`, `_` and `-`, and neither `kind` nor `multi`. */
+export function isValidKind(kind: string): boolean {
+  return KIND.test(kind) && kind !== "kind" && kind !== "multi";
+}
+
+/**
+ * `org:acme` lines (one `kind:key` per line, split at the first colon) as keys grouped by kind, in
+ * first-seen order. Blank lines are skipped; a line without a colon, with an empty key, with an invalid
+ * kind or with `user` (that is what the other box is for) is refused, naming the line.
+ */
+export function parseKindKeys(
+  text: string,
+): { ok: true; entries: KindMembers[] } | { ok: false; message: string } {
+  const entries: KindMembers[] = [];
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = (lines[i] ?? "").trim();
+    if (line === "") continue;
+    const colon = line.indexOf(":");
+    if (colon < 0) return { ok: false, message: `Line ${i + 1}: write it as kind:key.` };
+    const contextKind = line.slice(0, colon).trim();
+    const key = line.slice(colon + 1).trim();
+    if (key === "") return { ok: false, message: `Line ${i + 1}: the key is empty.` };
+    if (contextKind === "user")
+      return {
+        ok: false,
+        message: `Line ${i + 1}: user keys go in the Always included and Always excluded boxes.`,
+      };
+    if (!isValidKind(contextKind))
+      return {
+        ok: false,
+        message: `Line ${i + 1}: "${contextKind}" is not a context kind (letters, digits, . _ -, and not kind or multi).`,
+      };
+    const entry = entries.find((e) => e.contextKind === contextKind);
+    if (entry === undefined) entries.push({ contextKind, values: [key] });
+    else if (!entry.values.includes(key)) entry.values.push(key);
+  }
+  return { ok: true, entries };
+}
+
+/** {@link parseKindKeys} the other way: one `kind:key` per line. */
+export function formatKindKeys(entries: KindMembers[]): string {
+  return entries.flatMap((e) => e.values.map((v) => `${e.contextKind}:${v}`)).join("\n");
 }

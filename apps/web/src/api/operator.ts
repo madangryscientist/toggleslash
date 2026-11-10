@@ -4,7 +4,7 @@
  * plaintext is `createKey`'s; no loader returns it.
  */
 import { createServerFn } from "@tanstack/react-start";
-import { recordOf, selection, str, strings, type Selection } from "./json.ts";
+import { kindMembers, recordOf, selection, str, strings, type Selection } from "./json.ts";
 import type {
   AuditFilters,
   AuditLoaded,
@@ -12,6 +12,7 @@ import type {
   Failure,
   KeyKind,
   KeysLoaded,
+  KindMembers,
   MutationResult,
   ProjectLoaded,
   ProjectReady,
@@ -186,6 +187,8 @@ interface SegmentInput {
   segment: string;
   included: string[];
   excluded: string[];
+  includedContexts: KindMembers[];
+  excludedContexts: KindMembers[];
   rules: string;
   version: number;
 }
@@ -198,6 +201,8 @@ function segmentInput(data: unknown): SegmentInput {
     segment: str(d["segment"]),
     included: strings(d["included"]),
     excluded: strings(d["excluded"]),
+    includedContexts: kindMembers(d["includedContexts"]),
+    excludedContexts: kindMembers(d["excludedContexts"]),
     rules: str(d["rules"]),
     version: typeof d["version"] === "number" ? d["version"] : 0,
   };
@@ -221,6 +226,8 @@ export const saveSegment = createServerFn({ method: "POST" })
       api.putSegment(data.project, data.env, data.segment, {
         included: data.included,
         excluded: data.excluded,
+        includedContexts: data.includedContexts,
+        excludedContexts: data.excludedContexts,
         rules,
         version: data.version,
       }),

@@ -71,6 +71,19 @@ function segmentsOf(project: string, env: string): SegmentRow[] | null {
   return (db.data.segments[`${project}/${env}`] ??= []);
 }
 
+function kinds(value: unknown): SegmentRow["includedContexts"] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return null;
+  const out: SegmentRow["includedContexts"] = [];
+  for (const item of value) {
+    const entry = asBody(item);
+    const values = names(entry["values"]);
+    if (typeof entry["contextKind"] !== "string" || values === null) return null;
+    out.push({ contextKind: entry["contextKind"], values });
+  }
+  return out;
+}
+
 function names(value: unknown): string[] | null {
   return Array.isArray(value) && value.every((v) => typeof v === "string") ? value : null;
 }
@@ -81,6 +94,15 @@ function putSegment(found: SegmentRow, body: Body): Reply {
   const excluded = names(body["excluded"]);
   if (included === null || excluded === null) {
     return failure(400, "invalid_request", "included and excluded must be lists of context keys.");
+  }
+  const includedContexts = kinds(body["includedContexts"]);
+  const excludedContexts = kinds(body["excludedContexts"]);
+  if (includedContexts === null || excludedContexts === null) {
+    return failure(
+      400,
+      "invalid_request",
+      "includedContexts and excludedContexts must be lists of { contextKind, values }.",
+    );
   }
   if (!Array.isArray(body["rules"])) {
     return failure(400, "invalid_request", "rules must be a list.");
@@ -96,6 +118,8 @@ function putSegment(found: SegmentRow, body: Body): Reply {
   }
   found.included = included;
   found.excluded = excluded;
+  found.includedContexts = includedContexts;
+  found.excludedContexts = excludedContexts;
   found.rules = body["rules"];
   found.version += 1;
   return [200, found];
@@ -140,6 +164,8 @@ function createSegment(segments: SegmentRow[], env: string, body: Body): Reply {
     key,
     included: names(body["included"]) ?? [],
     excluded: names(body["excluded"]) ?? [],
+    includedContexts: kinds(body["includedContexts"]) ?? [],
+    excludedContexts: kinds(body["excludedContexts"]) ?? [],
     rules: Array.isArray(body["rules"]) ? body["rules"] : [],
     version: 1,
   };
@@ -253,6 +279,8 @@ export function rulesetAt(
         key: "beta-testers",
         included: ["alice"],
         excluded: [],
+        includedContexts: [{ contextKind: "org", values: ["acme"] }],
+        excludedContexts: [],
         rules: [{ clauses: [{ op: "in", attribute: "country", values: ["NL"] }] }],
         salt: PLANTED_SALT,
       },

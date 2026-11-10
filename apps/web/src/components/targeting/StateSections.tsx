@@ -1,5 +1,18 @@
-import { Checkbox, Field, Section, Select, Text, Textarea } from "@hackcove/ui-react";
+import {
+  Button,
+  Checkbox,
+  Cluster,
+  Field,
+  Input,
+  Section,
+  Select,
+  Stack,
+  SubsectionHeading,
+  Text,
+  Textarea,
+} from "@hackcove/ui-react";
 import { at, under } from "#/targeting/problems";
+import type { TargetDraft } from "#/targeting/draft";
 import { removeAt, replaceAt } from "#/targeting/list";
 import { VARIATION_LABEL, type SectionProps } from "./shared";
 
@@ -49,7 +62,9 @@ export function TargetsSection({ draft, onDraft, problems, flag }: SectionProps)
         Context keys served a variation whatever the rules say. One per line.
       </Text>
       {flag.variations.map((v, variation) => {
-        const index = draft.targets.findIndex((t) => t.variation === variation);
+        const index = draft.targets.findIndex(
+          (t) => t.variation === variation && t.contextKind === undefined,
+        );
         const error = index < 0 ? undefined : under(problems, `targets[${index}]`)[0]?.message;
         return (
           <Field
@@ -81,6 +96,88 @@ export function TargetsSection({ draft, onDraft, problems, flag }: SectionProps)
           </Field>
         );
       })}
+      <OtherKindTargets draft={draft} onDraft={onDraft} problems={problems} flag={flag} />
     </Section>
+  );
+}
+
+function AddOtherTarget({ draft, onDraft }: Pick<SectionProps, "draft" | "onDraft">) {
+  const add = () =>
+    onDraft({ ...draft, targets: [...draft.targets, { variation: 0, contextKind: "", keys: "" }] });
+  return (
+    <div>
+      <Button variant="outline" size="sm" data-testid="add-other-target" onClick={add}>
+        Add a target for another kind
+      </Button>
+    </div>
+  );
+}
+
+/** Targets for a context kind other than user: one row each, in the draft's order (the first match wins). */
+function OtherKindTargets({ draft, onDraft, problems, flag }: SectionProps) {
+  return (
+    <Stack gap="sm">
+      <SubsectionHeading>Other context kinds</SubsectionHeading>
+      {draft.targets.map((target, index) => {
+        if (target.contextKind === undefined) return null;
+        const id = `other-target-${index}`;
+        const change = (next: Partial<TargetDraft>) =>
+          onDraft({ ...draft, targets: replaceAt(draft.targets, index, { ...target, ...next }) });
+        return (
+          <Stack key={index} gap="xs">
+            <Cluster wrap align="start">
+              <Field label="Serve" htmlFor={`${id}-variation`}>
+                <Select
+                  id={`${id}-variation`}
+                  data-testid={`${id}-variation`}
+                  width="auto"
+                  value={String(target.variation)}
+                  onChange={(e) => change({ variation: Number(e.currentTarget.value) })}
+                >
+                  {flag.variations.map((v, i) => (
+                    <option key={i} value={String(i)}>
+                      {VARIATION_LABEL(v, i)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Context kind" htmlFor={`${id}-kind`}>
+                <Input
+                  id={`${id}-kind`}
+                  data-testid={`${id}-kind`}
+                  width="auto"
+                  value={target.contextKind}
+                  onChange={(e) => change({ contextKind: e.currentTarget.value })}
+                />
+              </Field>
+              <Field label="Context keys" htmlFor={`${id}-keys`} hint="One per line.">
+                <Textarea
+                  id={`${id}-keys`}
+                  data-testid={`${id}-keys`}
+                  rows={3}
+                  value={target.keys}
+                  onChange={(e) => change({ keys: e.currentTarget.value })}
+                />
+              </Field>
+              <Button
+                variant="ghost"
+                size="sm"
+                tone="danger"
+                data-testid={`${id}-remove`}
+                onClick={() => onDraft({ ...draft, targets: removeAt(draft.targets, index) })}
+              >
+                Remove
+              </Button>
+            </Cluster>
+            {under(problems, `targets[${index}]`).map((p) => (
+              <Text key={p.path} tone="danger">
+                {p.message}
+              </Text>
+            ))}
+          </Stack>
+        );
+      })}
+      <AddOtherTarget draft={draft} onDraft={onDraft} />
+    </Stack>
   );
 }

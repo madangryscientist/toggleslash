@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { API_PORT } from "./constants.ts";
+import { API_PORT, E2E_ADMIN_TOKEN } from "./constants.ts";
 
 test.beforeEach(async ({ request }) => {
   await request.post(`http://127.0.0.1:${API_PORT}/__reset`);
@@ -63,5 +63,61 @@ test.describe("creating and deleting segments", () => {
       'Segment "beta-testers" is still used by the rules of: search-boost. Remove those rules first.',
     );
     await expect(page.getByTestId("segment-beta-testers")).toBeVisible();
+  });
+});
+
+test.describe("members of other context kinds", () => {
+  test("an org member is saved and shown after a reload, and counted", async ({
+    page,
+    request,
+  }) => {
+    await page.goto("/segments?project=shop&env=production");
+    await page.getByTestId("edit-beta-testers").click();
+    await page.locator("#segment-included-kinds").fill("org:acme\ndevice:d1\norg:globex");
+    await page.locator("#segment-excluded-kinds").fill("org:evil");
+    await page.getByTestId("save-segment").click();
+    await expect(page.getByTestId("segment-beta-testers")).toContainText("5 contexts");
+
+    await page.reload();
+    await expect(page.getByTestId("segment-beta-testers")).toContainText("5 contexts");
+    await page.getByTestId("edit-beta-testers").click();
+    await expect(page.locator("#segment-included-kinds")).toHaveValue(
+      "org:acme\norg:globex\ndevice:d1",
+    );
+    await expect(page.locator("#segment-excluded-kinds")).toHaveValue("org:evil");
+    // The user boxes were not touched.
+    await expect(page.locator("#segment-included")).toHaveValue("alice\nbob");
+
+    const stored = await request.get(
+      `http://127.0.0.1:${API_PORT}/api/v1/projects/shop/environments/production/segments`,
+      {
+        headers: { authorization: `Bearer ${E2E_ADMIN_TOKEN}` },
+      },
+    );
+    const beta = (await stored.json()).find((s: { key: string }) => s.key === "beta-testers");
+    expect(beta.includedContexts).toEqual([
+      { contextKind: "org", values: ["acme", "globex"] },
+      { contextKind: "device", values: ["d1"] },
+    ]);
+  });
+
+  test("an invalid line names itself and nothing is sent", async ({ page }) => {
+    await page.goto("/segments?project=shop&env=production");
+    await page.getByTestId("edit-beta-testers").click();
+    await page.locator("#segment-included-kinds").fill("org:acme\nacme");
+    await page.getByTestId("save-segment").click();
+    await expect(page.getByTestId("segment-error")).toContainText("Line 2");
+    await expect(page.getByTestId("segment-error")).toContainText("Included, other kinds");
+
+    await page.locator("#segment-included-kinds").fill("user:alice");
+    await page.getByTestId("save-segment").click();
+    await expect(page.getByTestId("segment-error")).toContainText("Line 1");
+
+    // Nothing was saved: the dialog is still open and the count is unchanged behind it.
+    await expect(page.getByTestId("save-segment")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("save-segment")).toHaveCount(0);
+    await expect(page.getByTestId("segment-beta-testers")).toContainText("2 contexts");
+    await expect(page.getByTestId("segment-beta-testers")).toContainText("1 context");
   });
 });

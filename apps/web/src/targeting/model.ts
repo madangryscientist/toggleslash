@@ -11,6 +11,8 @@ export interface Clause {
   attribute: string;
   values: ClauseValue[];
   negate: boolean;
+  /** The context kind the clause reads; absent is `user`. */
+  contextKind?: string;
 }
 
 export interface RolloutEntry {
@@ -21,7 +23,7 @@ export interface RolloutEntry {
 
 export type Serve =
   | { kind: "variation"; variation: number }
-  | { kind: "rollout"; entries: RolloutEntry[] };
+  | { kind: "rollout"; entries: RolloutEntry[]; contextKind?: string };
 
 export interface Rule {
   clauses: Clause[];
@@ -31,6 +33,8 @@ export interface Rule {
 export interface Target {
   variation: number;
   contextKeys: string[];
+  /** The context kind the keys belong to; absent is `user`. */
+  contextKind?: string;
 }
 
 export interface Prerequisite {
@@ -87,6 +91,11 @@ function clauseValues(value: unknown): ClauseValue[] {
   return out;
 }
 
+/** `{ contextKind }` when the body holds one as a string, else nothing: a spread leaves the field out. */
+function kindOf(raw: Json): { contextKind?: string } {
+  return typeof raw["contextKind"] === "string" ? { contextKind: raw["contextKind"] } : {};
+}
+
 function parseServe(raw: unknown): Serve {
   const holder = isRecord(raw) ? raw : {};
   const rollout = holder["rollout"];
@@ -97,6 +106,7 @@ function parseServe(raw: unknown): Serve {
         variation: whole(e["variation"]),
         weight: whole(e["weight"]),
       })),
+      ...kindOf(rollout),
     };
   }
   return { kind: "variation", variation: whole(holder["variation"]) };
@@ -113,6 +123,7 @@ export function parseConfig(raw: unknown): Config | null {
       contextKeys: Array.isArray(t["contextKeys"])
         ? t["contextKeys"].filter((k) => typeof k === "string")
         : [],
+      ...kindOf(t),
     })),
     prerequisites: array(raw["prerequisites"]).map((p) => ({
       flagKey: typeof p["flagKey"] === "string" ? p["flagKey"] : "",
@@ -124,6 +135,7 @@ export function parseConfig(raw: unknown): Config | null {
         attribute: typeof c["attribute"] === "string" ? c["attribute"] : "",
         values: clauseValues(c["values"]),
         negate: c["negate"] === true,
+        ...kindOf(c),
       })),
       serve: parseServe(r),
     })),

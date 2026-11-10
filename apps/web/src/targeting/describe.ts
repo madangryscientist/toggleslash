@@ -19,12 +19,20 @@ export function describeServe(serve: Serve, variations: string[]): string {
   const shares = serve.entries.map(
     (e) => `${percent(e.weight)} ${variationLabel(e.variation, variations)}`,
   );
-  return `roll out ${shares.join(", ")}`;
+  const by =
+    serve.contextKind === undefined || serve.contextKind === "user"
+      ? ""
+      : ` by ${serve.contextKind}`;
+  return `roll out ${shares.join(", ")}${by}`;
 }
 
 export function describeClause(clause: Clause): string {
   const not = clause.negate ? "not " : "";
   if (clause.op === SEGMENT_OP) return `${not}in segment ${clause.values.join(", ")}`;
   const values = clause.values.map((v) => JSON.stringify(v)).join(", ");
-  return `${clause.attribute} ${not}${clause.op} ${values}`;
+  const kind =
+    clause.contextKind === undefined || clause.contextKind === "user"
+      ? ""
+      : `${clause.contextKind} `;
+  return `${kind}${clause.attribute} ${not}${clause.op} ${values}`;
 }

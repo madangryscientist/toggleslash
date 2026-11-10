@@ -3,7 +3,7 @@
  * Worker only. A key's plaintext appears in exactly one answer (`createKey`) and is never cached here.
  */
 import { ApiFailure, apiPath, list, type Call } from "./http.server.ts";
-import { isRecord, str, strings, type Json } from "./json.ts";
+import { isRecord, kindMembers, str, strings, type Json } from "./json.ts";
 import { parseConfig } from "../targeting/model.ts";
 import type {
   ApiKey,
@@ -12,6 +12,7 @@ import type {
   AuditPage,
   CreatedKey,
   KeyKind,
+  KindMembers,
   PastFlag,
   PastRuleset,
   PastSegment,
@@ -31,12 +32,27 @@ function toKey(raw: Json): ApiKey {
   };
 }
 
+type SegmentBody = {
+  included: string[];
+  excluded: string[];
+  includedContexts: KindMembers[];
+  excludedContexts: KindMembers[];
+  rules: unknown;
+  version: number;
+};
+
+function emptySegment(key: string) {
+  return { key, included: [], excluded: [], includedContexts: [], excludedContexts: [], rules: [] };
+}
+
 function toSegment(raw: unknown): Segment {
   if (!isRecord(raw)) throw new ApiFailure("error", "The server's answer was not a segment.");
   return {
     key: str(raw["key"]),
     included: strings(raw["included"]),
     excluded: strings(raw["excluded"]),
+    includedContexts: kindMembers(raw["includedContexts"]),
+    excludedContexts: kindMembers(raw["excludedContexts"]),
     rules: JSON.stringify(Array.isArray(raw["rules"]) ? raw["rules"] : [], null, 2),
     version: typeof raw["version"] === "number" ? raw["version"] : 0,
   };
@@ -59,6 +75,8 @@ function toPastSegment(raw: Json): PastSegment {
     key: str(raw["key"]),
     included: strings(raw["included"]),
     excluded: strings(raw["excluded"]),
+    includedContexts: kindMembers(raw["includedContexts"]),
+    excludedContexts: kindMembers(raw["excludedContexts"]),
     rules: JSON.stringify(Array.isArray(raw["rules"]) ? raw["rules"] : [], null, 2),
   };
 }
@@ -139,7 +157,7 @@ export function createOperatorApi(call: Call) {
       project: string,
       env: string,
       segment: string,
-      body: { included: string[]; excluded: string[]; rules: unknown; version: number },
+      body: SegmentBody,
     ): Promise<Segment> {
       const path = apiPath("projects", project, "environments", env, "segments", segment);
       return toSegment(await call("PUT", path, body));
@@ -148,7 +166,7 @@ export function createOperatorApi(call: Call) {
     /** Creates an empty segment (no members, no rules) for the operator to fill in. */
     async createSegment(project: string, env: string, key: string): Promise<Segment> {
       const path = apiPath("projects", project, "environments", env, "segments");
-      return toSegment(await call("POST", path, { key, included: [], excluded: [], rules: [] }));
+      return toSegment(await call("POST", path, emptySegment(key)));
     },
 
     /** Deletes a segment no flag rule names; the server refuses otherwise, naming the flags. */
