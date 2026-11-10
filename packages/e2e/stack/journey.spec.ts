@@ -26,6 +26,18 @@ const stack = (): StackInfo => {
 const cell = (page: Page, flag: string, field: "value" | "reason") =>
   page.getByTestId(`flag-${flag}-${field}`);
 
+const browserCell = (page: Page, flag: string, field: "value" | "reason") =>
+  page.getByTestId(`browser-flag-${flag}-${field}`);
+
+/** The browser SDK's cells hold what the server-side cells hold, for one flag, once both settle. */
+async function browserMatches(page: Page, flag: string) {
+  for (const field of ["value", "reason"] as const) {
+    await expect(browserCell(page, flag, field)).toHaveText(
+      (await cell(page, flag, field).innerText()).trim(),
+    );
+  }
+}
+
 interface Journey {
   info: StackInfo;
   home: string;
@@ -37,9 +49,6 @@ interface Journey {
 }
 
 const FLAGS = ["new-checkout", "banner-text", "discount-percent", "checkout-config", "legacy-cart"];
-
-const served = (flags: unknown, key: string): unknown =>
-  Array.isArray(flags) ? flags.map(record).find((f) => f["key"] === key)?.["value"] : undefined;
 
 async function signIn({ info, dashboard }: Journey) {
   await dashboard.goto(info.dashboardUrl);
@@ -59,6 +68,10 @@ async function shoppersDiffer({ free, pro }: Journey) {
   await expect(cell(pro, "new-checkout", "reason")).toHaveText("RULE_MATCH");
   // The flag that does not exist yet is the app's fallback, and says so.
   await expect(cell(pro, FLAG, "reason")).toHaveText("ERROR");
+  // The browser SDK's table agrees: the same two shoppers, from a client key.
+  await expect(browserCell(free, "new-checkout", "value")).toHaveText("false");
+  await expect(browserCell(pro, "new-checkout", "value")).toHaveText("true");
+  await expect(browserCell(pro, "new-checkout", "reason")).toHaveText("RULE_MATCH");
 }
 
 async function createFlagWithRule({ dashboard, free, pro }: Journey) {
@@ -93,6 +106,12 @@ async function createFlagWithRule({ dashboard, free, pro }: Journey) {
   await expect(cell(pro, FLAG, "value")).toHaveText("true");
   await expect(cell(free, FLAG, "value")).toHaveText("false");
   await expect(cell(free, FLAG, "reason")).toHaveText("FALLTHROUGH");
+  // The browser SDK follows too, with no reload: the change signal tells it to evaluate again. Its
+  // `change` event fires when a value or a variation index changes, not a reason alone, so only the
+  // pro shopper's cells are asserted (the free shopper's value and index do not change: false).
+  await expect(browserCell(pro, FLAG, "reason")).toHaveText("RULE_MATCH");
+  await expect(browserCell(pro, FLAG, "value")).toHaveText("true");
+  await expect(browserCell(free, FLAG, "value")).toHaveText("false");
 }
 
 async function toggleNewCheckout({ dashboard, free, pro }: Journey) {
@@ -105,6 +124,11 @@ async function toggleNewCheckout({ dashboard, free, pro }: Journey) {
   await expect(cell(pro, "new-checkout", "reason")).toHaveText("OFF");
   await expect(cell(free, "new-checkout", "value")).toHaveText("false");
   await expect(cell(free, "new-checkout", "reason")).toHaveText("OFF");
+  // And the browser SDK's cells, from the change signal and a fresh evaluate (the free shopper's
+  // value and index do not change, so no `change` event repaints their reason; see above).
+  await expect(browserCell(pro, "new-checkout", "value")).toHaveText("false");
+  await expect(browserCell(pro, "new-checkout", "reason")).toHaveText("OFF");
+  await expect(browserCell(free, "new-checkout", "value")).toHaveText("false");
 }
 
 async function streamAndEtag({ cli, scope, free, pro }: Journey) {
@@ -126,16 +150,10 @@ async function diagnoseAgrees({ cli, scope, pro }: Journey) {
   );
 }
 
-async function browserEvaluates({ info, pro }: Journey) {
-  await pro.getByTestId("evaluate-button").click();
-  await expect(pro.getByTestId("evaluate-status")).toHaveText("200");
-  const answered = record(JSON.parse(await pro.getByTestId("evaluate-result").innerText()));
-  const state = record(
-    await (await pro.request.get(`${info.exampleUrl}/state?user=pro-user&flag=${FLAG}`)).json(),
-  );
-  for (const key of ["new-checkout", FLAG]) {
-    expect(record(record(answered["flags"])[key])["value"]).toBe(served(state["flags"], key));
-  }
+async function browserAgrees({ pro }: Journey) {
+  // The browser SDK's table (a client key, evaluated by the server) and the server SDK's table
+  // (a server key, evaluated in the app) answer the same for the same shopper.
+  for (const flag of ["new-checkout", FLAG]) await browserMatches(pro, flag);
 }
 
 async function usageAndAudit({ info, dashboard }: Journey) {
@@ -218,8 +236,8 @@ test("a flag changed in the dashboard reaches the shop, the CLI and the usage co
     streamAndEtag(journey));
   await test.step("toggleslash diagnose agrees with the page for the pro shopper", () =>
     diagnoseAgrees(journey));
-  await test.step("the browser evaluate button answers what /state says", () =>
-    browserEvaluates(journey));
+  await test.step("the browser SDK's cells equal the server-side cells for the pro shopper", () =>
+    browserAgrees(journey));
   await test.step("the flag's page counts what the app served and the audit log shows the toggle", () =>
     usageAndAudit(journey));
   await test.step("a read-scoped token reads runtime and is refused a toggle", () =>

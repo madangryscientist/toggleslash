@@ -190,7 +190,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Capability | Status | Evidence and note |
 | --- | :---: | --- |
 | Server SDKs | 🟡 | `path:packages/sdk`<br>`path:packages/engine`<br>`doc:docs/sdk.md`<br>One TypeScript server SDK. The C# evaluator is internal to the server, not a public SDK. |
-| Browser SDKs | 🟡 | `path:packages/sdk-browser`<br>`doc:docs/sdk-browser.md`<br>`test:packages/sdk-browser/test/signal.test.ts`<br>One JavaScript SDK, server-evaluated, unpublished; no React binding, no secure mode. |
+| Browser SDKs | 🟡 | `path:packages/sdk-browser`<br>`doc:docs/sdk-browser.md`<br>`test:packages/sdk-browser/test/signal.test.ts`<br>`path:apps/example/src/browser.ts`<br>`test:packages/e2e/stack/journey.spec.ts`<br>One JavaScript SDK, server-evaluated, unpublished, shown live in the example app and the stack journey; no React binding, no secure mode. |
 | Mobile SDKs | ❌ | none |
 | Edge SDKs | ❌ | none |
 | OpenFeature providers | 🟡 | `path:packages/sdk-openfeature`<br>`test:packages/sdk-openfeature/test/provider.test.ts`<br>A server-side TypeScript provider over the SDK; no provider events, and no browser or other-language providers. |

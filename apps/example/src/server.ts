@@ -1,5 +1,6 @@
 import { createClient } from "@hackcove/toggleslash-sdk";
 import { createApp } from "./app.ts";
+import { buildBrowserBundle } from "./bundle.ts";
 
 const DEFAULT_PORT = 4441;
 
@@ -35,11 +36,19 @@ const client = createClient({
   onError: (error) => process.stderr.write(`example: sdk: ${String(error)}\n`),
 });
 
+// A build failure throws here and stops startup with the bundler's messages.
+const browserJs = await buildBrowserBundle();
+
 const server = Bun.serve({
   // Loopback only: this is an example, not something to expose.
   hostname: "127.0.0.1",
   port: Number(process.env["PORT"] ?? DEFAULT_PORT),
-  fetch: createApp({ client, serverUrl: url, clientKey: required("TOGGLESLASH_CLIENT_KEY") }),
+  fetch: createApp({
+    client,
+    serverUrl: url,
+    clientKey: required("TOGGLESLASH_CLIENT_KEY"),
+    browserJs,
+  }),
 });
 process.stdout.write(`example: listening on http://127.0.0.1:${server.port}\n`);
 
