@@ -58,7 +58,8 @@ Each line is a native test in `$L`, named in `RUN.md`.
 
 - [ ] Every operation of contract 2 called from many threads at once, `close` racing `variation`, and two
   `close` calls racing, with no error, deadlock or data race; under the race detector where the language has
-  one (contract 6.1). A single-threaded runtime instead tests that `variation` returns without yielding to
+  one (contract 6.1); a language with none says so in `RUN.md` and names the stress test that stands in.
+  A single-threaded runtime instead tests that `variation` returns without yielding to
   the event loop (contract 6, "Single-threaded runtimes").
 - [ ] `variation` and `variationDetail` return within a bound while a ruleset request hangs, and while a
   usage flush hangs (contract 5.2, 6.2).

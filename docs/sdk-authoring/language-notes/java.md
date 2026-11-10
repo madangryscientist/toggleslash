@@ -1,0 +1,22 @@
+# Java
+
+What the first Java run learned. Each fact cites that run: prompt `7622421`, FS-97, 2026-11-10.
+
+- **Toolchain.** Pin the newest LTS (Temurin 25 in that run). A feature release such as the current
+  non-LTS one leaves support after six months. Minimum Java 17 is separate, set with `--release 17`.
+- **Maven group.** Use the reverse-domain form of the repository path: group `com.github.madangryscientist.toggleslash`,
+  artifact `toggleslash-sdk-java`, root package `<groupId>.sdks.java` (from `sdks/java`).
+- **`HttpClient` and the body.** `HttpRequest.timeout` ends at the response headers, not the body. Do not use
+  `BodyHandlers.fromSubscriber` for the stream: it answers the response future only when the body ends, so
+  the stream open timed out and 23 stream scenarios failed with `lastError: timeout`. Make the body a
+  `BodySubscriber` that hands itself over at once.
+- **No closable `HttpClient` before 21.** `AutoCloseable` came in 21, so `close` cannot close it. Use two
+  clients: abort the one for the ruleset and stream on `close`, and leave the one for usage so the final
+  flush can still go out.
+- **Checkstyle under mise is a bare JAR**, with no launcher: run
+  `java -jar "$(command -v checkstyle)" -c checkstyle.xml src/main/java`.
+- **First `mvn` run is online.** It caches the plugins. A fresh checkout needs the network once; later runs
+  work offline.
+- **Test service layout.** `build-helper-maven-plugin` adds `test-service/src` as a test source root, so
+  `mvn test` compiles it with the tests. `bin/test-service` runs `java -cp target/classes:target/test-classes`
+  and builds only when the classes are missing.

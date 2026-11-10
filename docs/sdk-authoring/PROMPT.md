@@ -110,8 +110,9 @@ git log -1 --format=%H -- docs/sdk-authoring
 
 Then set up. Pin the toolchain in `$L/mise.toml`: a `[tools]` table with the exact current stable release
 (look it up; do not copy a version from this page), plus any build or lint tool the `bin/` scripts call
-that mise installs. That pin is what you develop and test on. The minimum version is separate: the SDK
-declares it in its package metadata, and `DESIGN.md` says why. Trust and install the pin, and install the
+that mise installs. That pin is what you develop and test on. For a language with long-term-support releases, pin the
+newest LTS and say so in `DESIGN.md`. The minimum version is separate: the SDK declares it in its
+package metadata, and `DESIGN.md` says why. Trust and install the pin, and install the
 repository's own packages, which the harness needs:
 
 ```sh
@@ -162,8 +163,9 @@ Write `$L/DESIGN.md` before any code. It holds:
 7. **The package layout**: the directories under `$L`, and where the evaluator, the client, the tests and
    the test service live. The package or module name follows the language's convention for a package
    inside a repository; where that convention puts a host in the name, use this repository's
-   `github.com/madangryscientist/toggleslash/sdks/<lang>`. Nothing is registered under it. Where `<lang>`
-   is not a valid package name (Go's `go` is a keyword), name the package `toggleslash`.
+   `github.com/madangryscientist/toggleslash/sdks/<lang>`. Where the convention is reverse-domain (Maven,
+   and similar), use the reverse-domain form of that repository path. Nothing is registered under it.
+   Where `<lang>` is not a valid package name (Go's `go` is a keyword), name the package `toggleslash`.
 
 **Check.** Every required row exists (prints nothing and exits 0):
 
@@ -233,8 +235,9 @@ Write native unit tests for what the harness cannot reach: the "Native tests" li
 ## Phase 4: test service
 
 Write `$L/test-service/` to the protocol in [`docs/sdk-test-service.md`](../sdk-test-service.md), and
-`$L/bin/test-service` to start it. The reference is `packages/sdk/test-service/main.ts`. What the protocol
-page says and a cold reader misses:
+`$L/bin/test-service` to start it. Put the test service where your build tool compiles it with the
+tests, and say where in `$L/test-service/README.md`. The reference is `packages/sdk/test-service/main.ts`.
+What the protocol page says and a cold reader misses:
 
 - Listen on `127.0.0.1`, port `0` (the OS picks), and print `listening http://127.0.0.1:<port>` with the
   real port on a line of its own, **then flush stdout**: it is a pipe, not a terminal, and an unflushed line
