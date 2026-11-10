@@ -1,7 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { P, diagnosis } from "./cases.ts";
+import { P, diagnosis } from "./case.ts";
 import { apiError, fakeServer, json } from "./fake-server.ts";
 import { CONNECTED, cli, tempDir } from "./harness.ts";
 

@@ -12,6 +12,7 @@ export interface Api {
   get: (path: string, query?: Query) => Promise<Json>;
   post: (path: string, body?: Json) => Promise<Json>;
   patch: (path: string, body?: Json) => Promise<Json>;
+  put: (path: string, body?: Json) => Promise<Json>;
   delete: (path: string) => Promise<Json>;
 }
 
@@ -112,6 +113,7 @@ export function createApi(connection: Connection, doFetch: Fetch): Api {
     get: (path, query) => call("GET", path, query, undefined),
     post: (path, body) => call("POST", path, undefined, body),
     patch: (path, body) => call("PATCH", path, undefined, body),
+    put: (path, body) => call("PUT", path, undefined, body),
     delete: (path) => call("DELETE", path, undefined, undefined),
   };
 }

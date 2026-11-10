@@ -1,5 +1,5 @@
-import type { Case } from "./cases.ts";
-import { P } from "./cases.ts";
+import type { Case } from "./case.ts";
+import { P } from "./case.ts";
 import { json } from "./fake-server.ts";
 
 export const HASH = "9f2c".repeat(16);

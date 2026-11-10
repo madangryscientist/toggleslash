@@ -1,5 +1,5 @@
-import type { Case } from "./cases.ts";
-import { P, flag } from "./cases.ts";
+import type { Case } from "./case.ts";
+import { P, flag } from "./case.ts";
 import { json } from "./fake-server.ts";
 
 export const flagCases: Case[] = [

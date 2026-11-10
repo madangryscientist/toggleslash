@@ -5,6 +5,8 @@ import { envCases } from "./env-cases.ts";
 import { flagCases } from "./flag-cases.ts";
 import { rulesetCases } from "./ruleset-cases.ts";
 import { runtimeCases } from "./runtime-cases.ts";
+import { segmentCases } from "./segment-cases.ts";
+import { targetingCases } from "./targeting-cases.ts";
 import { tokenCases } from "./token-cases.ts";
 import { apiError, fakeServer } from "./fake-server.ts";
 import { CONNECTED, TOKEN, URL_BASE, cli } from "./harness.ts";
@@ -13,6 +15,8 @@ const cases = [
   ...otherCases,
   ...envCases,
   ...flagCases,
+  ...targetingCases,
+  ...segmentCases,
   ...tokenCases,
   ...runtimeCases,
   ...rulesetCases,
@@ -21,7 +25,7 @@ const cases = [
 describe("every command that calls the server", () => {
   it.each(cases)("$command: sends the request and prints the result", async (c) => {
     const server = fakeServer(c.routes);
-    const result = await cli(c.args, { fetch: server.fetch, env: CONNECTED });
+    const result = await cli(c.args, { fetch: server.fetch, env: CONNECTED, stdin: c.stdin });
     expect(result.stderr).not.toContain(TOKEN);
     expect(result.code).toBe(0);
     for (const text of c.shows) expect(result.stdout).toContain(text);
@@ -36,7 +40,11 @@ describe("every command that calls the server", () => {
 
   it.each(cases)("$command --json: prints the server's reply as valid JSON", async (c) => {
     const server = fakeServer(c.routes);
-    const result = await cli([...c.args, "--json"], { fetch: server.fetch, env: CONNECTED });
+    const result = await cli([...c.args, "--json"], {
+      fetch: server.fetch,
+      env: CONNECTED,
+      stdin: c.stdin,
+    });
     expect(result.code).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual(c.reply);
   });
@@ -45,7 +53,7 @@ describe("every command that calls the server", () => {
     const server = fakeServer({
       [`${c.method} ${c.path}`]: apiError(404, "not_found", "No such thing."),
     });
-    const result = await cli(c.args, { fetch: server.fetch, env: CONNECTED });
+    const result = await cli(c.args, { fetch: server.fetch, env: CONNECTED, stdin: c.stdin });
     expect(result.code).toBe(1);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe("toggleslash: the server answered 404 not_found: No such thing.\n");
@@ -54,6 +62,7 @@ describe("every command that calls the server", () => {
   it.each(cases)("$command: exits 1 when the server cannot be reached", async (c) => {
     const result = await cli(c.args, {
       env: CONNECTED,
+      stdin: c.stdin,
       fetch: () => Promise.reject(new Error("connect ECONNREFUSED 127.0.0.1:1")),
     });
     expect(result.code).toBe(1);
@@ -63,7 +72,7 @@ describe("every command that calls the server", () => {
   });
 
   it.each(cases)("$command: exits 2 with no URL and token configured", async (c) => {
-    const result = await cli(c.args, { fetch: fakeServer({}).fetch });
+    const result = await cli(c.args, { fetch: fakeServer({}).fetch, stdin: c.stdin });
     expect(result.code).toBe(2);
     expect(result.stderr).toContain("no server URL");
   });

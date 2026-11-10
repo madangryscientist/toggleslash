@@ -58,6 +58,14 @@ toggleslash flags on <flag> --project <project> --env <env>        turn a flag o
 toggleslash flags off <flag> --project <project> --env <env>       turn a flag off in one environment
 toggleslash flags history <flag> --project <project> [--env <env>] [--since <time>] [--limit <1-200>] [--cursor <cursor>]
 
+toggleslash targeting show <flag> --project <project> --env <env>             print the targeting as JSON
+toggleslash targeting set <flag> --project <project> --env <env> --file <path>   replace it with the JSON in a file (- is stdin)
+toggleslash segments list --project <project> --env <env>
+toggleslash segments show <segment> --project <project> --env <env>          print the segment as JSON
+toggleslash segments create <segment> --project <project> --env <env> [--file <path>]
+toggleslash segments set <segment> --project <project> --env <env> --file <path>
+toggleslash segments delete <segment> --project <project> --env <env>        refused while a flag still uses it
+
 toggleslash keys create --project <project> --env <env> --kind server|client --name <name>
 toggleslash keys list --project <project> --env <env>
 toggleslash keys revoke <id> --project <project> --env <env>
@@ -77,6 +85,16 @@ toggleslash rulesets show <hash> --project <project> --env <env> [--flag <flag>]
   a JSON array (`--variations '["control","a","b"]'`). `flags on` and `flags off` use the server's `toggle`:
   they change `on` and nothing else, so they cannot undo someone else's targeting edit. `flags history`
   prints a page, newest first; when there is another page it ends with `more: add --cursor <cursor>`.
+- **Targeting and segments** are a JSON round trip, not one flag per rule field. `targeting show` prints the
+  server's JSON for a flag in one environment (`on`, `offVariation`, `targets`, `prerequisites`, `rules`,
+  `fallthrough`, `version`), always as JSON, with or without `--json`. Save it, edit it, and send it back with
+  `targeting set --file <path>`: the file keeps the `version` it was read at, and the server refuses a stale one
+  (exit 1, with its message), so two people cannot overwrite each other. The CLI checks only that the file is a
+  JSON object; the server validates the rest and its message is what you see. `segments show` and `segments set`
+  work the same way. `segments create` takes `--file` too, and sends `[]` for any of `included`, `excluded` and
+  `rules` that the file leaves out (all three without `--file`). A segment's file may hold its `key`; it must
+  match the argument and is not sent. A bad `--file` (unreadable, not JSON, not an object, `-` on a terminal)
+  exits 2 before any request.
 - **Environments**: `envs rename` changes the name and never the key, which audit rows, clients and `?env=` URLs use; it
   needs `--name`, and the ruleset does not change. `envs delete` deletes the environment with its flags' settings
   there, its segments, its revoked keys, its usage counts and its kept rulesets; the audit trail stays readable. There is

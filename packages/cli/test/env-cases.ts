@@ -1,5 +1,5 @@
-import type { Case } from "./cases.ts";
-import { P } from "./cases.ts";
+import type { Case } from "./case.ts";
+import { P } from "./case.ts";
 import { json } from "./fake-server.ts";
 
 const environment = { key: "production", name: "Production", createdAt: "2026-11-01T10:05:00Z" };

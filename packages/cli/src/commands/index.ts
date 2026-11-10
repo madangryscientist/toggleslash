@@ -6,12 +6,16 @@ import { FLAGS } from "./flags.ts";
 import { KEYS } from "./keys.ts";
 import { RULESETS } from "./rulesets.ts";
 import { RUNTIME } from "./runtime.ts";
+import { SEGMENTS } from "./segments.ts";
+import { TARGETING } from "./targeting.ts";
 import { TOKENS } from "./tokens.ts";
 
 export const COMMANDS: readonly Command[] = [
   ...CONFIG,
   ...CATALOGUE,
   ...FLAGS,
+  ...TARGETING,
+  ...SEGMENTS,
   ...KEYS,
   ...TOKENS,
   ...DIAGNOSE,
