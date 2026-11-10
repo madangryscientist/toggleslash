@@ -71,7 +71,7 @@ public static class AuditEndpoints
         return await Page(database, project, flag, environment, since, limit, cursor, cancellation);
     }
 
-    /// <summary>One flag's events, newest first: its metadata, archive state and every environment's config.</summary>
+    /// <summary>One flag's events, newest first: its metadata, archive state and every environment's config. Still answers after the flag is deleted.</summary>
     private static async Task<IResult> FlagHistory(
         string project,
         string flag,
@@ -86,7 +86,9 @@ public static class AuditEndpoints
         {
             return Failures.ProjectNotFound();
         }
-        if (!await database.Flags.AnyAsync(f => f.ProjectId == owner.Id && f.Key == flag, cancellation))
+        // A deleted flag keeps its trail, so its history still reads: only a key that never existed is a 404.
+        if (!await database.Flags.AnyAsync(f => f.ProjectId == owner.Id && f.Key == flag, cancellation)
+            && !await database.AuditEvents.AnyAsync(a => a.ProjectKey == project && a.FlagKey == flag, cancellation))
         {
             return Failures.FlagNotFound();
         }

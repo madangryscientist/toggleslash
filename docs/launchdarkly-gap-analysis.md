@@ -44,7 +44,7 @@ Maturity: 0 none, 1 minimal, 2 usable for a small team, 3 strong, 4 LaunchDarkly
 | --- | ---: | ---: | --- |
 | Evaluation semantics | 2.5 | 4 | Rigorous and cross-language-tested, but one context kind, eight operators and no experiments |
 | Targeting and segments | 2 | 4 | Rules, prerequisites and segments exist; list/big/synced segments, attribute rollouts, bulk targeting and 5,000-rule limits do not |
-| Flag model and lifecycle | 2 | 4 | Multivariate flags and archive/restore exist; status, lifecycle, delete, templates, clone, compare/copy and code references do not |
+| Flag model and lifecycle | 2 | 4 | Multivariate flags and archive/restore exist; templates, clone, compare/copy and code references do not |
 | Release workflow | 0.5 | 4 | No approvals, scheduling, progressive/guarded rollouts, triggers, workflows or release policies |
 | SDKs and delivery | 1 | 4 | One server SDK against 25+ SDKs, no browser/mobile/edge SDK, no relay, no persistent store, no bootstrap/offline mode |
 | Experimentation and metrics | 0 | 4 | Daily usage counts only; no event stream, no metrics, no assignment, no statistics, no warehouse |
@@ -151,7 +151,7 @@ percentage, when, and what stops it. That is a workflow problem more than an eva
 | Flag templates | Release, kill switch, experiment, migration, custom | No templates; create is one shape |
 | Migration flags | Two-to-six stages, cohorts, read/write semantics in server SDKs | No |
 | Flag settings | Temporary/permanent, owner, tags, links, followers, client-side/mobile availability | Name, description, temporary, owner, tags; no availability controls |
-| Flag status | New/Active/Launched/Inactive per environment, plus lifecycle stages | `lastEvaluated` only; archive state is manual |
+| Flag status | New/Active/Launched/Inactive per environment, plus lifecycle stages | `lifecycle`: new, active, inactive, archived (from the last 7 days of usage); not per environment |
 
 The dashboard creating booleans only is a product gap even though the API can do more.
 
@@ -184,8 +184,8 @@ self-hosted product with multiple SDKs later.
 | Per-environment config | Yes | Yes, versioned compare-and-set |
 | Optimistic concurrency | Yes | Yes, for flag config and segments |
 | Archive / restore | Yes | Yes |
-| Permanent delete | Yes, after archive | **No** |
-| Flag status / lifecycle | New, Active, Launched, Inactive; Ready for code removal / Ready to archive | No computed status |
+| Permanent delete | Yes, after archive | Yes, after archive, unless another flag needs it |
+| Flag status / lifecycle | New, Active, Launched, Inactive; Ready for code removal / Ready to archive | New, Active, Inactive, Archived; no code-removal stage |
 | Stale-flag detection | Yes, with lifecycle settings | No |
 | Code references | `ld-find-code-refs`, extinction events, archive checks | No |
 | Change history | Yes, per environment, with restore | Audit history is read-only; no restore |
@@ -556,8 +556,8 @@ Legend: **Yes** = shipped; **Partial** = some of it; **No** = absent.
 | Per-environment config | Yes | Yes |
 | Optimistic concurrency | Yes | Yes (flags and segments) |
 | Archive / restore | Yes | Yes |
-| Permanent delete | Yes | No |
-| Flag status / lifecycle | Yes | No |
+| Permanent delete | Yes | Yes |
+| Flag status / lifecycle | Yes | Partial |
 | Stale-flag detection | Yes | No |
 | Code references | Yes | No |
 | Change history restore | Yes | No |

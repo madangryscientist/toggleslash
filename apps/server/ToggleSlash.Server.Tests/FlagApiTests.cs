@@ -319,4 +319,218 @@ public sealed class FlagApiTests : IDisposable
         Assert.Equal("Renamed", updated.GetProperty("name").GetString());
         Assert.NotEqual(JsonValueKind.Null, updated.GetProperty("archivedAt").ValueKind);
     }
+
+    // --- lifecycle ---------------------------------------------------------------------------------------------------
+
+    private void Sql(string sql, params (string Name, object Value)[] parameters)
+    {
+        using var connection = server.OpenDatabase();
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        foreach (var (name, value) in parameters)
+        {
+            command.Parameters.AddWithValue(name, value);
+        }
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>Straight into the file: a flag created <paramref name="createdDaysAgo"/> days ago, with a usage row <paramref name="usedDaysAgo"/> days ago if given.</summary>
+    private void Backdate(string flag, int createdDaysAgo, int? usedDaysAgo = null)
+    {
+        Sql("UPDATE flags SET created_at = $at WHERE key = $key", ("$at", DateTime.UtcNow.AddDays(-createdDaysAgo).ToString("yyyy-MM-dd HH:mm:ss.fffffff")), ("$key", flag));
+        if (usedDaysAgo is { } days)
+        {
+            Sql(
+                "INSERT INTO flag_usage_daily (environment_id, flag_id, variation, day, count) SELECT e.id, f.id, 0, $day, 3 FROM flags f, environments e WHERE f.key = $key AND e.key = 'prod'",
+                ("$day", DateTime.UtcNow.AddDays(-days).ToString("yyyy-MM-dd")),
+                ("$key", flag));
+        }
+    }
+
+    private async Task<string> Lifecycle(string flag) =>
+        (await ApiServer.Json(await server.Get($"{Flags}/{flag}"))).GetProperty("lifecycle").GetString()!;
+
+    [Fact]
+    public async Task A_new_flag_is_new()
+    {
+        await ProjectWithEnvironments("prod");
+
+        var created = await server.Post(Flags, new { key = "f", name = "f", variations = new[] { true, false } });
+
+        Assert.Equal("new", (await ApiServer.Json(created)).GetProperty("lifecycle").GetString());
+        Assert.Equal("new", await Lifecycle("f"));
+    }
+
+    [Fact]
+    public async Task A_flag_with_usage_today_is_active_even_when_it_is_old()
+    {
+        await ProjectWithEnvironments("prod");
+        await server.SeedFlag("shop", "f");
+        Backdate("f", createdDaysAgo: 30, usedDaysAgo: 0);
+
+        Assert.Equal("active", await Lifecycle("f"));
+    }
+
+    [Fact]
+    public async Task Usage_six_days_ago_still_counts_and_seven_days_ago_does_not()
+    {
+        await ProjectWithEnvironments("prod");
+        await server.SeedFlag("shop", "six");
+        await server.SeedFlag("shop", "seven");
+        Backdate("six", createdDaysAgo: 30, usedDaysAgo: 6);
+        Backdate("seven", createdDaysAgo: 30, usedDaysAgo: 7);
+
+        Assert.Equal("active", await Lifecycle("six"));
+        Assert.Equal("inactive", await Lifecycle("seven"));
+    }
+
+    [Fact]
+    public async Task An_old_flag_with_no_usage_is_inactive()
+    {
+        await ProjectWithEnvironments("prod");
+        await server.SeedFlag("shop", "f");
+        Backdate("f", createdDaysAgo: 8);
+
+        Assert.Equal("inactive", await Lifecycle("f"));
+    }
+
+    [Fact]
+    public async Task An_archived_flag_is_archived_even_with_usage_today()
+    {
+        await ProjectWithEnvironments("prod");
+        await server.SeedFlag("shop", "f");
+        Backdate("f", createdDaysAgo: 0, usedDaysAgo: 0);
+
+        var archived = await server.Post($"{Flags}/f/archive");
+
+        Assert.Equal("archived", (await ApiServer.Json(archived)).GetProperty("lifecycle").GetString());
+        Assert.Equal("archived", await Lifecycle("f"));
+    }
+
+    [Fact]
+    public async Task Every_route_that_returns_a_flag_carries_the_lifecycle()
+    {
+        await ProjectWithEnvironments("prod");
+        await server.SeedFlag("shop", "f");
+        Backdate("f", createdDaysAgo: 30, usedDaysAgo: 1);
+
+        var listed = (await ApiServer.Json(await server.Get(Flags))).EnumerateArray().Single();
+        Assert.Equal("active", listed.GetProperty("lifecycle").GetString());
+        Assert.Equal("active", (await ApiServer.Json(await server.Patch($"{Flags}/f", new { name = "F" }))).GetProperty("lifecycle").GetString());
+        Assert.Equal("archived", (await ApiServer.Json(await server.Post($"{Flags}/f/archive"))).GetProperty("lifecycle").GetString());
+        Assert.Equal("active", (await ApiServer.Json(await server.Post($"{Flags}/f/restore"))).GetProperty("lifecycle").GetString());
+    }
+
+    // --- delete ------------------------------------------------------------------------------------------------------
+
+    private async Task Require(string flag, string on)
+    {
+        var path = $"{Flags}/{flag}/environments/prod";
+        var current = await ApiServer.Json(await server.Get(path));
+        var body = current.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.Clone());
+        body["prerequisites"] = JsonDocument.Parse($$"""[{"flagKey":"{{on}}","variation":0}]""").RootElement.Clone();
+        await ApiServer.Expect(HttpStatusCode.OK, await server.Put(path, body));
+    }
+
+    [Fact]
+    public async Task Deleting_a_flag_that_is_not_archived_is_409_and_keeps_it()
+    {
+        await ProjectWithEnvironments("prod");
+        await server.SeedFlag("shop", "f");
+
+        var response = await server.Delete($"{Flags}/f");
+
+        await ApiServer.ExpectError(HttpStatusCode.Conflict, "conflict", response);
+        Assert.Equal("\"f\" is not archived; archive it before deleting it.", (await ApiServer.Json(response)).GetProperty("error").GetProperty("message").GetString());
+        await ApiServer.Expect(HttpStatusCode.OK, await server.Get($"{Flags}/f"));
+        Assert.Single(server.Configs("f"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Deleting_a_flag_another_flag_requires_is_409_and_removes_nothing(bool dependentArchived)
+    {
+        await ProjectWithEnvironments("prod", "staging");
+        await server.SeedFlag("shop", "base");
+        await server.SeedFlag("shop", "b-dependent");
+        await server.SeedFlag("shop", "a-dependent");
+        await Require("b-dependent", "base");
+        await Require("a-dependent", "base");
+        await server.Post($"{Flags}/base/archive");
+        if (dependentArchived)
+        {
+            await server.Post($"{Flags}/a-dependent/archive");
+        }
+
+        var response = await server.Delete($"{Flags}/base");
+
+        await ApiServer.ExpectError(HttpStatusCode.Conflict, "conflict", response);
+        Assert.Equal(
+            "\"base\" is a prerequisite of \"a-dependent\", \"b-dependent\"; remove it from them first.",
+            (await ApiServer.Json(response)).GetProperty("error").GetProperty("message").GetString());
+        await ApiServer.Expect(HttpStatusCode.OK, await server.Get($"{Flags}/base"));
+        Assert.Equal(2, server.Configs("base").Count);
+        Assert.DoesNotContain(server.AuditRows(), r => r.Action == "deleted");
+    }
+
+    [Fact]
+    public async Task Deleting_an_archived_flag_removes_it_and_its_configs_and_keeps_its_history()
+    {
+        await ProjectWithEnvironments("prod", "staging");
+        await server.SeedFlag("shop", "f");
+        await server.SeedFlag("shop", "other");
+        Backdate("f", createdDaysAgo: 1, usedDaysAgo: 0);
+        await server.Post($"{Flags}/f/archive");
+
+        await ApiServer.Expect(HttpStatusCode.NoContent, await server.Delete($"{Flags}/f"));
+
+        await ApiServer.ExpectError(HttpStatusCode.NotFound, "not_found", await server.Get($"{Flags}/f"));
+        Assert.Empty(server.Configs("f"));
+        Assert.Equal(2, server.Configs("other").Count);
+        Assert.Equal(["other"], Keys(await ApiServer.Json(await server.Get($"{Flags}?archived=all"))));
+        var deleted = server.AuditRows().Single(r => r is { EntityType: "flag", Action: "deleted" });
+        Assert.Equal(("f", "shop", null, "admin"), (deleted.EntityId, deleted.Project, deleted.Environment, deleted.Actor));
+        Assert.Equal("f", JsonDocument.Parse(deleted.Before!).RootElement.GetProperty("key").GetString());
+        Assert.Null(deleted.After);
+        var history = await ApiServer.Json(await server.Get($"{Flags}/f/history"));
+        Assert.Contains(history.GetProperty("events").EnumerateArray(), e => e.GetProperty("action").GetString() == "deleted");
+        Assert.Contains(history.GetProperty("events").EnumerateArray(), e => e.GetProperty("action").GetString() == "created");
+    }
+
+    [Fact]
+    public async Task A_deleted_flags_key_can_be_created_again()
+    {
+        await ProjectWithEnvironments("prod");
+        await server.SeedFlag("shop", "f");
+        await server.Post($"{Flags}/f/archive");
+        await ApiServer.Expect(HttpStatusCode.NoContent, await server.Delete($"{Flags}/f"));
+
+        var again = await server.Post(Flags, new { key = "f", name = "f again", variations = new[] { 1, 2, 3 } });
+
+        await ApiServer.Expect(HttpStatusCode.Created, again);
+        Assert.Equal("new", (await ApiServer.Json(again)).GetProperty("lifecycle").GetString());
+        Assert.Single(server.Configs("f"));
+    }
+
+    [Fact]
+    public async Task A_flag_that_lists_itself_does_not_block_its_own_delete()
+    {
+        await ProjectWithEnvironments("prod");
+        await server.SeedFlag("shop", "f");
+        await server.Post($"{Flags}/f/archive");
+        // Validation refuses this through the API, so write the row as a stale or hand-edited database could hold it.
+        Sql("UPDATE flag_environment_configs SET prerequisites = '[{\"flagKey\":\"f\",\"variation\":0}]'");
+
+        await ApiServer.Expect(HttpStatusCode.NoContent, await server.Delete($"{Flags}/f"));
+    }
+
+    [Fact]
+    public async Task Deleting_an_unknown_flag_or_project_is_404()
+    {
+        await ProjectWithEnvironments();
+
+        await ApiServer.ExpectError(HttpStatusCode.NotFound, "not_found", await server.Delete($"{Flags}/missing"));
+        await ApiServer.ExpectError(HttpStatusCode.NotFound, "not_found", await server.Delete("/api/v1/projects/nope/flags/f"));
+    }
 }

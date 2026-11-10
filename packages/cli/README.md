@@ -53,6 +53,7 @@ toggleslash flags show <flag> --project <project> [--env <env>]    with --env, a
 toggleslash flags create <key> --project <project> [--name <name>] [--variations <json>] [--description <text>]
                           [--temporary] [--owner <owner>] [--tag <tag>]... [--off-variation <n>] [--fallthrough-variation <n>]
 toggleslash flags archive <flag> --project <project>
+toggleslash flags delete <flag> --project <project>                delete an archived flag for good (refused while another flag lists it as a prerequisite)
 toggleslash flags on <flag> --project <project> --env <env>        turn a flag on in one environment
 toggleslash flags off <flag> --project <project> --env <env>       turn a flag off in one environment
 toggleslash flags history <flag> --project <project> [--env <env>] [--since <time>] [--limit <1-200>] [--cursor <cursor>]

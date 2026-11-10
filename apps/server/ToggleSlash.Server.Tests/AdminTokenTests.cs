@@ -42,6 +42,7 @@ public sealed class AdminTokenTests : IDisposable
         ["PATCH /api/v1/projects/{project}/flags/{flag}"] = (false, true),
         ["POST /api/v1/projects/{project}/flags/{flag}/archive"] = (false, true),
         ["POST /api/v1/projects/{project}/flags/{flag}/restore"] = (false, true),
+        ["DELETE /api/v1/projects/{project}/flags/{flag}"] = (false, true),
         ["GET /api/v1/projects/{project}/flags/{flag}/environments/{env}"] = (true, true),
         ["PUT /api/v1/projects/{project}/flags/{flag}/environments/{env}"] = (false, true),
         ["POST /api/v1/projects/{project}/flags/{flag}/environments/{env}/toggle"] = (false, true),
@@ -167,6 +168,18 @@ public sealed class AdminTokenTests : IDisposable
 
         await ApiServer.Expect(HttpStatusCode.OK, diagnosed);
         Assert.DoesNotContain(server.AuditRows(), r => r.Actor != "admin");
+    }
+
+    [Fact]
+    public async Task A_read_token_cannot_delete_an_archived_flag()
+    {
+        await SeedShop();
+        await server.Post($"{Shop}/flags/checkout/archive");
+        var (_, token) = await Mint("shop", "read");
+
+        await ApiServer.ExpectError(HttpStatusCode.Forbidden, "forbidden", await server.Send(HttpMethod.Delete, $"{Shop}/flags/checkout", Bearer(token)));
+
+        await ApiServer.Expect(HttpStatusCode.OK, await server.Get($"{Shop}/flags/checkout"));
     }
 
     [Fact]

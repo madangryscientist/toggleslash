@@ -66,6 +66,15 @@ public sealed class AuditWriteTests : IDisposable
             return response;
         }, HttpStatusCode.Created, "admin_token", "created");
         yield return new("DELETE /api/v1/projects/{project}/tokens/{id:long}", () => server.Delete($"{Shop}/tokens/{tokenId}"), HttpStatusCode.NoContent, "admin_token", "revoked");
+        yield return new("DELETE /api/v1/projects/{project}/flags/{flag}", () =>
+        {
+            // Archived straight in the file, so that this step records exactly the one event of the delete.
+            using var connection = server.OpenDatabase();
+            using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE flags SET archived_at = '2026-11-05 12:00:00' WHERE key = 'banner'";
+            command.ExecuteNonQuery();
+            return server.Delete($"{Shop}/flags/banner");
+        }, HttpStatusCode.NoContent, "flag", "deleted");
         yield return new("DELETE /api/v1/projects/{project}/environments/{env}", () => server.Delete($"{Shop}/environments/staging"), HttpStatusCode.NoContent, "environment", "deleted");
     }
 

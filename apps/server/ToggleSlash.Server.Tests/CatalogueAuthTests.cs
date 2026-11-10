@@ -24,6 +24,7 @@ public sealed class CatalogueAuthTests : IDisposable
         { "PATCH", "/api/v1/projects/shop/flags/dark-mode", true },
         { "POST", "/api/v1/projects/shop/flags/dark-mode/archive", false },
         { "POST", "/api/v1/projects/shop/flags/dark-mode/restore", false },
+        { "DELETE", "/api/v1/projects/shop/flags/dark-mode", false },
         { "GET", "/api/v1/projects/shop/flags/dark-mode/environments/prod", false },
         { "GET", "/api/v1/projects/shop/environments/prod/flag-states", false },
         { "PUT", "/api/v1/projects/shop/flags/dark-mode/environments/prod", true },
