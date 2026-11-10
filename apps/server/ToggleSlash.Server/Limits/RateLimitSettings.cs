@@ -4,12 +4,14 @@ using System.Net;
 namespace ToggleSlash.Server.Limits;
 
 /// <summary>The limits this server runs with. There is no off switch: a setting can only change a number.</summary>
-public sealed record RateLimitSettings(int EvaluatePerMinute, int EventsPerMinute, int AuthFailuresPerMinute, int StreamsPerKey)
+public sealed record RateLimitSettings(int EvaluatePerMinute, int EventsPerMinute, int AuthFailuresPerMinute, int StreamsPerKey, int ClientStreamsPerIp, int ClientStreamsPerKey)
 {
     public const string EvaluateSetting = "TOGGLESLASH_RATE_LIMIT_EVALUATE_PER_MINUTE";
     public const string EventsSetting = "TOGGLESLASH_RATE_LIMIT_EVENTS_PER_MINUTE";
     public const string AuthFailuresSetting = "TOGGLESLASH_RATE_LIMIT_AUTH_FAILURES_PER_MINUTE";
     public const string StreamsSetting = "TOGGLESLASH_RATE_LIMIT_STREAMS_PER_KEY";
+    public const string ClientStreamsPerIpSetting = "TOGGLESLASH_RATE_LIMIT_CLIENT_STREAMS_PER_IP";
+    public const string ClientStreamsPerKeySetting = "TOGGLESLASH_RATE_LIMIT_CLIENT_STREAMS_PER_KEY";
     public const string TrustedProxiesSetting = "TOGGLESLASH_TRUSTED_PROXIES";
 
     /// <summary>A few hundred bytes each, so tens of megabytes at worst.</summary>
@@ -22,7 +24,9 @@ public sealed record RateLimitSettings(int EvaluatePerMinute, int EventsPerMinut
         PositiveInteger(configuration, EvaluateSetting, 6000),
         PositiveInteger(configuration, EventsSetting, 600),
         PositiveInteger(configuration, AuthFailuresSetting, 30),
-        PositiveInteger(configuration, StreamsSetting, 100));
+        PositiveInteger(configuration, StreamsSetting, 100),
+        PositiveInteger(configuration, ClientStreamsPerIpSetting, 10),
+        PositiveInteger(configuration, ClientStreamsPerKeySetting, 10_000));
 
     /// <summary>
     /// The proxies whose <c>X-Forwarded-For</c> is believed. A value that is not an address stops the server: ignoring

@@ -29,8 +29,8 @@ public sealed class RequestLimiterTests
 {
     private readonly ManualClock clock = new();
 
-    private RequestLimiter Limiter(int evaluate = 6000, int events = 600, int authFailures = 30, int streams = 100, int maxIps = 100_000, int maxKeys = 10_000) =>
-        new(clock, new RateLimitSettings(evaluate, events, authFailures, streams) { MaxTrackedIps = maxIps, MaxTrackedKeys = maxKeys });
+    private RequestLimiter Limiter(int evaluate = 6000, int events = 600, int authFailures = 30, int streams = 100, int clientPerIp = 10, int clientPerKey = 10_000, int maxIps = 100_000, int maxKeys = 10_000) =>
+        new(clock, new RateLimitSettings(evaluate, events, authFailures, streams, clientPerIp, clientPerKey) { MaxTrackedIps = maxIps, MaxTrackedKeys = maxKeys });
 
     private static RateLimitSettings Defaults() => RateLimitSettings.From(new ConfigurationBuilder().Build());
 
@@ -44,6 +44,13 @@ public sealed class RequestLimiterTests
 
     [Fact]
     public void A_key_may_hold_100_streams_by_default() => Assert.Equal(100, Defaults().StreamsPerKey);
+
+    [Fact]
+    public void Client_streams_default_to_10_per_ip_and_10000_per_key()
+    {
+        Assert.Equal(10, Defaults().ClientStreamsPerIp);
+        Assert.Equal(10_000, Defaults().ClientStreamsPerKey);
+    }
 
     [Theory]
     [InlineData(KeyLimit.Evaluate, 6000, 1)]
@@ -160,6 +167,78 @@ public sealed class RequestLimiterTests
         using var third = limiter.TryOpenStream(3);
         Assert.NotNull(third);
     }
+
+    [Fact]
+    public void A_client_stream_is_refused_at_the_ips_limit_and_the_slot_comes_back_on_dispose()
+    {
+        var limiter = Limiter(clientPerIp: 2);
+        var first = limiter.TryOpenClientStream(1, "198.51.100.1")!;
+        using var second = limiter.TryOpenClientStream(2, "198.51.100.1");
+
+        Assert.Null(limiter.TryOpenClientStream(3, "198.51.100.1"));
+        using var elsewhere = limiter.TryOpenClientStream(3, "198.51.100.2");
+        Assert.NotNull(elsewhere);
+
+        first.Dispose();
+        using var again = limiter.TryOpenClientStream(3, "198.51.100.1");
+        Assert.NotNull(again);
+    }
+
+    [Fact]
+    public void A_client_stream_is_refused_at_the_keys_limit_whatever_the_ip()
+    {
+        var limiter = Limiter(clientPerKey: 2);
+        using var first = limiter.TryOpenClientStream(1, "198.51.100.1");
+        using var second = limiter.TryOpenClientStream(1, "198.51.100.2");
+
+        Assert.Null(limiter.TryOpenClientStream(1, "198.51.100.3"));
+        using var otherKey = limiter.TryOpenClientStream(2, "198.51.100.3");
+        Assert.NotNull(otherKey);
+    }
+
+    [Fact]
+    public void A_client_stream_refused_on_one_limit_takes_nothing_from_the_other()
+    {
+        var limiter = Limiter(clientPerIp: 1, clientPerKey: 1);
+        using var held = limiter.TryOpenClientStream(1, "198.51.100.1");
+
+        // Over the IP's limit: key 2 must not be left holding a slot.
+        Assert.Null(limiter.TryOpenClientStream(2, "198.51.100.1"));
+        // Over the key's limit: the new IP must not be left holding a slot.
+        Assert.Null(limiter.TryOpenClientStream(1, "198.51.100.2"));
+
+        Assert.Equal((1, 1), (limiter.Tracked.ClientStreamIps, limiter.Tracked.ClientStreamKeys));
+    }
+
+    [Fact]
+    public void Client_stream_tracking_refuses_at_its_caps_and_forgets_what_has_nothing_open()
+    {
+        var limiter = Limiter(maxKeys: 2, maxIps: 2);
+        var first = limiter.TryOpenClientStream(1, "198.51.100.1")!;
+        using var second = limiter.TryOpenClientStream(2, "198.51.100.2");
+
+        // A third key, then a third IP: a live slot is never evicted to make room.
+        Assert.Null(limiter.TryOpenClientStream(3, "198.51.100.1"));
+        Assert.Null(limiter.TryOpenClientStream(1, "198.51.100.3"));
+        Assert.Equal((2, 2), (limiter.Tracked.ClientStreamIps, limiter.Tracked.ClientStreamKeys));
+
+        first.Dispose();
+        Assert.Equal((1, 1), (limiter.Tracked.ClientStreamIps, limiter.Tracked.ClientStreamKeys));
+        using var third = limiter.TryOpenClientStream(3, "198.51.100.3");
+        Assert.NotNull(third);
+    }
+
+    [Fact]
+    public void Client_streams_do_not_count_against_the_server_stream_limit()
+    {
+        var limiter = Limiter(streams: 1, clientPerIp: 1);
+        using var client = limiter.TryOpenClientStream(1, "198.51.100.1");
+
+        using var server = limiter.TryOpenStream(1);
+
+        Assert.NotNull(server);
+        Assert.Equal(1, limiter.Tracked.StreamKeys);
+    }
 }
 
 /// <summary>The limits as a client meets them, through the real pipeline, on a fake clock.</summary>
@@ -169,6 +248,7 @@ public sealed class RateLimitTests : IDisposable
     private const string Events = "/sdk/v1/events";
     private const string Ruleset = "/sdk/v1/ruleset";
     private const string Stream = "/sdk/v1/stream";
+    private const string Changes = "/sdk/v1/changes";
     private const string Projects = "/api/v1/projects";
     private const string Origin = "https://app.example";
 
@@ -577,11 +657,15 @@ public sealed class RateLimitTests : IDisposable
 
     // --- streams ------------------------------------------------------------------------------------------
 
-    private static async Task<(HttpClient Client, HttpResponseMessage Response)> OpenStream(ApiServer server, string key)
+    private static async Task<(HttpClient Client, HttpResponseMessage Response)> OpenStream(ApiServer server, string key, string path = Stream, string? peer = null)
     {
         var client = server.Server.CreateClient();
-        using var request = new HttpRequestMessage(HttpMethod.Get, Stream);
+        using var request = new HttpRequestMessage(HttpMethod.Get, path);
         request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {key}");
+        if (peer is not null)
+        {
+            request.Headers.TryAddWithoutValidation(PeerHeader, peer);
+        }
         var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead).WaitAsync(Guard);
         return (client, response);
     }
@@ -642,6 +726,55 @@ public sealed class RateLimitTests : IDisposable
         Close(next);
     }
 
+    [Fact]
+    public async Task The_11th_change_stream_from_one_ip_is_refused_and_a_closed_one_gives_its_slot_back()
+    {
+        var server = Start();
+        var key = await Seed(server, "client");
+        var open = new List<(HttpClient Client, HttpResponseMessage Response)>();
+        foreach (var _ in Enumerable.Range(0, 10))
+        {
+            var stream = await OpenStream(server, key, Changes, peer: "198.51.100.30");
+            Assert.Equal(HttpStatusCode.OK, stream.Response.StatusCode);
+            open.Add(stream);
+        }
+
+        var refused = await OpenStream(server, key, Changes, peer: "198.51.100.30");
+        await ExpectLimited(RequestLimiter.StreamRetryAfterSeconds, refused.Response);
+        await ends.Finished.WaitAsync(Guard);
+        Close(refused);
+
+        // Another address is another visitor, on the same key.
+        var elsewhere = await OpenStream(server, key, Changes, peer: "198.51.100.31");
+        Assert.Equal(HttpStatusCode.OK, elsewhere.Response.StatusCode);
+
+        Close(open[0]);
+        await ends.Finished.WaitAsync(Guard);
+        var again = await OpenStream(server, key, Changes, peer: "198.51.100.30");
+        Assert.Equal(HttpStatusCode.OK, again.Response.StatusCode);
+
+        foreach (var stream in open.Skip(1).Append(elsewhere).Append(again))
+        {
+            Close(stream);
+        }
+    }
+
+    [Fact]
+    public async Task The_change_stream_past_a_keys_limit_is_refused_from_any_ip()
+    {
+        var server = Start((RateLimitSettings.ClientStreamsPerKeySetting, "2"));
+        var key = await Seed(server, "client");
+        var first = await OpenStream(server, key, Changes, peer: "198.51.100.40");
+        var second = await OpenStream(server, key, Changes, peer: "198.51.100.41");
+
+        var refused = await OpenStream(server, key, Changes, peer: "198.51.100.42");
+
+        await ExpectLimited(RequestLimiter.StreamRetryAfterSeconds, refused.Response);
+        Close(first);
+        Close(second);
+        Close(refused);
+    }
+
     /// <summary>On real Kestrel, because a test host does not stop the way a real one does.</summary>
     [Fact]
     public async Task Server_shutdown_gives_stream_slots_back()
@@ -669,7 +802,7 @@ public sealed class RateLimitTests : IDisposable
 
     public static TheoryData<string, string> BadSettings()
     {
-        // All four go through one parser: every bad value on one variable, and one bad value on the others.
+        // Every limit goes through one parser: every bad value on one variable, and one bad value on the others.
         var data = new TheoryData<string, string>();
         foreach (var value in new[] { "0", "-1", "abc", "", "1.5", " 5", "+5", "1e3", "99999999999" })
         {
@@ -678,6 +811,13 @@ public sealed class RateLimitTests : IDisposable
         foreach (var setting in new[] { RateLimitSettings.EventsSetting, RateLimitSettings.AuthFailuresSetting, RateLimitSettings.StreamsSetting })
         {
             data.Add(setting, "abc");
+        }
+        foreach (var setting in new[] { RateLimitSettings.ClientStreamsPerIpSetting, RateLimitSettings.ClientStreamsPerKeySetting })
+        {
+            foreach (var value in new[] { "0", "" })
+            {
+                data.Add(setting, value);
+            }
         }
         return data;
     }
@@ -799,7 +939,7 @@ public sealed class RateLimitTests : IDisposable
                 }
                 finally
                 {
-                    if (context.Request.Path == Stream && context.Response.StatusCode != StatusCodes.Status401Unauthorized)
+                    if ((context.Request.Path == Stream || context.Request.Path == Changes) && context.Response.StatusCode != StatusCodes.Status401Unauthorized)
                     {
                         ends.Finished.Release();
                     }

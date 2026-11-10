@@ -16,6 +16,8 @@ public sealed class RequestLimiter(TimeProvider clock, RateLimitSettings setting
     private readonly Buckets<long> events = new(clock, settings.EventsPerMinute, settings.MaxTrackedKeys);
     private readonly Buckets<string> authFailures = new(clock, settings.AuthFailuresPerMinute, settings.MaxTrackedIps);
     private readonly Dictionary<long, int> streams = [];
+    private readonly Dictionary<string, int> clientStreamIps = [];
+    private readonly Dictionary<long, int> clientStreamKeys = [];
 
     /// <summary>Takes one request from the key's bucket for this route. False when it is empty, with the seconds to wait.</summary>
     public bool TryTake(KeyLimit limit, long keyId, out long retryAfterSeconds)
@@ -78,15 +80,60 @@ public sealed class RequestLimiter(TimeProvider clock, RateLimitSettings setting
         }
     }
 
+    /// <summary>
+    /// A slot on a client key's change signal, counted against both the key and the client's IP, or null when either is
+    /// full. One client key is shared by every visitor, so the key's ceiling is high and the IP's is what holds one
+    /// visitor to a few connections. Both are taken or neither, and disposing the slot frees both. Like
+    /// <see cref="TryOpenStream"/>, a live slot is never evicted: past a cap on tracked entries, a new one is refused.
+    /// </summary>
+    public IDisposable? TryOpenClientStream(long keyId, string ip)
+    {
+        lock (gate)
+        {
+            var onKey = clientStreamKeys.GetValueOrDefault(keyId);
+            var onIp = clientStreamIps.GetValueOrDefault(ip);
+            if (onKey >= settings.ClientStreamsPerKey || (onKey == 0 && clientStreamKeys.Count >= settings.MaxTrackedKeys)
+                || onIp >= settings.ClientStreamsPerIp || (onIp == 0 && clientStreamIps.Count >= settings.MaxTrackedIps))
+            {
+                return null;
+            }
+            clientStreamKeys[keyId] = onKey + 1;
+            clientStreamIps[ip] = onIp + 1;
+            return new ClientStreamSlot(this, keyId, ip);
+        }
+    }
+
     /// <summary>How many IPs and keys are held: what the caps bound.</summary>
-    public (int Ips, int EvaluateKeys, int EventKeys, int StreamKeys) Tracked
+    public (int Ips, int EvaluateKeys, int EventKeys, int StreamKeys, int ClientStreamIps, int ClientStreamKeys) Tracked
     {
         get
         {
             lock (gate)
             {
-                return (authFailures.Count, evaluate.Count, events.Count, streams.Count);
+                return (authFailures.Count, evaluate.Count, events.Count, streams.Count, clientStreamIps.Count, clientStreamKeys.Count);
             }
+        }
+    }
+
+    private void CloseClientStream(long keyId, string ip)
+    {
+        lock (gate)
+        {
+            Release(clientStreamKeys, keyId);
+            Release(clientStreamIps, ip);
+        }
+    }
+
+    private static void Release<TKey>(Dictionary<TKey, int> open, TKey key) where TKey : notnull
+    {
+        var left = open[key] - 1;
+        if (left == 0)
+        {
+            open.Remove(key);
+        }
+        else
+        {
+            open[key] = left;
         }
     }
 
@@ -94,21 +141,18 @@ public sealed class RequestLimiter(TimeProvider clock, RateLimitSettings setting
     {
         lock (gate)
         {
-            var open = streams[keyId] - 1;
-            if (open == 0)
-            {
-                streams.Remove(keyId);
-            }
-            else
-            {
-                streams[keyId] = open;
-            }
+            Release(streams, keyId);
         }
     }
 
     private sealed class StreamSlot(RequestLimiter limiter, long keyId) : IDisposable
     {
         public void Dispose() => limiter.CloseStream(keyId);
+    }
+
+    private sealed class ClientStreamSlot(RequestLimiter limiter, long keyId, string ip) : IDisposable
+    {
+        public void Dispose() => limiter.CloseClientStream(keyId, ip);
     }
 
     /// <summary>A table of buckets holding at most <paramref name="cap"/>; the one touched longest ago goes first.</summary>

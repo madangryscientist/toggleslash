@@ -15,8 +15,9 @@ public static class SdkEndpoints
     private const string RulesetPath = "/sdk/v1/ruleset";
     private const string EvaluatePath = "/sdk/v1/evaluate";
     private const string StreamPath = "/sdk/v1/stream";
+    private const string ChangesPath = "/sdk/v1/changes";
 
-    /// <summary>The CORS policy of the routes a browser calls with a client key: <c>evaluate</c> and <c>events</c>.</summary>
+    /// <summary>The CORS policy of the routes a browser calls with a client key: <c>evaluate</c>, <c>events</c> and <c>changes</c>.</summary>
     internal const string ClientCors = "sdk-client";
 
     /// <summary>The two shapes of a context, for a 400 that refuses one.</summary>
@@ -57,7 +58,7 @@ public static class SdkEndpoints
         // no cookie is involved, so any origin is safe to allow; a credentialed policy would not be.
         services.AddCors(options => options.AddPolicy(ClientCors, policy => policy
             .AllowAnyOrigin()
-            .WithMethods(HttpMethods.Post)
+            .WithMethods(HttpMethods.Get, HttpMethods.Post)
             .WithHeaders(HeaderNames.Authorization, HeaderNames.ContentType)
             // Without this a browser's script cannot read how long a 429 asks it to wait.
             .WithExposedHeaders(HeaderNames.RetryAfter)
@@ -85,7 +86,18 @@ public static class SdkEndpoints
             .Produces<ApiError>(StatusCodes.Status403Forbidden)
             // A stream is open for hours and says nothing between changes; no request timeout may end it.
             .DisableRequestTimeout();
-        // CORS on this route and events only: the ruleset holds salts and every rule, and no browser should read it.
+        // What a client key may open instead of the stream: the same events with nothing in them, so a browser knows when to ask evaluate again.
+        routes.MapGet(ChangesPath, RulesetStream.RunChanges)
+            .RequireAuthorization(ServerAuth.ClientKeyPolicy)
+            .RequireCors(ClientCors)
+            .WithTags("SDK")
+            .WithName("clientChanges")
+            .WithSummary("Server-Sent Events for a client key: a `connected` event, then a `changed` event per change, each with `{}` as its data; a comment every 25 seconds.")
+            .Produces<string>(StatusCodes.Status200OK, "text/event-stream")
+            .Produces<ApiError>(StatusCodes.Status401Unauthorized)
+            .Produces<ApiError>(StatusCodes.Status403Forbidden)
+            .DisableRequestTimeout();
+        // CORS on this route, events and changes only: the ruleset holds salts and every rule, and no browser should read it.
         routes.MapPost(EvaluatePath, Evaluate)
             .RequireAuthorization(ServerAuth.SdkKeyPolicy)
             .RequireCors(ClientCors)

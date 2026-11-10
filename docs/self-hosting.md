@@ -176,7 +176,7 @@ terminates TLS. Set it at the proxy or on the Cloudflare zone, once you are sure
 | reading the request headers | 30 seconds | `408`, and the connection is closed |
 | an idle keep-alive connection | 2 minutes | the connection is closed |
 
-`GET /sdk/v1/stream` has **no** request timeout: it is open for hours and says nothing between changes except a
+`GET /sdk/v1/stream` and `GET /sdk/v1/changes` have **no** request timeout: they are open for hours and says nothing between changes except a
 keep-alive comment every 25 seconds. The data-rate floor for a request body is ASP.NET's default (240 bytes a second
 after a five second grace).
 
@@ -185,7 +185,7 @@ completion and answers as it would have: no `504` is sent. Every route that read
 token to its queries, so a slow query on any of them, an admin route included, is stopped at 30 seconds and answered
 with the `504`. A write is one statement or one transaction, so a stopped write is never half done; but a write that
 saves just before the limit can still answer `504`, so read the resource before you retry a write that timed out.
-`GET /sdk/v1/stream` is the one route that is exempt.
+Those two streams are the only routes that are exempt.
 
 ## Rate limits
 
@@ -198,10 +198,16 @@ else, an empty value included, stops the server at startup with an error naming 
 | `POST /sdk/v1/events` | 600 a minute | `TOGGLESLASH_RATE_LIMIT_EVENTS_PER_MINUTE` | SDK key |
 | wrong credentials, on any route that takes one | 30 a minute | `TOGGLESLASH_RATE_LIMIT_AUTH_FAILURES_PER_MINUTE` | client IP |
 | open `GET /sdk/v1/stream` connections | 100 at once | `TOGGLESLASH_RATE_LIMIT_STREAMS_PER_KEY` | SDK key |
+| open `GET /sdk/v1/changes` connections | 10 at once | `TOGGLESLASH_RATE_LIMIT_CLIENT_STREAMS_PER_IP` | client IP |
+| open `GET /sdk/v1/changes` connections | 10000 at once | `TOGGLESLASH_RATE_LIMIT_CLIENT_STREAMS_PER_KEY` | SDK key |
 
 Over a limit the answer is a `429` with `Retry-After` in whole seconds and the usual error body, code `rate_limited`.
 A client key is shared by everyone using your app, so raise the evaluate and events numbers if a busy app reaches them.
-The per-minute limits are token buckets: a quiet client can spend a whole minute's allowance at once, then gets it
+The change signal is counted per IP because a client key is shared by every visitor of your app: a per-key cap
+low enough to protect the server would lock out the 101st browser. Each visitor is held to a few connections by their
+address, and the per-key number is only the ceiling on one key. A connection counts against both, and is refused
+with the same `429` when either is full; set `TOGGLESLASH_TRUSTED_PROXIES` when the server is behind a proxy, or every
+visitor shares the proxy's address. The per-minute limits are token buckets: a quiet client can spend a whole minute's allowance at once, then gets it
 back evenly.
 
 Once an IP has used its failures, it gets the `429` before its credential is looked at, even a correct one, on the
