@@ -272,6 +272,34 @@ public sealed class SegmentApiTests : IDisposable
         Assert.Contains("after", (await ApiServer.Json(put)).GetProperty("rules").GetRawText());
     }
 
+    private static string ReferenceBody(string attribute) =>
+        $$"""{"key":"s","included":[],"excluded":[],"rules":[{"clauses":[{"attribute":{{JsonSerializer.Serialize(attribute)}},"op":"in","values":["Paris"]}]}]}""";
+
+    [Fact]
+    public async Task A_segment_rule_with_an_attribute_reference_saves()
+    {
+        await Seed();
+
+        var created = await RawPost(Prod, ReferenceBody("/address/city"));
+
+        await ApiServer.Expect(HttpStatusCode.Created, created);
+        Assert.Equal("/address/city", (await ApiServer.Json(created)).GetProperty("rules")[0].GetProperty("clauses")[0].GetProperty("attribute").GetString());
+    }
+
+    [Theory]
+    [InlineData("/a//b")]
+    [InlineData("/a~2")]
+    public async Task A_segment_rule_with_an_attribute_reference_that_is_not_valid_is_400_naming_the_field(string attribute)
+    {
+        await Seed();
+
+        var response = await RawPost(Prod, ReferenceBody(attribute));
+
+        await ExpectBadRequest(response);
+        Assert.StartsWith("rules[0].clauses[0].attribute is not a valid attribute reference.", (await ApiServer.Json(response)).GetProperty("error").GetProperty("message").GetString());
+        Assert.Equal(0, (await ApiServer.Json(await server.Get(Prod))).GetArrayLength());
+    }
+
     [Fact]
     public async Task A_date_rule_with_no_values_saves()
     {

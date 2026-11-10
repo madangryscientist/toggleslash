@@ -6,15 +6,23 @@ namespace ToggleSlash.Evaluation;
 internal static class ClauseMatcher
 {
     /// <summary>
-    /// The attribute named <paramref name="name"/>, or null when it is missing or null. Only the context's
-    /// own <c>attributes</c> count, and <c>key</c> always reads the context key.
+    /// The value a name or a <c>/</c> reference reaches, or null when it is missing or null. Only the context's
+    /// own <c>attributes</c> count, <c>key</c> always reads the context key, and a step goes into an object only.
     /// </summary>
     private static JsonElement? ReadAttribute(JsonElement context, string name)
     {
-        if (name == "key") return context.GetProperty("key");
-        if (!context.TryGetProperty("attributes", out var attributes) || attributes.ValueKind != JsonValueKind.Object) return null;
-        if (!attributes.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null) return null;
-        return value;
+        // Load refused an invalid reference, so Parse does not return null here.
+        var components = name.StartsWith('/') ? AttributeReference.Parse(name) ?? [] : [name];
+        if (components.Count == 0) return null;
+        JsonElement current;
+        if (components[0] == "key") current = context.GetProperty("key");
+        else if (!context.TryGetProperty("attributes", out var attributes) || attributes.ValueKind != JsonValueKind.Object
+            || !attributes.TryGetProperty(components[0], out current)) return null;
+        for (var i = 1; i < components.Count; i++)
+        {
+            if (current.ValueKind != JsonValueKind.Object || !current.TryGetProperty(components[i], out current)) return null;
+        }
+        return current.ValueKind == JsonValueKind.Null ? null : current;
     }
 
     /// <summary>Does one attribute clause hold? A missing attribute fails it, whatever <c>negate</c> says.</summary>

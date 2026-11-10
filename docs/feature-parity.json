@@ -526,8 +526,8 @@
       "name": "Nested attribute paths",
       "description": "Target a field inside an object, such as /address/city.",
       "toggleslash": {
-        "status": "no",
-        "evidence": []
+        "status": "yes",
+        "evidence": ["doc:docs/evaluation.md", "test:fixtures/evaluation/attributes.json"]
       },
       "competitors": {
         "launchdarkly": "yes",

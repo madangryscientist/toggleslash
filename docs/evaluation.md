@@ -55,6 +55,7 @@ that environment by the time they get here.
 ### Clause
 
 An attribute clause is `{ "attribute": <key>, "op": <op>, "values": [...], "negate": <boolean> }`.
+`attribute` is a name or a `/` reference; see "Reading the attribute".
 `op` is one of `in`, `contains`, `startsWith`, `endsWith`, `lt`, `lte`, `gt`, `gte`, `semverEq`,
 `semverLt`, `semverLte`, `semverGt`, `semverGte`, `before`, `after`. `negate` is optional. Each value is a string, a finite number or a boolean; anything else is malformed.
 
@@ -182,7 +183,26 @@ The limit also bounds recursion. No ruleset can overflow an implementation's sta
 
 ### Reading the attribute
 
-- `attribute` is the literal name. A dot is not a path: `a.b` reads the attribute named `a.b`.
+- **A name that does not start with `/` is a literal name, unchanged.** `a.b` still reads the attribute
+  named `a.b`, and `a/b` reads the attribute named `a/b`. `key` reads the context key.
+- **A name that starts with `/` is a reference.** Drop the leading `/` and split the rest on `/` into
+  components. In each component, decode escapes in one left-to-right pass: `~1` is `/`, `~0` is `~`. So
+  `/~1a` reads the attribute named `/a`, `/a~0b` reads `a~b`, and `/~01` reads `~1` (not `/`).
+- **An invalid reference makes the flag malformed at load, like an unknown op.** A reference is invalid
+  when any component is empty (`/`, `//`, `/a/`, `/a//b`) or when a `~` is followed by anything but `0`
+  or `1`, or ends the component (`/a~`, `/a~2`). The flag is `ERROR MALFORMED_FLAG`; in a segment rule,
+  the segment is malformed, as for any other bad clause there. A `~` in a literal name (no leading `/`)
+  is an ordinary character.
+- **Reading a reference.** The first component is read exactly as a literal name is: `key` reads the
+  context key (so `/key` equals `key`), and anything else reads the context's own `attributes` property
+  of that name. Each further component steps into the current value: the current value must be a JSON
+  object (not an array, not null, not a string), and the component names one of its own properties.
+  Anything else makes the attribute missing: a step into an array (`/tags/0` is missing even when `tags`
+  is `["a"]`; there are no array indices), into a string (so `/key/x` is missing), a number, a boolean,
+  null, or an object without that own property. Own properties only at every step, as today:
+  `/a/toString` is missing unless `a` sets it, and `__proto__` is an ordinary name.
+- **The value a reference reaches** follows the "Matching" rules unchanged: null is missing (fails
+  whatever `negate` says), an array is one candidate per element, an object is present and never matches.
 - `key` always reads the context key. An attribute in `attributes` named `key` is ignored.
 - Only the object's own properties count. `toString` and `constructor` are missing unless the context
   sets them, and `__proto__` is an ordinary name. In a language with prototypes, use an own-property
@@ -404,6 +424,7 @@ with `expected`, deeply.
 | `prerequisites.json` | met, failed, cycles, the depth limit, reuse within an evaluation |
 | `semver.json` | the five `semver` ops: the section 11 order, short forms, build, big numbers, what is not a version, `negate`, arrays |
 | `dates.json` | `before` and `after`: equal instants, offsets, fractions, the calendar and leap years, the range ends, numbers as Unix milliseconds, what is not an instant, `negate`, arrays |
+| `attributes.json` | `/` references: nesting, escapes, `key`, arrays and non-objects on the way, own properties, invalid references |
 | `segments.json` | `segmentMatch`, excluded and included, segment rules and weights, bad segments |
 | `rollouts.json` | the cumulative walk at bucket boundaries, hash inputs, malformed rollouts |
 | `errors.json` | invalid contexts, malformed flags, what happens on load |

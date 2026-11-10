@@ -13,9 +13,9 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 
 | Metric | ToggleSlash | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| ✅ yes | 23 | 63 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
+| ✅ yes | 24 | 63 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
 | 🟡 partial | 10 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
-| ❌ no | 33 | 3 | 9 | 7 | 6 | 7 | 7 | 9 | 17 |
+| ❌ no | 32 | 3 | 9 | 7 | 6 | 7 | 7 | 9 | 17 |
 
 ## Matrix
 
@@ -49,7 +49,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Large or synced segments | ❌ | ✅ | 🟡 | 🟡 | 🟡 | ✅ | 🟡 | 🟡 | ❌ |
 | Prerequisites and dependencies | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | 🟡 | ❌ | ❌ |
 | Multi-context and context kinds | ❌ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 |
-| Nested attribute paths | ❌ | ✅ | ❌ | ❌ | 🟡 | ❌ | ❌ | 🟡 | ❌ |
+| Nested attribute paths | ✅ | ✅ | ❌ | ❌ | 🟡 | ❌ | ❌ | 🟡 | ❌ |
 | Regex operator | ❌ | ✅ | ✅ | 🟡 | ✅ | 🟡 | 🟡 | ✅ | 🟡 |
 | Semantic-version operator | ✅ | ✅ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | ❌ | ❌ |
 | Date and time operator | ✅ | ✅ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 |
@@ -152,7 +152,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Large or synced segments | ❌ | none |
 | Prerequisites and dependencies | ✅ | `api:/api/v1/projects/{project}/flags/{flag}/environments/{env}`<br>`doc:docs/evaluation.md` |
 | Multi-context and context kinds | ❌ | none |
-| Nested attribute paths | ❌ | none |
+| Nested attribute paths | ✅ | `doc:docs/evaluation.md`<br>`test:fixtures/evaluation/attributes.json` |
 | Regex operator | ❌ | none |
 | Semantic-version operator | ✅ | `doc:docs/evaluation.md`<br>`test:fixtures/evaluation/semver.json` |
 | Date and time operator | ✅ | `doc:docs/evaluation.md`<br>`test:fixtures/evaluation/dates.json` |
