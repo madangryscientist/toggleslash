@@ -1,0 +1,20 @@
+#!/bin/sh
+# The native lint and format check. Any finding fails; there is no warning level. Nothing is rewritten.
+#   dotnet format --verify-no-changes: layout, style and the analyzer fixes the .editorconfig asks for
+#   dotnet build -warnaserror: the analyzers (AnalysisLevel latest-recommended) over the SDK, its tests and the
+#     test service; Directory.Build.props already makes a warning an error, and this keeps it so
+set -eu
+cd "$(dirname "$0")/.."
+
+run() {
+  if command -v mise >/dev/null 2>&1; then
+    mise exec -- "$@"
+  else
+    "$@"
+  fi
+}
+
+export DOTNET_CLI_TELEMETRY_OPTOUT=1
+export DOTNET_NOLOGO=1
+run dotnet format ToggleSlash.Sdk.slnx --verify-no-changes --verbosity quiet
+run dotnet build ToggleSlash.Sdk.slnx --nologo -v quiet -warnaserror
