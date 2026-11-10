@@ -1,4 +1,4 @@
-"""A Server-Sent Events reader, to the WHATWG rules the contract names (section 7.2)."""
+"""A Server-Sent Events reader to the WHATWG rules the contract names (7.2, "Reading events")."""
 
 from __future__ import annotations
 
@@ -6,66 +6,68 @@ import codecs
 
 
 class SseParser:
-    """Feed it the bytes of a stream as they arrive; it returns the events they completed.
+    """Feed it the bytes as they arrive; it returns the events that were completed.
 
-    An event is `(name, data)`. Only the `event` and `data` fields are read. An event with no `data` line is
-    dropped, the name is `message` when none was given, and an event still incomplete when the bytes end is
-    never delivered (the caller just stops feeding).
+    A line ends at LF, CRLF or a lone CR; UTF-8 may be split across reads; a line that starts with ``:``
+    is a comment; only ``event`` and ``data`` are read; an event with no ``data`` line is dropped; an
+    event still incomplete when the stream ends is discarded (the caller just stops feeding).
     """
 
     def __init__(self) -> None:
-        self._decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
-        self._line = ""  # the unfinished line
-        self._after_cr = False  # the last character read was a CR, so an LF next is the same line end
-        self._started = False  # the first character (a BOM is dropped) has been seen
+        self._decoder = codecs.getincrementaldecoder("utf-8")("replace")
+        self._tail = ""
+        self._skip_lf = False
         self._name = ""
         self._data: list[str] = []
-        self._has_data = False
 
     def feed(self, chunk: bytes) -> list[tuple[str, str]]:
         text = self._decoder.decode(chunk)
-        if not self._started and text:
-            self._started = True
-            if text.startswith("﻿"):
+        if self._skip_lf and text:
+            if text.startswith("\n"):
                 text = text[1:]
+            self._skip_lf = False
+        text = self._tail + text
         events: list[tuple[str, str]] = []
         start = 0
-        for position, character in enumerate(text):
-            if character == "\n" and self._after_cr:
-                # The LF of a CRLF whose CR ended the line already.
-                self._after_cr = False
-                start = position + 1
-                continue
-            self._after_cr = False
-            if character in {"\n", "\r"}:
-                self._line += text[start:position]
-                start = position + 1
-                self._after_cr = character == "\r"
-                event = self._end_of_line(self._line)
-                self._line = ""
+        n = len(text)
+        i = 0
+        while i < n:
+            ch = text[i]
+            if ch in "\r\n":
+                event = self._line(text[start:i])
                 if event is not None:
                     events.append(event)
-        self._line += text[start:]
+                if ch == "\r":
+                    if i + 1 < n:
+                        if text[i + 1] == "\n":
+                            i += 1
+                    else:
+                        self._skip_lf = True
+                i += 1
+                start = i
+            else:
+                i += 1
+        self._tail = text[start:]
         return events
 
-    def _end_of_line(self, line: str) -> tuple[str, str] | None:
+    def _line(self, line: str) -> tuple[str, str] | None:
         if line == "":
             return self._dispatch()
         if line.startswith(":"):
             return None
-        field, separator, value = line.partition(":")
-        if separator and value.startswith(" "):
+        name, colon, value = line.partition(":")
+        if colon and value.startswith(" "):
             value = value[1:]
-        if field == "event":
+        if name == "event":
             self._name = value
-        elif field == "data":
+        elif name == "data":
             self._data.append(value)
-            self._has_data = True
         return None
 
     def _dispatch(self) -> tuple[str, str] | None:
-        name, data, has_data = self._name or "message", "\n".join(self._data), self._has_data
-        self._name = ""
+        data, name = self._data, self._name
         self._data = []
-        self._has_data = False
-        return (name, data) if has_data else None
+        self._name = ""
+        if not data:
+            return None
+        return (name or "message"), "\n".join(data)

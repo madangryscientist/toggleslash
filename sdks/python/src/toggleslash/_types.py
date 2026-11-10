@@ -1,16 +1,16 @@
-"""The public value types: the closed sets of the contract and the results the client hands back."""
+"""The public value types and the closed sets, with the contract's canonical spelling."""
 
 from __future__ import annotations
 
 import enum
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
 
 class ReasonKind(enum.StrEnum):
-    """Why a flag served what it served. The text is the canonical spelling."""
+    """Why a flag gave the value it gave (contract 4)."""
 
     OFF = "OFF"
     PREREQUISITE_FAILED = "PREREQUISITE_FAILED"
@@ -21,7 +21,7 @@ class ReasonKind(enum.StrEnum):
 
 
 class ErrorCode(enum.StrEnum):
-    """The code of an `ERROR` reason: the evaluator's seven and the SDK's three."""
+    """The code of an ``ERROR`` reason: the evaluator's and the SDK's own."""
 
     INVALID_CONTEXT = "INVALID_CONTEXT"
     FLAG_NOT_FOUND = "FLAG_NOT_FOUND"
@@ -36,7 +36,7 @@ class ErrorCode(enum.StrEnum):
 
 
 class StreamState(enum.StrEnum):
-    """Where the live-update stream is."""
+    """The state of the stream in ``Status.stream`` (contract 8)."""
 
     OFF = "off"
     CONNECTING = "connecting"
@@ -45,30 +45,28 @@ class StreamState(enum.StrEnum):
     CLOSED = "closed"
 
 
-# The fixed `last_error` codes. A failed request with a status is `http_<status>`.
-TIMEOUT = "timeout"
-BAD_RULESET = "bad_ruleset"
-NETWORK = "network"
+class LastError:
+    """The codes of ``Status.last_error`` that are fixed; ``http_<status>`` is built from a status."""
 
-
-class ToggleSlashError(Exception):
-    """A failure the client absorbed and handed to `on_error`. Its text names a route or a status, never a
-    URL, a key or anything about a context."""
+    TIMEOUT = "timeout"
+    BAD_RULESET = "bad_ruleset"
+    NETWORK = "network"
 
 
 @dataclass(frozen=True, slots=True)
 class Reason:
-    """The reason of one evaluation. A field that does not apply to `kind` is `None`."""
+    """The reason of an evaluation. ``code`` is set for ``ERROR``, ``rule_index`` for ``RULE_MATCH``
+    and ``flag_key`` (the direct prerequisite that failed) for ``PREREQUISITE_FAILED``."""
 
     kind: ReasonKind
+    code: ErrorCode | None = None
     rule_index: int | None = None
     flag_key: str | None = None
-    code: ErrorCode | None = None
 
 
 @dataclass(frozen=True, slots=True)
-class VariationDetail:
-    """A served value, the index of the variation it came from (`None` for the fallback) and why."""
+class Detail:
+    """What ``variation_detail`` returns."""
 
     value: Any
     variation_index: int | None
@@ -76,8 +74,8 @@ class VariationDetail:
 
 
 @dataclass(frozen=True, slots=True)
-class ClientStatus:
-    """A consistent snapshot of the client's sync state."""
+class Status:
+    """A snapshot of what the SDK holds (contract 8). It never holds a URL, key, context or message."""
 
     etag: str | None
     last_sync_at: datetime | None
@@ -87,7 +85,7 @@ class ClientStatus:
 
 @dataclass(frozen=True, slots=True)
 class EvaluationEvent:
-    """What `Hooks.after_evaluation` receives after every evaluation."""
+    """What ``after_evaluation`` receives (contract 10)."""
 
     flag_key: str
     context: Any
@@ -95,14 +93,20 @@ class EvaluationEvent:
     variation_index: int | None
     reason: Reason
     etag: str | None
-    flag_version: int | float | None
+    flag_version: int | None
 
 
 @dataclass(frozen=True, slots=True)
 class Hooks:
-    """Callbacks the client calls. `after_evaluation` runs on the thread that evaluated."""
+    """The hooks an application can install. A hook that is not callable is ignored."""
 
-    after_evaluation: Callable[[EvaluationEvent], None] | None = None
+    after_evaluation: Callable[[EvaluationEvent], Any] | None = None
 
 
-Context = Mapping[str, Any]
+class ToggleSlashError(Exception):
+    """An error the SDK builds for ``on_error``. ``code`` is a short stable string. It never carries a
+    context, a context key or an attribute."""
+
+    def __init__(self, message: str, code: str) -> None:
+        super().__init__(message)
+        self.code = code

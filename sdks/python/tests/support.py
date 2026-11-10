@@ -1,4 +1,4 @@
-"""Helpers the client tests share: a scripted transport, a hand-moved clock and a small local server."""
+"""A fake ToggleSlash server on loopback and small helpers for the client tests."""
 
 from __future__ import annotations
 
@@ -6,178 +6,198 @@ import json
 import threading
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-from toggleslash._http import Aborter, TransportError
-from toggleslash._types import NETWORK
+KEY = "test-key-9f3a"
 
 
-def flag(key: str, value: Any, version: int = 1) -> dict[str, Any]:
-    """A flag that serves `value` to everyone."""
+def flag(key: str, variations: list[Any], serve: int, version: int = 1, on: bool = True) -> dict[str, Any]:
     return {
         "key": key,
-        "variations": [value, value],
-        "on": True,
+        "on": on,
+        "variations": variations,
         "offVariation": 0,
+        "salt": "salt-" + key,
+        "version": version,
         "targets": [],
         "prerequisites": [],
         "rules": [],
-        "fallthrough": {"variation": 1},
-        "salt": "s",
-        "version": version,
+        "fallthrough": {"variation": serve},
     }
 
 
-def ruleset_body(*flags: dict[str, Any]) -> bytes:
-    return json.dumps({"flags": list(flags), "segments": []}).encode()
+def bool_flag(key: str, value: bool, version: int = 1) -> dict[str, Any]:
+    return flag(key, [False, True], 1 if value else 0, version)
 
 
-class FakeReply:
-    def __init__(
-        self,
-        status: int = 200,
-        *,
-        headers: dict[str, str] | None = None,
-        body: bytes = b"",
-        chunks: list[bytes] | None = None,
-        then: Callable[[Aborter, float], bytes] | None = None,
-    ) -> None:
-        self.status = status
-        self.no_body = False
-        self._headers = {name.lower(): value for name, value in (headers or {}).items()}
-        self._body = body
-        self._chunks = list(chunks or [])
-        self._then = then
-        self.aborter: Aborter | None = None
-        self.watchdogs: list[float] = []
-        self.closed = False
-
-    def header(self, name: str) -> str | None:
-        return self._headers.get(name.lower())
-
-    def read_body(self) -> bytes:
-        return self._body
-
-    def read_chunk(self, watchdog: float) -> bytes:
-        self.watchdogs.append(watchdog)
-        if self._chunks:
-            return self._chunks.pop(0)
-        if self._then is not None and self.aborter is not None:
-            return self._then(self.aborter, watchdog)
-        return b""
-
-    def close(self) -> None:
-        self.closed = True
+def ruleset(*flags: dict[str, Any]) -> dict[str, Any]:
+    return {"flags": list(flags), "segments": []}
 
 
-def hang(aborter: Aborter, _seconds: float = 0) -> bytes:
-    """Blocks as a stalled server would, until the request is aborted or times out."""
-    while not (aborter.aborted or aborter.timed_out):
-        time.sleep(0.005)
-    aborter.check()
-    return b""
+def wait_until(predicate: Callable[[], Any], timeout: float = 5.0, step: float = 0.005) -> bool:
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        if predicate():
+            return True
+        time.sleep(step)
+    return bool(predicate())
 
 
-class ScriptedTransport:
-    """A transport whose answers a test supplies per route: a callable, or a list used in order (the last
-    one repeats). Every request is recorded."""
+class Recorded:
+    def __init__(self, route: str, headers: dict[str, str], body: bytes, method: str, path: str) -> None:
+        self.route = route
+        self.headers = headers
+        self.body = body
+        self.method = method
+        self.path = path
 
-    def __init__(self, **routes: Any) -> None:
-        self.routes = routes
-        self.requests: list[dict[str, Any]] = []
+    def json(self) -> Any:
+        return json.loads(self.body)
+
+
+class Request:
+    """One request inside a handler: send an answer, or open a stream and write to it."""
+
+    def __init__(self, handler: BaseHTTPRequestHandler, server: FakeServer, recorded: Recorded) -> None:
+        self.handler = handler
+        self.server = server
+        self.recorded = recorded
+
+    def send(self, status: int = 200, body: bytes = b"", headers: dict[str, str] | None = None) -> None:
+        self.handler.send_response(status)
+        for name, value in (headers or {}).items():
+            self.handler.send_header(name, value)
+        self.handler.send_header("Content-Length", str(len(body)))
+        self.handler.end_headers()
+        self.handler.wfile.write(body)
+
+    def open_stream(self, status: int = 200) -> None:
+        """Headers only: no Content-Length and not chunked, so the body ends when the server closes."""
+        self.handler.send_response(status)
+        self.handler.send_header("Content-Type", "text/event-stream")
+        self.handler.end_headers()
+        self.handler.wfile.flush()
+
+    def write(self, data: bytes) -> None:
+        self.handler.wfile.write(data)
+        self.handler.wfile.flush()
+
+    def hang(self, seconds: float = 30.0) -> None:
+        self.server.stopping.wait(seconds)
+
+
+Handler = Callable[[Request], None]
+
+
+class FakeServer:
+    def __init__(self, tls: tuple[str, str] | None = None) -> None:
+        self.stopping = threading.Event()
         self.lock = threading.Lock()
+        self.requests: list[Recorded] = []
+        self.ruleset: dict[str, Any] = ruleset(bool_flag("checkout", True), bool_flag("legacy", False))
+        self.version = 1
+        self.overrides: dict[str, Handler] = {}
+        outer = self
+
+        class _Handler(BaseHTTPRequestHandler):
+            def log_message(self, format: str, *args: Any) -> None:
+                return
+
+            def do_GET(self) -> None:
+                outer.handle(self)
+
+            def do_POST(self) -> None:
+                outer.handle(self)
+
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        self.httpd.daemon_threads = True
+        self.httpd.request_queue_size = 128
+        scheme = "http"
+        if tls is not None:
+            import ssl
+
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.load_cert_chain(tls[0], tls[1])
+            self.httpd.socket = context.wrap_socket(self.httpd.socket, server_side=True)
+            scheme = "https"
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+        self.url = f"{scheme}://127.0.0.1:{self.httpd.server_address[1]}"
+
+    @property
+    def etag(self) -> str:
+        return f'"v{self.version}"'
+
+    def publish(self, new: dict[str, Any]) -> None:
+        with self.lock:
+            self.ruleset = new
+            self.version += 1
+
+    def bump(self, *flags: dict[str, Any]) -> None:
+        """Publish a ruleset whose flags carry the new version number, built under the lock."""
+        with self.lock:
+            self.version += 1
+            self.ruleset = ruleset(*(dict(f, version=self.version) for f in flags))
+
+    def on(self, route: str, handler: Handler | None) -> None:
+        if handler is None:
+            self.overrides.pop(route, None)
+        else:
+            self.overrides[route] = handler
 
     def count(self, route: str) -> int:
         with self.lock:
-            return sum(1 for request in self.requests if request["route"].endswith(route))
+            return sum(1 for r in self.requests if r.route == route)
 
-    def __call__(
-        self, method: str, route: str, headers: dict[str, str], body: bytes | None, aborter: Aborter
-    ) -> FakeReply:
-        name = route.rsplit("/", 1)[1]
+    def recorded(self, route: str) -> list[Recorded]:
         with self.lock:
-            self.requests.append({"method": method, "route": route, "headers": dict(headers), "body": body})
-            script = self.routes.get(name)
-            step = (script[0] if len(script) == 1 else script.pop(0)) if isinstance(script, list) else script
-        if step is None:
-            raise TransportError(NETWORK, "no such route in this test")
-        reply = step(method, headers, body, aborter) if callable(step) else step
-        reply.aborter = aborter
-        return reply
+            return [r for r in self.requests if r.route == route]
 
-
-class FakeTime:
-    """A monotonic clock, a wall clock and a `wait` that moves both instead of sleeping."""
-
-    def __init__(self, start: datetime | None = None) -> None:
-        self.now = 1000.0
-        self.wall_now = start or datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
-        self.waits: list[float] = []
-        self.stop_after: int | None = None
-        self.lock = threading.Lock()
-
-    def monotonic(self) -> float:
-        return self.now
-
-    def wall(self) -> datetime:
-        return self.wall_now
-
-    def advance(self, seconds: float) -> None:
-        self.now += seconds
-        self.wall_now += timedelta(seconds=seconds)
-
-    def wait(self, seconds: float) -> bool:
-        """Records the wait, moves time and answers `stopped` once `stop_after` waits have been made."""
+    def handle(self, handler: BaseHTTPRequestHandler) -> None:
+        length = int(handler.headers.get("Content-Length") or 0)
+        body = handler.rfile.read(length) if length else b""
+        path = handler.path
+        route = {"/sdk/v1/ruleset": "ruleset", "/sdk/v1/stream": "stream", "/sdk/v1/events": "events"}.get(
+            path, "other"
+        )
+        recorded = Recorded(route, dict(handler.headers.items()), body, handler.command, path)
         with self.lock:
-            self.waits.append(seconds)
-            self.advance(seconds)
-            stopped = self.stop_after is not None and len(self.waits) >= self.stop_after
-        if not stopped:
-            time.sleep(0.001)
-        return stopped
+            self.requests.append(recorded)
+        request = Request(handler, self, recorded)
+        try:
+            (self.overrides.get(route) or getattr(self, "_" + route, self._other))(request)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            pass
 
+    def _other(self, request: Request) -> None:
+        request.send(404)
 
-def until(condition: Callable[[], bool], seconds: float = 5.0, message: str = "timed out") -> None:
-    deadline = time.monotonic() + seconds
-    while time.monotonic() < deadline:
-        if condition():
+    def _ruleset(self, request: Request) -> None:
+        with self.lock:
+            etag, body = self.etag, json.dumps(self.ruleset).encode()
+        if request.recorded.headers.get("If-None-Match") == etag:
+            request.send(304, headers={"ETag": etag})
             return
-        time.sleep(0.005)
-    raise AssertionError(message)
+        request.send(200, body, {"ETag": etag, "Content-Type": "application/json"})
 
+    def _events(self, request: Request) -> None:
+        request.send(200, b"{}")
 
-class LocalServer:
-    """A real HTTP server on loopback with `handler(request_handler)` for every request."""
+    def _stream(self, request: Request) -> None:
+        request.open_stream()
+        with self.lock:
+            sent = self.etag
+        request.write(f"event: connected\ndata: {sent}\n\n".encode())
+        while not self.stopping.wait(0.02):
+            with self.lock:
+                now = self.etag
+            if now != sent:
+                sent = now
+                request.write(f"event: changed\ndata: {sent}\n\n".encode())
 
-    def __init__(self, handler: Callable[[BaseHTTPRequestHandler], None]) -> None:
-        outer = handler
-
-        class Handler(BaseHTTPRequestHandler):
-            protocol_version = "HTTP/1.1"
-
-            def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
-                pass
-
-            def do_GET(self) -> None:
-                try:
-                    outer(self)
-                except (OSError, ValueError):
-                    pass
-
-            do_POST = do_GET
-
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.server.daemon_threads = True
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
-        self.thread.start()
-        self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
-
-    def __enter__(self) -> LocalServer:
-        return self
-
-    def __exit__(self, *exc: object) -> None:
-        self.server.shutdown()
-        self.server.server_close()
-        self.thread.join()
+    def close(self) -> None:
+        self.stopping.set()
+        self.httpd.shutdown()
+        self.httpd.server_close()
+        self.thread.join(5)

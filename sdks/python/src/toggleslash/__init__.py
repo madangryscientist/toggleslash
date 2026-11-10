@@ -1,35 +1,36 @@
-"""The ToggleSlash server SDK for Python: feature flags evaluated locally from a ruleset the server keeps
-current. Start with `create_client`; see `README.md`."""
+"""The ToggleSlash Python server SDK: ``toggleslash.create(url=..., sdk_key=...)``.
 
-from ._client import Client, create_client
+It keeps the ruleset the server serves, evaluates flags locally and sends usage counts. It never raises
+at a caller. See ``README.md`` and ``docs/sdk-contract.md``.
+"""
+
+from __future__ import annotations
+
+from ._client import Client, create
 from ._types import (
-    BAD_RULESET,
-    NETWORK,
-    TIMEOUT,
-    ClientStatus,
+    Detail,
     ErrorCode,
     EvaluationEvent,
     Hooks,
+    LastError,
     Reason,
     ReasonKind,
+    Status,
     StreamState,
     ToggleSlashError,
-    VariationDetail,
 )
 
 __all__ = [
-    "BAD_RULESET",
-    "NETWORK",
-    "TIMEOUT",
     "Client",
-    "ClientStatus",
+    "Detail",
     "ErrorCode",
     "EvaluationEvent",
     "Hooks",
+    "LastError",
     "Reason",
     "ReasonKind",
+    "Status",
     "StreamState",
     "ToggleSlashError",
-    "VariationDetail",
-    "create_client",
+    "create",
 ]

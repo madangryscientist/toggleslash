@@ -1,120 +1,143 @@
-"""Usage counts: kept in memory per (flag, variation index, UTC day) and sent in batches (contract 9)."""
+"""Usage counts: (flag, variation index, UTC day) to a count, flushed in batches (contract 9)."""
 
 from __future__ import annotations
 
 import json
 import threading
 from collections.abc import Callable
-from datetime import UTC, datetime
+from typing import Any
 
-from ._http import EVENTS_ROUTE, Aborted, Aborter, Transport, TransportError
-from ._retry import retry_after
-from ._types import ToggleSlashError
+from ._http import Aborted, Endpoint, NetworkFailure, RequestTimeout, Transport
 
-# The server takes 1000 events and 128 KiB a request; 500 entries stay under both.
 MAX_BATCH = 500
+MAX_HOLD_SECONDS = 300.0
 
-Key = tuple[str, int, str]
+
+def retry_after(headers: Any) -> float | None:
+    """The seconds a ``Retry-After`` asks for, capped at 300, or None when the header is not whole
+    decimal digits (spaces around it are ignored)."""
+    if headers is None:
+        return None
+    raw = headers.get("Retry-After")
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip(" ")
+    if not text or not text.isascii() or not text.isdigit():
+        return None
+    if len(text) > 6:
+        return MAX_HOLD_SECONDS
+    return min(float(int(text)), MAX_HOLD_SECONDS)
 
 
-def _retryable(status: int) -> bool:
-    return status >= 500 or status in {408, 429}
+def retryable(status: int) -> bool:
+    return status >= 500 or status in (408, 429)
 
 
 class Usage:
-    """The counts and the sender. `record` is a dictionary add under a lock no request ever holds."""
+    """The counts and the flush. ``flush`` is serial; a hold keeps the counts and sends nothing."""
 
     def __init__(
         self,
+        *,
+        endpoint: Endpoint,
+        headers: dict[str, str],
         transport: Transport,
-        sdk_key: str,
-        request_timeout: float,
-        report: Callable[[BaseException], None],
         monotonic: Callable[[], float],
-        wall: Callable[[], datetime],
+        request_timeout: float,
+        report: Callable[[str, str], None],
     ) -> None:
+        self._endpoint = endpoint
+        self._headers = headers
         self._transport = transport
-        self._headers = {"Authorization": f"Bearer {sdk_key}", "Content-Type": "application/json"}
-        self._timeout = request_timeout
-        self._report = report
         self._monotonic = monotonic
-        self._wall = wall
-        self._lock = threading.Lock()  # guards _counts and _recording
-        self._counts: dict[Key, int] = {}
-        self._recording = True
-        self._flush_lock = threading.Lock()  # flushes are serial
-        self._hold_until = 0.0  # a 429's Retry-After, on the monotonic clock; only read and written under _flush_lock
+        self._request_timeout = request_timeout
+        self._report = report
+        self._lock = threading.Lock()
+        self._flush_lock = threading.Lock()
+        self._counts: dict[tuple[str, int, str], int] = {}
+        self._stopped = False
+        self._hold_until = 0.0
 
-    def record(self, flag: str, variation_index: int) -> None:
-        day = self._wall().astimezone(UTC).strftime("%Y-%m-%d")
-        key = (flag, variation_index, day)
+    def add(self, flag: str, index: int, day: str) -> None:
         with self._lock:
-            if self._recording:
-                self._counts[key] = self._counts.get(key, 0) + 1
-
-    def stop_recording(self) -> None:
-        with self._lock:
-            self._recording = False
-
-    def flush(self, *, final: bool = False) -> None:
-        """Sends what is pending. Nothing it meets raises; every failure goes to `report`, after the locks
-        are released. A final flush does not wait out a hold, and says so when it loses counts to one."""
-        errors: list[BaseException] = []
-        with self._flush_lock:
-            self._send(errors, final)
-        for error in errors:
-            self._report(error)
-
-    def _send(self, errors: list[BaseException], final: bool) -> None:
-        if self._monotonic() < self._hold_until:
-            if final:
-                with self._lock:
-                    pending = len(self._counts)
-                if pending:
-                    errors.append(
-                        ToggleSlashError(f"closed with {pending} usage counts unsent: the server asked to wait")
-                    )
-            return
-        with self._lock:
-            counts, self._counts = self._counts, {}
-        entries = [(key, count) for key, count in counts.items()]
-        for start in range(0, len(entries), MAX_BATCH):
-            batch = entries[start : start + MAX_BATCH]
-            if not self._post(batch, errors):
-                self._put_back(entries[start:])
+            if self._stopped:
                 return
+            key = (flag, index, day)
+            self._counts[key] = self._counts.get(key, 0) + 1
 
-    def _put_back(self, entries: list[tuple[Key, int]]) -> None:
+    def stop(self) -> None:
+        """Nothing more is counted (called by ``close`` before the final flush)."""
+        with self._lock:
+            self._stopped = True
+
+    def pending(self) -> int:
+        with self._lock:
+            return len(self._counts)
+
+    def holding(self) -> bool:
+        return self._monotonic() < self._hold_until
+
+    def _readd(self, entries: list[tuple[tuple[str, int, str], int]]) -> None:
         with self._lock:
             for key, count in entries:
                 self._counts[key] = self._counts.get(key, 0) + count
 
-    def _post(self, batch: list[tuple[Key, int]], errors: list[BaseException]) -> bool:
-        """False when the batch is to be kept for another try."""
+    def flush(self, lock_timeout: float = -1) -> None:
+        """Send what is pending, in batches of at most 500, one request at a time. ``lock_timeout``
+        bounds the wait for a flush already running (``close`` passes one)."""
+        if not self._flush_lock.acquire(timeout=lock_timeout):
+            return
+        try:
+            if self.holding():
+                return
+            with self._lock:
+                if not self._counts:
+                    return
+                taken = list(self._counts.items())
+                self._counts = {}
+            start = 0
+            while start < len(taken):
+                batch = taken[start : start + MAX_BATCH]
+                outcome = self._send(batch)
+                if outcome == "kept":
+                    self._readd(taken[start:])
+                    return
+                start += MAX_BATCH
+        finally:
+            self._flush_lock.release()
+
+    def _send(self, batch: list[tuple[tuple[str, int, str], int]]) -> str:
         payload = {
             "events": [
                 {"flag": flag, "variationIndex": index, "count": count, "day": day}
                 for (flag, index, day), count in batch
             ]
         }
-        body = json.dumps(payload).encode("ascii")
-        aborter = Aborter(self._timeout)
+        body = json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode("ascii")
+        headers = dict(self._headers)
+        headers["Content-Type"] = "application/json"
         try:
-            reply = self._transport("POST", EVENTS_ROUTE, self._headers, body, aborter)
-            try:
-                status = reply.status
-                header = reply.header("Retry-After")
-            finally:
-                reply.close()
-        except (TransportError, Aborted) as error:
-            errors.append(error)
-            return False
-        finally:
-            aborter.stop_timer()
+            response = self._transport.fetch(
+                self._endpoint,
+                "POST",
+                "/sdk/v1/events",
+                headers,
+                body,
+                self._request_timeout,
+                None,
+            )
+        except RequestTimeout:
+            self._report("timeout", "usage request failed: timeout")
+            return "kept"
+        except (NetworkFailure, Aborted):
+            self._report("network", "usage request failed: network")
+            return "kept"
+        status = response.status
         if 200 <= status < 300:
-            return True
-        wait = retry_after(status, header)
-        if wait is not None:
-            self._hold_until = max(self._hold_until, self._monotonic() + wait)
-        errors.append(ToggleSlashError(f"POST {EVENTS_ROUTE} answered {status}"))
-        return not _retryable(status)
+            return "sent"
+        self._report(f"http_{status}", f"usage request failed: http_{status}")
+        if status == 429:
+            seconds = retry_after(response.headers)
+            if seconds is not None:
+                self._hold_until = max(self._hold_until, self._monotonic() + seconds)
+        return "kept" if retryable(status) else "dropped"
