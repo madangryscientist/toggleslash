@@ -49,6 +49,10 @@ public static class FlagEndpoints
     /// The latest UTC day any environment counted an evaluation of this flag; <c>null</c> if none has. A day, not a
     /// moment: usage is counted per day.
     /// </param>
+    /// <param name="Lifecycle">
+    /// Computed on every read, never stored: <c>archived</c> if archived; else <c>active</c> if any environment counted an
+    /// evaluation in the last 7 UTC days (today included); else <c>new</c> if created less than 7 days ago; else <c>inactive</c>.
+    /// </param>
     public sealed record FlagResponse(
         string Key,
         string Name,
@@ -59,7 +63,11 @@ public static class FlagEndpoints
         List<string> Tags,
         DateTime CreatedAt,
         DateTime? ArchivedAt,
-        DateOnly? LastEvaluated);
+        DateOnly? LastEvaluated,
+        string Lifecycle);
+
+    /// <summary>How many UTC days, today included, count as "recently" for <c>active</c> and as "recently created" for <c>new</c>.</summary>
+    private const int RecentDays = 7;
 
     public static void MapFlagEndpoints(this IEndpointRouteBuilder routes)
     {
@@ -95,6 +103,11 @@ public static class FlagEndpoints
             .WithName("restoreFlag")
             .Produces<FlagResponse>()
             .Produces<ApiError>(StatusCodes.Status404NotFound);
+        flags.MapDelete("{flag}", Delete)
+            .WithName("deleteFlag")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces<ApiError>(StatusCodes.Status404NotFound)
+            .Produces<ApiError>(StatusCodes.Status409Conflict);
     }
 
     /// <summary>
@@ -265,6 +278,50 @@ public static class FlagEndpoints
         return Results.Json(await Detail(database, found, cancellation));
     }
 
+    /// <summary>
+    /// Permanent, and only for an archived flag that no other flag lists as a prerequisite in any environment (an archived
+    /// dependent counts: restoring it would break). Recent usage does not block it: archiving already took the flag out of
+    /// every ruleset, so nothing an SDK holds changes and no stream is told. The database cascades the flag's configs and
+    /// usage; the audit trail and ruleset snapshots stay, as they address the flag by key, so history keeps answering and
+    /// the key can be created again. The check and the delete share one transaction, under the targeting lock.
+    /// </summary>
+    private static async Task<IResult> Delete(string project, string flag, ToggleSlashDbContext database, TargetingLock targetingLock, CancellationToken cancellation)
+    {
+        using var held = await targetingLock.Enter(cancellation);
+        var (owner, found) = await Find(database, project, flag, tracked: false, cancellation);
+        if (found is null)
+        {
+            return NotFound(owner);
+        }
+        if (found.ArchivedAt is null)
+        {
+            return Failures.Conflict($"\"{found.Key}\" is not archived; archive it before deleting it.");
+        }
+
+        await using var transaction = await database.Database.BeginTransactionAsync(cancellation);
+        var configs = await database.FlagEnvironmentConfigs.AsNoTracking()
+            .Join(database.Flags, c => c.FlagId, f => f.Id, (c, f) => new { f.ProjectId, f.Id, f.Key, c.Prerequisites })
+            .Where(r => r.ProjectId == owner!.Id && r.Id != found.Id)
+            .ToListAsync(cancellation);
+        var dependents = configs
+            .Where(r => PrerequisiteGraph.Edges(r.Prerequisites).Contains(found.Key))
+            .Select(r => r.Key)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        if (dependents.Count > 0)
+        {
+            return Failures.Conflict(
+                $"\"{found.Key}\" is a prerequisite of {string.Join(", ", dependents.Select(k => $"\"{k}\""))}; remove it from them first.");
+        }
+
+        await database.Flags.Where(f => f.Id == found.Id).ExecuteDeleteAsync(cancellation);
+        database.Record(AuditEntity.Flag, found.Key, AuditAction.Deleted, new AuditScope(owner!.Key, Flag: found.Key), Describe(found), null);
+        await database.SaveChangesAsync(cancellation);
+        await transaction.CommitAsync(cancellation);
+        return Results.NoContent();
+    }
+
     private static async Task<(Project? Project, Flag? Flag)> Find(ToggleSlashDbContext database, string project, string flag, bool tracked, CancellationToken cancellation)
     {
         var owner = await database.Project(project, cancellation);
@@ -314,7 +371,26 @@ public static class FlagEndpoints
             settings.Tags,
             settings.CreatedAt,
             settings.ArchivedAt,
-            lastEvaluated);
+            lastEvaluated,
+            Lifecycle(settings.CreatedAt, settings.ArchivedAt, lastEvaluated));
+    }
+
+    /// <summary>
+    /// <c>lastEvaluated</c> is the latest counted day over every environment, so "any usage in the last 7 days" is just
+    /// that day being on or after today minus 6. The clock is read here, as <c>SetArchived</c> reads it.
+    /// </summary>
+    private static string Lifecycle(DateTime createdAt, DateTime? archivedAt, DateOnly? lastEvaluated)
+    {
+        var now = DateTime.UtcNow;
+        if (archivedAt is not null)
+        {
+            return "archived";
+        }
+        if (lastEvaluated is { } day && day >= DateOnly.FromDateTime(now).AddDays(1 - RecentDays))
+        {
+            return "active";
+        }
+        return createdAt > now.AddDays(-RecentDays) ? "new" : "inactive";
     }
 
     /// <summary>Flag id to the latest day it was counted; a flag never evaluated is absent.</summary>

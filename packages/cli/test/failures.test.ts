@@ -226,3 +226,44 @@ describe("envs delete", () => {
     expect(server.seen).toHaveLength(1);
   });
 });
+
+describe("flags delete", () => {
+  it("exits 1 with the server's message when the flag is not archived", async () => {
+    const server = fakeServer({
+      [`DELETE ${P}/shop/flags/new-checkout`]: apiError(
+        409,
+        "conflict",
+        '"new-checkout" is not archived; archive it before deleting it.',
+      ),
+    });
+    const result = await cli(["flags", "delete", "new-checkout", "-p", "shop"], {
+      fetch: server.fetch,
+      env: CONNECTED,
+    });
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(
+      'toggleslash: the server answered 409 conflict: "new-checkout" is not archived; archive it before deleting it.\n',
+    );
+    expect(server.seen).toHaveLength(1);
+  });
+});
+
+describe("flags list STATE", () => {
+  it("falls back to active or archived when an older server sends no lifecycle", async () => {
+    const { lifecycle: _lifecycle, ...older } = flag;
+    const server = fakeServer({
+      [`GET ${P}/shop/flags`]: json(200, [
+        older,
+        { ...older, key: "gone", archivedAt: "2026-11-04T00:00:00Z" },
+      ]),
+    });
+    const result = await cli(["flags", "list", "-p", "shop"], {
+      fetch: server.fetch,
+      env: CONNECTED,
+    });
+    expect(result.code).toBe(0);
+    expect(result.stdout).toMatch(/new-checkout .* active /);
+    expect(result.stdout).toMatch(/gone .* archived /);
+  });
+});

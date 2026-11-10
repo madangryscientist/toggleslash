@@ -42,12 +42,18 @@ const flagsList: Command = {
       cell(f["name"]),
       cell(f["variations"]),
       Array.isArray(f["tags"]) && f["tags"].length > 0 ? f["tags"].join(",") : "-",
-      f["archivedAt"] === null || f["archivedAt"] === undefined ? "active" : "archived",
+      stage(f),
       cell(f["lastEvaluated"]),
     ]);
     ctx.out(table(["KEY", "NAME", "VARIATIONS", "TAGS", "STATE", "LAST EVALUATED"], rows));
   },
 };
+
+/** The server's `lifecycle`; an older server sends none, so fall back to archived or active from `archivedAt`. */
+function stage(f: Record<string, unknown>): string {
+  if (typeof f["lifecycle"] === "string") return f["lifecycle"];
+  return f["archivedAt"] === null || f["archivedAt"] === undefined ? "active" : "archived";
+}
 
 const flagsShow: Command = {
   name: "flags show",
@@ -187,6 +193,23 @@ const flagsArchive: Command = {
   },
 };
 
+const flagsDelete: Command = {
+  name: "flags delete",
+  usage: "<flag> --project <project>",
+  summary:
+    "permanently delete an archived flag (refused while it is not archived or another flag lists it as a prerequisite; its key is free again, its history stays)",
+  options: { project: PROJECT },
+  required: ["the flag key"],
+  api: true,
+  async run({ values, positionals }, ctx) {
+    const project = need(values, "project");
+    const flag = first(positionals, "the flag key");
+    await ctx.api(str(values, "url")).delete(apiPath("projects", project, "flags", flag));
+    if (printJson(values, ctx, { key: flag, deleted: true })) return;
+    ctx.out(`deleted ${flag}\n`);
+  },
+};
+
 function toggle(on: boolean): Command {
   const word = on ? "on" : "off";
   return {
@@ -258,6 +281,7 @@ export const FLAGS: readonly Command[] = [
   flagsShow,
   flagsCreate,
   flagsArchive,
+  flagsDelete,
   toggle(true),
   toggle(false),
   flagsHistory,

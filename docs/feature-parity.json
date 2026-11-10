@@ -192,8 +192,8 @@
       "name": "Permanent delete",
       "description": "Remove an archived flag completely.",
       "toggleslash": {
-        "status": "no",
-        "evidence": []
+        "status": "yes",
+        "evidence": ["api:/api/v1/projects/{project}/flags/{flag}", "cli:flags delete"]
       },
       "competitors": {
         "launchdarkly": "yes",
@@ -212,12 +212,12 @@
       "name": "Flag lifecycle and stale detection",
       "description": "Compute whether a flag is new, active, launched, stale or ready to archive.",
       "toggleslash": {
-        "status": "partial",
+        "status": "yes",
         "evidence": [
           "api:/api/v1/projects/{project}/flags/{flag}/usage",
           "doc:docs/architecture.md"
         ],
-        "note": "Only lastEvaluated (the latest day with a count) exists; there is no computed lifecycle stage."
+        "note": "Every flag answer carries a computed lifecycle: archived, active (counted in the last 7 UTC days), new (created in the last 7 days) or inactive; one stage per flag, not per environment, and no code-removal stage."
       },
       "competitors": {
         "launchdarkly": "yes",

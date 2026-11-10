@@ -1670,6 +1670,78 @@
             "bearer": []
           }
         ]
+      },
+      "delete": {
+        "tags": [
+          "Flags"
+        ],
+        "operationId": "deleteFlag",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "flag",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: this IP has sent too many wrong credentials, or this SDK key has reached a limit.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait, rounded up.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/projects/{project}/flags/{flag}/archive": {
@@ -3698,7 +3770,8 @@
           "tags",
           "createdAt",
           "archivedAt",
-          "lastEvaluated"
+          "lastEvaluated",
+          "lifecycle"
         ],
         "type": "object",
         "properties": {
@@ -3746,6 +3819,9 @@
               "string"
             ],
             "format": "date"
+          },
+          "lifecycle": {
+            "type": "string"
           }
         }
       },

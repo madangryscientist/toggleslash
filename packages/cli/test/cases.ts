@@ -15,6 +15,7 @@ export const flag = {
   createdAt: "2026-11-01T11:00:00Z",
   archivedAt: null,
   lastEvaluated: "2026-11-03",
+  lifecycle: "active",
 };
 export const config = {
   on: true,
