@@ -1,0 +1,288 @@
+{
+  "scenarios": [
+    {
+      "name": "the wait grows while the stream will not open, with one poll between attempts",
+      "contract": "7.3",
+      "steps": [
+        {
+          "do": "script",
+          "route": "stream",
+          "answers": [
+            {
+              "status": 503,
+              "times": "always"
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {}
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 9000,
+          "requests": {
+            "route": "stream",
+            "count": 3
+          }
+        },
+        {
+          "do": "expect",
+          "requests": [
+            {
+              "route": "stream",
+              "gaps": [
+                {
+                  "min": 950,
+                  "max": 2500
+                },
+                {
+                  "min": 1950,
+                  "max": 4500
+                }
+              ]
+            },
+            {
+              "route": "ruleset",
+              "count": 3
+            }
+          ],
+          "status": {
+            "stream": "disconnected",
+            "lastError": "http_503"
+          }
+        }
+      ]
+    },
+    {
+      "name": "the wait never passes the poll interval",
+      "contract": "7.3",
+      "steps": [
+        {
+          "do": "script",
+          "route": "stream",
+          "answers": [
+            {
+              "status": 503,
+              "times": "always"
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {
+            "pollIntervalMs": 1000
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 8000,
+          "requests": {
+            "route": "stream",
+            "count": 5
+          }
+        },
+        {
+          "do": "expect",
+          "requests": [
+            {
+              "route": "stream",
+              "gaps": [
+                {
+                  "min": 450,
+                  "max": 1500
+                },
+                {
+                  "min": 450,
+                  "max": 1500
+                },
+                {
+                  "min": 450,
+                  "max": 1500
+                },
+                {
+                  "min": 450,
+                  "max": 1500
+                }
+              ]
+            },
+            {
+              "route": "ruleset",
+              "count": {
+                "min": 5
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "the wait is jittered",
+      "contract": "7.3",
+      "steps": [
+        {
+          "do": "script",
+          "route": "stream",
+          "answers": [
+            {
+              "status": 503,
+              "times": "always"
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {
+            "pollIntervalMs": 400
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 8000,
+          "requests": {
+            "route": "stream",
+            "count": 12
+          }
+        },
+        {
+          "do": "expect",
+          "requests": {
+            "route": "stream",
+            "someGapBelow": 370
+          }
+        }
+      ]
+    },
+    {
+      "name": "a stream that ends before connected counts as a failure and is followed by a poll",
+      "contract": "7.3",
+      "steps": [
+        {
+          "do": "script",
+          "route": "stream",
+          "answers": [
+            {
+              "sse": [": hello\n\n"],
+              "end": true
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {}
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 4000,
+          "requests": {
+            "route": "stream",
+            "count": 2
+          }
+        },
+        {
+          "do": "expect",
+          "requests": [
+            {
+              "route": "stream",
+              "gaps": [
+                {
+                  "min": 950,
+                  "max": 2500
+                }
+              ]
+            },
+            {
+              "route": "ruleset",
+              "count": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "only a stream that connected starts the backoff over",
+      "contract": "7.3",
+      "steps": [
+        {
+          "do": "script",
+          "route": "stream",
+          "answers": [
+            {
+              "status": 503,
+              "times": 2
+            },
+            {
+              "sse": ["event: connected\ndata: {{etag}}\n\n"],
+              "end": true
+            },
+            {
+              "status": 503
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {}
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 12000,
+          "requests": {
+            "route": "stream",
+            "count": 5
+          }
+        },
+        {
+          "do": "expect",
+          "requests": [
+            {
+              "route": "stream",
+              "gaps": [
+                {
+                  "min": 950,
+                  "max": 2500
+                },
+                {
+                  "min": 1950,
+                  "max": 4500
+                },
+                {
+                  "min": 450,
+                  "max": 1500
+                },
+                {
+                  "min": 950,
+                  "max": 2500
+                }
+              ]
+            },
+            {
+              "route": "ruleset",
+              "count": 4
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

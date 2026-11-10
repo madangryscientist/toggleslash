@@ -1,0 +1,203 @@
+{
+  "scenarios": [
+    {
+      "name": "the first load fetches the ruleset with the key and serves from it",
+      "contract": "7.1",
+      "steps": [
+        { "do": "create", "options": { "stream": false } },
+        { "do": "ready", "expect": true },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "accessor": "bool",
+          "expect": { "value": true, "variationIndex": 1, "reason": { "kind": "FALLTHROUGH" } }
+        },
+        {
+          "do": "expect",
+          "requests": {
+            "route": "ruleset",
+            "count": 1,
+            "method": "GET",
+            "headers": { "authorization": "Bearer {{key}}", "if-none-match": null }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a URL ending in a slash is joined without doubling it",
+      "contract": "7",
+      "steps": [
+        { "do": "create", "options": { "stream": false, "url": "{{url}}/" } },
+        { "do": "ready", "expect": true },
+        {
+          "do": "expect",
+          "requests": { "route": "ruleset", "count": 1, "path": "/sdk/v1/ruleset" }
+        }
+      ]
+    },
+    {
+      "name": "a poll sends If-None-Match with the tag held, and a 304 keeps the ruleset",
+      "contract": "7.1",
+      "steps": [
+        { "do": "create", "options": { "stream": false, "pollIntervalMs": 300 } },
+        { "do": "ready", "expect": true },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "requests": { "route": "ruleset", "count": { "min": 2 } }
+        },
+        {
+          "do": "expect",
+          "requests": {
+            "route": "ruleset",
+            "nth": 1,
+            "headers": { "if-none-match": "{{etag}}" },
+            "answered": 304
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "expect": { "value": true, "variationIndex": 1 }
+        }
+      ]
+    },
+    {
+      "name": "a change is picked up at the next poll, and the poll after asks with the new tag",
+      "contract": "7.1",
+      "steps": [
+        { "do": "create", "options": { "stream": false, "pollIntervalMs": 300 } },
+        { "do": "ready", "expect": true },
+        { "do": "mark", "name": "changed" },
+        { "do": "ruleset", "flags": [{ "key": "checkout", "serves": false }] },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "requests": { "route": "ruleset", "since": "changed", "count": { "min": 2 } }
+        },
+        {
+          "do": "expect",
+          "requests": [
+            { "route": "ruleset", "since": "changed", "nth": 0, "answered": 200 },
+            {
+              "route": "ruleset",
+              "since": "changed",
+              "nth": 1,
+              "headers": { "if-none-match": "{{etag}}" },
+              "answered": 304
+            }
+          ]
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": true,
+          "expect": { "value": false, "variationIndex": 0 }
+        }
+      ]
+    },
+    {
+      "name": "a stream announcing the tag held fetches nothing",
+      "contract": "7.2",
+      "steps": [
+        { "do": "create" },
+        { "do": "ready", "expect": true },
+        { "do": "waitUntil", "withinMs": 3000, "status": { "stream": "connected" } },
+        { "do": "wait", "ms": 300 },
+        {
+          "do": "expect",
+          "requests": [
+            { "route": "ruleset", "count": 1 },
+            { "route": "stream", "count": 1, "headers": { "accept": "text/event-stream" } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "the ETag is kept exactly as received, quotes and all",
+      "contract": "7.1",
+      "steps": [
+        {
+          "do": "script",
+          "route": "ruleset",
+          "answers": [
+            {
+              "json": { "flags": [], "segments": [] },
+              "headers": { "ETag": "W/\"odd tag\"" }
+            }
+          ]
+        },
+        { "do": "create", "options": { "stream": false, "pollIntervalMs": 300 } },
+        { "do": "ready", "expect": true },
+        { "do": "expect", "status": { "etag": "W/\"odd tag\"" } },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "requests": { "route": "ruleset", "count": { "min": 2 } }
+        },
+        {
+          "do": "expect",
+          "requests": {
+            "route": "ruleset",
+            "nth": 1,
+            "headers": { "if-none-match": "W/\"odd tag\"" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a server never reached serves the fallback, and the first ruleset loaded once it is reached",
+      "contract": "5.4",
+      "steps": [
+        { "do": "script", "route": "ruleset", "answers": [{ "status": 503, "times": 2 }] },
+        { "do": "create", "options": { "stream": false, "pollIntervalMs": 300 } },
+        { "do": "ready", "expect": false },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "expect": {
+            "value": false,
+            "variationIndex": null,
+            "reason": { "kind": "ERROR", "code": "NOT_READY" }
+          }
+        },
+        { "do": "expect", "status": { "etag": null, "lastSyncAt": null, "lastError": "http_503" } },
+        {
+          "do": "waitUntil",
+          "withinMs": 4000,
+          "requests": { "route": "ruleset", "count": { "min": 3 } },
+          "status": { "etag": "{{etag}}", "lastError": null }
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "expect": { "value": true, "variationIndex": 1 }
+        }
+      ]
+    },
+    {
+      "name": "evaluating before the first load answers NOT_READY at once",
+      "contract": "5.2",
+      "steps": [
+        { "do": "script", "route": "ruleset", "answers": [{ "hang": true }] },
+        { "do": "create", "options": { "stream": false, "requestTimeoutMs": 1500 } },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "withinMs": 400,
+          "expect": {
+            "value": false,
+            "variationIndex": null,
+            "reason": { "kind": "ERROR", "code": "NOT_READY" }
+          }
+        },
+        { "do": "ready", "expect": false, "withinMs": 2500 }
+      ]
+    }
+  ]
+}

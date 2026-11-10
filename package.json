@@ -20,7 +20,8 @@
     "test": "bun scripts/nx.ts run-many -t test",
     "test:e2e": "bun scripts/nx.ts run-many -t test:e2e",
     "test:stack": "bun scripts/nx.ts run e2e:test:stack",
-    "stack": "bun packages/e2e/src/stack-cli.ts"
+    "stack": "bun packages/e2e/src/stack-cli.ts",
+    "conformance": "bun packages/sdk-conformance/src/cli.ts"
   },
   "devDependencies": {
     "@nx/dotnet": "24.0.3",

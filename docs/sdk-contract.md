@@ -3,7 +3,7 @@
 This page is normative. It defines what every ToggleSlash **server SDK** does, in no particular
 language. The TypeScript SDK (`packages/sdk`, [`sdk.md`](sdk.md)) is the reference implementation: every
 rule below that is not marked "new" is something it does today, and where this page and that code were
-written apart, the code won. A conformance harness (planned) is meant to drive an SDK from outside and check it
+written apart, the code won. A [conformance harness](sdk-test-service.md) drives an SDK from outside and checks it
 against this page; a test of an SDK is a test of this page.
 
 The words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are used as in RFC 2119. Every number is stated.

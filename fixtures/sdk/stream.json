@@ -1,0 +1,786 @@
+{
+  "scenarios": [
+    {
+      "name": "a published change arrives through the stream without a poll",
+      "contract": "7.2",
+      "steps": [
+        {
+          "do": "create",
+          "options": {}
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "status": {
+            "stream": "connected"
+          }
+        },
+        {
+          "do": "mark",
+          "name": "m"
+        },
+        {
+          "do": "ruleset",
+          "flags": [
+            {
+              "key": "checkout",
+              "serves": false
+            }
+          ]
+        },
+        {
+          "do": "publish"
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 2000,
+          "status": {
+            "etag": "{{etag}}"
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": true,
+          "expect": {
+            "value": false,
+            "variationIndex": 0
+          }
+        },
+        {
+          "do": "expect",
+          "requests": [
+            {
+              "route": "ruleset",
+              "since": "m",
+              "count": 1,
+              "answered": 200
+            },
+            {
+              "route": "stream",
+              "count": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a keep-alive comment and an event naming the tag held fetch nothing",
+      "contract": "7.2",
+      "steps": [
+        {
+          "do": "create",
+          "options": {}
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "status": {
+            "stream": "connected"
+          }
+        },
+        {
+          "do": "mark",
+          "name": "m"
+        },
+        {
+          "do": "write",
+          "chunks": [": keep-alive\n\n", "event: changed\ndata: {{etag}}\n\n"]
+        },
+        {
+          "do": "wait",
+          "ms": 400
+        },
+        {
+          "do": "expect",
+          "requests": [
+            {
+              "route": "ruleset",
+              "since": "m",
+              "count": 0
+            },
+            {
+              "route": "stream",
+              "count": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a stream that was up and dropped reconnects without a poll and catches up",
+      "contract": "7.3",
+      "steps": [
+        {
+          "do": "create",
+          "options": {}
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "status": {
+            "stream": "connected"
+          }
+        },
+        {
+          "do": "mark",
+          "name": "m"
+        },
+        {
+          "do": "ruleset",
+          "flags": [
+            {
+              "key": "checkout",
+              "serves": false
+            }
+          ]
+        },
+        {
+          "do": "dropStreams"
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 4000,
+          "status": {
+            "etag": "{{etag}}",
+            "stream": "connected"
+          }
+        },
+        {
+          "do": "expect",
+          "requests": [
+            {
+              "route": "stream",
+              "since": "m",
+              "count": 1,
+              "after": {
+                "min": 450,
+                "max": 1500
+              }
+            },
+            {
+              "route": "ruleset",
+              "since": "m",
+              "count": 1,
+              "after": {
+                "min": 450
+              }
+            }
+          ]
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": true,
+          "expect": {
+            "value": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "a refresh that failed after a change is retried, and the stream reopens",
+      "contract": "7.2",
+      "steps": [
+        {
+          "do": "create",
+          "options": {}
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "status": {
+            "stream": "connected"
+          }
+        },
+        {
+          "do": "mark",
+          "name": "m"
+        },
+        {
+          "do": "ruleset",
+          "flags": [
+            {
+              "key": "checkout",
+              "serves": false
+            }
+          ]
+        },
+        {
+          "do": "script",
+          "route": "ruleset",
+          "answers": [
+            {
+              "status": 500
+            }
+          ]
+        },
+        {
+          "do": "publish"
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 5000,
+          "status": {
+            "etag": "{{etag}}",
+            "stream": "connected",
+            "lastError": null
+          }
+        },
+        {
+          "do": "expect",
+          "requests": [
+            {
+              "route": "ruleset",
+              "since": "m",
+              "count": {
+                "min": 2
+              },
+              "nth": 0,
+              "answered": 500
+            },
+            {
+              "route": "ruleset",
+              "since": "m",
+              "nth": 1,
+              "answered": 200
+            },
+            {
+              "route": "stream",
+              "since": "m",
+              "count": 1
+            }
+          ]
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": true,
+          "expect": {
+            "value": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "a change reaches a client whose stream will not open, at the next poll",
+      "contract": "7.3",
+      "steps": [
+        {
+          "do": "script",
+          "route": "stream",
+          "answers": [
+            {
+              "status": 404,
+              "times": "always"
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {
+            "pollIntervalMs": 1000
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "ruleset",
+          "flags": [
+            {
+              "key": "checkout",
+              "serves": false
+            }
+          ]
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 4000,
+          "status": {
+            "etag": "{{etag}}"
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": true,
+          "expect": {
+            "value": false,
+            "variationIndex": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "a healthy stream loads the ruleset after a failed first load",
+      "contract": "7.2",
+      "steps": [
+        {
+          "do": "script",
+          "route": "ruleset",
+          "answers": [
+            {
+              "status": 500
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {}
+        },
+        {
+          "do": "ready",
+          "expect": false
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "status": {
+            "etag": "{{etag}}",
+            "stream": "connected"
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "variationIndex": 1
+          }
+        },
+        {
+          "do": "expect",
+          "requests": [
+            {
+              "route": "ruleset",
+              "count": 2
+            },
+            {
+              "route": "stream",
+              "count": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a server gone later leaves the last ruleset served, and the SDK recovers when it returns",
+      "contract": "5.4",
+      "steps": [
+        {
+          "do": "create",
+          "options": {}
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "status": {
+            "stream": "connected"
+          }
+        },
+        {
+          "do": "down"
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "status": {
+            "lastError": "network",
+            "etag": "{{etag}}"
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "variationIndex": 1
+          }
+        },
+        {
+          "do": "wait",
+          "ms": 500
+        },
+        {
+          "do": "up"
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 7000,
+          "status": {
+            "stream": "connected",
+            "lastError": null
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "variationIndex": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "CRLF line ends split across reads are read",
+      "contract": "7.2",
+      "steps": [
+        {
+          "do": "script",
+          "route": "stream",
+          "answers": [
+            {
+              "sse": ["event: connected\r", "\ndata: {{etag}}\r\n", "\r\n"]
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {}
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "status": {
+            "stream": "connected"
+          }
+        },
+        {
+          "do": "wait",
+          "ms": 200
+        },
+        {
+          "do": "expect",
+          "requests": {
+            "route": "ruleset",
+            "count": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "a lone CR ends a line",
+      "contract": "7.2",
+      "steps": [
+        {
+          "do": "script",
+          "route": "stream",
+          "answers": [
+            {
+              "sse": ["event: connected\rdata: {{etag}}\r\r: after\n"]
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {}
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "status": {
+            "stream": "connected"
+          }
+        },
+        {
+          "do": "wait",
+          "ms": 200
+        },
+        {
+          "do": "expect",
+          "requests": {
+            "route": "ruleset",
+            "count": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "UTF-8 split across reads does not break the stream",
+      "contract": "7.2",
+      "steps": [
+        {
+          "do": "create",
+          "options": {}
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "status": {
+            "stream": "connected"
+          }
+        },
+        {
+          "do": "mark",
+          "name": "m"
+        },
+        {
+          "do": "ruleset",
+          "flags": [
+            {
+              "key": "checkout",
+              "serves": false
+            }
+          ]
+        },
+        {
+          "do": "write",
+          "chunks": [
+            [58, 32, 99, 97, 102, 195],
+            [169, 10, 10],
+            "event: note\ndata: über ☃\n\n",
+            "event: changed\ndata: {{etag}}\n\n"
+          ]
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 2000,
+          "status": {
+            "etag": "{{etag}}"
+          }
+        },
+        {
+          "do": "expect",
+          "requests": [
+            {
+              "route": "stream",
+              "count": 1
+            },
+            {
+              "route": "ruleset",
+              "since": "m",
+              "count": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "other events, nameless data and an event with no data are ignored",
+      "contract": "7.2",
+      "steps": [
+        {
+          "do": "create",
+          "options": {}
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "status": {
+            "stream": "connected"
+          }
+        },
+        {
+          "do": "mark",
+          "name": "m"
+        },
+        {
+          "do": "ruleset",
+          "flags": [
+            {
+              "key": "checkout",
+              "serves": false
+            }
+          ]
+        },
+        {
+          "do": "write",
+          "chunks": [
+            "event: ping\ndata: {{etag}}\n\n",
+            "data: {{etag}}\n\n",
+            "event: changed\n\n",
+            "event: changed\nid: 1\n\n"
+          ]
+        },
+        {
+          "do": "wait",
+          "ms": 400
+        },
+        {
+          "do": "expect",
+          "requests": {
+            "route": "ruleset",
+            "since": "m",
+            "count": 0
+          }
+        },
+        {
+          "do": "write",
+          "chunks": ["event: changed\ndata:{{etag}}\nid: 7\nretry: 10\n\n"]
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 2000,
+          "status": {
+            "etag": "{{etag}}"
+          }
+        },
+        {
+          "do": "expect",
+          "requests": [
+            {
+              "route": "ruleset",
+              "since": "m",
+              "count": 1
+            },
+            {
+              "route": "stream",
+              "count": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "several data lines are joined with LF",
+      "contract": "7.2",
+      "steps": [
+        {
+          "do": "create",
+          "options": {}
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "status": {
+            "stream": "connected"
+          }
+        },
+        {
+          "do": "mark",
+          "name": "m"
+        },
+        {
+          "do": "write",
+          "chunks": ["event: changed\ndata: {{etag}}\ndata: {{etag}}\n\n"]
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 2000,
+          "requests": {
+            "route": "ruleset",
+            "since": "m",
+            "count": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "an event still incomplete when the stream ends is discarded",
+      "contract": "7.2",
+      "steps": [
+        {
+          "do": "create",
+          "options": {}
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "status": {
+            "stream": "connected"
+          }
+        },
+        {
+          "do": "mark",
+          "name": "m"
+        },
+        {
+          "do": "ruleset",
+          "flags": [
+            {
+              "key": "checkout",
+              "serves": false
+            }
+          ]
+        },
+        {
+          "do": "write",
+          "chunks": ["event: changed\ndata: {{etag}}"]
+        },
+        {
+          "do": "wait",
+          "ms": 100
+        },
+        {
+          "do": "dropStreams"
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 4000,
+          "status": {
+            "etag": "{{etag}}",
+            "stream": "connected"
+          }
+        },
+        {
+          "do": "expect",
+          "requests": [
+            {
+              "route": "stream",
+              "since": "m",
+              "count": 1
+            },
+            {
+              "route": "ruleset",
+              "since": "m",
+              "count": 1,
+              "after": {
+                "min": 500
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

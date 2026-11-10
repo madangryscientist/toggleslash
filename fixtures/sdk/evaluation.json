@@ -1,0 +1,580 @@
+{
+  "scenarios": [
+    {
+      "name": "targets and rules are evaluated with the evaluator",
+      "contract": "4",
+      "steps": [
+        {
+          "do": "ruleset",
+          "flags": [
+            {
+              "key": "vip",
+              "variations": [false, true],
+              "on": true,
+              "offVariation": 0,
+              "targets": [
+                {
+                  "variation": 1,
+                  "contextKeys": ["{{sentinel}}"]
+                }
+              ],
+              "prerequisites": [],
+              "rules": [],
+              "fallthrough": {
+                "variation": 0
+              },
+              "salt": "s",
+              "version": 1
+            },
+            {
+              "key": "pro",
+              "variations": [false, true],
+              "on": true,
+              "offVariation": 0,
+              "targets": [],
+              "prerequisites": [],
+              "rules": [
+                {
+                  "clauses": [
+                    {
+                      "attribute": "plan",
+                      "op": "in",
+                      "values": ["pro"]
+                    }
+                  ],
+                  "variation": 1
+                }
+              ],
+              "fallthrough": {
+                "variation": 0
+              },
+              "salt": "s",
+              "version": 1
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {
+            "stream": false
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "evaluate",
+          "flag": "vip",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "variationIndex": 1,
+            "reason": {
+              "kind": "TARGET_MATCH"
+            }
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "pro",
+          "fallback": false,
+          "context": {
+            "key": "{{sentinel}}",
+            "attributes": {
+              "plan": "pro"
+            }
+          },
+          "expect": {
+            "value": true,
+            "variationIndex": 1
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "pro",
+          "fallback": false,
+          "context": {
+            "key": "{{sentinel}}",
+            "attributes": {
+              "plan": "free"
+            }
+          },
+          "expect": {
+            "value": false,
+            "variationIndex": 0,
+            "reason": {
+              "kind": "FALLTHROUGH"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a context with no key gets the fallback and INVALID_CONTEXT",
+      "contract": "4",
+      "steps": [
+        {
+          "do": "create",
+          "options": {
+            "stream": false
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "context": {
+            "attributes": {}
+          },
+          "expect": {
+            "value": false,
+            "variationIndex": null,
+            "reason": {
+              "kind": "ERROR",
+              "code": "INVALID_CONTEXT"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an unknown flag gets the fallback and FLAG_NOT_FOUND",
+      "contract": "4",
+      "steps": [
+        {
+          "do": "create",
+          "options": {
+            "stream": false
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "evaluate",
+          "flag": "no-such-flag",
+          "fallback": "fb",
+          "accessor": "string",
+          "expect": {
+            "value": "fb",
+            "variationIndex": null,
+            "reason": {
+              "kind": "ERROR",
+              "code": "FLAG_NOT_FOUND"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a value of another kind than the fallback is TYPE_MISMATCH",
+      "contract": "4",
+      "steps": [
+        {
+          "do": "ruleset",
+          "flags": [
+            {
+              "key": "checkout",
+              "serves": true
+            },
+            {
+              "key": "nothing",
+              "variations": [null, true],
+              "on": true,
+              "offVariation": 0,
+              "targets": [],
+              "prerequisites": [],
+              "rules": [],
+              "fallthrough": {
+                "variation": 0
+              },
+              "salt": "s",
+              "version": 1
+            },
+            {
+              "key": "list",
+              "variations": [
+                [1],
+                {
+                  "a": 1
+                }
+              ],
+              "on": true,
+              "offVariation": 0,
+              "targets": [],
+              "prerequisites": [],
+              "rules": [],
+              "fallthrough": {
+                "variation": 0
+              },
+              "salt": "s",
+              "version": 1
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {
+            "stream": false
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": "x",
+          "accessor": "string",
+          "expect": {
+            "value": "x",
+            "variationIndex": null,
+            "reason": {
+              "kind": "ERROR",
+              "code": "TYPE_MISMATCH"
+            }
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": 0,
+          "accessor": "number",
+          "expect": {
+            "value": 0,
+            "variationIndex": null,
+            "reason": {
+              "kind": "ERROR",
+              "code": "TYPE_MISMATCH"
+            }
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "nothing",
+          "fallback": false,
+          "accessor": "bool",
+          "expect": {
+            "value": false,
+            "variationIndex": null,
+            "reason": {
+              "kind": "ERROR",
+              "code": "TYPE_MISMATCH"
+            }
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "list",
+          "fallback": {},
+          "accessor": "json",
+          "expect": {
+            "value": {},
+            "variationIndex": null,
+            "reason": {
+              "kind": "ERROR",
+              "code": "TYPE_MISMATCH"
+            }
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "list",
+          "fallback": [],
+          "accessor": "json",
+          "expect": {
+            "value": [1],
+            "variationIndex": 0,
+            "reason": {
+              "kind": "FALLTHROUGH"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a null fallback accepts a value of any kind",
+      "contract": "4",
+      "steps": [
+        {
+          "do": "ruleset",
+          "flags": [
+            {
+              "key": "list",
+              "variations": [
+                [1],
+                {
+                  "a": 1
+                }
+              ],
+              "on": true,
+              "offVariation": 0,
+              "targets": [],
+              "prerequisites": [],
+              "rules": [],
+              "fallthrough": {
+                "variation": 0
+              },
+              "salt": "s",
+              "version": 1
+            },
+            {
+              "key": "text",
+              "variations": ["on", "off"],
+              "on": true,
+              "offVariation": 0,
+              "targets": [],
+              "prerequisites": [],
+              "rules": [],
+              "fallthrough": {
+                "variation": 0
+              },
+              "salt": "s",
+              "version": 1
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {
+            "stream": false
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "evaluate",
+          "flag": "list",
+          "fallback": null,
+          "expect": {
+            "value": [1],
+            "variationIndex": 0
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "text",
+          "fallback": null,
+          "expect": {
+            "value": "on",
+            "variationIndex": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "a flag that is off with no off variation gets the fallback and the reason OFF",
+      "contract": "4",
+      "steps": [
+        {
+          "do": "ruleset",
+          "flags": [
+            {
+              "key": "dark",
+              "variations": [false, true],
+              "on": false,
+              "offVariation": null,
+              "targets": [],
+              "prerequisites": [],
+              "rules": [],
+              "fallthrough": {
+                "variation": 0
+              },
+              "salt": "s",
+              "version": 1
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {
+            "stream": false
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "evaluate",
+          "flag": "dark",
+          "fallback": true,
+          "accessor": "bool",
+          "expect": {
+            "value": true,
+            "variationIndex": null,
+            "reason": {
+              "kind": "OFF"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a whole number and a fraction are both numbers to a number accessor",
+      "contract": "4",
+      "steps": [
+        {
+          "do": "script",
+          "route": "ruleset",
+          "answers": [
+            {
+              "body": "{\"flags\":[{\"key\":\"ratio\",\"variations\":[1.5, 3],\"on\":true,\"offVariation\":0,\"targets\":[],\"prerequisites\":[],\"rules\":[],\"fallthrough\":{\"variation\":0},\"salt\":\"s\",\"version\":1},{\"key\":\"two\",\"variations\":[2.0, 3],\"on\":true,\"offVariation\":0,\"targets\":[],\"prerequisites\":[],\"rules\":[],\"fallthrough\":{\"variation\":0},\"salt\":\"s\",\"version\":1},{\"key\":\"huge\",\"variations\":[1e20, 3],\"on\":true,\"offVariation\":0,\"targets\":[],\"prerequisites\":[],\"rules\":[],\"fallthrough\":{\"variation\":0},\"salt\":\"s\",\"version\":1},{\"key\":\"whole\",\"variations\":[4, 3],\"on\":true,\"offVariation\":0,\"targets\":[],\"prerequisites\":[],\"rules\":[],\"fallthrough\":{\"variation\":0},\"salt\":\"s\",\"version\":1}],\"segments\":[]}",
+              "headers": {
+                "ETag": "\"ints\""
+              }
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {
+            "stream": false
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "evaluate",
+          "flag": "ratio",
+          "fallback": 0,
+          "accessor": "number",
+          "expect": {
+            "value": 1.5,
+            "variationIndex": 0
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "whole",
+          "fallback": 0.5,
+          "accessor": "number",
+          "expect": {
+            "value": 4,
+            "variationIndex": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "an integer accessor refuses a served fraction with TYPE_MISMATCH",
+      "contract": "4",
+      "requires": ["integer-accessor"],
+      "steps": [
+        {
+          "do": "script",
+          "route": "ruleset",
+          "answers": [
+            {
+              "body": "{\"flags\":[{\"key\":\"ratio\",\"variations\":[1.5, 3],\"on\":true,\"offVariation\":0,\"targets\":[],\"prerequisites\":[],\"rules\":[],\"fallthrough\":{\"variation\":0},\"salt\":\"s\",\"version\":1},{\"key\":\"two\",\"variations\":[2.0, 3],\"on\":true,\"offVariation\":0,\"targets\":[],\"prerequisites\":[],\"rules\":[],\"fallthrough\":{\"variation\":0},\"salt\":\"s\",\"version\":1},{\"key\":\"huge\",\"variations\":[1e20, 3],\"on\":true,\"offVariation\":0,\"targets\":[],\"prerequisites\":[],\"rules\":[],\"fallthrough\":{\"variation\":0},\"salt\":\"s\",\"version\":1},{\"key\":\"whole\",\"variations\":[4, 3],\"on\":true,\"offVariation\":0,\"targets\":[],\"prerequisites\":[],\"rules\":[],\"fallthrough\":{\"variation\":0},\"salt\":\"s\",\"version\":1}],\"segments\":[]}",
+              "headers": {
+                "ETag": "\"ints\""
+              }
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {
+            "stream": false
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "evaluate",
+          "flag": "ratio",
+          "fallback": 7,
+          "accessor": "int",
+          "expect": {
+            "value": 7,
+            "variationIndex": null,
+            "reason": {
+              "kind": "ERROR",
+              "code": "TYPE_MISMATCH"
+            }
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "huge",
+          "fallback": 7,
+          "accessor": "int",
+          "expect": {
+            "value": 7,
+            "variationIndex": null,
+            "reason": {
+              "kind": "ERROR",
+              "code": "TYPE_MISMATCH"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "an integer accessor reads a served 2.0 as the integer 2",
+      "contract": "4",
+      "requires": ["integer-accessor"],
+      "steps": [
+        {
+          "do": "script",
+          "route": "ruleset",
+          "answers": [
+            {
+              "body": "{\"flags\":[{\"key\":\"ratio\",\"variations\":[1.5, 3],\"on\":true,\"offVariation\":0,\"targets\":[],\"prerequisites\":[],\"rules\":[],\"fallthrough\":{\"variation\":0},\"salt\":\"s\",\"version\":1},{\"key\":\"two\",\"variations\":[2.0, 3],\"on\":true,\"offVariation\":0,\"targets\":[],\"prerequisites\":[],\"rules\":[],\"fallthrough\":{\"variation\":0},\"salt\":\"s\",\"version\":1},{\"key\":\"huge\",\"variations\":[1e20, 3],\"on\":true,\"offVariation\":0,\"targets\":[],\"prerequisites\":[],\"rules\":[],\"fallthrough\":{\"variation\":0},\"salt\":\"s\",\"version\":1},{\"key\":\"whole\",\"variations\":[4, 3],\"on\":true,\"offVariation\":0,\"targets\":[],\"prerequisites\":[],\"rules\":[],\"fallthrough\":{\"variation\":0},\"salt\":\"s\",\"version\":1}],\"segments\":[]}",
+              "headers": {
+                "ETag": "\"ints\""
+              }
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {
+            "stream": false
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "evaluate",
+          "flag": "two",
+          "fallback": 7,
+          "accessor": "int",
+          "expect": {
+            "value": 2,
+            "variationIndex": 0,
+            "reason": {
+              "kind": "FALLTHROUGH"
+            }
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "whole",
+          "fallback": 7,
+          "accessor": "int",
+          "expect": {
+            "value": 4,
+            "variationIndex": 0
+          }
+        }
+      ]
+    }
+  ]
+}
