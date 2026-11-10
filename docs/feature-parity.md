@@ -14,8 +14,8 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Metric | ToggleSlash | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | ✅ yes | 26 | 63 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
-| 🟡 partial | 9 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
-| ❌ no | 31 | 3 | 9 | 7 | 6 | 7 | 7 | 9 | 17 |
+| 🟡 partial | 10 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
+| ❌ no | 30 | 3 | 9 | 7 | 6 | 7 | 7 | 9 | 17 |
 
 ## Matrix
 
@@ -90,7 +90,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Browser SDKs | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Mobile SDKs | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Edge SDKs | ❌ | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ | 🟡 | ✅ |
-| OpenFeature providers | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | 🟡 | 🟡 |
+| OpenFeature providers | 🟡 | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | 🟡 | 🟡 |
 | Streaming updates | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ | ✅ | 🟡 |
 | Polling fallback | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Bootstrap and offline mode | 🟡 | ✅ | 🟡 | 🟡 | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -193,7 +193,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Browser SDKs | ❌ | none |
 | Mobile SDKs | ❌ | none |
 | Edge SDKs | ❌ | none |
-| OpenFeature providers | ❌ | none |
+| OpenFeature providers | 🟡 | `path:packages/sdk-openfeature`<br>`test:packages/sdk-openfeature/test/provider.test.ts`<br>A server-side TypeScript provider over the SDK; no provider events, and no browser or other-language providers. |
 | Streaming updates | ✅ | `api:/sdk/v1/ruleset`<br>`api:/sdk/v1/stream`<br>`path:packages/sdk`<br>`doc:docs/sdk.md`<br>SSE carries the ETag only and the SDK refetches; one server process only. |
 | Polling fallback | ✅ | `path:packages/sdk`<br>`doc:docs/sdk.md`<br>`test:packages/sdk/test/status.test.ts` |
 | Bootstrap and offline mode | 🟡 | `path:packages/sdk`<br>`doc:docs/sdk.md`<br>The SDK keeps the last ruleset in memory but has no explicit bootstrap input. |

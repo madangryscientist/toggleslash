@@ -1069,8 +1069,12 @@
       "name": "OpenFeature providers",
       "description": "Use the CNCF OpenFeature API through a provider.",
       "toggleslash": {
-        "status": "no",
-        "evidence": []
+        "status": "partial",
+        "evidence": [
+          "path:packages/sdk-openfeature",
+          "test:packages/sdk-openfeature/test/provider.test.ts"
+        ],
+        "note": "A server-side TypeScript provider over the SDK; no provider events, and no browser or other-language providers."
       },
       "competitors": {
         "launchdarkly": "yes",

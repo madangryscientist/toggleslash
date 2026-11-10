@@ -1,0 +1,20 @@
+{
+  "name": "@hackcove/toggleslash-sdk-openfeature",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A server-side OpenFeature provider over the ToggleSlash TypeScript SDK.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@hackcove/toggleslash-sdk": "workspace:*",
+    "@openfeature/core": "1.12.0",
+    "@openfeature/server-sdk": "1.23.0"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.4",
+    "vitest": "5.0.5"
+  }
+}

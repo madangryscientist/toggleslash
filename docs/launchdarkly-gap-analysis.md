@@ -244,7 +244,7 @@ Android, C++, Flutter, iOS, React Native and Roku; edge for Akamai, Cloudflare, 
 AI SDKs for .NET, Go, Node.js, Python and Ruby; and OpenFeature providers.
 
 ToggleSlash has **one**: `packages/sdk`, TypeScript server-side. The C# evaluator is not a public
-SDK. There is no browser SDK, no mobile SDK, no edge SDK and no OpenFeature provider.
+SDK. There is no browser SDK, no mobile SDK, no edge SDK. An OpenFeature provider (`packages/sdk-openfeature`) wraps the TypeScript SDK.
 
 This is the distribution gap. A feature-flag service is bought by the language you already use. One
 SDK means one kind of buyer.
@@ -583,7 +583,7 @@ Legend: **Yes** = shipped; **Partial** = some of it; **No** = absent.
 | Mobile SDKs | 7 | No |
 | Edge SDKs | 4 | No |
 | AI SDKs | 5 | No |
-| OpenFeature providers | Yes | No |
+| OpenFeature providers | Yes | Server TS only |
 | Streaming updates | Yes | Yes (SSE, single process) |
 | Polling fallback | Yes | Yes |
 | Bootstrap / offline mode | Yes | No |
