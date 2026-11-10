@@ -1069,7 +1069,7 @@
               "clauses": [
                 {
                   "attribute": "a",
-                  "op": "matches",
+                  "op": "regex",
                   "values": ["x"]
                 }
               ],

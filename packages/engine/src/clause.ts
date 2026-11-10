@@ -1,6 +1,7 @@
 import { type Contexts, DEFAULT_KIND, type KindContext } from "./context.ts";
 import { toInstant } from "./date.ts";
 import { parseReference } from "./reference.ts";
+import { compilePattern, patternMatches } from "./regex.ts";
 import { compareSemanticVersions, parseSemanticVersion } from "./semver.ts";
 import { isRecord } from "./validate.ts";
 import type { AttributeClause, AttributeOp, ClauseValue } from "./validate.ts";
@@ -39,7 +40,14 @@ function compare(attribute: unknown, value: ClauseValue): number | null {
   return null;
 }
 
+/** `matches`: a valid pattern and a match somewhere in the candidate. Compiled per call. */
+function matchesPattern(attribute: string, value: string): boolean {
+  const pattern = compilePattern(value);
+  return pattern !== null && patternMatches(pattern, attribute);
+}
+
 function matchesString(op: AttributeOp, attribute: string, value: string): boolean {
+  if (op === "matches") return matchesPattern(attribute, value);
   if (op === "contains") return attribute.includes(value);
   if (op === "startsWith") return attribute.startsWith(value);
   return attribute.endsWith(value);
@@ -71,6 +79,13 @@ function matchesDate(op: AttributeOp, attribute: unknown, value: ClauseValue): b
   return op === "before" ? candidate < target : candidate > target;
 }
 
+const STRING_OPS: ReadonlySet<AttributeOp> = new Set<AttributeOp>([
+  "contains",
+  "startsWith",
+  "endsWith",
+  "matches",
+]);
+
 const TYPED_OPS: ReadonlySet<AttributeOp> = new Set<AttributeOp>([
   "semverEq",
   "semverLt",
@@ -92,7 +107,7 @@ function matchesValue(op: AttributeOp, attribute: unknown, value: ClauseValue): 
   if (op === "in") {
     return typeof attribute === "boolean" ? attribute === value : compare(attribute, value) === 0;
   }
-  if (op === "contains" || op === "startsWith" || op === "endsWith") {
+  if (STRING_OPS.has(op)) {
     return (
       typeof attribute === "string" &&
       typeof value === "string" &&

@@ -568,8 +568,9 @@
       "name": "Regex operator",
       "description": "Match an attribute against a regular expression.",
       "toggleslash": {
-        "status": "no",
-        "evidence": []
+        "status": "partial",
+        "evidence": ["doc:docs/evaluation.md", "test:fixtures/evaluation/regex.json"],
+        "note": "Both evaluators run the matches op on a linear-time engine, but the server refuses to save a matches clause and the dashboard has no editor for one yet."
       },
       "competitors": {
         "launchdarkly": "yes",
