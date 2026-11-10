@@ -15,6 +15,8 @@ what it cannot see.
 - [ ] `$L/bin/test` runs every vector in `fixtures/evaluation/*.json` but `buckets.json`, read from the
   repository at test time, and every pin in `buckets.json` (`uint32` and `bucket`), and all pass; its count
   equals the phase 2 count command's (evaluation.md, "The vectors").
+- [ ] `$L/bin/test` passes 10 times in a row, and once more with the CPU loaded (one busy loop per core),
+  with the counts in `RUN.md`: a timer test that races the SDK's loops fails only under load.
 - [ ] The harness exits 0, with the only skips the 2 named vectors and, without `integer-accessor`, the 2
   scenarios that require it (sdk-test-service.md, "Running it").
 
@@ -58,7 +60,7 @@ Each line is a native test in `$L`, named in `RUN.md`.
 
 - [ ] Every operation of contract 2 called from many threads at once, `close` racing `variation`, and two
   `close` calls racing, with no error, deadlock or data race; under the race detector where the language has
-  one (contract 6.1); a language with none says so in `RUN.md` and names the stress test that stands in.
+  one (contract 6.1); a language with none says so in `RUN.md` and names the stress test that stands in (many threads, every operation, `close` racing, a bound on the wait).
   A single-threaded runtime instead tests that `variation` returns without yielding to
   the event loop (contract 6, "Single-threaded runtimes").
 - [ ] `variation` and `variationDetail` return within a bound while a ruleset request hangs, and while a
@@ -98,7 +100,8 @@ Each line is a native test in `$L`, named in `RUN.md`.
 - [ ] The SDK sends no telemetry and adds no header that identifies a user or a machine: a search of the
   source for request headers finds only `Authorization`, `Accept`, `If-None-Match` and `Content-Type`.
   Headers the HTTP client adds on its own (`User-Agent`, `Accept-Encoding`, `Host`, `Content-Length`,
-  `Connection`) are allowed when `RUN.md` lists each with why it does not identify a user or a machine;
+  `Connection`) are allowed when `RUN.md` lists each with why it does not identify a user or a machine
+  (capture one request on a loopback listener and list what the client added);
   a `User-Agent` that names the host or user, not just the library and version, is not (contract 12).
 - [ ] Every extra beyond the contract is one contract 13 allows, and none weakens contract 5 or sends
   anything new (contract 13).
