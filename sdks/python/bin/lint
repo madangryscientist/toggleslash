@@ -1,0 +1,12 @@
+#!/bin/sh
+# The native lint and format check. Any finding fails; there is no warning level.
+set -eu
+cd "$(dirname "$0")/.."
+if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
+  run() { mise exec -- "$@"; }
+else
+  run() { "$@"; }
+fi
+run ruff --version
+run ruff check --no-cache .
+run ruff format --check --no-cache .
