@@ -7,7 +7,7 @@ namespace ToggleSlash.Evaluation;
 /// reads the same way as the TypeScript one. Strings are read as code points by hand, not as <c>Rune</c>s,
 /// because a lone surrogate is a code point of its own here and <c>Rune</c> turns it into U+FFFD.
 /// </summary>
-internal sealed class Pattern
+public sealed class Pattern
 {
     private const int MaxLength = 1024;
     private const int MaxSize = 10000;

@@ -13,8 +13,8 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 
 | Metric | ToggleSlash | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| ✅ yes | 27 | 63 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
-| 🟡 partial | 12 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
+| ✅ yes | 28 | 63 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
+| 🟡 partial | 11 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
 | ❌ no | 27 | 3 | 9 | 7 | 6 | 7 | 7 | 9 | 17 |
 
 ## Matrix
@@ -50,7 +50,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Prerequisites and dependencies | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | 🟡 | ❌ | ❌ |
 | Multi-context and context kinds | ✅ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 |
 | Nested attribute paths | ✅ | ✅ | ❌ | ❌ | 🟡 | ❌ | ❌ | 🟡 | ❌ |
-| Regex operator | 🟡 | ✅ | ✅ | 🟡 | ✅ | 🟡 | 🟡 | ✅ | 🟡 |
+| Regex operator | ✅ | ✅ | ✅ | 🟡 | ✅ | 🟡 | 🟡 | ✅ | 🟡 |
 | Semantic-version operator | ✅ | ✅ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | ❌ | ❌ |
 | Date and time operator | ✅ | ✅ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 |
 | Percentage rollouts | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -153,7 +153,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Prerequisites and dependencies | ✅ | `api:/api/v1/projects/{project}/flags/{flag}/environments/{env}`<br>`doc:docs/evaluation.md` |
 | Multi-context and context kinds | ✅ | `doc:docs/evaluation.md`<br>`test:fixtures/evaluation/kinds.json`<br>`api:/api/v1/projects/{project}/flags/{flag}/environments/{env}`<br>`api:/api/v1/projects/{project}/environments/{env}/segments`<br>`api:/api/v1/projects/{project}/environments/{env}/segments/{segment}`<br>`dashboard:/flags/$flag`<br>`dashboard:/segments`<br>Kinds are free strings typed where they are used, not stored resources. |
 | Nested attribute paths | ✅ | `doc:docs/evaluation.md`<br>`test:fixtures/evaluation/attributes.json` |
-| Regex operator | 🟡 | `doc:docs/evaluation.md`<br>`test:fixtures/evaluation/regex.json`<br>Both evaluators run the matches op on a linear-time engine, but the server refuses to save a matches clause and the dashboard has no editor for one yet. |
+| Regex operator | ✅ | `doc:docs/evaluation.md`<br>`test:fixtures/evaluation/regex.json`<br>`path:apps/server/ToggleSlash.Server/Targeting/TargetingValidator.cs`<br>`path:apps/web/src/targeting/model.ts` |
 | Semantic-version operator | ✅ | `doc:docs/evaluation.md`<br>`test:fixtures/evaluation/semver.json` |
 | Date and time operator | ✅ | `doc:docs/evaluation.md`<br>`test:fixtures/evaluation/dates.json` |
 | Percentage rollouts | ✅ | `doc:docs/evaluation.md`<br>`test:fixtures/evaluation/rollouts.json` |

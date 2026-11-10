@@ -1,6 +1,6 @@
 /** The PUT body the editor builds from a draft, and the shape check on it when it comes back. Pure. */
 import { isRecord } from "../api/json.ts";
-import { SEGMENT_OP, SEMVER_OPS } from "./model.ts";
+import { MATCHES_OP, SEGMENT_OP, SEMVER_OPS } from "./model.ts";
 import { weightOf, type ClauseDraft, type Draft, type ServeDraft } from "./draft.ts";
 import type { FieldProblem } from "./problems.ts";
 import { isValidKind, parseKeys, parseStrings, parseValues } from "./values.ts";
@@ -75,8 +75,9 @@ function serveWire(
   };
 }
 
-function isSemverOp(op: string): boolean {
-  return SEMVER_OPS.some((semver) => semver === op);
+/** The ops whose values are always strings: versions and patterns. */
+function isStringOp(op: string): boolean {
+  return op === MATCHES_OP || SEMVER_OPS.some((semver) => semver === op);
 }
 
 function clauseWire(
@@ -86,8 +87,8 @@ function clauseWire(
 ): Record<string, unknown> {
   const negate = c.negate ? { negate: true } : {};
   if (c.op === SEGMENT_OP) return { op: c.op, values: parseStrings(c.values), ...negate };
-  // A version is a string even when it looks like a number: a bare `2.1` must not be sent as 2.1.
-  const values = isSemverOp(c.op) ? parseStrings(c.values) : parseValues(c.values);
+  // A version or a pattern is a string even when it looks like a number: a bare `2.1` must not be sent as 2.1.
+  const values = isStringOp(c.op) ? parseStrings(c.values) : parseValues(c.values);
   return {
     op: c.op,
     attribute: c.attribute.trim(),

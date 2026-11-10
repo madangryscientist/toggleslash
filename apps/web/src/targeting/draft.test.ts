@@ -143,6 +143,21 @@ describe("toDraft and toWire", () => {
     expect(rule).toContain('"op":"semverGte","attribute":"appVersion","values":["2.1","1.2.3"]');
     expect(rule).toContain('"op":"gte","attribute":"age","values":[2.1,"1.2.3"]');
   });
+  test("a number typed under matches is sent as a string", () => {
+    const draft = toDraft(config, 2);
+    draft.rules[0]?.clauses.push({
+      op: "matches",
+      attribute: "email",
+      values: "42, true",
+      negate: false,
+      contextKind: "",
+    });
+    const sent = toWire(draft);
+    if (!sent.ok) throw new Error("fixture");
+    expect(JSON.stringify(sent.wire.rules[0])).toContain(
+      '"op":"matches","attribute":"email","values":["42","true"]',
+    );
+  });
   test("a date typed under before goes out as one string, and a bare number as a number", () => {
     const draft = toDraft(config, 2);
     draft.rules[0]?.clauses.push({
@@ -176,6 +191,26 @@ describe("toDraft and toWire", () => {
       clauses: [
         { op: "semverGte", attribute: "appVersion", values: ["2.1", "1.2.3"], negate: true },
       ],
+      variation: 0,
+    });
+  });
+  test("a saved matches clause survives draft to wire unchanged, a comma pattern quoted in the draft", () => {
+    const values = ["\\d+", "a{1,3}"];
+    const saved: Config = {
+      ...config,
+      rules: [
+        {
+          clauses: [{ op: "matches", attribute: "email", values, negate: false }],
+          serve: { kind: "variation", variation: 0 },
+        },
+      ],
+    };
+    const draft = toDraft(saved, 3);
+    expect(draft.rules[0]?.clauses[0]?.values).toBe('\\d+, "a{1,3}"');
+    const sent = toWire(draft);
+    if (!sent.ok) throw new Error("fixture");
+    expect(sent.wire.rules[0]).toEqual({
+      clauses: [{ op: "matches", attribute: "email", values }],
       variation: 0,
     });
   });
