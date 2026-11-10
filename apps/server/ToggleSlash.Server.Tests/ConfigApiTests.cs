@@ -319,7 +319,7 @@ public sealed class ConfigApiTests : IDisposable
         { "rules", """[{"clauses":[],"rollout":{"variations":[{"variation":0,"weight":1}]}}]""", "a rule rollout that does not sum to 100000" },
         { "rules", """[{"clauses":[]}]""", "a rule that serves nothing" },
         { "rules", """[{"variation":0}]""", "a rule with no clauses field" },
-        { "rules", """[{"clauses":[{"attribute":"a","op":"matches","values":["x"]}],"variation":0}]""", "an unknown operator" },
+        { "rules", """[{"clauses":[{"attribute":"a","op":"regex","values":["x"]}],"variation":0}]""", "an unknown operator" },
         { "rules", """[{"clauses":[{"attribute":"","op":"in","values":["x"]}],"variation":0}]""", "an empty attribute" },
         { "rules", """[{"clauses":[{"attribute":"a","op":"in","values":[{}]}],"variation":0}]""", "a clause value that is an object" },
         { "rules", """[{"clauses":[{"attribute":"a","op":"in","values":["x"],"negate":"yes"}],"variation":0}]""", "a negate that is not a boolean" },
@@ -412,6 +412,57 @@ public sealed class ConfigApiTests : IDisposable
         await Seed("dark-mode", "base");
 
         await ApiServer.Expect(HttpStatusCode.OK, await Put("dark-mode", Body(1, ("rules", SemverRule("[]")))));
+    }
+
+    /// <summary>An unmatched group, a bare quantifier, an escape the dialect lacks, a bare ]: the parser has its own vectors.</summary>
+    public static TheoryData<string> BadPatterns => ["(", "*a", "\\b", "a]"];
+
+    private static string MatchesRule(string valuesJson) => SemverRule(valuesJson, "matches");
+
+    [Theory]
+    [MemberData(nameof(BadPatterns))]
+    public async Task A_matches_clause_with_a_value_that_is_not_a_pattern_is_400_naming_the_value(string value)
+    {
+        await Seed("dark-mode", "base");
+
+        var response = await Put("dark-mode", Body(1, ("rules", MatchesRule($"[\"a\",{JsonSerializer.Serialize(value)}]"))));
+
+        await ExpectBadRequest(response);
+        var message = (await ApiServer.Json(response)).GetProperty("error").GetProperty("message").GetString();
+        Assert.Contains("rules[0].clauses[0].values[1]", message);
+        Assert.Contains("not a valid pattern", message);
+        Assert.Equal(1, await Version("dark-mode"));
+    }
+
+    [Fact]
+    public async Task A_matches_clause_with_a_value_that_is_not_a_string_is_400()
+    {
+        await Seed("dark-mode", "base");
+
+        var response = await Put("dark-mode", Body(1, ("rules", MatchesRule("[42]"))));
+
+        await ExpectBadRequest(response);
+        Assert.Contains("rules[0].clauses[0].values[0]", (await ApiServer.Json(response)).GetProperty("error").GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task A_matches_clause_with_patterns_saves_and_reads_back()
+    {
+        await Seed("dark-mode", "base");
+        var rules = MatchesRule("[\"^\\\\d+$\",\"a{1,3}\"]");
+
+        await ApiServer.Expect(HttpStatusCode.OK, await Put("dark-mode", Body(1, ("rules", rules))));
+
+        var read = await ApiServer.Json(await server.Get(Config("dark-mode")));
+        Assert.Equal(JsonDocument.Parse(rules).RootElement.GetRawText(), read.GetProperty("rules").GetRawText());
+    }
+
+    [Fact]
+    public async Task A_matches_clause_with_no_values_saves()
+    {
+        await Seed("dark-mode", "base");
+
+        await ApiServer.Expect(HttpStatusCode.OK, await Put("dark-mode", Body(1, ("rules", MatchesRule("[]")))));
     }
 
     /// <summary>Not instants: no offset, no seconds, lowercase, a space, a bare date, a bad day, an Arabic-Indic digit.</summary>

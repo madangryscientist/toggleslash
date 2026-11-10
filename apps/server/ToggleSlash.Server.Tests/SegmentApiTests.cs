@@ -303,6 +303,43 @@ public sealed class SegmentApiTests : IDisposable
     }
 
     [Theory]
+    [InlineData("\"(\"")]
+    [InlineData("\"*a\"")]
+    [InlineData("42")]
+    public async Task A_matches_rule_with_a_value_that_is_not_a_pattern_is_400_naming_the_value(string valueJson)
+    {
+        await Seed();
+        var body = $$"""{"key":"s","included":[],"excluded":[],"rules":[{"clauses":[{"attribute":"email","op":"matches","values":["a",{{valueJson}}]}]}]}""";
+
+        var response = await RawPost(Prod, body);
+
+        await ExpectBadRequest(response);
+        Assert.Contains("rules[0].clauses[0].values[1]", (await ApiServer.Json(response)).GetProperty("error").GetProperty("message").GetString());
+        Assert.Equal(0, (await ApiServer.Json(await server.Get(Prod))).GetArrayLength());
+    }
+
+    [Fact]
+    public async Task A_matches_rule_with_patterns_saves_on_create_and_on_put()
+    {
+        await Seed();
+        var rules = """[{"clauses":[{"attribute":"email","op":"matches","values":["@example\\.com$","a{1,3}"]}],"weight":50000}]""";
+
+        var created = await RawPost(Prod, $$"""{"key":"s","included":[],"excluded":[],"rules":{{rules}}}""");
+
+        await ApiServer.Expect(HttpStatusCode.Created, created);
+        Assert.Equal(rules, (await ApiServer.Json(created)).GetProperty("rules").GetRawText());
+        await ApiServer.Expect(HttpStatusCode.OK, await Raw(HttpMethod.Put, $"{Prod}/s", $$"""{"included":[],"excluded":[],"rules":{{rules}},"version":1}"""));
+    }
+
+    [Fact]
+    public async Task A_matches_rule_with_no_values_saves()
+    {
+        await Seed();
+
+        await ApiServer.Expect(HttpStatusCode.Created, await RawPost(Prod, """{"key":"s","included":[],"excluded":[],"rules":[{"clauses":[{"attribute":"email","op":"matches","values":[]}]}]}"""));
+    }
+
+    [Theory]
     [InlineData("\"2026-01-01T00:00:00\"")]
     [InlineData("\"2026-01-01\"")]
     [InlineData("true")]

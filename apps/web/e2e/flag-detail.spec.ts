@@ -85,6 +85,26 @@ test("a semver operator is picked from the menu and a bare version is saved as a
   });
 });
 
+test("a matches operator is picked from the menu and a pattern with a comma is saved as a string", async ({
+  page,
+  request,
+}) => {
+  await openCheckout(page);
+
+  await page.getByTestId("rule-0-clause-0-op").selectOption("matches");
+  await page.getByTestId("rule-0-clause-0-values").fill('\\d+, "a{1,3}"');
+  await page.getByTestId("save-targeting").click();
+
+  await expect(page.getByTestId("notice")).toContainText("Targeting saved");
+  await page.reload();
+  await expect(page.getByTestId("rule-0-clause-0-op")).toHaveValue("matches");
+  await expect(page.getByTestId("rule-0-clause-0-values")).toHaveValue('\\d+, "a{1,3}"');
+  const stored = await request.get(CONFIG, { headers: AUTH });
+  expect(await stored.json()).toMatchObject({
+    rules: [{ clauses: [{ op: "matches", values: ["\\d+", "a{1,3}"] }] }],
+  });
+});
+
 test("adds a rule and a prerequisite and turns targeting off", async ({ page, request }) => {
   await openCheckout(page);
   await page.getByTestId("add-rule").click();

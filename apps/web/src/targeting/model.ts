@@ -57,6 +57,8 @@ export const WEIGHT_TOTAL = 100_000;
 
 /** The ops that compare versions: their values are version strings, never numbers or booleans. */
 export const SEMVER_OPS = ["semverEq", "semverLt", "semverLte", "semverGt", "semverGte"] as const;
+/** The op that tests a string against a pattern: its values are pattern strings, never numbers or booleans. */
+export const MATCHES_OP = "matches";
 /** The ops that compare points in time: their values are ISO-8601 strings with an offset, or Unix milliseconds. */
 export const DATE_OPS = ["before", "after"] as const;
 export const ATTRIBUTE_OPS = [
@@ -69,6 +71,7 @@ export const ATTRIBUTE_OPS = [
   "gt",
   "gte",
   ...SEMVER_OPS,
+  MATCHES_OP,
   ...DATE_OPS,
 ] as const;
 export const SEGMENT_OP = "segmentMatch";

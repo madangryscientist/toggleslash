@@ -13,7 +13,7 @@ internal sealed class TargetingValidator(int variationCount)
 {
     public const int MaxWeight = 100_000;
 
-    private static readonly string[] AttributeOps = ["in", "contains", "startsWith", "endsWith", "lt", "lte", "gt", "gte", "semverEq", "semverLt", "semverLte", "semverGt", "semverGte", "before", "after"];
+    private static readonly string[] AttributeOps = ["in", "contains", "startsWith", "endsWith", "lt", "lte", "gt", "gte", "semverEq", "semverLt", "semverLte", "semverGt", "semverGte", "matches", "before", "after"];
 
     /// <summary>Every prerequisite, in order, for the endpoint to resolve and to check for cycles.</summary>
     public List<PrerequisiteReference> Prerequisites { get; } = [];
@@ -280,6 +280,7 @@ internal sealed class TargetingValidator(int variationCount)
             return $"{path}.values must be an array.";
         }
         var isSemver = name.StartsWith("semver", StringComparison.Ordinal);
+        var isMatches = name == "matches";
         var isDate = name is "before" or "after";
         var index = 0;
         foreach (var value in valuesElement.EnumerateArray())
@@ -302,6 +303,16 @@ internal sealed class TargetingValidator(int variationCount)
                 if (value.ValueKind != JsonValueKind.String || SemanticVersion.Parse(value.GetString()!) is null)
                 {
                     return $"{path}.values[{index}] must be a string holding a semantic version, such as \"1.2.3\".";
+                }
+                index++;
+                continue;
+            }
+            if (isMatches)
+            {
+                // A typo here would silently never match, so a matches clause must hold valid patterns.
+                if (value.ValueKind != JsonValueKind.String || Pattern.Compile(value.GetString()!) is null)
+                {
+                    return $"{path}.values[{index}] is not a valid pattern: it must be a string in the pattern syntax of the \"Patterns\" section of docs/evaluation.md.";
                 }
                 index++;
                 continue;
