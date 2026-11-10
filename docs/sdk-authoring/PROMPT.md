@@ -74,9 +74,10 @@ Every SDK has the same three executable `sh` scripts, so CI and people run any l
 Each starts with `#!/bin/sh` and `set -eu`, does `cd "$(dirname "$0")/.."` before anything else, calls
 each tool through `mise exec -- <tool>` when `mise` is on `PATH` (a mise shim fails in a directory where
 its tool is not active, and the root `.tool-versions` is a different set) and plainly otherwise (in CI a
-setup step puts the tools on `PATH`; `sdks/python/bin/*` and `sdks/go/bin/*` are examples), and needs nothing beyond what `$L/mise.toml` pins and a stock
+setup step puts the tools on `PATH`), and needs nothing beyond what `$L/mise.toml` pins and a stock
 `ubuntu-latest` runner has (`sh`, a C compiler). Build output goes in a directory `$L/.gitignore` ignores.
-`bin/test` builds every time (the test service included), never reports a cached result, runs under the
+`bin/test` builds every time (the test service included; in an interpreted language that is a byte-compile or
+syntax check of every source, test and test-service file, so a syntax error in a file no test imports still fails), never reports a cached result, runs under the
 language's race detector where it has one, and prints `vectors: <n> pins: <n>` even when all pass. `bin/lint`
 runs native tools only. `bin/test-service` ends with `exec` so the harness's kill reaches the service itself. In a
 compiled language `bin/test` builds the test service's binary as its last step, and `bin/test-service` runs that binary and builds
@@ -288,7 +289,8 @@ server recorded; read those before you change code.
    and every tool the `bin/` scripts call. Either the language's official setup action, with the same
    version as `mise.toml` and a comment saying so, or `jdx/mise-action` limited to the tools in
    `$L/mise.toml` (unlimited, it also installs the root `.tool-versions`: .NET and a second Bun). Which one
-   is a decision. Copy the checkout and Bun lines and `BUN_VERSION` from `ci.yml` as they are when you run.
+   is a decision. For `jdx/mise-action` the inputs are `working_directory: sdks/<lang>` and `install_args` naming
+   the tools, so a run does not read a sibling's workflow. Copy the checkout and Bun lines and `BUN_VERSION` from `ci.yml` as they are when you run.
 
 ```yaml
 name: SDK (<Language>)
@@ -349,7 +351,10 @@ dash check reads only files git tracks, hence the `git add`):
    point.
 2. Write `$L/RUN.md` from [`RUN-TEMPLATE.md`](RUN-TEMPLATE.md). Be candid: a guess you leave out is a gap
    the next run falls into again. A decision is a choice this prompt left open on purpose; a guess is a
-   point where the prompt or a document should have told you and did not.
+   point where the prompt or a document should have told you and did not. Before listing one, search the
+   contract, the protocol page, the checklist and the language notes for it: a point one of them answers is not a
+   guess (cite it in `DESIGN.md` if it mattered). A tool the prompt does not name (a test framework, a linter,
+   a type checker) is a decision, not a guess.
 
 **Check.** The report has every section, and nothing outside your two paths changed:
 

@@ -65,6 +65,8 @@ Each line is a native test in `$L`, named in `RUN.md`.
   the event loop (contract 6, "Single-threaded runtimes").
   In a runtime with a global interpreter lock, each worker yields every turn, or the test starves the code
   it checks. One test may cover the many-thread race and the two-close race if `RUN.md` names both.
+- [ ] SHOULD: an `https` URL reaches the TLS path in a test with a local certificate, or `RUN.md` says the TLS
+  path is untested.
 - [ ] `variation` and `variationDetail` return within a bound while a ruleset request hangs, and while a
   usage flush hangs (contract 5.2, 6.2).
 - [ ] A reader sees one ruleset or the other across a swap: a hook's `etag` and `flagVersion` belong to the
