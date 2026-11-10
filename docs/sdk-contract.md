@@ -114,7 +114,8 @@ wants). A **null served value against a non-null fallback is a mismatch.**
 
 **Typed languages (new).** A language with a separate integer type MUST apply one more rule to an
 integer accessor: if the served number has a fractional part, or is outside the integer type's range,
-the caller gets its fallback with `TYPE_MISMATCH`. `2.0` counts as the integer `2`. This is deliberately
+the caller gets its fallback with `TYPE_MISMATCH`. A language whose integer type is unbounded (Python,
+Ruby) uses the signed 64-bit range. `2.0` counts as the integer `2`. This is deliberately
 stricter than the TypeScript SDK, which has one number type.
 
 A language MAY choose any of these shapes, and its mapping table names the one it chose: typed methods
@@ -133,7 +134,8 @@ rules of this section, and `variationDetail` exists for each.
    `status` is the same.
 3. **`ready` settles after the first attempt.** It answers true if a ruleset has loaded and false if
    not, and it does not wait for the server to come back: it is bounded by `requestTimeout`. It MAY be
-   called any number of times, before or after the load, and gives the same answer. After `close` it
+   called any number of times, before or after the load, and gives the same answer: the answer is fixed when the first attempt settles, so a later load does not
+   turn a false into a true. After `close` it
    answers false if it had not settled.
 4. **Last good ruleset.** While the server is unreachable, the SDK keeps evaluating from the last ruleset
    it held. At start, before any load, every evaluation is the fallback with `NOT_READY` and the SDK keeps
@@ -409,7 +411,8 @@ thread calls it is the SDK's choice, and the language's mapping documents it.
 4. send the final usage flush ([section 9](#9-usage-counts)). It is bounded by `requestTimeout` per
    request, and it does not wait out a `Retry-After`: if a hold is still in force, the counts still
    pending are lost, and `onError` is told (the TypeScript SDK's message is "closed with N usage counts
-   unsent: the server asked to wait").
+   unsent: the server asked to wait", where N is the number of pending entries, one per flag, variation and
+   day, not the sum of the counts).
 
 `close` never fails, and it is **safe to call twice** (or concurrently): every call waits for the same
 shutdown and returns when it is done. A `ready` that had not settled settles false.

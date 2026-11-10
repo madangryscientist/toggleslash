@@ -71,9 +71,10 @@ Every SDK has the same three executable `sh` scripts, so CI and people run any l
 | `$L/bin/test` | builds, then runs the native tests, the vectors included | 0 when all pass |
 | `$L/bin/test-service` | starts the test service in the foreground | runs until killed |
 
-Each starts with `#!/bin/sh` and `set -eu`, does `cd "$(dirname "$0")/.."` before anything else, calls the
-tools by their plain names (on this machine mise's shims resolve them from `$L/mise.toml`; in CI the
-workflow's setup step puts them on `PATH`), and needs nothing beyond what `$L/mise.toml` pins and a stock
+Each starts with `#!/bin/sh` and `set -eu`, does `cd "$(dirname "$0")/.."` before anything else, calls
+each tool through `mise exec -- <tool>` when `mise` is on `PATH` (a mise shim fails in a directory where
+its tool is not active, and the root `.tool-versions` is a different set) and plainly otherwise (in CI a
+setup step puts the tools on `PATH`; `sdks/python/bin/*` are the example), and needs nothing beyond what `$L/mise.toml` pins and a stock
 `ubuntu-latest` runner has (`sh`, a C compiler). Build output goes in a directory `$L/.gitignore` ignores.
 `bin/test` builds every time (the test service included), never reports a cached result, runs under the
 language's race detector where it has one, and prints `vectors: <n> pins: <n>` even when all pass. `bin/lint`
@@ -248,8 +249,9 @@ page says and a cold reader misses:
   kind: every vector runs through it.
 - **Capabilities.** Advertise `integer-accessor` when the language has an integer type distinct from its
   floating type: Python's `int` and Ruby's `Integer` count, as do Go, Java and C#. The fractional-part rule
-  of contract section 4 then applies. The range rule applies only where the integer type is bounded;
-  Python and Ruby integers are not, so it has nothing to check there.
+  of contract section 4 then applies. The range rule applies to every SDK that
+  advertises it, including Python and Ruby, whose integers are unbounded: bound the accessor to signed 64
+  bits, because the `huge` scenario in `evaluation.json` (1e20) expects `TYPE_MISMATCH`.
 
 **Check.** The harness exits 0. Its summary line reads `0 failed` twice, the only skipped scenarios are
 those a capability you do not advertise rules out (none if you advertise `integer-accessor`, otherwise 2),
@@ -264,13 +266,14 @@ server recorded; read those before you change code.
 
 ## Phase 5: package
 
-1. `$L/README.md`: a quickstart (install from a checkout of this repository, with no tag, create, `variation`, `close`), the
+1. `$L/.gitignore`: the language's build and cache output (phase 6's scope check stages with `git add -A`).
+2. `$L/README.md`: a quickstart (install from a checkout of this repository, with no tag, create, `variation`, `close`), the
    mapping table or a link to it in `DESIGN.md`, the guarantees as a short list (contract section 5), and
    how to run `bin/lint`, `bin/test` and the harness. It names no registry and no published package.
-2. `$L/bin/lint`: the native lint and format check, with no warnings allowed. The repository's own
+3. `$L/bin/lint`: the native lint and format check, with no warnings allowed. The repository's own
    formatter, `oxfmt`, checks every TOML, YAML and JSON file, `$L/mise.toml` included, through `bun run
    format:check` (not `bin/lint`): format those with `bunx oxfmt <file>`. If a native tool and `oxfmt` disagree about one file, that is a stuck point.
-3. `.github/workflows/sdk-<lang>.yml`, from this skeleton. Fill in only the toolchain step: pin every
+4. `.github/workflows/sdk-<lang>.yml`, from this skeleton. Fill in only the toolchain step: pin every
    action by its full commit SHA with the tag in a comment, as `ci.yml` does (`gh api
    repos/<owner>/<repo>/commits/<tag> --jq .sha` resolves one), and install the version `$L/mise.toml` pins
    and every tool the `bin/` scripts call. Either the language's official setup action, with the same
