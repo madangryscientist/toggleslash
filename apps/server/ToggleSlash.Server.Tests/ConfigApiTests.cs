@@ -414,6 +414,92 @@ public sealed class ConfigApiTests : IDisposable
         await ApiServer.Expect(HttpStatusCode.OK, await Put("dark-mode", Body(1, ("rules", SemverRule("[]")))));
     }
 
+    /// <summary>Not instants: no offset, no seconds, lowercase, a space, a bare date, a bad day, an Arabic-Indic digit.</summary>
+    public static TheoryData<string> BadDateStrings =>
+    [
+        "2026-01-01T00:00:00",
+        "2026-01-01T00:00Z",
+        "2026-01-01t00:00:00z",
+        "2026-01-01 00:00:00Z",
+        "2026-01-01",
+        "2023-02-29T00:00:00Z",
+        "2026-01-01T00:00:00\u0661Z",
+    ];
+
+    private static string DateRule(string valuesJson, string op = "before") =>
+        $$"""[{"clauses":[{"attribute":"signedUp","op":"{{op}}","values":{{valuesJson}}}],"variation":0}]""";
+
+    [Theory]
+    [MemberData(nameof(BadDateStrings))]
+    public async Task A_date_clause_with_a_string_that_is_not_an_instant_is_400_naming_the_value(string value)
+    {
+        await Seed("dark-mode", "base");
+
+        var response = await Put("dark-mode", Body(1, ("rules", DateRule($"[\"2026-01-01T00:00:00Z\",{JsonSerializer.Serialize(value)}]"))));
+
+        await ExpectBadRequest(response);
+        Assert.Contains("rules[0].clauses[0].values[1]", (await ApiServer.Json(response)).GetProperty("error").GetProperty("message").GetString());
+        Assert.Equal(1, await Version("dark-mode"));
+    }
+
+    [Theory]
+    [InlineData("true")]
+    [InlineData("null")]
+    [InlineData("{}")]
+    public async Task A_date_clause_with_a_value_that_is_not_a_string_or_number_is_400(string valueJson)
+    {
+        await Seed("dark-mode", "base");
+
+        var response = await Put("dark-mode", Body(1, ("rules", DateRule($"[{valueJson}]", "after"))));
+
+        await ExpectBadRequest(response);
+        Assert.Contains("rules[0].clauses[0].values[0]", (await ApiServer.Json(response)).GetProperty("error").GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task A_date_clause_with_a_number_that_is_not_finite_is_400()
+    {
+        await Seed("dark-mode", "base");
+
+        var response = await Put("dark-mode", Body(1, ("rules", DateRule("[1e999]"))));
+
+        await ExpectBadRequest(response);
+        Assert.Contains("rules[0].clauses[0].values[0]", (await ApiServer.Json(response)).GetProperty("error").GetProperty("message").GetString());
+    }
+
+    [Theory]
+    [InlineData("before")]
+    [InlineData("after")]
+    public async Task A_date_clause_with_a_string_and_a_number_saves_and_the_ruleset_carries_it(string op)
+    {
+        await Seed("dark-mode", "base");
+        var rules = DateRule("[\"2026-01-01T00:00:00Z\",1767225600000,\"2026-01-01T02:00:00.5+02:00\"]", op);
+
+        await ApiServer.Expect(HttpStatusCode.OK, await Put("dark-mode", Body(1, ("rules", rules))));
+
+        var read = await ApiServer.Json(await server.Get(Config("dark-mode")));
+        Assert.Equal(JsonDocument.Parse(rules).RootElement.GetRawText(), read.GetProperty("rules").GetRawText());
+        var key = await ApiServer.Json(await server.Post("/api/v1/projects/shop/environments/prod/keys", new { kind = "server", name = "s" }));
+        using var client = server.Server.CreateClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/sdk/v1/ruleset");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key.GetProperty("key").GetString());
+        var ruleset = await client.SendAsync(request);
+        await ApiServer.Expect(HttpStatusCode.OK, ruleset);
+        var flag = (await ApiServer.Json(ruleset)).GetProperty("flags").EnumerateArray().Single(f => f.GetProperty("key").GetString() == "dark-mode");
+        var clause = flag.GetProperty("rules")[0].GetProperty("clauses")[0];
+        Assert.Equal(op, clause.GetProperty("op").GetString());
+        Assert.Equal("2026-01-01T00:00:00Z", clause.GetProperty("values")[0].GetString());
+        Assert.Equal(1767225600000d, clause.GetProperty("values")[1].GetDouble());
+    }
+
+    [Fact]
+    public async Task A_date_clause_with_no_values_saves()
+    {
+        await Seed("dark-mode", "base");
+
+        await ApiServer.Expect(HttpStatusCode.OK, await Put("dark-mode", Body(1, ("rules", DateRule("[]")))));
+    }
+
     [Theory]
     [MemberData(nameof(LoneSurrogates))]
     public async Task A_lone_surrogate_is_400_not_500(string json)

@@ -66,10 +66,28 @@ internal static class ClauseMatcher
                 if (SemanticVersion.Parse(JsonStrings.Read(attribute)) is not { } candidate || SemanticVersion.Parse(value.String) is not { } target) return false;
                 var versionOrder = candidate.CompareTo(target);
                 return op == Op.SemverEq ? versionOrder == 0 : MatchesOrder(op, versionOrder);
+            case Op.Before or Op.After:
+                if (ToInstant(attribute) is not { } instant || ToInstant(value) is not { } limit) return false;
+                return op == Op.Before ? instant < limit : instant > limit;
             default:
                 return Compare(attribute, value) is { } order && MatchesOrder(op, order);
         }
     }
+
+    /// <summary>A finite number is Unix milliseconds, a string is parsed, anything else is not an instant.</summary>
+    private static double? ToInstant(JsonElement attribute) => attribute.ValueKind switch
+    {
+        JsonValueKind.Number => Validation.TryNumber(attribute, out var number) && double.IsFinite(number) ? number : null,
+        JsonValueKind.String => RfcInstant.Parse(JsonStrings.Read(attribute)),
+        _ => null,
+    };
+
+    private static double? ToInstant(ClauseValue value) => value.Kind switch
+    {
+        ValueKind.Number => double.IsFinite(value.Number) ? value.Number : null,
+        ValueKind.String => RfcInstant.Parse(value.String),
+        _ => null,
+    };
 
     /// <summary>-1, 0 or 1 for two finite numbers or two strings (by UTF-16 code unit); otherwise null.</summary>
     private static int? Compare(JsonElement attribute, ClauseValue value)

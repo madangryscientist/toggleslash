@@ -135,6 +135,20 @@ describe("toDraft and toWire", () => {
     expect(rule).toContain('"op":"semverGte","attribute":"appVersion","values":["2.1","1.2.3"]');
     expect(rule).toContain('"op":"gte","attribute":"age","values":[2.1,"1.2.3"]');
   });
+  test("a date typed under before goes out as one string, and a bare number as a number", () => {
+    const draft = toDraft(config, 2);
+    draft.rules[0]?.clauses.push({
+      op: "before",
+      attribute: "signedUp",
+      values: "2026-01-01T00:00:00Z, 1767225600000",
+      negate: false,
+    });
+    const sent = toWire(draft);
+    if (!sent.ok) throw new Error("fixture");
+    expect(JSON.stringify(sent.wire.rules[0])).toContain(
+      '"op":"before","attribute":"signedUp","values":["2026-01-01T00:00:00Z",1767225600000]',
+    );
+  });
   test("a saved semver clause survives draft to wire unchanged", () => {
     const saved: Config = {
       ...config,

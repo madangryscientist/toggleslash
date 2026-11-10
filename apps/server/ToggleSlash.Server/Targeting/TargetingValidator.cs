@@ -13,7 +13,7 @@ internal sealed class TargetingValidator(int variationCount)
 {
     public const int MaxWeight = 100_000;
 
-    private static readonly string[] AttributeOps = ["in", "contains", "startsWith", "endsWith", "lt", "lte", "gt", "gte", "semverEq", "semverLt", "semverLte", "semverGt", "semverGte"];
+    private static readonly string[] AttributeOps = ["in", "contains", "startsWith", "endsWith", "lt", "lte", "gt", "gte", "semverEq", "semverLt", "semverLte", "semverGt", "semverGte", "before", "after"];
 
     /// <summary>Every prerequisite, in order, for the endpoint to resolve and to check for cycles.</summary>
     public List<PrerequisiteReference> Prerequisites { get; } = [];
@@ -230,9 +230,22 @@ internal sealed class TargetingValidator(int variationCount)
             return $"{path}.values must be an array.";
         }
         var isSemver = name.StartsWith("semver", StringComparison.Ordinal);
+        var isDate = name is "before" or "after";
         var index = 0;
         foreach (var value in valuesElement.EnumerateArray())
         {
+            if (isDate)
+            {
+                // A typo here would silently never match, so a date clause must hold instants.
+                var valid = value.ValueKind == JsonValueKind.Number && TryFinite(value)
+                    || value.ValueKind == JsonValueKind.String && RfcInstant.Parse(value.GetString()!) is not null;
+                if (!valid)
+                {
+                    return $"{path}.values[{index}] must be a finite number of Unix milliseconds or a date string such as \"2026-01-01T00:00:00Z\" (with seconds and an offset).";
+                }
+                index++;
+                continue;
+            }
             if (isSemver)
             {
                 // A typo here would silently never match, so a semver clause must hold valid versions.

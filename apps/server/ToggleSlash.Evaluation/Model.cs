@@ -17,6 +17,8 @@ internal enum Op
     SemverLte,
     SemverGt,
     SemverGte,
+    Before,
+    After,
     SegmentMatch,
 }
 

@@ -56,7 +56,7 @@ that environment by the time they get here.
 
 An attribute clause is `{ "attribute": <key>, "op": <op>, "values": [...], "negate": <boolean> }`.
 `op` is one of `in`, `contains`, `startsWith`, `endsWith`, `lt`, `lte`, `gt`, `gte`, `semverEq`,
-`semverLt`, `semverLte`, `semverGt`, `semverGte`. `negate` is optional. Each value is a string, a finite number or a boolean; anything else is malformed.
+`semverLt`, `semverLte`, `semverGt`, `semverGte`, `before`, `after`. `negate` is optional. Each value is a string, a finite number or a boolean; anything else is malformed.
 
 A segment clause is `{ "op": "segmentMatch", "values": [<string>...], "negate": <boolean> }`. Its
 values are segment keys. An `attribute` on it is ignored.
@@ -218,6 +218,7 @@ For an attribute candidate `a` and a clause value `v`:
 | `endsWith` | both strings, and `a` ends with `v` |
 | `lt`, `lte`, `gt`, `gte` | both finite numbers, or both strings, and `a` orders that way against `v` |
 | `semverEq`, `semverLt`, `semverLte`, `semverGt`, `semverGte` | both strings, both valid versions (below), and `a` equals or orders that way against `v` |
+| `before`, `after` | `a` and `v` are both instants (below), and `a` is strictly earlier (`before`) or strictly later (`after`) than `v` |
 
 - **Number equality and order are IEEE-754.** `1` equals `1.0`, and `-0` equals `0`.
 - **String equality and the three substring ops are ordinal:** the same UTF-16 code units, case-sensitive,
@@ -228,7 +229,8 @@ For an attribute candidate `a` and a clause value `v`:
 - **String order is by UTF-16 code unit,** `string.CompareOrdinal` in C# and `<` in JavaScript, never a
   culture's collation. So `"B" < "a"`, `"10" < "9"`, and `"😀"` (0xD83D first) sorts before `"～"`
   (0xFF5E), which code point order would reverse. ISO-8601 dates in one format order correctly as
-  strings, which is how a date comparison is expressed.
+  strings, but only while they share one format and offset, so a date comparison is expressed with
+  `before` and `after` (below).
 - **Booleans have no order.** `lt` and friends never match them.
 
 ### Semantic versions
@@ -263,6 +265,52 @@ The five `semver` ops compare versions, because `lt` on strings puts `"10.0.0"` 
 
 Implementations read the version with a hand-written walk over the characters, not a regular expression:
 `\d` matches Unicode digits in .NET, and a library would bring in its own idea of what is valid.
+
+### Dates
+
+`before` and `after` compare points in time, because `lt` on ISO-8601 strings breaks as soon as two
+dates carry different offsets or formats. Evaluation never reads a clock, so there is no "now" and no
+`on` op: a rule compares the context's date to a date written in the rule.
+
+- **An instant** is a finite number, read as Unix milliseconds (fractional and negative values included,
+  compared as binary64), or a string in exactly this form: `YYYY-MM-DDTHH:MM:SS`, then optionally `.` and
+  one or more digits, then `Z`, `+HH:MM` or `-HH:MM`.
+- **Strict form.** Every digit is ASCII `0` to `9` (a non-ASCII digit, such as U+0661, is not a digit).
+  `T` and `Z` are uppercase only. There is no space separator, no missing seconds, no missing offset and
+  nothing is trimmed. `2026-01-01`, `2026-01-01T00:00:00` and `2026-01-01 00:00:00Z` are not instants.
+- **Ranges.** Year `0001` to `9999` (`0000` is not a date: it keeps every day count non-negative, so
+  integer division agrees across languages). Month `01` to `12`. Day `01` to the length of that month,
+  with February 29 only in a leap year: divisible by 4, except centuries not divisible by 400, so
+  `2000-02-29` is valid and `1900-02-29` and `2023-02-29` are not. Hour `00` to `23`, minute `00` to
+  `59`, second `00` to `59` (there is no leap second `60`). Offset hour `00` to `23`, offset minute
+  `00` to `59`. `-00:00` equals `Z`.
+- **Fraction.** Truncated to milliseconds: take its first three digits, padding with zeros on the right.
+  `.5` is 500 ms and `.1239` is 123 ms, so `.1239` equals `.123`.
+- **The value.** `days * 86400000 + ((hour * 60 + minute) * 60 + second) * 1000 + fractionMs -
+  (offsetSign * (offsetHour * 60 + offsetMinute)) * 60000`, where `offsetSign` is +1 for `+` and -1 for
+  `-`, and the whole offset term is 0 for `Z`. `days` is the number of days since 1970-01-01 in the
+  proleptic Gregorian calendar, by the "days from civil" algorithm in integer arithmetic. For years 0001
+  to 9999 every intermediate value before its last subtraction is non-negative, so truncating division
+  (C#) and `Math.floor` (TypeScript) agree. Every result fits a binary64 exactly, from
+  `-62135596800000` (`0001-01-01T00:00:00Z`) to `253402300799999` (`9999-12-31T23:59:59.999Z`).
+- **Strings and numbers mix.** Both sides become binary64 numbers first, so a string candidate against a
+  number value, a number against a string, and two strings are all one comparison of two instants.
+  `before` is `a < v` and `after` is `a > v`: **equal instants match neither**, so
+  `2026-01-01T02:00:00+02:00`, `2026-01-01T00:00:00Z` and `1767225600000` are all the same instant.
+- **No match, no error.** A candidate or value that is not a finite number and not a valid date string
+  (a boolean, an object, a candidate `1e999`, `"2026-01-01"`, `"2026-01-01T00:00:00"`) makes that pair
+  not match. So the rules under "Matching" hold: a missing attribute fails whatever `negate` says,
+  `negate` flips a present non-date to a match, and an array attribute is one candidate per element. A
+  string or boolean in `values` that is not an instant does not make the flag malformed. A non-finite
+  number in `values` (`1e999`) is still malformed at load, as for every op.
+- **Writing is stricter than reading.** The server's targeting API refuses a `before` or `after` clause
+  whose `values` hold anything but a finite number or a valid date string, because a typo there would
+  silently never match. Empty `values` saves, as for every op, and never matches (under `negate`, always
+  matches).
+
+Implementations read the string with a hand-written walk over the characters: no regular expression, no
+`Date.parse`, `DateTime.Parse` or `DateTimeOffset.Parse`, and no date library, because each brings its own
+idea of what is valid and which calendar and culture apply.
 
 ### segmentMatch
 
@@ -355,6 +403,7 @@ with `expected`, deeply.
 | `reasons.json` | the order of evaluation, targets, rules, non-boolean variation values |
 | `prerequisites.json` | met, failed, cycles, the depth limit, reuse within an evaluation |
 | `semver.json` | the five `semver` ops: the section 11 order, short forms, build, big numbers, what is not a version, `negate`, arrays |
+| `dates.json` | `before` and `after`: equal instants, offsets, fractions, the calendar and leap years, the range ends, numbers as Unix milliseconds, what is not an instant, `negate`, arrays |
 | `segments.json` | `segmentMatch`, excluded and included, segment rules and weights, bad segments |
 | `rollouts.json` | the cumulative walk at bucket boundaries, hash inputs, malformed rollouts |
 | `errors.json` | invalid contexts, malformed flags, what happens on load |
