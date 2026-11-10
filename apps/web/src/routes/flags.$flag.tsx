@@ -1,10 +1,11 @@
-import { Breadcrumbs, Callout, PageHeader, Pill, Stack, Text } from "@hackcove/ui-react";
+import { Breadcrumbs, Callout, PageHeader, Stack, Text } from "@hackcove/ui-react";
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { loadFlagDetail } from "#/api/dashboard";
 import type { DetailLoaded } from "#/api/types";
 import { History, UsagePanel } from "#/components/Activity";
 import { MetaForm } from "#/components/MetaForm";
+import { StagePill } from "#/components/StagePill";
 import { ServerDown, Shell, Switchers } from "#/components/Shell";
 import { TargetingEditor } from "#/components/TargetingEditor";
 import type { Config } from "#/targeting/model";
@@ -39,6 +40,8 @@ interface Notice {
 
 function Header({ loaded, search }: { loaded: Ready; search: Search }) {
   const { flag, project } = loaded;
+  // An answer with no stage still shows an archived flag as archived.
+  const stage = flag.lifecycle ?? (flag.archived ? "archived" : null);
   return (
     <PageHeader
       breadcrumbs={
@@ -63,7 +66,7 @@ function Header({ loaded, search }: { loaded: Ready; search: Search }) {
       }
       title={flag.name}
       subtitle={flag.description === "" ? flag.key : `${flag.key}: ${flag.description}`}
-      actions={flag.archived ? <Pill tone="amber">Archived</Pill> : undefined}
+      actions={stage === null ? undefined : <StagePill stage={stage} />}
     />
   );
 }

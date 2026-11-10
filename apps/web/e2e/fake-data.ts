@@ -10,6 +10,8 @@ export interface Flag {
   tags: string[];
   createdAt: string;
   archivedAt: string | null;
+  /** The stage the fake reports while the flag is not archived. */
+  lifecycle: "new" | "active" | "inactive";
   lastEvaluated: string | null;
 }
 
@@ -94,6 +96,8 @@ interface Seed {
   temporary?: boolean;
   description?: string;
   last?: string | null;
+  lifecycle?: Flag["lifecycle"];
+  archived?: boolean;
 }
 
 export function flag(seed: Seed): Flag {
@@ -106,7 +110,8 @@ export function flag(seed: Seed): Flag {
     owner: null,
     tags: seed.tags ?? [],
     createdAt: "2026-11-01T09:00:00Z",
-    archivedAt: null,
+    archivedAt: seed.archived === true ? "2026-11-02T09:00:00Z" : null,
+    lifecycle: seed.lifecycle ?? "new",
     lastEvaluated: seed.last ?? null,
   };
 }
@@ -193,6 +198,31 @@ function lastDays(): Record<string, string> {
   };
 }
 
+/** Three live flags, each at a different stage, and two archived ones. */
+function shopFlags(): Flag[] {
+  return [
+    flag({
+      key: "checkout-v2",
+      name: "Checkout v2",
+      tags: ["checkout"],
+      temporary: true,
+      last: "2026-11-04",
+      lifecycle: "active",
+    }),
+    flag({ key: "dark-mode", name: "Dark mode", tags: ["ui"] }),
+    flag({
+      key: "search-boost",
+      name: "Search boost",
+      tags: ["search", "ui"],
+      last: "2026-10-30",
+      lifecycle: "inactive",
+    }),
+    // Archived: one nothing needs, and one search-boost names as a prerequisite in staging.
+    flag({ key: "old-banner", name: "Old banner", tags: ["ui"], archived: true }),
+    flag({ key: "legacy-cart", name: "Legacy cart", archived: true }),
+  ];
+}
+
 export function fixture(): Store {
   return {
     projects: [named("shop", "Shop"), named("docs", "Docs")],
@@ -201,22 +231,7 @@ export function fixture(): Store {
       docs: [named("live", "Live")],
     },
     flags: {
-      shop: [
-        flag({
-          key: "checkout-v2",
-          name: "Checkout v2",
-          tags: ["checkout"],
-          temporary: true,
-          last: "2026-11-04",
-        }),
-        flag({ key: "dark-mode", name: "Dark mode", tags: ["ui"] }),
-        flag({
-          key: "search-boost",
-          name: "Search boost",
-          tags: ["search", "ui"],
-          last: "2026-10-30",
-        }),
-      ],
+      shop: shopFlags(),
       docs: [flag({ key: "docs-search", name: "Docs search" })],
     },
     configs: {
@@ -225,7 +240,14 @@ export function fixture(): Store {
       "shop/production/search-boost": plain(false, 2),
       "shop/staging/checkout-v2": plain(true, 1),
       "shop/staging/dark-mode": plain(true, 1),
-      "shop/staging/search-boost": plain(true, 1),
+      "shop/staging/search-boost": {
+        ...plain(true, 1),
+        prerequisites: [{ flagKey: "legacy-cart", variation: 0 }],
+      },
+      "shop/production/old-banner": plain(false, 1),
+      "shop/staging/old-banner": plain(false, 1),
+      "shop/production/legacy-cart": plain(false, 1),
+      "shop/staging/legacy-cart": plain(false, 1),
       "docs/live/docs-search": plain(false, 1),
     },
     lastEvaluated: lastDays(),

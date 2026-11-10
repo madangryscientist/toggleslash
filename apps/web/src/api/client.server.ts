@@ -3,7 +3,7 @@
  * the token it is given, and nothing here is imported by a route component. The `.server.ts` name
  * makes TanStack Start's import protection fail the build if a client module ever imports it.
  */
-import { str, strings, type Json } from "./json.ts";
+import { lifecycleOf, str, strings, type Json } from "./json.ts";
 import {
   ApiFailure,
   apiPath,
@@ -35,6 +35,7 @@ function toFlag(raw: Json, state: FlagState | undefined): FlagRow {
     description: str(raw["description"]),
     tags: strings(raw["tags"]),
     temporary: raw["temporary"] === true,
+    lifecycle: lifecycleOf(raw["lifecycle"]),
     lastEvaluated: state?.lastEvaluated ?? null,
     on: state?.on ?? null,
     version: state?.version ?? null,
@@ -89,8 +90,13 @@ export function createAdminApi(connection: Connection, doFetch: Fetch) {
     /**
      * The project's active flags with each one's on/off, version and last evaluated day in `env`: the flag list
      * and the environment's flag states, one read each, joined on the key. A flag with no state leaves `on` null.
+     * With `archived` it lists the archived flags instead, and reads no states: an archived flag is in no ruleset.
      */
-    async flags(project: string, env: string): Promise<FlagRow[]> {
+    async flags(project: string, env: string, { archived = false } = {}): Promise<FlagRow[]> {
+      if (archived) {
+        const raws = await list(call, `${apiPath("projects", project, "flags")}?archived=true`);
+        return raws.map((raw) => toFlag(raw, undefined));
+      }
       const [raws, states] = await Promise.all([
         list(call, apiPath("projects", project, "flags")),
         readStates(call, apiPath("projects", project, "environments", env, "flag-states")),
@@ -118,6 +124,15 @@ export function createAdminApi(connection: Connection, doFetch: Fetch) {
 
     async archiveFlag(project: string, flag: string): Promise<void> {
       await call("POST", apiPath("projects", project, "flags", flag, "archive"));
+    },
+
+    async restoreFlag(project: string, flag: string): Promise<void> {
+      await call("POST", apiPath("projects", project, "flags", flag, "restore"));
+    },
+
+    /** Deletes an archived flag for good; the server refuses (409) while another flag names it as a prerequisite. */
+    async deleteFlag(project: string, flag: string): Promise<void> {
+      await call("DELETE", apiPath("projects", project, "flags", flag));
     },
   };
 }

@@ -8,6 +8,7 @@ const flag: FlagRow = {
   description: "",
   tags: ["payments", "ui"],
   temporary: false,
+  lifecycle: null,
   lastEvaluated: null,
   on: true,
   version: 1,

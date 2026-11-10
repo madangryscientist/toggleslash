@@ -2,11 +2,8 @@ import {
   Button,
   Callout,
   Cluster,
-  ClusterGrow,
-  Dialog,
   EmptyState,
   PageHeader,
-  Input,
   Pill,
   Stack,
   Table,
@@ -21,18 +18,24 @@ import {
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { archiveFlag, toggleFlag } from "#/api/dashboard";
-import type { Environment, FlagRow, MutationResult, Project } from "#/api/types";
+import type { Environment, FlagRow, Project } from "#/api/types";
+import { ArchiveDialog } from "./ArchiveDialog";
+import { ArchivedFlags } from "./ArchivedFlags";
 import { NewFlagDialog } from "./NewFlagDialog";
+import { StagePill } from "./StagePill";
+import { ListControls } from "./ListControls";
 import { matches } from "./text";
+import { useRunner, type Run } from "./useRunner";
 
 interface Props {
   project: Project;
   environment: Environment;
   flags: FlagRow[];
+  /** Whether `flags` are the archived ones. */
+  archived: boolean;
+  onView: (archived: boolean) => void;
   onChanged: () => Promise<void>;
 }
-
-type Run = (flag: string, action: () => Promise<MutationResult>) => Promise<void>;
 
 interface RowProps {
   project: Project;
@@ -102,6 +105,7 @@ function FlagRowView(props: RowProps) {
           {flag.name}
         </TextLink>
       </TableCell>
+      <TableCell>{flag.lifecycle !== null && <StagePill stage={flag.lifecycle} />}</TableCell>
       <TableCell>
         <Cluster wrap>
           {flag.temporary && <Pill tone="amber">temporary</Pill>}
@@ -143,6 +147,7 @@ function FlagTable({ flags, ...row }: TableProps) {
       <TableHead>
         <TableRow>
           <TableHeaderCell>Flag</TableHeaderCell>
+          <TableHeaderCell>Stage</TableHeaderCell>
           <TableHeaderCell>Tags</TableHeaderCell>
           <TableHeaderCell>{environment.name}</TableHeaderCell>
           <TableHeaderCell>Last evaluated</TableHeaderCell>
@@ -192,55 +197,7 @@ function Results({ total, query, onCreate, flags, ...row }: ListProps) {
   return <FlagTable flags={flags} {...row} />;
 }
 
-interface ArchiveProps {
-  flag: FlagRow;
-  onCancel: () => void;
-  onConfirm: (flag: FlagRow) => void;
-}
-
-function ArchiveDialog({ flag, onCancel, onConfirm }: ArchiveProps) {
-  return (
-    <Dialog
-      title={`Archive ${flag.name}?`}
-      description="An archived flag is hidden from this list and from the SDK ruleset. Its key stays reserved."
-      size="sm"
-      onClose={onCancel}
-      footer={
-        <>
-          <Button variant="ghost" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button tone="danger" data-testid="confirm-archive" onClick={() => onConfirm(flag)}>
-            Archive
-          </Button>
-        </>
-      }
-    />
-  );
-}
-
-/** The busy flag, the last problem, and a `run` that reports a failed or refused call as that problem. */
-function useRunner(onChanged: () => Promise<void>) {
-  const [busy, setBusy] = useState<string | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
-  const run: Run = async (flag, action) => {
-    setBusy(flag);
-    setProblem(null);
-    try {
-      const result = await action();
-      if (!result.ok) setProblem(result.failure.message);
-      // Refresh on success, and on a conflict so the row shows what the server now has.
-      if (result.ok || result.conflict) await onChanged();
-    } catch {
-      setProblem("The dashboard could not reach its own server. Reload the page.");
-    } finally {
-      setBusy(null);
-    }
-  };
-  return { busy, problem, run };
-}
-
-export function FlagList({ project, environment, flags, onChanged }: Props) {
+export function FlagList({ project, environment, flags, archived, onView, onChanged }: Props) {
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
   const [archiving, setArchiving] = useState<FlagRow | null>(null);
@@ -254,9 +211,11 @@ export function FlagList({ project, environment, flags, onChanged }: Props) {
         title="Flags"
         subtitle={`${project.name} · ${environment.name}`}
         actions={
-          <Button onClick={() => setCreating(true)} data-testid="new-flag">
-            New flag
-          </Button>
+          archived ? undefined : (
+            <Button onClick={() => setCreating(true)} data-testid="new-flag">
+              New flag
+            </Button>
+          )
         }
       />
       {problem !== null && (
@@ -264,31 +223,36 @@ export function FlagList({ project, environment, flags, onChanged }: Props) {
           {problem}
         </Callout>
       )}
-      <Cluster>
-        <ClusterGrow>
-          <Input
-            type="search"
-            aria-label="Search flags"
-            placeholder="Search by key, name or tag"
-            value={query}
-            onChange={(event) => setQuery(event.currentTarget.value)}
-          />
-        </ClusterGrow>
-        <Text tone="muted" numeric>
-          {count(shown.length, flags.length)}
-        </Text>
-      </Cluster>
-      <Results
-        project={project}
-        environment={environment}
-        flags={shown}
-        total={flags.length}
+      <ListControls
+        archived={archived}
+        onView={onView}
         query={query}
-        busy={busy}
-        run={run}
-        onArchive={setArchiving}
-        onCreate={() => setCreating(true)}
+        onQuery={setQuery}
+        summary={count(shown.length, flags.length)}
       />
+      {archived ? (
+        <ArchivedFlags
+          project={project}
+          environment={environment}
+          flags={shown}
+          total={flags.length}
+          query={query}
+          busy={busy}
+          run={run}
+        />
+      ) : (
+        <Results
+          project={project}
+          environment={environment}
+          flags={shown}
+          total={flags.length}
+          query={query}
+          busy={busy}
+          run={run}
+          onArchive={setArchiving}
+          onCreate={() => setCreating(true)}
+        />
+      )}
       {creating && (
         <NewFlagDialog
           project={project}

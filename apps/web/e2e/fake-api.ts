@@ -10,6 +10,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 
 import { API_PORT, E2E_ADMIN_TOKEN } from "./constants.ts";
 import { db, flag, plain, reset, type Config, type Flag } from "./fake-data.ts";
+import { answer, lifecycleRoute, listed } from "./fake-flags.ts";
 import { auditPage, createEnvironment, onKeys, onSegments, rulesetAt } from "./fake-operator.ts";
 import {
   historyOf,
@@ -84,7 +85,7 @@ async function createFlag({ req, res, project }: Ctx) {
   for (const env of db.data.environments[project] ?? []) {
     db.data.configs[`${project}/${env.key}/${key}`] = plain(false, 1);
   }
-  return send(res, 201, created);
+  return send(res, 201, answer(created));
 }
 
 function reply(res: ServerResponse, [status, body]: Reply) {
@@ -121,7 +122,7 @@ async function onConfig(ctx: Ctx, found: Flag, rest: string[]) {
 }
 
 function onFlagRead({ res, project }: Ctx, found: Flag, action: string | undefined) {
-  if (action === undefined) return send(res, 200, found);
+  if (action === undefined) return send(res, 200, answer(found));
   if (action === "history") return reply(res, historyOf(project, found.key));
   if (action === "usage") return reply(res, usageOf(project, found.key));
   return problem(res, 404, "not_found", "No such route.");
@@ -137,23 +138,17 @@ async function onFlag(ctx: Ctx, rest: string[]) {
   if (action === undefined && method === "PATCH") {
     return reply(res, patchFlag(project, found, await readBody(req)));
   }
-  if (action === "archive" && method === "POST") {
-    found.archivedAt = "2026-11-05T08:00:00Z";
-    return send(res, 200, found);
-  }
+  const lifecycle = lifecycleRoute(project, found, method, action);
+  if (lifecycle !== null) return reply(res, lifecycle);
   if (action === "environments") return onConfig(ctx, found, more);
   return onFlagRead(ctx, found, action);
 }
 
-function onFlags(ctx: Ctx, rest: string[]) {
+function onFlags(ctx: Ctx, rest: string[], query: URLSearchParams) {
   const { req, res, project } = ctx;
   if (rest.length > 0) return onFlag(ctx, rest);
   if (req.method === "POST") return createFlag(ctx);
-  return send(
-    res,
-    200,
-    activeFlags(project).filter((f) => f.archivedAt === null),
-  );
+  return send(res, 200, listed(project, query.get("archived") === "true"));
 }
 
 /** `.../environments/<env>/flag-states`: every active flag's on/off, version and last day in that environment. */
@@ -210,7 +205,7 @@ async function onProject(ctx: Ctx, rest: string[], query: URLSearchParams) {
   }
   if (kind === "environments") return onEnvironmentRoute(ctx, more, query);
   if (kind === "audit" && more.length === 0) return reply(res, auditPage(project, query));
-  if (kind === "flags") return onFlags(ctx, more);
+  if (kind === "flags") return onFlags(ctx, more, query);
   return problem(res, 404, "not_found", "No such route.");
 }
 
