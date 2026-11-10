@@ -1018,8 +1018,13 @@
       "name": "Browser SDKs",
       "description": "JavaScript, React and other client-side SDKs.",
       "toggleslash": {
-        "status": "no",
-        "evidence": []
+        "status": "partial",
+        "evidence": [
+          "path:packages/sdk-browser",
+          "doc:docs/sdk-browser.md",
+          "test:packages/sdk-browser/test/signal.test.ts"
+        ],
+        "note": "One JavaScript SDK, server-evaluated, unpublished; no React binding, no secure mode."
       },
       "competitors": {
         "launchdarkly": "yes",

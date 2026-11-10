@@ -126,6 +126,17 @@
         "vitest": "5.0.5",
       },
     },
+    "packages/sdk-browser": {
+      "name": "@hackcove/toggleslash-sdk-browser",
+      "version": "0.0.0",
+      "dependencies": {
+        "@hackcove/toggleslash-sdk": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "1.4.4",
+        "vitest": "5.0.5",
+      },
+    },
     "packages/sdk-openfeature": {
       "name": "@hackcove/toggleslash-sdk-openfeature",
       "version": "0.0.0",
@@ -284,6 +295,8 @@
     "@hackcove/toggleslash-example": ["@hackcove/toggleslash-example@workspace:apps/example"],
 
     "@hackcove/toggleslash-sdk": ["@hackcove/toggleslash-sdk@workspace:packages/sdk"],
+
+    "@hackcove/toggleslash-sdk-browser": ["@hackcove/toggleslash-sdk-browser@workspace:packages/sdk-browser"],
 
     "@hackcove/toggleslash-sdk-openfeature": ["@hackcove/toggleslash-sdk-openfeature@workspace:packages/sdk-openfeature"],
 

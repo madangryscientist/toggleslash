@@ -3,7 +3,8 @@
 `packages/sdk` (`@hackcove/toggleslash-sdk`, Nx project `sdk`) is the server-side SDK for TypeScript: it keeps
 a copy of one environment's ruleset current and evaluates flags **locally** with `@hackcove/toggleslash-engine`,
 to [`evaluation.md`](evaluation.md). It needs a **server** key (`ruleset` and `stream` refuse a client key). The
-package is private and unpublished; publishing waits for the maintainer.
+package is private and unpublished; publishing waits for the maintainer. Code that runs in a browser uses the
+[browser SDK](sdk-browser.md) instead, where the server evaluates.
 
 ```ts
 import { createClient } from "@hackcove/toggleslash-sdk";
