@@ -14,8 +14,8 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Metric | ToggleSlash | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | ✅ yes | 27 | 63 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
-| 🟡 partial | 10 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
-| ❌ no | 29 | 3 | 9 | 7 | 6 | 7 | 7 | 9 | 17 |
+| 🟡 partial | 11 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
+| ❌ no | 28 | 3 | 9 | 7 | 6 | 7 | 7 | 9 | 17 |
 
 ## Matrix
 
@@ -87,7 +87,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Capability | ToggleSlash | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | Server SDKs | 🟡 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Browser SDKs | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Browser SDKs | 🟡 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Mobile SDKs | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Edge SDKs | ❌ | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ | 🟡 | ✅ |
 | OpenFeature providers | 🟡 | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | 🟡 | 🟡 |
@@ -190,7 +190,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Capability | Status | Evidence and note |
 | --- | :---: | --- |
 | Server SDKs | 🟡 | `path:packages/sdk`<br>`path:packages/engine`<br>`doc:docs/sdk.md`<br>One TypeScript server SDK. The C# evaluator is internal to the server, not a public SDK. |
-| Browser SDKs | ❌ | none |
+| Browser SDKs | 🟡 | `path:packages/sdk-browser`<br>`doc:docs/sdk-browser.md`<br>`test:packages/sdk-browser/test/signal.test.ts`<br>One JavaScript SDK, server-evaluated, unpublished; no React binding, no secure mode. |
 | Mobile SDKs | ❌ | none |
 | Edge SDKs | ❌ | none |
 | OpenFeature providers | 🟡 | `path:packages/sdk-openfeature`<br>`test:packages/sdk-openfeature/test/provider.test.ts`<br>A server-side TypeScript provider over the SDK; no provider events, and no browser or other-language providers. |
