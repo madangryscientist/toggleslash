@@ -81,14 +81,94 @@ internal static class Wait
         }
     }
 
-    /// <summary>Moves a fake clock forward in steps, giving the SDK's tasks real time to run between steps.</summary>
-    public static async Task Advance(Microsoft.Extensions.Time.Testing.FakeTimeProvider time, TimeSpan total, TimeSpan? step = null)
+    /// <summary>
+    /// Moves a fake clock forward in steps. Before the first step and after every one it waits, on real time, until
+    /// the SDK has armed at least <paramref name="timers"/> timers again (its poll or hold loop and its flush loop),
+    /// because a step taken while a loop is between waking and re-arming is a step that loop never sees: the clock
+    /// would run on without it and the test would depend on how fast the machine happens to be.
+    /// </summary>
+    public static async Task Advance(Clock time, TimeSpan total, TimeSpan? step = null, int timers = 1)
     {
         var each = step ?? TimeSpan.FromSeconds(1);
+        await Armed(time, timers);
         for (var done = TimeSpan.Zero; done < total; done += each)
         {
             time.Advance(each < total - done ? each : total - done);
-            await Task.Delay(8);
+            await Task.Delay(2);
+            await Armed(time, timers);
+        }
+    }
+
+    private static Task Armed(Clock time, int timers) => Until(() => time.Armed >= timers, $"{timers} timer(s) to be armed", TimeSpan.FromSeconds(30));
+}
+
+/// <summary>
+/// A <see cref="Microsoft.Extensions.Time.Testing.FakeTimeProvider"/> that knows how many of its timers are armed
+/// (due, not yet fired, not disposed), so a test can tell when the SDK's loops are waiting on the clock.
+/// </summary>
+internal sealed class Clock(DateTimeOffset start) : Microsoft.Extensions.Time.Testing.FakeTimeProvider(start)
+{
+    private int _armed;
+
+    public int Armed => Volatile.Read(ref _armed);
+
+    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+    {
+        Counted? counted = null;
+        var inner = base.CreateTimer(
+            s =>
+            {
+                // A one-shot timer is spent the moment it fires; a periodic one stays armed.
+                if (period == Timeout.InfiniteTimeSpan || period == TimeSpan.Zero) counted!.Disarm();
+                callback(s);
+            },
+            state,
+            dueTime,
+            period);
+        counted = new Counted(this, inner, dueTime != Timeout.InfiniteTimeSpan);
+        return counted;
+    }
+
+    private sealed class Counted : ITimer
+    {
+        private readonly Clock _owner;
+        private readonly ITimer _inner;
+        private int _on;
+
+        public Counted(Clock owner, ITimer inner, bool armed)
+        {
+            _owner = owner;
+            _inner = inner;
+            if (armed) Arm();
+        }
+
+        private void Arm()
+        {
+            if (Interlocked.Exchange(ref _on, 1) == 0) Interlocked.Increment(ref _owner._armed);
+        }
+
+        public void Disarm()
+        {
+            if (Interlocked.Exchange(ref _on, 0) == 1) Interlocked.Decrement(ref _owner._armed);
+        }
+
+        public bool Change(TimeSpan dueTime, TimeSpan period)
+        {
+            if (dueTime == Timeout.InfiniteTimeSpan) Disarm();
+            else Arm();
+            return _inner.Change(dueTime, period);
+        }
+
+        public void Dispose()
+        {
+            Disarm();
+            _inner.Dispose();
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            Disarm();
+            return _inner.DisposeAsync();
         }
     }
 }

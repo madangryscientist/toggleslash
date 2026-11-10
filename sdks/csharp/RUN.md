@@ -54,7 +54,11 @@
     stands in (see the checklist).
 14. Hooks and `onError` are plain `Action` delegates, not functions returning a task, so the "future" line of the
     checklist is `n/a`.
-15. Skeptical review: not run. The `ob-skeptical-review` skill belongs to the omnibus spinoff procedure; this
+15. Timer tests step the fake clock only when the SDK is waiting on it: `Clock`, a `FakeTimeProvider` that counts
+    its armed timers (`tests/ToggleSlash.Sdk.Tests/Support.cs`), and `Wait.Advance`, which waits for the poll or
+    hold loop and the flush loop to be armed before and after every step. Over a fixed real pause between steps,
+    which was the first version and flaked (guess 11).
+16. Skeptical review: not run. The `ob-skeptical-review` skill belongs to the omnibus spinoff procedure; this
     brief is the toggleslash prompt-test and names no review step, so the PR carries no `## Skeptical review`
     section.
 
@@ -91,6 +95,20 @@
 10. The shape of the stream-drop the harness does (clean close or an abrupt reset) is not stated. Where:
     sdk-test-service.md, "Running it". Assumed: either ends the read, and the SDK treats both as a stream that
     ended and reconnects with backoff.
+11. Flaky timer tests, found by the planner's gate (one failure in four runs of `bin/test` on the first head;
+    `TimerTests.Counts_either_side_of_a_utc_midnight_go_out_as_two_days`). Where: PROMPT.md phase 3 and
+    CHECKLIST.md, the timer lines say "tested through a seam, not by waiting" but not how to step a fake clock
+    safely. Cause: my `Wait.Advance` moved the `FakeTimeProvider` in steps with a fixed real pause (8 ms) between
+    them, assuming the SDK's poll and flush loops had re-armed their delay by then. On a loaded machine a loop
+    that is still between waking and re-arming misses the step, arms its delay from the later clock reading and
+    is then due after the test has stopped advancing (the test timed out waiting for the usage report), or
+    comes out late enough to break an upper bound on a gap. xunit runs the test classes in parallel, so a full
+    `bin/test` is loaded by its own other tests. I reproduced it only under CPU load: the single test alone passed 30 of 30
+    with 8 busy loops running, and with 12 busy loops running 15 of 15 full runs failed, in one of several
+    timer tests each time (the usage `Retry-After` test failed in the runs I looked at). Assumed: the fault is
+    in the tests, not the SDK (its loops were correct; the tests raced them). Fix: `Clock` counts armed timers and
+    `Wait.Advance` waits for them (decision 15). Proof: 12 full test runs under 12 busy loops with no failure, and
+    `bin/test` 10 passes of 10 in a row on the fixed head.
 
 ## Stuck points
 
@@ -126,6 +144,11 @@ None that needed outside help. One finding about the contract's reach, not a blo
 9. For guess 9, in `CHECKLIST.md`, the header line, add: "Capture one request on the wire (a loopback
    listener that prints the head) and list what the client added."
 10. For guess 10, in `sdk-test-service.md`, "Running it", say how the harness drops a stream.
+11. For guess 11, in `PROMPT.md` phase 3, after "through a seam", add: "Step a fake clock only when the SDK is
+    waiting on it (count the clock's armed timers), never after a fixed real pause: a pause passes on a quiet
+    machine and fails on a loaded one." And in `CHECKLIST.md`, under the two executable checks, add: "`$L/bin/test`
+    passes 10 times in a row, and once more with the CPU loaded (for example one busy loop per core), because a
+    timer test that races the SDK's loops fails only under load."
 
 ## Checklist
 
@@ -134,6 +157,8 @@ The two executable checks
 - [x] `bin/test` runs every vector but `buckets.json` and every pin; count equals the phase 2 count: the
   phase 2 count command printed 1371 vectors and 17 pins; `VectorTests.Every_vector_and_every_pin_matches`
   reads `fixtures/evaluation/*.json` at test time and `bin/test` printed `1371` and `17`.
+- [x] `bin/test` is stable: 10 passes of 10 in a row on the final head, and 12 full runs with no failure under 12
+  busy loops (see guess 11).
 - [x] The harness exits 0 with only the named skips: `scenarios: 81 passed, 0 failed, 0 skipped; vectors:
   1369 passed, 0 failed, 2 skipped`. `integer-accessor` is advertised, so no scenario is skipped.
 
@@ -187,7 +212,7 @@ Native tests
   A_stream_that_goes_quiet_is_dropped_as_a_timeout_after_the_idle_limit`, `A_keep_alive_restarts_the_idle_limit`,
   and `A_stream_that_never_answers_its_request_is_dropped_by_the_request_timeout`.
 - [x] A `Retry-After` above 300 is held for 300 s on the ruleset, stream and events routes (through
-  `FakeTimeProvider`): `TimerTests.A_retry_after_above_300_holds_the_ruleset_route_for_300_seconds`,
+  `Clock`, a `FakeTimeProvider` that counts armed timers): `TimerTests.A_retry_after_above_300_holds_the_ruleset_route_for_300_seconds`,
   `A_retry_after_above_300_holds_the_stream_and_the_ruleset_for_300_seconds`,
   `A_retry_after_above_300_holds_usage_reports_for_300_seconds_and_keeps_the_counts`, and
   `A_retry_after_under_the_cap_is_held_as_given_and_a_date_is_ignored`.

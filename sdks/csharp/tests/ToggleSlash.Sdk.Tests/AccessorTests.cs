@@ -75,7 +75,7 @@ public sealed class AccessorTests
     [Fact]
     public async Task A_body_that_is_not_a_ruleset_never_replaces_the_one_held()
     {
-        var time = new FakeTimeProvider(new DateTimeOffset(2026, 11, 10, 12, 0, 0, TimeSpan.Zero));
+        var time = new Clock(new DateTimeOffset(2026, 11, 10, 12, 0, 0, TimeSpan.Zero));
         var calls = 0;
         var server = new FakeServer(time, (r, _) => r.Path switch
         {
@@ -85,7 +85,7 @@ public sealed class AccessorTests
         });
         using var client = ToggleSlashClient.Create(new ClientOptions { Url = "http://sdk.invalid", SdkKey = "key", Stream = false, Time = time, Handler = server });
         Assert.True(await client.ReadyAsync());
-        await Wait.Advance(time, TimeSpan.FromSeconds(31));
+        await Wait.Advance(time, TimeSpan.FromSeconds(31), timers: 2);
         await Wait.Until(() => client.Status.LastError == "bad_ruleset", "bad_ruleset");
         Assert.Equal("\"v1\"", client.Status.Etag);
         Assert.Equal(7, client.IntVariation("f", User, 0));
