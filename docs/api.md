@@ -38,7 +38,7 @@ are in [`self-hosting.md`](self-hosting.md#rate-limits).
 | `POST /sdk/v1/evaluate` | evaluates the environment's flags for a context and returns each result (value, variation index, reason) |
 | `POST /sdk/v1/events` | adds a batch of usage counts for the key's environment; counts only, never a context or a user |
 
-The TypeScript server SDK ([`sdk.md`](sdk.md)) uses the ruleset, the stream and the events route.
+The TypeScript server SDK ([`sdk.md`](sdk.md); what every server SDK must do is [`sdk-contract.md`](sdk-contract.md)) uses the ruleset, the stream and the events route.
 
 A context, in `evaluate` and in the admin diagnostic route, is one of the two shapes of
 [`evaluation.md`](evaluation.md#context): a single context, `{ "kind"?, "key", "attributes"? }` (no `kind` is

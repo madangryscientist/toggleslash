@@ -4,7 +4,7 @@ The [quickstart](quickstart.md) is the way in: it starts the server, creates a f
 from the SDK. This page covers the parts it leaves out.
 
 - The engine and the evaluation spec: [`evaluation.md`](evaluation.md).
-- The TypeScript server SDK: [`sdk.md`](sdk.md).
+- The TypeScript server SDK: [`sdk.md`](sdk.md). What every server SDK must do: [`sdk-contract.md`](sdk-contract.md).
 - The HTTP API and its OpenAPI document: [`api.md`](api.md).
 - The CLI's commands and exit codes: [`packages/cli/README.md`](../packages/cli/README.md).
 - Running the server in a container, with backups and upgrades: [`self-hosting.md`](self-hosting.md).

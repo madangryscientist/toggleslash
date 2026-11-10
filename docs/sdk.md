@@ -6,6 +6,21 @@ to [`evaluation.md`](evaluation.md). It needs a **server** key (`ruleset` and `s
 package is private and unpublished; publishing waits for the maintainer. Code that runs in a browser uses the
 [browser SDK](sdk-browser.md) instead, where the server evaluates.
 
+This page is the TypeScript binding of the language-neutral [SDK contract](sdk-contract.md), which says what
+every server SDK must do; where the two differ in wording, the contract is the rule. In this SDK the contract's
+canonical names are:
+
+| Contract | TypeScript |
+| --- | --- |
+| `create` | `createClient(options)` |
+| `ready` | `client.ready(): Promise<boolean>` |
+| `variation`, `variationDetail` | `client.variation<T>(flagKey, context, fallback)`, `client.variationDetail<T>(...)`: one generic method each, over the fallback's type |
+| `status` | `client.status()` |
+| `close` | `client.close(): Promise<void>` |
+| `url`, `sdkKey`, `stream` | `url`, `sdkKey`, `stream` |
+| `pollInterval`, `flushInterval`, `requestTimeout` | `pollIntervalMs`, `flushIntervalMs`, `requestTimeoutMs` (milliseconds) |
+| `hooks.afterEvaluation`, `onError` | `hooks.afterEvaluation`, `onError` |
+
 ```ts
 import { createClient } from "@hackcove/toggleslash-sdk";
 
