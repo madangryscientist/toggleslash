@@ -218,6 +218,26 @@ public sealed class RulesetLookupApiTests : IDisposable
     }
 
     [Fact]
+    public async Task A_segment_answers_its_per_kind_lists_as_the_ruleset_served_them()
+    {
+        await Seed();
+        await Segment("beta");
+        await ApiServer.Expect(HttpStatusCode.Created, await server.Post("/api/v1/projects/shop/environments/prod/segments", new
+        {
+            key = "orgs",
+            included = Array.Empty<string>(),
+            excluded = Array.Empty<string>(),
+            rules = Array.Empty<object>(),
+            includedContexts = new[] { new { contextKind = "org", values = new[] { "acme" } } },
+        }));
+
+        var segments = (await Lookup(await Serve())).GetProperty("segments").EnumerateArray().ToDictionary(s => s.GetProperty("key").GetString()!);
+        Assert.False(segments["beta"].TryGetProperty("includedContexts", out _));
+        Assert.Equal("""[{"contextKind":"org","values":["acme"]}]""", segments["orgs"].GetProperty("includedContexts").GetRawText());
+        Assert.False(segments["orgs"].TryGetProperty("excludedContexts", out _));
+    }
+
+    [Fact]
     public async Task A_flag_narrows_to_it_and_the_segments_its_rules_name()
     {
         await Seed();

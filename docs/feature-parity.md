@@ -151,7 +151,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Segment versioning | ✅ | `api:/api/v1/projects/{project}/environments/{env}/segments/{segment}`<br>`dashboard:/segments`<br>`doc:docs/architecture.md` |
 | Large or synced segments | ❌ | none |
 | Prerequisites and dependencies | ✅ | `api:/api/v1/projects/{project}/flags/{flag}/environments/{env}`<br>`doc:docs/evaluation.md` |
-| Multi-context and context kinds | 🟡 | `doc:docs/evaluation.md`<br>`test:fixtures/evaluation/kinds.json`<br>Evaluation supports context kinds and multi-contexts; the admin API and dashboard do not yet (FS-80, FS-81). |
+| Multi-context and context kinds | 🟡 | `doc:docs/evaluation.md`<br>`test:fixtures/evaluation/kinds.json`<br>`api:/api/v1/projects/{project}/flags/{flag}/environments/{env}`<br>`api:/api/v1/projects/{project}/environments/{env}/segments`<br>`api:/api/v1/projects/{project}/environments/{env}/segments/{segment}`<br>Evaluation and the admin API support context kinds and multi-contexts; the dashboard editors do not yet (FS-81). |
 | Nested attribute paths | ✅ | `doc:docs/evaluation.md`<br>`test:fixtures/evaluation/attributes.json` |
 | Regex operator | ❌ | none |
 | Semantic-version operator | ✅ | `doc:docs/evaluation.md`<br>`test:fixtures/evaluation/semver.json` |

@@ -525,8 +525,14 @@
       "description": "Combine user, organisation, device and custom context kinds in one evaluation.",
       "toggleslash": {
         "status": "partial",
-        "evidence": ["doc:docs/evaluation.md", "test:fixtures/evaluation/kinds.json"],
-        "note": "Evaluation supports context kinds and multi-contexts; the admin API and dashboard do not yet (FS-80, FS-81)."
+        "evidence": [
+          "doc:docs/evaluation.md",
+          "test:fixtures/evaluation/kinds.json",
+          "api:/api/v1/projects/{project}/flags/{flag}/environments/{env}",
+          "api:/api/v1/projects/{project}/environments/{env}/segments",
+          "api:/api/v1/projects/{project}/environments/{env}/segments/{segment}"
+        ],
+        "note": "Evaluation and the admin API support context kinds and multi-contexts; the dashboard editors do not yet (FS-81)."
       },
       "competitors": {
         "launchdarkly": "yes",

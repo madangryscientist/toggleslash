@@ -90,6 +90,7 @@ public sealed class StorageTests : IDisposable
         Assert.Equal((true, 7L, "{\"variation\":1}"), (config.On, config.Version, config.Fallthrough));
         var segment = stored.Segments.Single();
         Assert.Equal(("[\"u\"]", 1L), (segment.Included, segment.Version));
+        Assert.Equal(("[]", "[]"), (segment.IncludedContexts, segment.ExcludedContexts));
         Assert.Equal("prod", stored.Environments.Single().Key);
     }
 

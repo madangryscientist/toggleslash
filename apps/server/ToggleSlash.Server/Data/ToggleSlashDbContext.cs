@@ -66,6 +66,9 @@ public sealed partial class ToggleSlashDbContext(DbContextOptions<ToggleSlashDbC
             segment.HasIndex(s => new { s.EnvironmentId, s.Key }).IsUnique();
             // The default is what segments from before versioning start at.
             segment.Property(s => s.Version).HasDefaultValue(1L);
+            // Segments from before context kinds have no per-kind lists.
+            segment.Property(s => s.IncludedContexts).HasDefaultValue("[]");
+            segment.Property(s => s.ExcludedContexts).HasDefaultValue("[]");
         });
 
         modelBuilder.Entity<ApiKey>(key =>
