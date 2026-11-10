@@ -1,0 +1,21 @@
+#!/bin/sh
+# The native lint and format check, no warnings allowed: every file must parse clean under `ruby -wc`, and
+# RuboCop (style and layout) must report nothing.
+set -eu
+cd "$(dirname "$0")/.."
+
+if command -v mise >/dev/null 2>&1; then
+  # `mise exec -- rubocop` can pick a system Ruby that precedes mise's on PATH, so run the gem's script under
+  # mise's own Ruby.
+  rubocop_home=$(mise where gem:rubocop)
+  syntax() { mise exec -- ruby -wc "$1" >/dev/null; }
+  rubocop() { GEM_HOME="$rubocop_home/libexec" mise exec -- ruby "$rubocop_home/libexec/bin/rubocop" "$@"; }
+else
+  syntax() { ruby -wc "$1" >/dev/null; }
+fi
+
+for file in $(find lib test test-service -name '*.rb' | sort); do
+  syntax "$file"
+done
+
+rubocop --format simple

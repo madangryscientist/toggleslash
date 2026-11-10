@@ -1,0 +1,15 @@
+# frozen_string_literal: true
+
+require_relative 'eval/text'
+require_relative 'eval/bucket'
+require_relative 'eval/reference'
+require_relative 'eval/semver'
+require_relative 'eval/dates'
+require_relative 'eval/pattern_parser'
+require_relative 'eval/pattern'
+require_relative 'eval/result'
+require_relative 'eval/validate'
+require_relative 'eval/context'
+require_relative 'eval/ruleset'
+require_relative 'eval/clause'
+require_relative 'eval/evaluator'

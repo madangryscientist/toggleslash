@@ -1,0 +1,55 @@
+AllCops:
+  TargetRubyVersion: 3.3
+  NewCops: enable
+  SuggestExtensions: false
+  Exclude:
+    - tmp/**/*
+
+Layout/LineLength:
+  Max: 120
+
+# The evaluator is a direct transcription of docs/evaluation.md, and the clients are state machines; their
+# size follows the specification, not taste.
+Metrics/AbcSize:
+  Enabled: false
+Metrics/CyclomaticComplexity:
+  Enabled: false
+Metrics/PerceivedComplexity:
+  Enabled: false
+Metrics/MethodLength:
+  Max: 40
+Metrics/ClassLength:
+  Enabled: false
+Metrics/ModuleLength:
+  Enabled: false
+Metrics/BlockLength:
+  Enabled: false
+Metrics/ParameterLists:
+  Enabled: false
+
+Style/Documentation:
+  Enabled: false
+Style/StringLiterals:
+  EnforcedStyle: single_quotes
+Naming/PredicateMethod:
+  Enabled: false
+Naming/PredicatePrefix:
+  Enabled: false
+Style/ClassVars:
+  Enabled: false
+Style/GlobalVars:
+  Enabled: false
+Naming/MethodParameterName:
+  MinNameLength: 1
+Lint/MissingSuper:
+  Enabled: false
+# Names follow the specification's own spelling (int64, 300 seconds, v1).
+Naming/VariableNumber:
+  Enabled: false
+
+# Struct members are named for the wire fields and the specification's own terms (count, min, max, size).
+Lint/StructNewOverride:
+  Enabled: false
+# A case with equal bodies keeps the specification's grammar rule-for-rule readable.
+Lint/DuplicateBranch:
+  Enabled: false

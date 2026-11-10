@@ -1,0 +1,8 @@
+#!/bin/sh
+# Starts the conformance test service: `bun run conformance -- --service sdks/ruby/bin/test-service`.
+set -eu
+cd "$(dirname "$0")/.."
+if command -v mise >/dev/null 2>&1; then
+  exec mise exec -- ruby -w test-service/main.rb
+fi
+exec ruby -w test-service/main.rb

@@ -1,0 +1,7 @@
+*.gem
+.bundle/
+coverage/
+doc/
+.yardoc/
+tmp/
+.rubocop-cache/
