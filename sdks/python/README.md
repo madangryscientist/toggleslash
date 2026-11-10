@@ -1,8 +1,8 @@
 # ToggleSlash server SDK for Python
 
-Feature flags evaluated locally, in your process, from a ruleset the ToggleSlash server keeps current. It
-meets [`docs/sdk-contract.md`](../../docs/sdk-contract.md), uses only the Python standard library (3.11 or
-later) and is **not published**: there is no package index entry to install from.
+The Python server SDK for ToggleSlash. It follows [`docs/sdk-contract.md`](../../docs/sdk-contract.md) and
+evaluates flags locally to [`docs/evaluation.md`](../../docs/evaluation.md). It has no runtime dependency
+(standard library only) and is not published to any registry.
 
 ## Quickstart
 
@@ -12,55 +12,55 @@ Install from a checkout of this repository:
 pip install ./sdks/python
 ```
 
-or put `sdks/python/src` on `PYTHONPATH`. Then:
-
 ```python
-import toggleslash
+from toggleslash import create_client
 
-client = toggleslash.create_client("https://flags.example.com", "sdk-key-from-your-environment")
-try:
-    client.ready()  # optional: waits for the first load, never longer than request_timeout
-    context = {"key": "user-42", "plan": "pro"}
-    if client.bool_variation("new-checkout", context, False):
-        ...
-finally:
-    client.close()  # sends the last usage counts and stops the two background threads
+client = create_client(url="https://flags.example.com", sdk_key="sdk-...")
+client.ready()  # optional: waits for the first load; evaluation never needs it
+
+context = {"key": "user-42", "attributes": {"plan": "pro"}}
+if client.bool_variation("new-checkout", context, False):
+    ...
+
+detail = client.string_variation_detail("banner", context, "none")
+print(detail.value, detail.variation_index, detail.reason)
+
+client.close()  # sends the last usage counts; or use `with create_client(...) as client:`
 ```
 
-`create_client` returns at once and never raises. `variation` and its typed siblings never wait for the
-network: before the first load they answer your fallback with the reason `ERROR` / `NOT_READY`. A `Client` is
-also a context manager (`with toggleslash.create_client(...) as client:`).
+Python is `>=3.11`. `create_client` returns at once and loads on a background thread.
 
-Read the key from the environment, never from source.
+## Mapping to the contract
 
-## The API
-
-Every name in the contract and its Python spelling is in the table in
-[`DESIGN.md`](DESIGN.md#the-mapping-table), along with the design choices behind it.
+The full table, with every option and its default, is in [`DESIGN.md`](DESIGN.md#the-mapping-table). In short:
+`create_client(...)`, `ready()`, `variation(...)` and the typed `bool_variation`, `string_variation`,
+`float_variation`, `int_variation`, `json_variation` (each with a `_detail` form), `status()`, `close()`.
+Options are keyword-only: `url`, `sdk_key`, `stream`, `poll_interval`, `flush_interval`, `request_timeout`
+(seconds, or a `timedelta`), `hooks=Hooks(after_evaluation=...)` and `on_error`.
 
 ## Guarantees
 
-The contract's section 5, as this SDK keeps it:
+- It never raises at a caller: a bad context, a flag it cannot evaluate, a hook that raises and an
+  `on_error` that raises are all absorbed.
+- `variation` and `status` do no I/O and never wait on the network.
+- It keeps the last good ruleset when the server is down, slow or sends something that is not a ruleset.
+- Usage counts are batched and sent by `flush_interval` and by `close`; they hold flag keys, variation
+  indices and days, never a context.
+- Nothing about the end user leaves the process: no context, key or attribute is in a request, a log or an
+  error, and there is no telemetry.
+- `close` is idempotent and safe from any thread; after it the client still answers from the last ruleset.
+- A client you never close does not keep the process alive (its two threads are daemons).
 
-1. It never raises at a caller, whatever the server, the network, a context, a hook or `on_error` does.
-2. `variation`, `variation_detail` and `status` never do I/O and never wait.
-3. `ready` settles after the first attempt and gives the same answer every time.
-4. While the server is unreachable it keeps evaluating from the last good ruleset.
-5. Only something with the shape of a ruleset replaces a ruleset.
+## Checks
 
-It also sends no context, context key or attribute anywhere: usage counts carry a flag, a variation index and
-a day.
-
-## Running the checks
-
-The toolchain is pinned in [`mise.toml`](mise.toml) (`mise install` from this directory). The `bin` scripts
-find it themselves.
+From the repository root (`bun install` once), with [mise](https://mise.jdx.dev) providing the pinned Python
+and ruff, or any Python 3.11+ and ruff on `PATH`:
 
 ```sh
-sdks/python/bin/lint      # ruff check and ruff format --check
-sdks/python/bin/test      # byte-compile, then every unit test and every evaluation vector, with warnings as errors
-bun run conformance -- --service sdks/python/bin/test-service   # from the repository root: the conformance harness
+sdks/python/bin/lint   # ruff check and ruff format --check
+sdks/python/bin/test   # byte-compile, then unittest under -X dev -W error
+bun run conformance -- --service sdks/python/bin/test-service
 ```
 
-The test service is described in [`test-service/README.md`](test-service/README.md). A report of the run that
-built this SDK is in [`RUN.md`](RUN.md).
+The conformance harness plays the application and the ToggleSlash server around the SDK's
+[test service](test-service/README.md). [`RUN.md`](RUN.md) is the report of the run that wrote this SDK.

@@ -1,74 +1,67 @@
+"""The server-sent-events parser, by the WHATWG rules the contract points at."""
+
 import unittest
 
-from toggleslash._retry import MAX_RETRY_AFTER, retry_after
-from toggleslash._sse import SseParser
+from toggleslash.sse import SseParser
 
 
 def parse(*chunks: bytes) -> list[tuple[str, str]]:
     parser = SseParser()
-    events: list[tuple[str, str]] = []
+    out = []
     for chunk in chunks:
-        events.extend(parser.feed(chunk))
-    return events
+        out.extend((e.event, e.data) for e in parser.feed(chunk))
+    return out
 
 
-class SseTests(unittest.TestCase):
-    def test_an_event_and_a_comment(self) -> None:
-        self.assertEqual(parse(b': keep-alive\n\nevent: changed\ndata: "v2"\n\n'), [("changed", '"v2"')])
+class SseParserTests(unittest.TestCase):
+    def test_one_event(self) -> None:
+        self.assertEqual(parse(b'event: changed\ndata: "abc"\n\n'), [("changed", '"abc"')])
 
-    def test_the_name_defaults_to_message(self) -> None:
+    def test_default_name_is_message(self) -> None:
         self.assertEqual(parse(b"data: x\n\n"), [("message", "x")])
 
-    def test_data_lines_join_with_lf_and_one_leading_space_goes(self) -> None:
-        self.assertEqual(parse(b"data: a\ndata:  b\ndata\n\n"), [("message", "a\n b\n")])
+    def test_an_event_without_data_is_dropped(self) -> None:
+        self.assertEqual(parse(b"event: connected\n\n"), [])
 
-    def test_an_event_without_data_is_dropped_and_does_not_leak_its_name(self) -> None:
-        self.assertEqual(parse(b"event: changed\n\ndata: x\n\n"), [("message", "x")])
+    def test_data_lines_join_with_lf(self) -> None:
+        self.assertEqual(parse(b"data: a\ndata: b\n\n"), [("message", "a\nb")])
 
-    def test_every_line_end(self) -> None:
+    def test_crlf_and_cr_end_lines(self) -> None:
+        self.assertEqual(parse(b"event: e\r\ndata: 1\r\n\r\n"), [("e", "1")])
+        self.assertEqual(parse(b"event: e\rdata: 1\r\r"), [("e", "1")])
+
+    def test_crlf_split_across_chunks(self) -> None:
+        self.assertEqual(parse(b"data: 1\r", b"\n\r", b"\n"), [("message", "1")])
+
+    def test_comments_ids_and_retry_are_ignored(self) -> None:
+        self.assertEqual(parse(b": keep-alive\nid: 7\nretry: 5\ndata: z\n\n"), [("message", "z")])
+
+    def test_one_leading_space_is_dropped_only(self) -> None:
+        self.assertEqual(parse(b"data:  two\n\n"), [("message", " two")])
+        self.assertEqual(parse(b"data:none\n\n"), [("message", "none")])
+
+    def test_a_field_with_no_colon_is_a_name_with_empty_value(self) -> None:
+        self.assertEqual(parse(b"data\n\n"), [("message", "")])
+
+    def test_byte_order_mark_is_dropped(self) -> None:
+        self.assertEqual(parse(b"\xef\xbb\xbfdata: q\n\n"), [("message", "q")])
+
+    def test_multibyte_character_split_across_chunks(self) -> None:
+        raw = "data: café\n\n".encode()
+        self.assertEqual(parse(raw[:10], raw[10:]), [("message", "café")])
+
+    def test_byte_at_a_time(self) -> None:
+        raw = b"event: changed\ndata: 1\n\nevent: connected\ndata: 2\n\n"
         self.assertEqual(
-            parse(b"data: a\r\n\r\ndata: b\r\rdata: c\n\n"), [("message", "a"), ("message", "b"), ("message", "c")]
+            parse(*(raw[i : i + 1] for i in range(len(raw)))),
+            [("changed", "1"), ("connected", "2")],
         )
 
-    def test_a_crlf_split_between_reads_is_one_line_end(self) -> None:
-        self.assertEqual(parse(b"data: a\r", b"\n\r", b"\ndata: b\n\n"), [("message", "a"), ("message", "b")])
+    def test_an_event_is_not_released_before_its_blank_line(self) -> None:
+        self.assertEqual(parse(b"data: half\n"), [])
 
-    def test_a_lone_cr_at_the_end_of_a_read_ends_the_line(self) -> None:
-        self.assertEqual(parse(b"data: a\r", b"data: b\r", b"\r"), [("message", "a\nb")])
-
-    def test_any_cut_of_the_bytes_gives_the_same_events(self) -> None:
-        whole = 'event: changed\r\ndata: "é€😀"\r\n\r\n: ping\n\ndata: x\n\n'.encode()
-        expected = parse(whole)
-        self.assertEqual(len(expected), 2)
-        for size in range(1, 8):
-            pieces = [whole[i : i + size] for i in range(0, len(whole), size)]
-            self.assertEqual(parse(*pieces), expected, f"chunks of {size}")
-
-    def test_an_event_still_incomplete_when_the_bytes_end_is_never_delivered(self) -> None:
-        self.assertEqual(parse(b"data: a\n\ndata: b\n"), [("message", "a")])
-
-    def test_a_leading_byte_order_mark_is_dropped(self) -> None:
-        self.assertEqual(parse(b"\xef\xbb\xbfdata: a\n\n"), [("message", "a")])
-
-    def test_fields_other_than_event_and_data_are_ignored(self) -> None:
-        self.assertEqual(parse(b"id: 4\nretry: 10\nfoo: bar\ndata: a\n\n"), [("message", "a")])
-
-
-class RetryAfterTests(unittest.TestCase):
-    def test_only_a_429_is_read(self) -> None:
-        self.assertIsNone(retry_after(503, "5"))
-        self.assertEqual(retry_after(429, "5"), 5.0)
-
-    def test_whole_decimal_seconds_only_with_spaces_ignored(self) -> None:
-        self.assertEqual(retry_after(429, " 7 "), 7.0)
-        for bad in (None, "", "1.5", "-3", "+3", "Wed, 21 Oct 2026 07:28:00 GMT", "3s", "٣", "²"):
-            self.assertIsNone(retry_after(429, bad), repr(bad))
-
-    def test_it_is_capped_at_five_minutes(self) -> None:
-        self.assertEqual(retry_after(429, "300"), MAX_RETRY_AFTER)
-        self.assertEqual(retry_after(429, "301"), 300.0)
-        self.assertEqual(retry_after(429, "99999999999"), 300.0)
-        self.assertEqual(retry_after(429, "9" * 5000), 300.0)
+    def test_invalid_utf8_becomes_a_replacement_character(self) -> None:
+        self.assertEqual(parse(b"data: \xff\n\n"), [("message", "�")])
 
 
 if __name__ == "__main__":

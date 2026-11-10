@@ -1,79 +1,51 @@
-"""Runs every shared evaluation vector (fixtures/evaluation/*.json) through the evaluator.
-
-The fixtures are read from the repository at test time, never copied. `buckets.json` is checked for both
-`uint32` and `bucket`; every other file holds vectors with a ruleset, a context and an expected result.
-"""
+"""Every shared evaluation vector and bucket pin, read from ``fixtures/evaluation`` at test time."""
 
 from __future__ import annotations
 
-import math
+import hashlib
 import unittest
-from pathlib import Path
-from typing import Any
 
-from toggleslash import _json
-from toggleslash._bucket import bucket, uint32
-from toggleslash._evaluate import evaluate
-from toggleslash._ruleset import create_ruleset
-from toggleslash._types import Reason
+from support import FIXTURES, json_equal, load
+from toggleslash.evaluator import create_ruleset, evaluate
+from toggleslash.evaluator.bucket import bucket
+from toggleslash.evaluator.text import utf8
 
-FIXTURES = Path(__file__).resolve().parents[3] / "fixtures" / "evaluation"
+DIRECTORY = FIXTURES / "evaluation"
+_counts = {"vectors": 0, "pins": 0}
 
 
-def deep_equal(a: Any, b: Any) -> bool:
-    """JSON equality by the spec: numbers by IEEE-754 (-0 equals 0), and a boolean is never a number."""
-    if isinstance(a, bool) or isinstance(b, bool):
-        return isinstance(a, bool) and isinstance(b, bool) and a == b
-    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
-        return a == b or (math.isnan(a) and math.isnan(b))
-    if isinstance(a, dict) and isinstance(b, dict):
-        return a.keys() == b.keys() and all(deep_equal(a[key], b[key]) for key in a)
-    if isinstance(a, list) and isinstance(b, list):
-        return len(a) == len(b) and all(deep_equal(x, y) for x, y in zip(a, b, strict=True))
-    return type(a) is type(b) and a == b
-
-
-def reason_json(reason: Reason) -> dict[str, Any]:
-    out: dict[str, Any] = {"kind": str(reason.kind)}
-    if reason.rule_index is not None:
-        out["ruleIndex"] = reason.rule_index
-    if reason.flag_key is not None:
-        out["flagKey"] = reason.flag_key
-    if reason.code is not None:
-        out["code"] = str(reason.code)
-    return out
-
-
-class VectorTests(unittest.TestCase):
-    def test_evaluation_vectors(self) -> None:
-        files = sorted(path for path in FIXTURES.glob("*.json") if path.name != "buckets.json")
-        self.assertTrue(files, f"no vector files in {FIXTURES}")
-        ran = 0
+class EvaluationVectors(unittest.TestCase):
+    def test_every_vector(self) -> None:
+        files = sorted(path for path in DIRECTORY.glob("*.json") if path.name != "buckets.json")
+        self.assertTrue(files, "no vector files were read")
         for path in files:
-            document = _json.loads(path.read_bytes())
-            for vector in document["vectors"]:
+            vectors = load(path)["vectors"]
+            self.assertTrue(vectors, f"{path.name} holds no vectors")
+            for vector in vectors:
                 with self.subTest(file=path.name, vector=vector["name"]):
-                    ruleset = create_ruleset({"flags": vector.get("flags"), "segments": vector.get("segments")})
-                    got = evaluate(ruleset, vector["flagKey"], vector["context"])
-                    expected = vector["expected"]
-                    actual = {
-                        "value": got.value,
-                        "variationIndex": got.variation_index,
-                        "reason": reason_json(got.reason),
-                    }
-                    self.assertTrue(deep_equal(actual, expected), f"got {actual!r}, want {expected!r}")
-                ran += 1
-        self.assertGreater(ran, 0)
-        print(f"vectors: {ran}")
+                    ruleset = create_ruleset({"flags": vector["flags"], "segments": vector["segments"]})
+                    got = evaluate(ruleset, vector["flagKey"], vector["context"]).to_json()
+                    self.assertTrue(
+                        json_equal(got, vector["expected"]),
+                        f"{path.name}: {vector['name']}: got {got!r}, expected {vector['expected']!r}",
+                    )
+                    _counts["vectors"] += 1
+        self.assertGreater(_counts["vectors"], 0)
 
-    def test_bucket_pins(self) -> None:
-        pins = _json.loads((FIXTURES / "buckets.json").read_bytes())["buckets"]
-        self.assertTrue(pins)
+    def test_every_bucket_pin(self) -> None:
+        pins = load(DIRECTORY / "buckets.json")["buckets"]
+        self.assertTrue(pins, "no bucket pins were read")
         for pin in pins:
             with self.subTest(pin=pin):
-                self.assertEqual(uint32(pin["flagKey"], pin["salt"], pin["contextKey"]), pin["uint32"])
+                text = f"{pin['flagKey']}.{pin['salt']}.{pin['contextKey']}"
+                value = int.from_bytes(hashlib.sha256(utf8(text)).digest()[:4], "big")
+                self.assertEqual(value, pin["uint32"], text)
                 self.assertEqual(bucket(pin["flagKey"], pin["salt"], pin["contextKey"]), pin["bucket"])
-        print(f"pins: {len(pins)}")
+                _counts["pins"] += 1
+
+
+def tearDownModule() -> None:
+    print(f"vectors: {_counts['vectors']} pins: {_counts['pins']}", flush=True)
 
 
 if __name__ == "__main__":

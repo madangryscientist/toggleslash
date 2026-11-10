@@ -1,14 +1,12 @@
-"""Instants, to the "Dates" section of docs/evaluation.md.
+"""Instants, to "Dates" in docs/evaluation.md.
 
-A hand-written walk over the string: no `datetime.fromisoformat` and no regular expression. The result is
-Unix milliseconds, or `None` when the text is not an instant.
+A hand-written walk over the string: no regular expression, no ``datetime`` parser and no library.
+The result is Unix milliseconds, or None when the text is not an instant.
 """
 
 from __future__ import annotations
 
-import math
-
-_ZERO = 0x30
+from .numbers import as_float, is_finite_number
 
 
 def _digits(text: str, start: int, length: int) -> int | None:
@@ -16,20 +14,19 @@ def _digits(text: str, start: int, length: int) -> int | None:
         return None
     value = 0
     for char in text[start : start + length]:
-        code = ord(char)
-        if not _ZERO <= code <= _ZERO + 9:
+        if not "0" <= char <= "9":
             return None
-        value = value * 10 + (code - _ZERO)
+        value = value * 10 + (ord(char) - 0x30)
     return value
 
 
-def _is_leap_year(year: int) -> bool:
+def _is_leap(year: int) -> bool:
     return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
 
 
 def _days_in_month(year: int, month: int) -> int:
     if month == 2:
-        return 29 if _is_leap_year(year) else 28
+        return 29 if _is_leap(year) else 28
     return 30 if month in (4, 6, 9, 11) else 31
 
 
@@ -69,7 +66,7 @@ def _parse_time(text: str) -> int | None:
 
 def _parse_fraction(text: str, start: int) -> tuple[int, int] | None:
     end = start + 1
-    while end < len(text) and ord(text[end]) in range(_ZERO, _ZERO + 10):
+    while end < len(text) and "0" <= text[end] <= "9":
         end += 1
     if end == start + 1:
         return None
@@ -86,9 +83,9 @@ def _parse_offset(text: str) -> int | None:
         return None
     hour = _digits(text, 1, 2)
     minute = _digits(text, 4, 2)
-    if hour is None or minute is None:
+    if hour is None or minute is None or hour > 23 or minute > 59:
         return None
-    return None if hour > 23 or minute > 59 else sign * (hour * 60 + minute)
+    return sign * (hour * 60 + minute)
 
 
 def _has_shape(text: str) -> bool:
@@ -112,21 +109,14 @@ def _parse_instant(text: str) -> int | None:
     fraction = _parse_fraction(text, 19) if text[19] == "." else (0, 19)
     if fraction is None:
         return None
-    millis, end = fraction
-    offset = _parse_offset(text[end:])
+    offset = _parse_offset(text[fraction[1] :])
     if offset is None:
         return None
-    return days * 86_400_000 + seconds * 1000 + millis - offset * 60_000
+    return days * 86_400_000 + seconds * 1000 + fraction[0] - offset * 60_000
 
 
 def to_instant(value: object) -> float | int | None:
     """A finite number is Unix milliseconds, a string is parsed, anything else is not an instant."""
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        try:
-            number = float(value)
-        except OverflowError:
-            return None
-        return number if math.isfinite(number) else None
+    if is_finite_number(value):
+        return as_float(value)  # type: ignore[arg-type]
     return _parse_instant(value) if isinstance(value, str) else None

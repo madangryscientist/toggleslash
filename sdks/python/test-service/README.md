@@ -1,32 +1,42 @@
-# The Python SDK's test service
+# The Python test service
 
-`main.py` wraps `toggleslash.create_client` in the protocol of
-[`docs/sdk-test-service.md`](../../../docs/sdk-test-service.md), so the conformance harness can drive the
-SDK from outside. From the repository root:
+`main.py` wraps the SDK in the HTTP server of [`docs/sdk-test-service.md`](../../../docs/sdk-test-service.md),
+so `packages/sdk-conformance` can drive it. Run the whole check from the repository root:
 
-```sh
+```bash
 bun run conformance -- --service sdks/python/bin/test-service
 ```
 
-`bin/test-service` starts it with the toolchain `mise.toml` pins and prints `listening http://127.0.0.1:<port>`
-once it serves. It is the standard library's `http.server` (threading), on a port the OS picks.
+`bin/test-service` starts it from `sdks/python` (never start it with `src/toggleslash` as the working
+directory: that package has a `types.py` and an `http.py` that would shadow the standard library's). It
+listens on `127.0.0.1` on a port the OS picks, prints `listening http://127.0.0.1:<port>`, and serves each
+request on its own thread.
 
-It advertises `integer-accessor`: Python has a separate integer type, and `int_variation` bounds it to
-signed 64 bits.
+It advertises `integer-accessor`: Python has an `int` and the SDK has `int_variation`.
 
-| Protocol | Python SDK |
-| --- | --- |
-| `POST /clients` | `create_client(url, sdk_key, ...)`; `stream` passes through, `pollIntervalMs`, `flushIntervalMs` and `requestTimeoutMs` become `poll_interval`, `flush_interval` and `request_timeout` in seconds, and `on_error` always records (and raises when `onErrorThrows` is set) |
-| `ready` | `client.ready()` |
-| `evaluate`, accessor `bool` | `client.bool_variation_detail(flag_key, context, fallback)` |
-| `evaluate`, accessor `string` | `client.string_variation_detail(...)` |
-| `evaluate`, accessor `number` | `client.float_variation_detail(...)` |
-| `evaluate`, accessor `int` | `client.int_variation_detail(...)` |
-| `evaluate`, accessor `json` | `client.json_variation_detail(...)` |
-| `evaluate`, accessor `any` | `client.variation_detail(...)`; a `null` fallback accepts any served kind |
-| `status` | `client.status()` (`last_sync_at` as epoch milliseconds, by integer arithmetic) |
-| `hook-events` | the events `hooks.after_evaluation` received, as the SDK built them |
-| `errors` | what `on_error` received, each as its message |
-| `close` | `client.close()` |
+## Accessor mapping
 
-It catches nothing the SDK raises: a call that raises answers 500 with the traceback.
+| `accessor` | SDK method | Kind it accepts |
+| --- | --- | --- |
+| `bool` | `bool_variation_detail` | boolean |
+| `string` | `string_variation_detail` | string |
+| `number` | `float_variation_detail` | number (the value comes back as a `float`) |
+| `int` | `int_variation_detail` | a number with no fractional part inside the signed 64-bit range |
+| `json` | `json_variation_detail` | array or object (the kind of a null fallback is not checked) |
+| `any` | `variation_detail` | the kind of the fallback; a null fallback accepts any |
+
+Every answer is `{ value, variationIndex, reason }`, with `Reason.to_json()` as `reason`.
+
+## Options and switches
+
+`url`, `sdkKey` and `stream` are passed through. `pollIntervalMs`, `flushIntervalMs` and `requestTimeoutMs`
+are divided by 1000 and passed as `poll_interval`, `flush_interval` and `request_timeout` (seconds).
+`hook` and `hookThrows` install a `Hooks(after_evaluation=...)` that records the event as
+`{ flagKey, context, value, variationIndex, reason, etag, flagVersion }`; `hookThrows` then raises.
+`onErrorThrows` makes the `on_error` the service installs (which always records `str(error)`) raise after
+recording. `status` is `Status` with `last_sync_at` turned into whole epoch milliseconds.
+
+## Errors
+
+The service catches nothing the SDK raises: an exception answers `500` with the traceback, and the
+harness fails the scenario. An unknown client or route answers `404`.

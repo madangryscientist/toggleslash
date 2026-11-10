@@ -1,13 +1,14 @@
 #!/bin/sh
-# Byte-compile (a syntax error fails here), then run every test under the interpreter's development checks
-# with warnings as errors. Python has no race detector; the concurrency tests carry that weight.
+# Build (byte-compile every module, test and the test service) and run every test.
+# The interpreter runs in development mode with warnings as errors, which is the nearest thing
+# Python has to a race detector: an unraisable exception, an unclosed resource or an exception in
+# a thread fails the run.
 set -eu
 cd "$(dirname "$0")/.."
-if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
-  run() { mise exec -- "$@"; }
-else
-  run() { "$@"; }
-fi
-run python --version
-run python -m compileall -q -f src tests test-service
-PYTHONPATH=src run python -X dev -W error -m unittest discover -s tests
+
+run() {
+  if command -v mise >/dev/null 2>&1; then mise exec -- "$@"; else "$@"; fi
+}
+
+run python -X dev -W error -m compileall -q -f src tests test-service
+PYTHONPATH=src run python -X dev -W error -m unittest discover -s tests -t tests -p 'test_*.py' "$@"

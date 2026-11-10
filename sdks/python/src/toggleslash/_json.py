@@ -1,26 +1,59 @@
-"""The JSON reader. Numbers are IEEE-754 binary64 and `NaN`/`Infinity` are not JSON."""
+"""The JSON parser, over the standard library's, to the spec's "Reading JSON".
+
+Numbers are IEEE-754 binary64: an integer literal beyond 2^53 reads as the float it rounds to
+(``9007199254740993`` is ``9007199254740992.0``), a literal of thousands of digits is infinity
+rather than the interpreter's integer-digit-limit error, ``1e999`` is infinity and ``-0.0`` keeps its
+sign. ``NaN``, ``Infinity`` and ``-Infinity`` are not JSON and are refused. A lone surrogate escape
+stays in the ``str``, which can hold one.
+"""
 
 from __future__ import annotations
 
 import json
 from typing import Any
 
-_EXACT_DIGITS = 18
+_EXACT = 2**53
 
 
-def _parse_int(literal: str) -> int | float:
-    # `int()` of a very long literal raises (the interpreter's digit limit); `float()` of one is Infinity.
-    if len(literal) > _EXACT_DIGITS:
-        return float(literal)
-    number = int(literal)
-    return number if -(2**53) <= number <= 2**53 else float(number)
+class JSONError(ValueError):
+    """The text is not JSON."""
 
 
-def _reject_constant(name: str) -> Any:
-    raise ValueError(f"{name} is not JSON")
+def _parse_int(text: str) -> int | float:
+    if text == "-0":
+        return -0.0
+    digits = len(text.lstrip("-"))
+    if digits < 16:
+        return int(text)
+    if digits == 16 and abs(int(text)) <= _EXACT:
+        return int(text)
+    return float(text)
 
 
-def loads(data: bytes | bytearray | str) -> Any:
-    """Parses a JSON document. Raises on bad UTF-8, bad JSON or a document nested too deep."""
-    text = bytes(data).decode("utf-8") if isinstance(data, (bytes, bytearray)) else data
-    return json.loads(text, parse_int=_parse_int, parse_constant=_reject_constant)
+def _parse_constant(text: str) -> Any:
+    raise JSONError(f"{text} is not JSON")
+
+
+_DECODER = json.JSONDecoder(
+    parse_int=_parse_int, parse_float=float, parse_constant=_parse_constant, strict=True
+)
+
+
+def parse(data: bytes | str) -> Any:
+    """Parses a JSON document. Raises ``JSONError`` for anything that is not one."""
+    try:
+        text = data.decode("utf-8") if isinstance(data, (bytes, bytearray)) else data
+    except UnicodeDecodeError as exc:
+        raise JSONError("not valid UTF-8") from exc
+    if text.startswith("﻿"):
+        text = text[1:]
+    try:
+        return _DECODER.decode(text) if text.strip(" \t\n\r") else _empty()
+    except RecursionError as exc:
+        raise JSONError("nested too deeply") from exc
+    except json.JSONDecodeError as exc:
+        raise JSONError(str(exc)) from exc
+
+
+def _empty() -> Any:
+    raise JSONError("empty document")
