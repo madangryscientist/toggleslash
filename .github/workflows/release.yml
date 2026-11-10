@@ -1,7 +1,7 @@
 name: Release
 
-# Publishes the `@hackcove/toggleslash` npm package (packages/cli) when a `v*` tag is pushed: the CI
-# gate first (ci.yml, called as it is), then `npm publish --provenance`. There is no NPM_TOKEN
+# Publishes the `@hackcove/toggleslash` npm package (packages/cli) when a `v*` tag is pushed: the
+# gate first, then `npm publish --provenance`. There is no NPM_TOKEN
 # anywhere: npm trusted publishing (OIDC) lets this workflow publish with a short-lived token that
 # npm checks against the trusted publisher set on the package's npm settings page (repository,
 # workflow file `release.yml`, environment `npm`). That page, the `npm` environment and the tag are
@@ -16,9 +16,36 @@ permissions:
   contents: read
 
 jobs:
+  # A copy of ci.yml's `gate` job (keep the two in step), not a call to it: ci.yml has a `proxmox` job,
+  # so it allows only push and pull_request triggers and has no `workflow_call` (FS-116). It runs on
+  # GitHub's hosted runners, with no `proxmox` guard, because the self-hosted runner is for the owner's
+  # push and pull_request runs only, never a tag release. It leaves out ci.yml's `apps`, `e2e`, `stack`
+  # and `container` jobs on purpose: a tag is cut from `main`, where ci.yml already ran them.
   gate:
-    name: Gate
-    uses: ./.github/workflows/ci.yml
+    name: Gate (typecheck, lint, format, parity, test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.2"
+      # global.json pins the SDK; apps/server is part of the gate. The @nx/dotnet plugin needs it for every nx command.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run lint
+      - run: bun run format:check
+      - run: bun run parity:check
+      - run: bun run parity:check:commits
+        env:
+          PARITY_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+      - run: bun run test
 
   publish:
     name: Publish to npm
