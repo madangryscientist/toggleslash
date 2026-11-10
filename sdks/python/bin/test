@@ -1,13 +1,12 @@
 #!/bin/sh
-# Byte-compile (a syntax error fails here), then run every test under the interpreter's development checks
-# with warnings as errors. Python has no race detector; the concurrency tests carry that weight.
+# Builds (byte-compiles every source, test and test-service file, so a syntax error in a file no test
+# imports still fails) and runs every test under `-X dev -W error`. It never reports a cached result.
 set -eu
 cd "$(dirname "$0")/.."
-if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
-  run() { mise exec -- "$@"; }
-else
-  run() { "$@"; }
-fi
-run python --version
+run() {
+  if command -v mise >/dev/null 2>&1; then mise exec -- "$@"; else "$@"; fi
+}
+export PYTHONPATH=src
+export PYTHONDONTWRITEBYTECODE=
 run python -m compileall -q -f src tests test-service
-PYTHONPATH=src run python -X dev -W error -m unittest discover -s tests
+run python -X dev -W error -m unittest discover -s tests -t tests "$@"

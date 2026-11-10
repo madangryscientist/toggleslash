@@ -1,17 +1,21 @@
-"""Contexts: validating a context and reading it as a map from kind to key and attributes."""
+"""Contexts, normalised to a map from kind to `(key, attributes)`."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, NamedTuple
 
 from ._bucket import bucket
 from ._validate import is_kind
 
 DEFAULT_KIND = "user"
 
-# kind -> (key, attributes or None)
-KindContext = tuple[str, "Mapping[str, Any] | None"]
+
+class KindContext(NamedTuple):
+    key: str
+    attributes: Mapping[str, Any] | None
+
+
 Contexts = dict[str, KindContext]
 
 
@@ -21,8 +25,8 @@ def _read_entry(value: Mapping[str, Any]) -> KindContext | None:
     if not isinstance(key, str) or key == "":
         return None
     if attributes is None:
-        return key, None
-    return (key, attributes) if isinstance(attributes, Mapping) else None
+        return KindContext(key, None)
+    return KindContext(key, attributes) if isinstance(attributes, Mapping) else None
 
 
 def _read_multi(value: Mapping[str, Any]) -> Contexts | None:
@@ -43,7 +47,7 @@ def _read_multi(value: Mapping[str, Any]) -> Contexts | None:
 
 
 def normalise_context(value: object) -> Contexts | None:
-    """The context as a map from kind to `(key, attributes)`, or `None` when it is not valid."""
+    """The context as a map from kind to its key and attributes, or None when it is not valid."""
     if not isinstance(value, Mapping):
         return None
     kind = value.get("kind")
@@ -58,10 +62,12 @@ def normalise_context(value: object) -> Contexts | None:
 
 
 def kind_bucket(key: str, salt: str, kind: str | None, contexts: Contexts) -> int:
-    """The bucket for the key of `kind` (absent is `user`), or 0 when the context lacks that kind."""
-    chosen = DEFAULT_KIND if kind is None else kind
+    """The bucket for the key of `kind` (None is `user`).
+
+    The key as it is for `user`, `<kind>:<key>` otherwise, 0 when absent.
+    """
+    chosen = kind if kind is not None else DEFAULT_KIND
     context = contexts.get(chosen)
     if context is None:
         return 0
-    context_key = context[0]
-    return bucket(key, salt, context_key if chosen == DEFAULT_KIND else f"{chosen}:{context_key}")
+    return bucket(key, salt, context.key if chosen == DEFAULT_KIND else f"{chosen}:{context.key}")

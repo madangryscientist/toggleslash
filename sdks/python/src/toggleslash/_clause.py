@@ -1,55 +1,44 @@
-"""Attribute clauses: reading an attribute and applying one op to it."""
+"""Attribute clauses: reading the attribute, and the ops."""
 
 from __future__ import annotations
 
-import math
 from collections.abc import Mapping
 from typing import Any
 
-from ._context import DEFAULT_KIND, Contexts
+from . import _text
+from ._context import DEFAULT_KIND, Contexts, KindContext
 from ._dates import to_instant
+from ._json import is_finite, is_number, to_float
 from ._pattern import compile_pattern, pattern_matches
 from ._reference import parse_reference
-from ._semver import compare_semantic_versions, parse_semantic_version
-from ._text import u16
+from ._semver import compare_semver, parse_semver
 
-_STRING_OPS = frozenset({"contains", "startsWith", "endsWith", "matches"})
-_ORDER_OPS = frozenset({"lt", "lte", "gt", "gte"})
-_SEMVER_OPS = frozenset({"semverEq", "semverLt", "semverLte", "semverGt", "semverGte"})
+_MISSING = object()
 
 
-def _own(source: Mapping[str, Any], name: str) -> Any:
-    return source.get(name)
+def _own(source: object, name: str) -> Any:
+    if isinstance(source, Mapping) and name in source:
+        return source[name]
+    return _MISSING
 
 
-def read_attribute(key: str, attributes: Mapping[str, Any] | None, name: str) -> Any:
-    """The value a name or a `/` reference reaches, or `None` when it is missing (or null)."""
+def read_attribute(context: KindContext, name: str) -> Any:
+    """The value a name or a `/` reference reaches, or `_MISSING`."""
     components = parse_reference(name) if name.startswith("/") else [name]
     if not components:
-        return None
+        return _MISSING
     first, rest = components[0], components[1:]
-    current: Any = None
     if first == "key":
-        current = key
-    elif attributes is not None:
-        current = _own(attributes, first)
+        current: Any = context.key
+    elif context.attributes is not None:
+        current = _own(context.attributes, first)
+    else:
+        current = _MISSING
     for component in rest:
         if not isinstance(current, Mapping):
-            return None
+            return _MISSING
         current = _own(current, component)
     return current
-
-
-def _is_number(value: object) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
-
-
-def _as_float(value: int | float) -> float:
-    """The binary64 a number reads as: an integer too big for one is infinite and so never matches."""
-    try:
-        return float(value)
-    except OverflowError:
-        return math.inf if value > 0 else -math.inf
 
 
 def _sign(a: Any, b: Any) -> int:
@@ -57,12 +46,14 @@ def _sign(a: Any, b: Any) -> int:
 
 
 def _compare(attribute: object, value: object) -> int | None:
-    """-1, 0 or 1 for two finite numbers or two strings (by UTF-16 code unit); otherwise `None`."""
-    if _is_number(attribute) and _is_number(value):
-        number = _as_float(attribute)
-        return _sign(number, _as_float(value)) if math.isfinite(number) else None
+    """-1, 0 or 1 for two numbers (the attribute finite) or two strings (by UTF-16 code unit); otherwise None."""
+    if is_number(attribute) and is_number(value):
+        a = to_float(attribute)  # type: ignore[arg-type]
+        if not is_finite(a):
+            return None
+        return _sign(a, to_float(value))  # type: ignore[arg-type]
     if isinstance(attribute, str) and isinstance(value, str):
-        return _sign(u16(attribute), u16(value))
+        return _text.compare(attribute, value)
     return None
 
 
@@ -74,11 +65,11 @@ def _matches_pattern(attribute: str, value: str) -> bool:
 def _matches_string(op: str, attribute: str, value: str) -> bool:
     if op == "matches":
         return _matches_pattern(attribute, value)
-    left = u16(attribute)
-    right = u16(value)
     if op == "contains":
-        return right in left
-    return left.startswith(right) if op == "startsWith" else left.endswith(right)
+        return _text.contains(attribute, value)
+    if op == "startsWith":
+        return _text.starts_with(attribute, value)
+    return _text.ends_with(attribute, value)
 
 
 def _matches_order(op: str, order: int) -> bool:
@@ -86,17 +77,18 @@ def _matches_order(op: str, order: int) -> bool:
         return order < 0
     if op == "lte":
         return order <= 0
-    return order > 0 if op == "gt" else order >= 0
+    if op == "gt":
+        return order > 0
+    return order >= 0
 
 
 def _matches_semver(op: str, attribute: object, value: object) -> bool:
     if not isinstance(attribute, str) or not isinstance(value, str):
         return False
-    candidate = parse_semantic_version(attribute)
-    target = parse_semantic_version(value)
+    candidate, target = parse_semver(attribute), parse_semver(value)
     if candidate is None or target is None:
         return False
-    order = compare_semantic_versions(candidate, target)
+    order = compare_semver(candidate, target)
     if op == "semverEq":
         return order == 0
     if op == "semverLt":
@@ -107,11 +99,14 @@ def _matches_semver(op: str, attribute: object, value: object) -> bool:
 
 
 def _matches_date(op: str, attribute: object, value: object) -> bool:
-    candidate = to_instant(attribute)
-    target = to_instant(value)
+    candidate, target = to_instant(attribute), to_instant(value)
     if candidate is None or target is None:
         return False
     return candidate < target if op == "before" else candidate > target
+
+
+_STRING_OPS = frozenset(("contains", "startsWith", "endsWith", "matches"))
+_TYPED_OPS = frozenset(("semverEq", "semverLt", "semverLte", "semverGt", "semverGte", "before", "after"))
 
 
 def _matches_value(op: str, attribute: object, value: object) -> bool:
@@ -121,24 +116,24 @@ def _matches_value(op: str, attribute: object, value: object) -> bool:
         return _compare(attribute, value) == 0
     if op in _STRING_OPS:
         return isinstance(attribute, str) and isinstance(value, str) and _matches_string(op, attribute, value)
-    if op in _SEMVER_OPS:
+    if op in _TYPED_OPS:
+        if op in ("before", "after"):
+            return _matches_date(op, attribute, value)
         return _matches_semver(op, attribute, value)
-    if op in ("before", "after"):
-        return _matches_date(op, attribute, value)
     order = _compare(attribute, value)
     return order is not None and _matches_order(op, order)
 
 
 def attribute_clause_matches(clause: Mapping[str, Any], contexts: Contexts) -> bool:
-    """Does one attribute clause hold? A missing attribute, or a missing kind, fails it whatever `negate` says."""
+    """Does one attribute clause hold? A missing attribute, or a missing kind, fails it, whatever `negate` says."""
     context = contexts.get(clause.get("contextKind") or DEFAULT_KIND)
     if context is None:
         return False
-    attribute = read_attribute(context[0], context[1], clause["attribute"])
-    if attribute is None:
+    attribute = read_attribute(context, clause["attribute"])
+    if attribute is _MISSING or attribute is None:
         return False
+    candidates = attribute if isinstance(attribute, (list, tuple)) else [attribute]
     op = clause["op"]
     values = clause["values"]
-    candidates = attribute if isinstance(attribute, (list, tuple)) else (attribute,)
     matched = any(_matches_value(op, candidate, value) for candidate in candidates for value in values)
     return not matched if clause.get("negate") is True else matched

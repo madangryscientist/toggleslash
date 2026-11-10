@@ -1,209 +1,249 @@
-"""One HTTP request with a bound on the whole of it, and the reader of a stream.
+"""HTTP over sockets the SDK opens itself, so one deadline covers the whole request, body included.
 
-`http.client` bounds each socket call, not a request, so a server that trickles a body would hold a thread
-for as long as it likes. Each request here has an `Aborter`: a timer that shuts the socket down at the
-deadline, which unblocks whatever the thread is reading, and which `close` uses the same way.
+Every request gets a guard: a timer that, when the request has run out of time, shuts the socket down from another
+thread, which wakes any blocked read in the thread that owns the request. Closing a client aborts the guards of its
+sync group the same way. The owner checks the guard's flags before it trusts what a read returned, because a shut
+down socket reads as the end of the stream.
+
+The one thing a guard cannot bound is a name lookup, which Python cannot interrupt; the callers join their threads
+with a timeout, and the threads are daemons.
 """
 
 from __future__ import annotations
 
+import contextlib
 import http.client
 import socket
+import ssl
 import threading
-from collections.abc import Callable
-from typing import Protocol
+import time
 from urllib.parse import urlsplit
 
-from ._types import NETWORK, TIMEOUT, ToggleSlashError
 
-RULESET_ROUTE = "/sdk/v1/ruleset"
-STREAM_ROUTE = "/sdk/v1/stream"
-EVENTS_ROUTE = "/sdk/v1/events"
-
-_CHUNK = 65536
-
-
-class TransportError(ToggleSlashError):
-    """A request failed. `code` is the contract's `timeout` or `network`."""
+class HttpError(Exception):
+    """A request failed. `code` is `timeout`, `network` or `aborted` (the client was closed)."""
 
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = code
 
 
-class Aborted(Exception):
-    """The request was abandoned by `close`."""
+class AbortGroup:
+    """The requests that `abort` ends together (a client's ruleset and stream requests)."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._guards: set[_Guard] = set()
+        self._aborted = False
+
+    def _add(self, guard: _Guard) -> None:
+        with self._lock:
+            self._guards.add(guard)
+            aborted = self._aborted
+        if aborted:
+            guard.kill("aborted")
+
+    def _remove(self, guard: _Guard) -> None:
+        with self._lock:
+            self._guards.discard(guard)
+
+    def abort(self) -> None:
+        with self._lock:
+            self._aborted = True
+            guards = list(self._guards)
+        for guard in guards:
+            guard.kill("aborted")
 
 
-class Aborter:
-    """Ends one request from another thread: at a deadline (`timeout`) or because the client closed."""
-
-    def __init__(self, timeout: float) -> None:
-        self.timeout = timeout
+class _Guard:
+    def __init__(self) -> None:
         self._lock = threading.Lock()
         self._sock: socket.socket | None = None
+        self._done = False
         self.timed_out = False
         self.aborted = False
-        self._timer: threading.Timer | None = threading.Timer(timeout, self.abort, kwargs={"timed_out": True})
-        self._timer.daemon = True
-        self._timer.start()
+        self.timer: threading.Timer | None = None
 
-    def attach(self, sock: socket.socket | None) -> None:
+    def attach(self, sock: socket.socket) -> None:
         with self._lock:
             self._sock = sock
-            if self.timed_out or self.aborted:
-                _shut(sock)
+            killed = self.timed_out or self.aborted
+        if killed:
+            self._shutdown()
 
-    def abort(self, *, timed_out: bool = False) -> None:
+    def kill(self, reason: str) -> None:
         with self._lock:
-            if timed_out:
-                self.timed_out = True
-            else:
+            if self._done:
+                return
+            if reason == "aborted":
                 self.aborted = True
-            _shut(self._sock)
+            else:
+                self.timed_out = True
+        self._shutdown()
 
-    def stop_timer(self) -> None:
-        """The request has got what the deadline was for (the stream's headers); a quiet stream is the
-        watchdog's business from here."""
-        timer, self._timer = self._timer, None
+    def _shutdown(self) -> None:
+        with self._lock:
+            sock = self._sock
+            if sock is None or self._done:
+                return
+            with contextlib.suppress(OSError):
+                sock.shutdown(socket.SHUT_RDWR)
+
+    def finish(self) -> None:
+        with self._lock:
+            self._done = True
+        timer = self.timer
         if timer is not None:
             timer.cancel()
 
-    def check(self) -> None:
-        if self.aborted:
-            raise Aborted
-        if self.timed_out:
-            raise TransportError(TIMEOUT, "the request exceeded its time limit")
+
+def _connect(host: str, port: int, deadline: float, guard: _Guard) -> socket.socket:
+    last: Exception | None = None
+    for family, kind, proto, _name, address in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or guard.timed_out or guard.aborted:
+            break
+        sock = socket.socket(family, kind, proto)
+        try:
+            sock.settimeout(remaining)
+            sock.connect(address)
+            return sock
+        except OSError as error:
+            last = error
+            sock.close()
+    raise last if last is not None else TimeoutError("connect")
 
 
-def _shut(sock: socket.socket | None) -> None:
-    if sock is None:
-        return
-    try:
-        sock.shutdown(socket.SHUT_RDWR)
-    except OSError:
-        pass
+class Response:
+    """An open response. `close` ends the request; the owner always calls it."""
 
-
-class Reply(Protocol):
-    """What the sync and usage code need of an answer. Tests supply their own."""
-
-    status: int
-    no_body: bool
-
-    def header(self, name: str) -> str | None: ...
-    def read_body(self) -> bytes: ...
-    def read_chunk(self, watchdog: float) -> bytes: ...
-    def close(self) -> None: ...
-
-
-Transport = Callable[[str, str, dict[str, str], bytes | None, Aborter], Reply]
-"""`(method, route, headers, body, aborter) -> Reply`. It raises `TransportError` or `Aborted`."""
-
-
-class _HttpReply:
     def __init__(
         self,
-        connection: http.client.HTTPConnection,
+        guard: _Guard,
+        group: AbortGroup,
+        conn: http.client.HTTPConnection,
+        resp: http.client.HTTPResponse,
         sock: socket.socket,
-        response: http.client.HTTPResponse,
-        aborter: Aborter,
     ) -> None:
-        self._connection = connection
-        # `getresponse` lets go of `connection.sock` for an answer that ends with the connection, so the
-        # socket the watchdog sets its timeout on is kept here.
+        self._guard = guard
+        self._group = group
+        self._conn = conn
+        self._resp = resp
+        # Kept on purpose: for an answer that ends with the connection `http.client` sets `conn.sock` to None
+        # after `getresponse()`, and a `settimeout` through the connection would then go nowhere.
         self._sock = sock
-        self._response = response
-        self._aborter = aborter
-        self.status = response.status
-        self.no_body = response.length == 0
+        self.status: int = resp.status
 
     def header(self, name: str) -> str | None:
-        return self._response.getheader(name)
+        return self._resp.getheader(name)
 
-    def read_body(self) -> bytes:
+    def _translate(self, error: BaseException | None) -> HttpError:
+        if self._guard.aborted:
+            return HttpError("aborted", "the client was closed")
+        if self._guard.timed_out or isinstance(error, TimeoutError):
+            return HttpError("timeout", "the request timed out")
+        return HttpError("network", f"the connection failed ({type(error).__name__})")
+
+    def read(self) -> bytes:
+        """The whole body, within the request's deadline."""
         try:
-            data = self._response.read()
-        except TimeoutError as error:
-            self._aborter.check()
-            raise TransportError(TIMEOUT, "the body did not arrive in time") from error
-        except (OSError, http.client.HTTPException) as error:
-            self._aborter.check()
-            raise TransportError(NETWORK, "the connection failed while reading the body") from error
-        self._aborter.check()
+            data = self._resp.read()
+        except Exception as error:
+            raise self._translate(error) from None
+        if self._guard.aborted or self._guard.timed_out:
+            raise self._translate(None)
         return data
 
-    def read_chunk(self, watchdog: float) -> bytes:
-        """The next bytes of a stream, or `b""` at its end. No byte for `watchdog` seconds is a timeout."""
+    def read_chunk(self) -> bytes:
+        """Whatever bytes arrive next (at most 64 KiB); empty at the end of the body."""
         try:
-            self._sock.settimeout(watchdog)
-            data = self._response.read1(_CHUNK)
-        except TimeoutError as error:
-            self._aborter.check()
-            raise TransportError(TIMEOUT, "the stream went quiet") from error
-        except (OSError, http.client.HTTPException) as error:
-            self._aborter.check()
-            raise TransportError(NETWORK, "the connection failed while reading the stream") from error
-        self._aborter.check()
+            data = self._resp.read1(65536)
+        except Exception as error:
+            raise self._translate(error) from None
+        if self._guard.aborted or self._guard.timed_out:
+            raise self._translate(None)
         return data
+
+    def end_request_timer(self) -> None:
+        """The request is open: stop its deadline (the stream then has the watchdog instead)."""
+        timer = self._guard.timer
+        if timer is not None:
+            timer.cancel()
+
+    def set_idle_timeout(self, seconds: float) -> None:
+        """Every read now fails if it waits this long for a byte, and every byte restarts the wait."""
+        self._sock.settimeout(seconds)
 
     def close(self) -> None:
-        self._aborter.stop_timer()
-        for closing in (self._response, self._connection, self._sock):
-            try:
-                closing.close()
-            except OSError:
-                pass
+        self._guard.finish()
+        self._group._remove(self._guard)
+        for closer in (self._resp.close, self._conn.close, self._sock.close):
+            with contextlib.suppress(Exception):
+                closer()
+
+    def __enter__(self) -> Response:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
 
 
-class HttpTransport:
-    """Requests against one base URL, a connection each, closed after the answer."""
+class Transport:
+    """Opens requests against one base URL."""
 
-    def __init__(self, base_url: str) -> None:
-        self._base = base_url
+    def __init__(self, base_url: str, ssl_context: ssl.SSLContext | None = None) -> None:
+        self.base_url = base_url
+        self._ssl_context = ssl_context
+        self._parts = urlsplit(base_url)
+
+    def open(
+        self,
+        method: str,
+        path: str,
+        headers: dict[str, str],
+        body: bytes | None,
+        timeout: float,
+        group: AbortGroup,
+    ) -> Response:
+        guard = _Guard()
+        guard.timer = threading.Timer(timeout, guard.kill, args=("timeout",))
+        guard.timer.daemon = True
+        group._add(guard)
+        guard.timer.start()
+        sock: socket.socket | None = None
+        conn: http.client.HTTPConnection | None = None
         try:
-            parts = urlsplit(base_url)
-            self._https = parts.scheme == "https"
+            parts = self._parts
             if parts.scheme not in ("http", "https") or not parts.hostname:
-                raise ValueError("not an http(s) URL")
-            self._host = parts.hostname
-            self._port = parts.port
-            self._prefix = parts.path.rstrip("/")
-            self._error: str | None = None
-        except ValueError:
-            self._https = False
-            self._host = ""
-            self._port = None
-            self._prefix = ""
-            self._error = "the url cannot be used"
-
-    def __call__(self, method: str, route: str, headers: dict[str, str], body: bytes | None, aborter: Aborter) -> Reply:
-        if self._error is not None:
-            raise TransportError(NETWORK, self._error)
-        factory = http.client.HTTPSConnection if self._https else http.client.HTTPConnection
-        connection = factory(self._host, self._port, timeout=aborter.timeout)
-        try:
-            connection.connect()
-            sock = connection.sock
-            assert sock is not None
-            aborter.attach(sock)
-            aborter.check()
-            connection.request(method, self._prefix + route, body=body, headers=headers)
-            aborter.check()
-            response = connection.getresponse()
-            aborter.check()
+                raise ValueError("the URL is not an http or https URL")
+            secure = parts.scheme == "https"
+            port = parts.port or (443 if secure else 80)
+            deadline = time.monotonic() + timeout
+            sock = _connect(parts.hostname, port, deadline, guard)
+            guard.attach(sock)
+            if secure:
+                context = self._ssl_context or ssl.create_default_context()
+                sock = context.wrap_socket(sock, server_hostname=parts.hostname)
+                guard.attach(sock)
+                conn = http.client.HTTPSConnection(parts.hostname, port, context=context)
+            else:
+                conn = http.client.HTTPConnection(parts.hostname, port)
+            conn.sock = sock
+            sock.settimeout(max(0.001, deadline - time.monotonic()))
+            conn.request(method, parts.path.rstrip("/") + path, body=body, headers=headers)
+            resp = conn.getresponse()
+            return Response(guard, group, conn, resp, sock)
         except BaseException as error:
-            try:
-                connection.close()
-            except OSError:
-                pass
-            if isinstance(error, (Aborted, TransportError)):
-                raise
-            if isinstance(error, TimeoutError):
-                aborter.check()
-                raise TransportError(TIMEOUT, "the request timed out") from error
-            if isinstance(error, (OSError, http.client.HTTPException, ValueError)):
-                aborter.check()
-                raise TransportError(NETWORK, "the request failed") from error
+            guard.finish()
+            group._remove(guard)
+            for closer in (conn.close if conn else None, sock.close if sock else None):
+                if closer is not None:
+                    with contextlib.suppress(Exception):
+                        closer()
+            if guard.aborted:
+                raise HttpError("aborted", "the client was closed") from None
+            if guard.timed_out or isinstance(error, TimeoutError):
+                raise HttpError("timeout", "the request timed out") from None
+            if isinstance(error, Exception):
+                raise HttpError("network", f"the connection failed ({type(error).__name__})") from None
             raise
-        return _HttpReply(connection, sock, response, aborter)

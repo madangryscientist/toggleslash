@@ -1,12 +1,10 @@
 #!/bin/sh
-# The native lint and format check. Any finding fails; there is no warning level.
+# The native lint and format check, with no warning allowed: ruff's rules (pyproject.toml), then its formatter in
+# check mode. `bin/test` byte-compiles; this reads the code.
 set -eu
 cd "$(dirname "$0")/.."
-if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
-  run() { mise exec -- "$@"; }
-else
-  run() { "$@"; }
-fi
-run ruff --version
-run ruff check --no-cache .
-run ruff format --check --no-cache .
+run() {
+  if command -v mise >/dev/null 2>&1; then mise exec -- "$@"; else "$@"; fi
+}
+run ruff check --no-cache src tests test-service
+run ruff format --no-cache --check src tests test-service

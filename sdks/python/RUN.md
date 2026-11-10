@@ -2,126 +2,203 @@
 
 ## Prompt version
 
-- Prompt: 647f849fbf6cc799bc337fd3d9fdaff4d22650c4
-- Model: Claude Sonnet 5.5 (`claude-sonnet-5-5`), run as a T3 Code thread for ticket FS-95
+- Prompt: 5540f5ef34d5d420eeafd1e2eee30e4704b0dac6
+- Model: Claude Sonnet 5.5 (`claude-sonnet-5-5`)
 - Date: 2026-11-10
-- Input: language Python; runtime chosen: CPython; minimum version chosen: 3.11; package manager chosen: pip with setuptools (src layout, `pyproject.toml`)
-- Toolchain: `mise.toml` pins `python = "3.15.2"` (prints `Python 3.15.2`) and `ruff = "0.17.4"` (prints `ruff 0.17.4`). Nothing else: the tests are `unittest` and the SDK has no dependency.
+- Input: language Python; runtime chosen: CPython; minimum version chosen: Python 3.11; package manager chosen:
+  none needed from a checkout, `pip` with a `setuptools` backend if installed
+- Toolchain: Python 3.15.2 (`python --version` prints `Python 3.15.2`) and ruff 0.17.4 (`ruff --version` prints
+  `ruff 0.17.4`), both pinned in `mise.toml`. The run was cold: the earlier Python SDK was removed first and
+  nothing of it was read.
 
 ## Results
 
-- Vectors: 1371 passed of 1371; bucket pins: 17 passed of 17 (`bin/test`; the phase 2 count command prints `1371 17`)
-- Conformance: `scenarios: 81 passed, 0 failed, 0 skipped; vectors: 1369 passed, 0 failed, 2 skipped` (run twice on the final tree, exit 0 both times)
+- Vectors: 1371 passed of 1371; bucket pins: 17 passed of 17 (`bin/test` prints `vectors: 1371 pins: 17`; the
+  phase 2 count command prints `1371 17`)
+- Conformance: `scenarios: 81 passed, 0 failed, 0 skipped; vectors: 1369 passed, 0 failed, 2 skipped`
 - Capabilities advertised: `integer-accessor`
-- Native tests: 81 passed of 81 (79 unit and concurrency tests, plus the 2 vector tests that run the 1371 vectors and 17 pins)
+- Native tests: 85 passed of 85 (`Ran 85 tests`, under `python -X dev -W error`), which include the 2 vector tests
+
+`bin/test` passed 10 times in a row (`Ran 85 tests` each, 49 to 51 s a run) and once with the CPU loaded (12 busy
+loops, one per core): `Ran 85 tests in 50.448s`, OK.
 
 ## Decisions
 
-1. Lint and format: `ruff` (`ruff check` and `ruff format --check`) over flake8 plus black, because one pinned tool does both and mise installs it. `pyproject.toml` selects a broad rule set and lists ten ignores, each with a reason in the file.
-2. Tests: `unittest` over pytest, so the SDK and `bin/test` need no dependency beyond the interpreter.
-3. Build step: there is no compile step, so `bin/test` runs `python -m compileall -f` first (a syntax error fails there) and then the tests under `python -X dev -W error`.
-4. No type checker (mypy or pyright): a second pinned tool with its own opinions. The code is annotated and ships `py.typed`.
-5. Minimum Python 3.11, because it is the oldest in security support and has `enum.StrEnum`. CI runs only the pinned 3.15.2; no 3.11 runner was available, so the minimum is by construction, not by test.
-6. HTTP: `http.client`, one connection per request, no pooling and no `urllib`. It gives the socket to shut down on `close` and a per-read timeout for the stream watchdog.
-7. Patterns: a Pike VM written in the evaluator (`_pattern.py`), parsed and emitted iteratively so a deep pattern cannot hit the recursion limit, with an `lru_cache` of compiled patterns. No `re` anywhere.
-8. Concurrency: threads (two daemon threads, one for sync and one for usage), a snapshot object swapped by one attribute write, and five small locks named in `DESIGN.md`. The reader path takes no lock.
-9. The workflow installs the toolchain with `jdx/mise-action` (v5.2.7, pinned by SHA) limited to `python ruff` with `working_directory: sdks/python`, over `actions/setup-python`. The versions then come from the one file `mise.toml`, and the `bin` scripts already call `mise exec`.
-10. `bin/*` run from any directory: each does `cd` to the SDK and calls tools through `mise exec --` when mise exists, plain otherwise.
-11. Test seams: a private `_seams` keyword on `Client` taking a `Seams` dataclass (transport, clocks, wait, jitter, watchdog, evaluator). `create_client` does not accept it and nothing is read from the environment.
-12. `Client.flush()` is an extra (contract 13 allows an explicit flush). It sends the counts now, under the same flush lock, with the same keep or drop rules and the same hold.
-13. `last_sync_at` is a timezone-aware UTC `datetime`, and durations accept a number of seconds or a `timedelta`.
-14. A sync failure that `close` caused is neither recorded nor reported (`_sync.py`, `_failed`).
-15. The test service turns `lastSyncAt` into epoch milliseconds with integer arithmetic, so a float cannot round a microsecond up.
-16. The surrogate model: the evaluator works on UTF-16 code units (`u16`) where the spec counts them and on code points where the spec counts those (`code_points`), because a Python `str` holds lone surrogates and neither view is the default.
+1. Lint and format: ruff (`ruff check` plus `ruff format --check`) over flake8 plus black plus isort, because one
+   pinned binary does all three. The rule set is wide (`E F I B UP SIM RUF PL C4 PIE T20 S`) with the
+   complexity and magic-number rules off, line length 120. No type checker, since the prompt does not ask for one.
+2. Test framework: `unittest` over `pytest`, because it needs nothing installed and the language notes name it.
+3. Minimum runtime Python 3.11 (`StrEnum`, `slots=True` dataclasses, `TimeoutError` as the one timeout name); the
+   development pin is 3.15.2, the newest stable at the run date.
+4. Package manager: none is needed to use it from a checkout. `pyproject.toml` has a `setuptools` backend and
+   `pip install sdks/python` into a virtual environment was checked (import from `site-packages`, no dependency).
+5. HTTP: the standard library's `http.client` over a socket the SDK opens itself, instead of `urllib` (no stream
+   control) or a third-party client (no dependencies). Owning the socket gives a timeout that covers the whole
+   request (a `threading.Timer` guard that shuts the socket down), an abort for `close`, and a kept reference to the
+   socket, which is what the `http.client` `sock` quirk in the language notes needs.
+6. Request timeouts run on real time, not on the fake clock. The fake clock covers the sync loop's sleeps, the
+   flush interval, `Retry-After` holds and the UTC day. A timeout test uses a server that hangs.
+7. The test stream is a close-delimited response (no `Content-Length`, no chunking), the shape that makes
+   `http.client` drop its socket, so the watchdog test on a real loopback socket exercises the quirk.
+8. `ready()` is bounded by `request_timeout + 1 s`: if the first attempt has not settled by then it settles `False`
+   and stays fixed (first writer wins). Called from an SDK thread (a hook, `on_error`) it returns the settled value
+   or `False` at once, never waiting.
+9. A served dict or list is deep-copied before it is returned, so a caller cannot change the held ruleset.
+10. Test seams: a private keyword `_seams=Seams(clock, jitter, watchdog, evaluator, ssl_context)` on `create`. The
+    `ssl_context` is there so a test can trust a local certificate. No global, no environment variable.
+11. No `re` module anywhere in `src` (every parser is hand written), so the evaluator cannot depend on Python's
+    regular expressions.
+12. Workflow toolchain step: `jdx/mise-action` limited to `python ruff` over `actions/setup-python` plus a ruff
+    install, because the `bin/` scripts call `mise exec`, so CI runs exactly the tools `mise.toml` pins.
+13. A hook is a plain function; one that returns an awaitable is not awaited (the future line is `n/a`).
+14. The reason kinds, error codes and stream states are `StrEnum`s with the contract's spelling, so
+    `ReasonKind.RULE_MATCH == "RULE_MATCH"`.
 
 ## Guesses
 
-1. Where the SDK should find its toolchain when a script is run from outside its directory. Where: `PROMPT.md`, "Entry points" (and `CHECKLIST.md`, "`bin/lint`, `bin/test` and `bin/test-service` exist, are executable, `cd` to the SDK, and run with only the toolchain `$L/mise.toml` pins"). `mise` on this machine resolves `python` through a shim that fails in a directory with no active tool, and the repository root `.tool-versions` is a different file. Assumed: `cd` into the SDK, then `mise exec --` for every tool call, falling back to bare tools when mise is missing.
-2. The integer range rule for Python. Where: `PROMPT.md`, phase 3, "Capabilities": "The range rule applies only where the integer type is bounded; Python and Ruby integers are not, so it has nothing to check there." Against that, `fixtures/sdk/evaluation.json` has a scenario with flag `huge` (`"variations":[1e20, 3]`), accessor `int`, fallback 7, and expects `value` 7, `variationIndex` null, `TYPE_MISMATCH`. Python's `int` can hold 1e20, so by the prompt's words the scenario would fail. Assumed: the integer accessor is bounded to signed 64 bits (`int_variation`), as every other typed-language SDK is. The harness passes with it.
-3. The same rule has a second edge. Where: `docs/sdk-contract.md`, section 4, "Typed languages" ("outside the integer type's range"), and `docs/evaluation.md` on numbers. A served `9223372036854775807` is parsed as a binary64 number (JSON numbers are binary64 in the spec), so it reads as `2^63` and is `TYPE_MISMATCH` on the integer accessor. Assumed: that is correct, because the spec defines a JSON number as binary64 and the SDK must agree with the server's evaluator. `_json.py` converts any integer literal beyond plus or minus 2^53 to a float for the same reason.
-4. How the native test for the 60 s stream watchdog should be written. Where: `CHECKLIST.md`, "Native tests": "tested through a seam, not by waiting". The harness cannot reach it and `PROMPT.md` does not say a seam must reach the real socket read. A first version of this SDK passed the harness and a seam-only test while the watchdog never fired: `http.client` sets `connection.sock` to `None` after `getresponse()` for an answer that ends with the connection, so the reader's `settimeout` call went nowhere. Assumed: the test must run a real socket against a local server (`WatchdogTests`, with a short watchdog value through the seam). That test caught the bug.
-5. Whether a stream that was up and then dropped polls. Where: `docs/sdk-contract.md`, 7.3. The text is clear on a stream that never connected (poll once) and on one that connected (do not), and "failures is cumulative until a stream connects" is easy to read the other way. Assumed: cumulative, reset only when a stream connects (`LoopTests.test_the_delay_is_the_backoff_ceiling_times_half_to_one_by_jitter`).
-6. The value of `ready` after a failed first attempt followed by a later success. Where: `docs/sdk-contract.md`, 5.3 ("gives the same answer"). Assumed: it is fixed when the first attempt settles, so a later load does not turn a `False` into `True` (the harness failed on the first run until `ready` stopped re-reading the live state).
-7. The number `N` in the final-flush message. Where: `docs/sdk-contract.md`, 9 and 11 ("closed with N usage counts unsent: the server asked to wait"). Not stated whether N is entries or the sum of counts. Assumed: the number of entries (distinct flag, variation and day), the size of the pending map; the harness does not check the number.
-8. Whether a typed JSON accessor treats an array and an object as one kind. Where: `docs/sdk-contract.md`, section 4 ("the mismatch rule"). Assumed: `json_variation` accepts either and returns it; the generic method with a non-null fallback keeps array and object distinct (the harness failed on the first run until it did).
-9. The kind of `Retry-After` value that counts. Where: `docs/sdk-contract.md`, 7.4 ("whole digits"). Assumed: ASCII digits only after trimming spaces, so `1.5`, `-1`, `+3` and HTTP dates are ignored, and 429 only.
-10. What `close` does with a request stuck in DNS or in the TCP connect. Where: `docs/sdk-contract.md`, 11 and 6. There is no socket to shut down yet, so `close` waits for the connect timeout (`request_timeout`). Assumed that meets "bounded" and recorded in `DESIGN.md`.
-11. The "Python has no race detector" gap. Where: `CHECKLIST.md`, "Native tests", first line: "under the race detector where the language has one". Assumed: `python -X dev -W error`, a `Barrier(10)` stress of 7 readers and 2 closers over 20 rounds, and the lock order written down in `DESIGN.md`.
+1. The contract says the URL is "not parsed beyond removing trailing /", yet a socket client needs the scheme, host,
+   port and path prefix. Where: `docs/sdk-contract.md`, 7.1. Assumed: the URL is split with `urllib.parse.urlsplit`
+   for those parts only; a URL it cannot use makes every request fail as a network error (`last_error` `network`)
+   and never raises at the caller (`test_a_bad_url_is_a_network_error_not_a_raise`).
+2. The TypeScript reference SDK honours `Retry-After` on any non-200 ruleset answer, while the contract names 429
+   only. Where: `packages/sdk/src/` against `docs/sdk-contract.md`, 7.4. Assumed: the contract wins; only a 429
+   with a valid `Retry-After` starts a hold (`test_a_retry_after_that_is_not_whole_seconds_is_no_hold`, and the
+   harness's `rate-limit.json`).
+3. `PROMPT.md` phase 5 says to copy the action pins from `ci.yml`, but `ci.yml` has no `jdx/mise-action`. Where:
+   `PROMPT.md`, phase 5, item 4. Assumed: the pin comes from the sibling workflow `sdk-ruby.yml` and was checked with
+   `gh api repos/jdx/mise-action/commits/v5.2.7 --jq .sha`, which printed the same SHA.
+4. Which ruff rules count as "no warnings allowed" is not said. Where: `PROMPT.md`, phase 5, item 3. Assumed: the
+   rule set in Decisions 1, with a short ignore list in `pyproject.toml` for rules that count branches or magic
+   numbers and for `assert` and `subprocess` in tests.
+5. Whether `ready()` called from inside a hook may wait is not said beyond "does not deadlock". Where:
+   `docs/sdk-contract.md`, 6.4 and 5.3. Assumed: it returns the settled value, or `False` if unsettled, without
+   waiting (`test_ready_called_from_a_callback_returns_at_once`).
+6. The harness's phase 6 asks for a 10 times in a row run, but a full `bin/test` takes about 50 s here, so the
+   whole check is 9 minutes. Where: `CHECKLIST.md`, "The two executable checks". Assumed: that is intended.
 
 ## Stuck points
 
-None. Guess 2 is the nearest thing: the prompt and a harness scenario disagree, but the harness is the stricter side and the SDK meets it.
+None.
 
 ## Proposed prompt changes
 
-1. For guess 2, in `PROMPT.md` phase 3, "Capabilities", replace "The range rule applies only where the integer type is bounded; Python and Ruby integers are not, so it has nothing to check there." with: "The range rule applies to every SDK that advertises `integer-accessor`, including Python and Ruby, whose integers are unbounded: bound the accessor to signed 64 bits, because the `evaluation.json` scenario with flag `huge` (1e20) expects `TYPE_MISMATCH` on it." In `CHECKLIST.md`, "Native tests", change the bounded-integer line the same way and drop "Not applicable where integers are unbounded (Python, Ruby)".
-2. For guess 1, in `PROMPT.md`, "Entry points", after "`cd` to the SDK", add: "and call every tool through the toolchain manager (`mise exec -- <tool>`) rather than from `PATH`: a shim for a tool that is not active in the current directory fails, and the root `.tool-versions` is a different set."
-3. For guess 3, in `language-notes/python.md` (new), add: "`json` hands you Python ints of any size. Convert an integer literal beyond plus or minus 2^53 (or longer than about 18 characters) to a float when parsing, so a served `2**63-1` reads as the binary64 `2**63`, and keep Python's integer-digit limit away from a literal of thousands of digits."
-4. For guess 4, in `CHECKLIST.md`, "Native tests", the watchdog line: after "tested through a seam, not by waiting", add: "the seam sets the watchdog's length, and the test must read a real socket (a loopback server that goes quiet), because a seam-only test can pass while the timeout is never applied to the socket (`http.client` drops `connection.sock` after `getresponse()` in Python)."
-5. For guesses 5 and 6, in `docs/sdk-contract.md` (a contract change, so the maintainer's call), 7.3 and 5.3: add one sentence each, "`failures` is cumulative until a stream connects" and "`ready` answers the same after it has settled, even when a later attempt loads a ruleset".
-6. For guess 7, in `docs/sdk-contract.md`, 11: say whether "N" is the number of entries or the sum of the counts. The harness does not check it.
-7. For guess 8, in `docs/sdk-contract.md`, section 4: say whether a JSON accessor treats an array and an object as one kind.
-8. For guess 11, in `language-notes/python.md`: "There is no race detector. Run the tests under `python -X dev -W error` and stress close against readers with a `threading.Barrier`; `Thread.join(timeout)` in the test turns a deadlock into a failure."
-9. In `PROMPT.md`, phase 6, say that `git add -A` in the scope check also stages `__pycache__` unless the SDK has a `.gitignore`, so add the `.gitignore` in phase 5 (a Python-only trap, for `language-notes/python.md`).
+1. For guess 1, in `PROMPT.md` phase 3, after "Create the client", add: "The URL is split into scheme, host, port
+   and path prefix when the HTTP client needs them; the contract's 'not parsed' means it is not validated."
+2. For guess 2, in `PROMPT.md` phase 3, add: "Where the reference SDK and the contract disagree, the contract
+   wins; say so in `RUN.md` as a guess."
+3. For guess 3, in `PROMPT.md` phase 5 item 4, after "as `ci.yml` does", add: "(an action `ci.yml` does not use,
+   such as `jdx/mise-action`, is copied from a sibling `sdk-<lang>.yml` and checked with `gh api`)".
+4. For guess 4, in `CHECKLIST.md` under "Code and documents", add: "`bin/lint` enables a rule set named in `DESIGN.md`
+   and ignores only rules named there, with a reason."
+5. For guess 5, in `CHECKLIST.md`, native tests, on the callback line, add: "and `ready` called from inside the
+   callback returns without waiting".
+6. In `language-notes/python.md`, add: "A test server whose stream response has no `Content-Length` and is not chunked
+   reproduces the `sock` is `None` quirk without a special case. `ruff` accepts `contextlib.suppress` where a
+   swallowed error is intended (rules `SIM105` and `S110`)."
 
 ## Checklist
 
-### The two executable checks
-
-- [x] `bin/test` runs every vector but `buckets.json` and every pin: `bin/test` prints `vectors: 1371` and `pins: 17`; the phase 2 count command prints `1371 17`. Tests: `tests/test_vectors.py` (`test_vectors`, `test_bucket_pins`), which fail if they read no files.
-- [x] The harness exits 0 with only the 2 named skips: `bun run conformance -- --service sdks/python/bin/test-service` printed `scenarios: 81 passed, 0 failed, 0 skipped; vectors: 1369 passed, 0 failed, 2 skipped`, exit 0, twice.
-
-### What the harness checks
-
-- [x] Both context shapes: the harness (`privacy.json`, the `kinds.json` vectors through the service) passed.
-- [x] Results follow contract 4 and the mismatch rule: harness `evaluation.json`, `usage.json` passed; native `EvaluationTests.test_a_value_of_another_kind_is_type_mismatch_with_the_fallback`.
-- [x] With `integer-accessor`, a served fraction is `TYPE_MISMATCH` and `2.0` is `2`: harness `evaluation.json` passed; native `EvaluationTests.test_the_int_accessor_and_its_range`.
-- [x] No failure makes an operation raise: every scenario passed (the service answers 500 on anything raised); native `EventsAndHooksTests.test_a_bad_url_never_raises`.
-- [x] Evaluating before the first load answers `NOT_READY` at once: harness `load.json` passed; native `EvaluationTests.test_before_the_first_load_every_call_is_the_fallback_with_not_ready`.
-- [x] `ready` settles, is bounded, may be called again, false after `close` if unsettled: harness `load.json`, `close.json` passed; native `FirstLoadTests.test_a_failed_first_load_is_not_ready_and_is_recorded`.
-- [x] A non-ruleset answer never replaces the one held: harness `status.json` passed; native `FirstLoadTests.test_a_bad_body_leaves_the_last_good_ruleset`.
-- [x] The ruleset request, `If-None-Match`, the ETag kept exactly, URL joining: harness `load.json`, `status.json` passed; native `FirstLoadTests.test_a_poll_sends_if_none_match_and_a_304_keeps_the_ruleset`.
-- [x] The stream: harness `stream.json`, `load.json`, `status.json` passed; native `SseTests` (12 tests) and `LoopTests.test_a_failed_fetch_for_a_changed_event_ends_the_stream`.
-- [x] The loop and the jittered backoff: harness `backoff.json`, `stream.json` passed; native `LoopTests.test_the_delay_is_the_backoff_ceiling_times_half_to_one_by_jitter`, `test_the_backoff_is_capped_by_the_poll_interval`.
-- [x] `429` and `Retry-After` on every route: harness `rate-limit.json` passed; native `RetryAfterTests` (sync, 6 tests), `HoldTests` (usage), `RetryAfterTests` (sse, 3 tests).
-- [x] Status fields, states and `lastError` codes: harness `status.json` passed (it checks the shape on every read); native `EventsAndHooksTests.test_status_after_the_first_load_and_after_close`.
-- [x] Usage counts: harness `usage.json`, `rate-limit.json` passed; native `UsageTests` (9 tests).
-- [x] Hook events and `onError`, a hook that raises, an `onError` that raises: harness `hooks.json` passed; native `EventsAndHooksTests.test_a_raising_hook_and_a_raising_on_error_change_nothing`.
-- [x] `close` in order, twice at once, during a hold, with a final flush: harness `close.json`, `rate-limit.json`, `usage.json`, `status.json` passed; native `HoldTests.test_the_final_flush_does_not_wait_and_says_what_it_lost`.
-- [x] No context, key or attribute in any request or `onError` message, no extra header: harness `privacy.json` and the after-scenario checks passed; native `EventsAndHooksTests.test_error_text_names_no_url_and_no_key`, `test_every_request_header_is_one_the_protocol_allows`. Source search for logging: `grep -rniE "logging|print\(|stderr|warnings" sdks/python/src` finds nothing; the SDK writes no log line, and an error value is built from a fixed message and a route (`_sync.py` `_Failure`, `_http.py` `TransportError`).
-
-### Native tests
-
-- [x] Every operation from many threads, `close` racing `variation`, two `close` calls racing: `ConcurrencyTests.test_close_racing_variation_and_two_closes_racing` (7 readers, 2 closers, `Barrier(10)`, 20 rounds, joins with a timeout so a deadlock fails). No race detector exists for Python; `bin/test` runs under `-X dev -W error` instead (guess 11).
-- [x] `variation` returns within a bound while a ruleset request hangs and while a usage flush hangs: `EvaluationTests.test_before_the_first_load_every_call_is_the_fallback_with_not_ready` (ruleset request hung, under 0.5 s, `close` under 2 s) and `ConcurrencyTests.test_variation_does_not_wait_for_a_hung_flush_and_close_is_bounded_by_the_request_timeout`.
-- [x] One ruleset or the other across a swap: `ConcurrencyTests.test_the_etag_and_the_flag_version_always_belong_together_while_the_ruleset_swaps`; `EventsAndHooksTests.test_the_hook_sees_the_etag_and_flag_version_of_the_ruleset_that_answered`.
-- [x] A hook and an `onError` that call back into the client do not deadlock: `ReentrancyTests` (`test_a_hook_may_call_status_variation_and_close`, `test_on_error_may_call_close`, `test_on_error_from_the_final_flush_may_call_close`).
-- [x] A stream with no bytes for 60 s is dropped as `timeout`, a keep-alive restarts it, through a seam: `WatchdogTests.test_a_quiet_stream_is_dropped_as_a_timeout`, `test_keep_alive_comments_restart_the_watchdog`, `test_the_watchdog_seam_reaches_the_reader` (a real loopback socket, a short watchdog value through `Seams`).
-- [x] A `Retry-After` above 300 is held for 300 s on the ruleset, stream and events routes, through a seam: `RetryAfterTests.test_the_ruleset_hold_is_capped_at_300`, `test_the_stream_hold_is_capped_at_300`, `HoldTests.test_the_hold_is_capped_at_300_seconds` (a fake clock).
-- [x] Counts either side of a UTC midnight go out as two days: `UsageTests.test_the_day_is_the_utc_day_and_splits_at_midnight`, `test_a_clock_in_another_zone_still_counts_the_utc_day`.
-- [x] An evaluation that raises inside the SDK gives the fallback, `ERROR EVALUATION_FAILED` and one `onError`: `EventsAndHooksTests.test_evaluation_failed_is_the_fallback_one_on_error_and_not_counted` (through `Seams.evaluator`).
-- [x] Hooks that return a future: not applicable. A Python hook is a plain synchronous callable, so there is no future that can fail later; a hook that raises is `test_a_raising_hook_and_a_raising_on_error_change_nothing`.
-- [x] Bounded integer type, a served number out of range is `TYPE_MISMATCH` on the integer accessor: Python's `int` is unbounded, but the accessor is bounded to signed 64 bits (guess 2): `EvaluationTests.test_the_int_accessor_and_its_range`, and the harness `huge` scenario.
-- [x] A client never closed does not keep the process from exiting: `ProcessTests.test_a_client_never_closed_does_not_keep_the_process_alive` (a subprocess; both threads are daemons).
-
-### Code and documents
-
-- [x] `DESIGN.md` passes the phase 1 row check, and `README.md` links to the mapping table: `README.md`, "The API", links `DESIGN.md#the-mapping-table`.
-- [x] Names, meanings, defaults, reason kinds, error codes, stream states and `lastError` codes: `DESIGN.md` mapping table; `_types.py` (`ReasonKind`, `ErrorCode`, `StreamState` as `StrEnum`, and the `NETWORK`, `TIMEOUT`, `BAD_RULESET` codes); the harness shape check on status passed.
-- [x] The evaluator has no platform regular expression: `grep -rnE "^\s*(import|from) +re\b|import regex|fnmatch" sdks/python/src` finds nothing.
-- [x] Every runtime dependency has a line in `DESIGN.md`: there are none. `DESIGN.md`, "Dependencies": "Runtime: none." The imports in `src` are all standard library (`codecs`, `dataclasses`, `datetime`, `enum`, `functools`, `hashlib`, `http.client`, `json`, `math`, `random`, `socket`, `threading`, `time`, `urllib.parse`, `collections.abc`, `typing`).
-- [x] No telemetry and no identifying header: the only header literals in `src` are `Authorization` and `Content-Type` (`_usage.py:37`), `Authorization` and `If-None-Match` (`_sync.py:209, 212`) and `Authorization` and `Accept` (`_sync.py:252`). `http.client.request` itself adds `Host`, `Content-Length` (with a body) and `Accept-Encoding: identity`; none names a user or a machine, and the SDK sets no `User-Agent` (the harness's after-scenario check on every request passed).
-- [x] Every extra is one contract 13 allows: `Client.flush()`, the context manager, `timedelta` durations and the typed accessors (`DESIGN.md`, the mapping table). None changes contract 5 or sends anything new.
-- [x] Test seams are options, not a global or an environment variable: `Seams` passed as the private `_seams` argument of `Client` (`_client.py`, `_seams.py`); `grep -rnE "os\.environ|getenv" sdks/python/src` finds nothing.
-- [x] `bin/lint`, `bin/test` and `bin/test-service` exist, are executable, `cd` to the SDK and use only the `mise.toml` toolchain: `ls -l sdks/python/bin` shows `-rwxr-xr-x` on all three; each starts with `cd "$(dirname "$0")/.."`; `bin/lint` printed `ruff 0.17.4`, `All checks passed!`, `30 files already formatted`.
-- [x] `test-service/README.md` maps every accessor: `sdks/python/test-service/README.md` (bool, string, number, int, json, any).
-- [x] The workflow follows the skeleton, filters on its paths, and pins every action by commit SHA: `.github/workflows/sdk-python.yml` (checkout `3d3c42e5...` v7.0.1 and setup-bun `0c5077e5...` v2.2.0 copied from `ci.yml`; `jdx/mise-action@b44d12e7...` v5.2.7 resolved with `gh api repos/jdx/mise-action/commits/v5.2.7 --jq .sha`).
-
-### Repository
-
-- [x] No em dash or en dash: `bun scripts/check-dashes.ts` exits 0; `grep -nP "\x{2014}|\x{2013}" -r sdks/python .github/workflows/sdk-python.yml` finds nothing.
-- [x] `bun run format:check` passes: "All matched files use the correct format." over 351 files.
-- [x] Only `sdks/python/` and the workflow changed: the phase 6 scope check printed only `scope ok`.
-- [x] No package was published and no name reserved: nothing was uploaded, tagged or registered; `README.md` says the SDK is not published. A scratch `pip install` ran in a throwaway virtual environment under `$TMPDIR` to prove `pyproject.toml` builds, and was deleted.
-- [x] Commit subject is `chore(sdk-python): a Python server SDK built from the authoring prompt` (Conventional Commits, not `feat`), with no `Co-Authored-By` and no AI attribution line in the commit or the pull request.
-- [x] `RUN.md` follows `RUN-TEMPLATE.md`: all seven sections are present, and each line of this list has evidence.
+- [x] `bin/test` runs every vector but `buckets.json` and every pin, counts equal the phase 2 command's:
+  `tests/test_vectors.py` (`test_every_vector`, `test_every_pin`); `bin/test` prints `vectors: 1371 pins: 17` and the
+  count command prints `1371 17`.
+- [x] `bin/test` passes 10 times in a row and once under CPU load: 10 of 10 plain runs and 1 loaded run (12 busy loops), all `Ran 85 tests ... OK`.
+- [x] The harness exits 0, only the 2 named vectors skipped: `bun run conformance -- --service
+  sdks/python/bin/test-service` printed `scenarios: 81 passed, 0 failed, 0 skipped; vectors: 1369 passed, 0 failed,
+  2 skipped` and exit 0, twice. With `integer-accessor` advertised, no scenario was skipped.
+- [x] Both context shapes accepted (contract 3): the harness, `privacy.json`, `kinds.json` vectors.
+- [x] Result order and the mismatch rule: the harness, `evaluation.json`, `usage.json`; native
+  `test_type_mismatch_falls_back_and_is_not_counted`, `test_a_null_fallback_takes_any_kind_and_a_null_value_is_a_mismatch_for_others`,
+  `test_json_accessor_compares_kinds`.
+- [x] With `integer-accessor`, a fraction is `TYPE_MISMATCH` and `2.0` is `2`: the harness, `evaluation.json`;
+  native `test_integer_accessor_bounds`.
+- [x] No failure makes an operation raise: the harness, every scenario (the service answers 500 on a raise).
+- [x] Before the first load, `NOT_READY` at once: the harness, `load.json`; native
+  `test_not_ready_before_the_first_load_and_after_it_the_value`.
+- [x] `ready` settles after the first attempt, bounded, false after `close` if unsettled: the harness, `load.json`,
+  `close.json`; native `test_ready_is_bounded_by_the_request_timeout`,
+  `test_a_read_returns_at_once_while_the_ruleset_request_hangs`.
+- [x] A non-ruleset answer never replaces the ruleset held: the harness, `status.json`; native
+  `test_a_bad_ruleset_after_a_good_one_leaves_the_good_one`.
+- [x] The ruleset request, `If-None-Match`, the ETag kept exactly, URL joining: the harness, `load.json`,
+  `status.json`; native `test_the_second_fetch_is_conditional`, `test_a_trailing_slash_is_removed_from_the_url`.
+- [x] The stream: events, SSE parsing, refresh on change, a failed refresh ends the stream: the harness,
+  `stream.json`; native `tests/test_sse.py` (13 tests) and `test_a_failed_fetch_after_changed_ends_the_stream`.
+- [x] The loop and the jittered backoff: the harness, `backoff.json`, `stream.json`; native
+  `test_stream_failure_backs_off_with_jitter_then_polls`, `test_backoff_is_capped_at_the_poll_interval`.
+- [x] `429` and `Retry-After` on every route: the harness, `rate-limit.json`; native `tests/test_sync.py`
+  `test_retry_after_*` and `tests/test_usage.py` `test_a_429_with_a_retry_after_holds_the_next_flushes`.
+- [x] Status fields, states and `lastError` codes: the harness, `status.json`, and the shape check on each status read.
+- [x] Usage counts: what counts, summing, batches of 500, keep or drop by answer: the harness, `usage.json`,
+  `rate-limit.json`; native `tests/test_usage.py`.
+- [x] Hook events and `onError`, a hook that raises and an `onError` that raises: the harness, `hooks.json`; native
+  `test_hook_gets_every_evaluation_with_the_etag_and_flag_version`,
+  `test_a_hook_that_raises_goes_to_on_error_and_the_answer_is_the_same`.
+- [x] `close` in order, twice at once, during a hold, with a final flush: the harness, `close.json`,
+  `rate-limit.json`, `usage.json`, `status.json`; native `test_close_does_not_wait_out_a_hold_and_reports_the_unsent_counts`.
+- [x] No context, key or attribute in a request or `onError`, no header beyond the protocol's: the harness,
+  `privacy.json`; native `test_requests_carry_only_the_allowed_headers` and
+  `test_the_body_holds_counts_and_nothing_about_a_user`. Source search: `grep -rnE "logging|print\(|warnings"
+  sdks/python/src` finds nothing, so no log line exists to carry one.
+- [x] Many threads, `close` racing `variation`, two `close` calls racing: `tests/test_robustness.py`
+  `test_close_racing_readers_and_a_second_close_finishes` (8 reader threads and 2 closers on a
+  `threading.Barrier`, joined with a timeout). Python has no race detector; the tests run under `-X dev -W error`
+  and the stress test above stands in, with `Thread.join(timeout)` so a deadlock fails.
+- [x] SHOULD: an `https` URL reaches the TLS path with a local certificate: `test_https_with_a_self_signed_certificate`
+  (an `openssl` certificate under `$TMPDIR`, a trusting and a distrusting client; skips if `openssl` is absent).
+- [x] `variation` returns within a bound while a ruleset request hangs and while a usage flush hangs:
+  `test_a_read_returns_at_once_while_the_ruleset_request_hangs`,
+  `test_reads_stay_fast_and_close_is_bounded_while_usage_requests_hang`,
+  `test_close_is_bounded_while_the_stream_and_ruleset_hang`.
+- [x] A reader sees one ruleset or the other across a swap, `etag` paired with `flagVersion`:
+  `test_the_etag_in_a_hook_event_always_matches_the_flag_version` (4 readers while the ruleset alternates).
+- [x] A hook and an `onError` that call back into the client do not deadlock:
+  `test_a_hook_and_on_error_may_call_back_into_the_client`, `test_ready_called_from_a_callback_returns_at_once`.
+- [x] A stream with no bytes for the watchdog is dropped and a keep-alive restarts it, on a real loopback socket,
+  the length set by a seam: `test_a_silent_stream_is_dropped_after_the_watchdog_and_reopened`,
+  `test_keep_alive_comments_hold_the_watchdog_off`.
+- [x] A `Retry-After` above 300 is held for 300 s on the ruleset, stream and events routes, through the fake clock:
+  `test_retry_after_above_300_is_held_for_300_on_the_ruleset`, `..._on_the_stream` (`tests/test_sync.py`),
+  `test_a_retry_after_above_300_is_held_for_300_on_the_events_route` (`tests/test_usage.py`).
+- [x] Counts either side of a UTC midnight go out as two days:
+  `test_counts_either_side_of_utc_midnight_go_out_as_two_days`.
+- [x] An evaluation that raises gives the fallback, `ERROR EVALUATION_FAILED` and one `onError`:
+  `test_an_evaluator_that_raises_is_evaluation_failed_and_one_on_error`.
+- [x] Hooks returning a future: n/a: a Python hook is a plain function, and an awaitable it returns is not awaited
+  (Decision 13).
+- [x] A served number outside signed 64 bits is `TYPE_MISMATCH` on the integer accessor: the harness `huge`
+  scenario; native `test_integer_accessor_bounds` (`2**63` and `-2**63 - 1`).
+- [x] A client never closed does not keep the process alive: `test_an_unclosed_client_does_not_keep_the_process_alive`
+  (a `python -I` subprocess that creates a client, waits for ready and exits without `close`).
+- [x] `DESIGN.md` passes the phase 1 row check, and `README.md` links the mapping table: `README.md`, "The API"
+  (a short table, and the link to `DESIGN.md` section 1).
+- [x] Names keep the canonical meaning and defaults, enums keep their spelling: `DESIGN.md` section 1,
+  `src/toggleslash/_types.py` (`StrEnum`s with the contract's values).
+- [x] The evaluator has no platform regular expression: `grep -rnE "import re\b|from re\b" sdks/python/src` finds
+  nothing.
+- [x] Every runtime dependency has a line in `DESIGN.md`: there is none (`DESIGN.md` section 4,
+  `pyproject.toml` `dependencies = []`).
+- [x] No telemetry, headers only `Authorization`, `Accept`, `If-None-Match` and `Content-Type` from the SDK: the
+  source sets exactly those (`src/toggleslash/_sync.py`, `_usage.py`). One request of each route captured on a
+  loopback listener (`tests/support.py` `FakeServer`) showed the headers the client added on its own: `Host` (the
+  server's own loopback address, which the caller chose), `Accept-Encoding: identity` (set by `http.client`,
+  carries no identity, and asks for an uncompressed body) and `Content-Length` (the size of the usage body). No
+  `User-Agent`, no `Connection` is sent.
+  `test_requests_carry_only_the_allowed_headers` holds this.
+- [x] Every extra beyond the contract is one contract 13 allows: the context manager, the `timedelta` durations and
+  the `Seams` option; none weakens contract 5 or sends anything new.
+- [x] Seams are options on `create`, never a global or an environment variable: `src/toggleslash/_seams.py`;
+  `test_no_seam_is_a_global_or_an_environment_variable` searches `src` for `os.environ` and `getenv`.
+- [x] `bin/lint`, `bin/test`, `bin/test-service` exist, are executable, `cd` to the SDK and run with the pinned tools:
+  `ls -l sdks/python/bin` shows mode 755 on all three; each starts with `cd "$(dirname "$0")/.."` and calls `mise
+  exec`.
+- [x] `test-service/README.md` maps every accessor: its table lists `bool`, `string`, `number`, `int`, `json`
+  and `any`.
+- [x] The workflow follows the skeleton, filters on its paths, and pins each action by SHA:
+  `.github/workflows/sdk-python.yml`.
+- [x] No em dash or en dash: `bun scripts/check-dashes.ts` exits 0.
+- [x] `bun run format:check` passes: `All matched files use the correct format.`
+- [x] Only `$L/` and the one workflow changed: the phase 6 scope check printed `scope ok`.
+- [x] No package published and no name reserved: nothing was uploaded; `pip install` was run on a local copy only.
+- [x] Commit subject is a Conventional Commit (`chore(sdk-python): ...`), not `feat`, with no `Co-Authored-By` or
+  AI attribution.
+- [x] `RUN.md` follows `RUN-TEMPLATE.md`: every section above, every checklist line with its evidence.

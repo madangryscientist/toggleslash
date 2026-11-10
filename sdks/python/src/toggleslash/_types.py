@@ -1,17 +1,14 @@
-"""The public value types: the closed sets of the contract and the results the client hands back."""
+"""The public value types. Nothing here does I/O."""
 
 from __future__ import annotations
 
 import enum
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Any
+from typing import Any, NamedTuple
 
 
 class ReasonKind(enum.StrEnum):
-    """Why a flag served what it served. The text is the canonical spelling."""
-
     OFF = "OFF"
     PREREQUISITE_FAILED = "PREREQUISITE_FAILED"
     TARGET_MATCH = "TARGET_MATCH"
@@ -21,8 +18,6 @@ class ReasonKind(enum.StrEnum):
 
 
 class ErrorCode(enum.StrEnum):
-    """The code of an `ERROR` reason: the evaluator's seven and the SDK's three."""
-
     INVALID_CONTEXT = "INVALID_CONTEXT"
     FLAG_NOT_FOUND = "FLAG_NOT_FOUND"
     SEGMENT_NOT_FOUND = "SEGMENT_NOT_FOUND"
@@ -36,8 +31,6 @@ class ErrorCode(enum.StrEnum):
 
 
 class StreamState(enum.StrEnum):
-    """Where the live-update stream is."""
-
     OFF = "off"
     CONNECTING = "connecting"
     CONNECTED = "connected"
@@ -45,30 +38,40 @@ class StreamState(enum.StrEnum):
     CLOSED = "closed"
 
 
-# The fixed `last_error` codes. A failed request with a status is `http_<status>`.
-TIMEOUT = "timeout"
-BAD_RULESET = "bad_ruleset"
-NETWORK = "network"
+class LastError:
+    """The spellings of `Status.last_error`."""
 
+    TIMEOUT = "timeout"
+    BAD_RULESET = "bad_ruleset"
+    NETWORK = "network"
 
-class ToggleSlashError(Exception):
-    """A failure the client absorbed and handed to `on_error`. Its text names a route or a status, never a
-    URL, a key or anything about a context."""
+    @staticmethod
+    def http(status: int) -> str:
+        return f"http_{status}"
 
 
 @dataclass(frozen=True, slots=True)
 class Reason:
-    """The reason of one evaluation. A field that does not apply to `kind` is `None`."""
+    """Why a value was served. `rule_index`, `flag_key` and `code` are set only for the kinds that carry them."""
 
     kind: ReasonKind
     rule_index: int | None = None
     flag_key: str | None = None
     code: ErrorCode | None = None
 
+    def to_json(self) -> dict[str, Any]:
+        out: dict[str, Any] = {"kind": str(self.kind)}
+        if self.rule_index is not None:
+            out["ruleIndex"] = self.rule_index
+        if self.flag_key is not None:
+            out["flagKey"] = self.flag_key
+        if self.code is not None:
+            out["code"] = str(self.code)
+        return out
 
-@dataclass(frozen=True, slots=True)
-class VariationDetail:
-    """A served value, the index of the variation it came from (`None` for the fallback) and why."""
+
+class EvalResult(NamedTuple):
+    """What the evaluator answers: the served value, its index (or None) and the reason."""
 
     value: Any
     variation_index: int | None
@@ -76,33 +79,31 @@ class VariationDetail:
 
 
 @dataclass(frozen=True, slots=True)
-class ClientStatus:
-    """A consistent snapshot of the client's sync state."""
+class Detail:
+    value: Any
+    variation_index: int | None
+    reason: Reason
 
+
+@dataclass(frozen=True, slots=True)
+class Status:
     etag: str | None
-    last_sync_at: datetime | None
+    last_sync_at: int | None
     stream: StreamState
     last_error: str | None
 
 
 @dataclass(frozen=True, slots=True)
 class EvaluationEvent:
-    """What `Hooks.after_evaluation` receives after every evaluation."""
-
     flag_key: str
     context: Any
     value: Any
     variation_index: int | None
     reason: Reason
     etag: str | None
-    flag_version: int | float | None
+    flag_version: int | None
 
 
 @dataclass(frozen=True, slots=True)
 class Hooks:
-    """Callbacks the client calls. `after_evaluation` runs on the thread that evaluated."""
-
-    after_evaluation: Callable[[EvaluationEvent], None] | None = None
-
-
-Context = Mapping[str, Any]
+    after_evaluation: Callable[[EvaluationEvent], Any] | None = None

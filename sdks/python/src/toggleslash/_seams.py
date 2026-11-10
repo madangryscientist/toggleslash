@@ -1,31 +1,25 @@
-"""Test seams (contract 13): what a test replaces to control time, the network and the dice. They are the
-private `_seams` argument of `Client`, never a global and never read from the environment."""
+"""Test seams: options on `create`, never a global and never an environment variable."""
 
 from __future__ import annotations
 
 import random
-import time
+import ssl
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import Any
 
-from ._http import Transport
-
-WATCHDOG_SECONDS = 60.0
-
-
-def _wall() -> datetime:
-    return datetime.now(UTC)
+from ._clock import Clock, SystemClock
+from ._evaluate import evaluate
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class Seams:
-    transport: Transport | None = None
-    monotonic: Callable[[], float] = time.monotonic
-    wall: Callable[[], datetime] = _wall
-    # `wait(seconds)` returns True when the client was stopped. `None` is `stop_event.wait`.
-    wait: Callable[[float], bool] | None = None
+    """`clock` (time and waiting), `jitter` (a float in [0, 1)), `watchdog` (seconds of silence the stream may
+    have, 60 by default), `evaluator` (replaces the evaluator, to make it raise) and `ssl_context` (the trust
+    for an `https` URL, defaulting to the system's)."""
+
+    clock: Clock = field(default_factory=SystemClock)
     jitter: Callable[[], float] = random.random
-    watchdog: float = WATCHDOG_SECONDS
-    evaluator: Callable[..., Any] | None = field(default=None)
+    watchdog: float = 60.0
+    evaluator: Callable[[Any, str, Any], Any] = evaluate
+    ssl_context: ssl.SSLContext | None = None

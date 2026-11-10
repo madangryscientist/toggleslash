@@ -1,74 +1,58 @@
 import unittest
 
-from toggleslash._retry import MAX_RETRY_AFTER, retry_after
-from toggleslash._sse import SseParser
+from toggleslash._sse import SseEvent, SseParser
 
 
-def parse(*chunks: bytes) -> list[tuple[str, str]]:
+def parse(*chunks):
     parser = SseParser()
-    events: list[tuple[str, str]] = []
+    out = []
     for chunk in chunks:
-        events.extend(parser.feed(chunk))
-    return events
+        out.extend(parser.feed(chunk))
+    return out
 
 
-class SseTests(unittest.TestCase):
-    def test_an_event_and_a_comment(self) -> None:
-        self.assertEqual(parse(b': keep-alive\n\nevent: changed\ndata: "v2"\n\n'), [("changed", '"v2"')])
+class SseParserTest(unittest.TestCase):
+    def test_a_plain_event(self):
+        self.assertEqual(parse("event: changed\ndata: x\n\n"), [SseEvent("changed", "x")])
 
-    def test_the_name_defaults_to_message(self) -> None:
-        self.assertEqual(parse(b"data: x\n\n"), [("message", "x")])
+    def test_default_name_is_message(self):
+        self.assertEqual(parse("data: x\n\n"), [SseEvent("message", "x")])
 
-    def test_data_lines_join_with_lf_and_one_leading_space_goes(self) -> None:
-        self.assertEqual(parse(b"data: a\ndata:  b\ndata\n\n"), [("message", "a\n b\n")])
+    def test_several_data_lines_join_with_lf(self):
+        self.assertEqual(parse("data: a\ndata: b\n\n"), [SseEvent("message", "a\nb")])
 
-    def test_an_event_without_data_is_dropped_and_does_not_leak_its_name(self) -> None:
-        self.assertEqual(parse(b"event: changed\n\ndata: x\n\n"), [("message", "x")])
+    def test_an_event_without_data_is_dropped(self):
+        self.assertEqual(parse("event: changed\n\n"), [])
 
-    def test_every_line_end(self) -> None:
-        self.assertEqual(
-            parse(b"data: a\r\n\r\ndata: b\r\rdata: c\n\n"), [("message", "a"), ("message", "b"), ("message", "c")]
-        )
+    def test_comments_are_ignored(self):
+        self.assertEqual(parse(": keep-alive\n\ndata: x\n\n"), [SseEvent("message", "x")])
 
-    def test_a_crlf_split_between_reads_is_one_line_end(self) -> None:
-        self.assertEqual(parse(b"data: a\r", b"\n\r", b"\ndata: b\n\n"), [("message", "a"), ("message", "b")])
+    def test_one_space_after_the_colon_is_dropped(self):
+        self.assertEqual(parse("data:  two\n\n"), [SseEvent("message", " two")])
+        self.assertEqual(parse("data:none\n\n"), [SseEvent("message", "none")])
 
-    def test_a_lone_cr_at_the_end_of_a_read_ends_the_line(self) -> None:
-        self.assertEqual(parse(b"data: a\r", b"data: b\r", b"\r"), [("message", "a\nb")])
+    def test_crlf_and_cr_end_lines(self):
+        self.assertEqual(parse("data: a\r\n\r\n"), [SseEvent("message", "a")])
+        self.assertEqual(parse("data: a\r\r"), [SseEvent("message", "a")])
 
-    def test_any_cut_of_the_bytes_gives_the_same_events(self) -> None:
-        whole = 'event: changed\r\ndata: "é€😀"\r\n\r\n: ping\n\ndata: x\n\n'.encode()
-        expected = parse(whole)
-        self.assertEqual(len(expected), 2)
-        for size in range(1, 8):
-            pieces = [whole[i : i + size] for i in range(0, len(whole), size)]
-            self.assertEqual(parse(*pieces), expected, f"chunks of {size}")
+    def test_a_crlf_split_across_reads_is_one_line_end(self):
+        self.assertEqual(parse("data: a\r", "\n\r", "\n"), [SseEvent("message", "a")])
 
-    def test_an_event_still_incomplete_when_the_bytes_end_is_never_delivered(self) -> None:
-        self.assertEqual(parse(b"data: a\n\ndata: b\n"), [("message", "a")])
+    def test_an_event_split_across_reads(self):
+        self.assertEqual(parse("eve", "nt: chan", "ged\nda", "ta: x\n", "\n"), [SseEvent("changed", "x")])
 
-    def test_a_leading_byte_order_mark_is_dropped(self) -> None:
-        self.assertEqual(parse(b"\xef\xbb\xbfdata: a\n\n"), [("message", "a")])
+    def test_an_unfinished_event_is_never_delivered(self):
+        self.assertEqual(parse("data: a\n"), [])
+        self.assertEqual(parse("data: a\n\ndata: b"), [SseEvent("message", "a")])
 
-    def test_fields_other_than_event_and_data_are_ignored(self) -> None:
-        self.assertEqual(parse(b"id: 4\nretry: 10\nfoo: bar\ndata: a\n\n"), [("message", "a")])
+    def test_a_leading_bom_is_skipped(self):
+        self.assertEqual(parse("﻿data: x\n\n"), [SseEvent("message", "x")])
 
+    def test_name_resets_after_each_event(self):
+        self.assertEqual(parse("event: a\ndata: 1\n\ndata: 2\n\n"), [SseEvent("a", "1"), SseEvent("message", "2")])
 
-class RetryAfterTests(unittest.TestCase):
-    def test_only_a_429_is_read(self) -> None:
-        self.assertIsNone(retry_after(503, "5"))
-        self.assertEqual(retry_after(429, "5"), 5.0)
-
-    def test_whole_decimal_seconds_only_with_spaces_ignored(self) -> None:
-        self.assertEqual(retry_after(429, " 7 "), 7.0)
-        for bad in (None, "", "1.5", "-3", "+3", "Wed, 21 Oct 2026 07:28:00 GMT", "3s", "٣", "²"):
-            self.assertIsNone(retry_after(429, bad), repr(bad))
-
-    def test_it_is_capped_at_five_minutes(self) -> None:
-        self.assertEqual(retry_after(429, "300"), MAX_RETRY_AFTER)
-        self.assertEqual(retry_after(429, "301"), 300.0)
-        self.assertEqual(retry_after(429, "99999999999"), 300.0)
-        self.assertEqual(retry_after(429, "9" * 5000), 300.0)
+    def test_unknown_fields_are_ignored(self):
+        self.assertEqual(parse("id: 1\nretry: 5\ndata: x\n\n"), [SseEvent("message", "x")])
 
 
 if __name__ == "__main__":

@@ -1,120 +1,119 @@
-"""Usage counts: kept in memory per (flag, variation index, UTC day) and sent in batches (contract 9)."""
+"""Usage counts: how often each flag variation was served, per UTC day, sent in batches.
+
+`record` is a dict increment under a short lock, so it is safe on a request path. A batch that fails for a reason
+that can pass (the server is down or busy) is put back; one the server refused is dropped, since it would be
+refused again. After a 429 with a valid `Retry-After`, nothing is sent until that has passed. The counts carry a
+flag key, a variation index and a day, and nothing about an end user.
+"""
 
 from __future__ import annotations
 
-import json
 import threading
 from collections.abc import Callable
-from datetime import UTC, datetime
 
-from ._http import EVENTS_ROUTE, Aborted, Aborter, Transport, TransportError
-from ._retry import retry_after
-from ._types import ToggleSlashError
+from . import _json
+from ._clock import Clock, utc_day
+from ._errors import SdkError
+from ._hold import Hold, parse_retry_after
+from ._http import AbortGroup, HttpError, Transport
 
-# The server takes 1000 events and 128 KiB a request; 500 entries stay under both.
+# The server takes 1000 events and 128 KiB a request; an entry is at most about 140 bytes, so 500 stay under both.
 MAX_BATCH = 500
 
-Key = tuple[str, int, str]
+_Key = tuple[str, int, str]
 
 
 def _retryable(status: int) -> bool:
     return status >= 500 or status in {408, 429}
 
 
-class Usage:
-    """The counts and the sender. `record` is a dictionary add under a lock no request ever holds."""
-
+class UsageReporter:
     def __init__(
         self,
         transport: Transport,
         sdk_key: str,
+        clock: Clock,
         request_timeout: float,
-        report: Callable[[BaseException], None],
-        monotonic: Callable[[], float],
-        wall: Callable[[], datetime],
+        on_error: Callable[[BaseException], None],
     ) -> None:
         self._transport = transport
-        self._headers = {"Authorization": f"Bearer {sdk_key}", "Content-Type": "application/json"}
+        self._sdk_key = sdk_key
+        self._clock = clock
         self._timeout = request_timeout
-        self._report = report
-        self._monotonic = monotonic
-        self._wall = wall
-        self._lock = threading.Lock()  # guards _counts and _recording
-        self._counts: dict[Key, int] = {}
-        self._recording = True
-        self._flush_lock = threading.Lock()  # flushes are serial
-        self._hold_until = 0.0  # a 429's Retry-After, on the monotonic clock; only read and written under _flush_lock
+        self._on_error = on_error
+        self._lock = threading.Lock()
+        self._flush_lock = threading.Lock()
+        self._pending: dict[_Key, int] = {}
+        self._hold = Hold(clock)
+        self._group = AbortGroup()
 
     def record(self, flag: str, variation_index: int) -> None:
-        day = self._wall().astimezone(UTC).strftime("%Y-%m-%d")
-        key = (flag, variation_index, day)
+        key = (flag, variation_index, utc_day(self._clock.now_ms()))
         with self._lock:
-            if self._recording:
-                self._counts[key] = self._counts.get(key, 0) + 1
+            self._pending[key] = self._pending.get(key, 0) + 1
 
-    def stop_recording(self) -> None:
+    def pending_count(self) -> int:
         with self._lock:
-            self._recording = False
+            return len(self._pending)
 
-    def flush(self, *, final: bool = False) -> None:
-        """Sends what is pending. Nothing it meets raises; every failure goes to `report`, after the locks
-        are released. A final flush does not wait out a hold, and says so when it loses counts to one."""
-        errors: list[BaseException] = []
+    def flush(self) -> None:
+        """Sends what is pending. It never raises; a call during a flush waits for that flush first."""
         with self._flush_lock:
-            self._send(errors, final)
-        for error in errors:
-            self._report(error)
+            try:
+                self._send()
+            except Exception as error:
+                self._on_error(error)
 
-    def _send(self, errors: list[BaseException], final: bool) -> None:
-        if self._monotonic() < self._hold_until:
-            if final:
-                with self._lock:
-                    pending = len(self._counts)
-                if pending:
-                    errors.append(
-                        ToggleSlashError(f"closed with {pending} usage counts unsent: the server asked to wait")
-                    )
+    def finish(self) -> None:
+        """The last flush, on closing. It does not wait out a hold and does not ignore one: counts still held
+        back are lost, and that is reported."""
+        self.flush()
+        left = self.pending_count()
+        if left > 0 and self._hold.active():
+            self._on_error(SdkError(f"closed with {left} usage counts unsent: the server asked to wait"))
+
+    def _add(self, key: _Key, count: int) -> None:
+        with self._lock:
+            self._pending[key] = self._pending.get(key, 0) + count
+
+    def _send(self) -> None:
+        if self._hold.active():
             return
         with self._lock:
-            counts, self._counts = self._counts, {}
-        entries = [(key, count) for key, count in counts.items()]
+            entries = list(self._pending.items())
+            self._pending = {}
         for start in range(0, len(entries), MAX_BATCH):
             batch = entries[start : start + MAX_BATCH]
-            if not self._post(batch, errors):
-                self._put_back(entries[start:])
+            if not self._post(batch):
+                for key, count in entries[start:]:
+                    self._add(key, count)
                 return
 
-    def _put_back(self, entries: list[tuple[Key, int]]) -> None:
-        with self._lock:
-            for key, count in entries:
-                self._counts[key] = self._counts.get(key, 0) + count
-
-    def _post(self, batch: list[tuple[Key, int]], errors: list[BaseException]) -> bool:
-        """False when the batch is to be kept for another try."""
-        payload = {
-            "events": [
-                {"flag": flag, "variationIndex": index, "count": count, "day": day}
-                for (flag, index, day), count in batch
-            ]
+    def _post(self, batch: list[tuple[_Key, int]]) -> bool:
+        """False when the batch should be kept for another try."""
+        body = _json.dumps(
+            {
+                "events": [
+                    {"flag": flag, "variationIndex": index, "count": count, "day": day}
+                    for (flag, index, day), count in batch
+                ]
+            }
+        ).encode("utf-8")
+        headers = {
+            "Authorization": f"Bearer {self._sdk_key}",
+            "Content-Type": "application/json",
         }
-        body = json.dumps(payload).encode("ascii")
-        aborter = Aborter(self._timeout)
         try:
-            reply = self._transport("POST", EVENTS_ROUTE, self._headers, body, aborter)
-            try:
-                status = reply.status
-                header = reply.header("Retry-After")
-            finally:
-                reply.close()
-        except (TransportError, Aborted) as error:
-            errors.append(error)
+            with self._transport.open("POST", "/sdk/v1/events", headers, body, self._timeout, self._group) as response:
+                status = response.status
+                if 200 <= status < 300:
+                    return True
+                if status == 429:
+                    wait = parse_retry_after(response.header("Retry-After"))
+                    if wait is not None:
+                        self._hold.extend(wait)
+        except HttpError as error:
+            self._on_error(error)
             return False
-        finally:
-            aborter.stop_timer()
-        if 200 <= status < 300:
-            return True
-        wait = retry_after(status, header)
-        if wait is not None:
-            self._hold_until = max(self._hold_until, self._monotonic() + wait)
-        errors.append(ToggleSlashError(f"POST {EVENTS_ROUTE} answered {status}"))
+        self._on_error(SdkError(f"POST /sdk/v1/events answered {status}"))
         return not _retryable(status)

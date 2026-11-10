@@ -1,55 +1,44 @@
-"""The Python SDK's conformance test service: an HTTP server that wraps `create_client` so the harness in
-`packages/sdk-conformance` can drive it from outside. The protocol is `docs/sdk-test-service.md`; the
-accessor mapping is in this directory's README. It catches nothing the SDK raises: a call that raises
-answers 500 with the error text, and the harness fails the scenario.
+"""The Python SDK's conformance test service.
+
+It wraps `toggleslash.create` in the HTTP protocol of `docs/sdk-test-service.md`, so the harness in
+`packages/sdk-conformance` can drive the SDK from outside. The accessor mapping is in this directory's README.
+It catches nothing the SDK raises: a call that raises answers 500 with the error text, and the harness fails
+the scenario. Standard library only; it serves on 127.0.0.1 and a port the OS picks, one thread per request.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import sys
 import threading
 import traceback
 from dataclasses import dataclass, field
-from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import toggleslash
 from toggleslash import EvaluationEvent, Hooks
 
-ACCESSORS = {
-    "bool": "bool_variation_detail",
-    "string": "string_variation_detail",
-    "number": "float_variation_detail",
-    "int": "int_variation_detail",
-    "json": "json_variation_detail",
-    "any": "variation_detail",
-}
+CLIENT_ROUTE = re.compile(r"^/clients/([^/]+)/([a-z-]+)$")
 
 
 @dataclass
 class Entry:
-    client: toggleslash.Client | None = None
+    client: Any
     hook_events: list[dict[str, Any]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
-    lock: threading.Lock = field(default_factory=threading.Lock)
 
 
 CLIENTS: dict[str, Entry] = {}
-CLIENTS_LOCK = threading.Lock()
-CREATED = 0
+LOCK = threading.Lock()
+COUNTER = [0]
 
 
-def epoch_ms(moment: datetime | None) -> int | None:
-    """Whole epoch milliseconds, by integer arithmetic so a float cannot round a microsecond up."""
-    if moment is None:
-        return None
-    delta = moment - datetime.fromtimestamp(0, moment.tzinfo)
-    return (delta.days * 86400 + delta.seconds) * 1000 + delta.microseconds // 1000
-
-
-def duration(body: dict[str, Any], name: str) -> float | None:
+def seconds(body: dict[str, Any], name: str) -> float | None:
     value = body.get(name)
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
@@ -57,46 +46,31 @@ def duration(body: dict[str, Any], name: str) -> float | None:
 
 
 def event_json(event: EvaluationEvent) -> dict[str, Any]:
-    reason = event.reason
     return {
         "flagKey": event.flag_key,
         "context": event.context,
         "value": event.value,
         "variationIndex": event.variation_index,
-        "reason": reason_json(reason),
+        "reason": event.reason.to_json(),
         "etag": event.etag,
         "flagVersion": event.flag_version,
     }
 
 
-def reason_json(reason: toggleslash.Reason) -> dict[str, Any]:
-    out: dict[str, Any] = {"kind": str(reason.kind)}
-    if reason.rule_index is not None:
-        out["ruleIndex"] = reason.rule_index
-    if reason.flag_key is not None:
-        out["flagKey"] = reason.flag_key
-    if reason.code is not None:
-        out["code"] = str(reason.code)
-    return out
+def create_client(body: dict[str, Any]) -> str:
+    entry = Entry(client=None)
 
-
-def create(body: dict[str, Any]) -> dict[str, Any]:
-    global CREATED
-    entry = Entry()
-
-    def on_error(error: Exception) -> None:
-        with entry.lock:
-            entry.errors.append(str(error))
+    def on_error(error: BaseException) -> None:
+        entry.errors.append(str(error))
         if body.get("onErrorThrows") is True:
-            raise RuntimeError("on_error raised, as the test asked")
+            raise RuntimeError("onError raised, as the test asked")
 
     def after_evaluation(event: EvaluationEvent) -> None:
-        with entry.lock:
-            entry.hook_events.append(event_json(event))
+        entry.hook_events.append(event_json(event))
         if body.get("hookThrows") is True:
             raise RuntimeError("the hook raised, as the test asked")
 
-    options: dict[str, Any] = {"on_error": on_error}
+    options: dict[str, Any] = {"url": str(body["url"]), "sdk_key": str(body["sdkKey"]), "on_error": on_error}
     if isinstance(body.get("stream"), bool):
         options["stream"] = body["stream"]
     for name, option in (
@@ -104,74 +78,79 @@ def create(body: dict[str, Any]) -> dict[str, Any]:
         ("flushIntervalMs", "flush_interval"),
         ("requestTimeoutMs", "request_timeout"),
     ):
-        value = duration(body, name)
+        value = seconds(body, name)
         if value is not None:
             options[option] = value
     if body.get("hook") is True or body.get("hookThrows") is True:
         options["hooks"] = Hooks(after_evaluation=after_evaluation)
-    entry.client = toggleslash.create_client(str(body["url"]), str(body["sdkKey"]), **options)
-    with CLIENTS_LOCK:
-        CREATED += 1
-        identifier = str(CREATED)
-        CLIENTS[identifier] = entry
-    return {"id": identifier}
+    entry.client = toggleslash.create(**options)
+    with LOCK:
+        COUNTER[0] += 1
+        client_id = str(COUNTER[0])
+        CLIENTS[client_id] = entry
+    return client_id
 
 
 def evaluate(entry: Entry, body: dict[str, Any]) -> dict[str, Any]:
-    assert entry.client is not None
-    accessor = ACCESSORS.get(str(body.get("accessor", "any")))
-    if accessor is None:
-        raise ValueError(f"unknown accessor {body.get('accessor')!r}")
-    detail = getattr(entry.client, accessor)(str(body["flagKey"]), body.get("context"), body.get("fallback"))
-    return {"value": detail.value, "variationIndex": detail.variation_index, "reason": reason_json(detail.reason)}
-
-
-def client_route(entry: Entry, action: str, method: str, body: dict[str, Any]) -> dict[str, Any] | None:
     client = entry.client
-    assert client is not None
-    key = f"{method} {action}"
-    if key == "POST ready":
-        return {"ready": client.ready()}
-    if key == "POST evaluate":
-        return evaluate(entry, body)
-    if key == "GET status":
-        status = client.status()
-        return {
-            "etag": status.etag,
-            "lastSyncAt": epoch_ms(status.last_sync_at),
-            "stream": str(status.stream),
-            "lastError": status.last_error,
-        }
-    if key == "GET hook-events":
-        with entry.lock:
-            return {"events": list(entry.hook_events)}
-    if key == "GET errors":
-        with entry.lock:
-            return {"count": len(entry.errors), "messages": list(entry.errors)}
-    if key == "POST close":
-        client.close()
-        return {}
-    return None
+    key, context, fallback = str(body["flagKey"]), body.get("context"), body.get("fallback")
+    accessor = body.get("accessor", "any")
+    if accessor == "int" and isinstance(fallback, float) and fallback.is_integer():
+        fallback = int(fallback)
+    method = {
+        "bool": client.bool_variation_detail,
+        "string": client.string_variation_detail,
+        "number": client.number_variation_detail,
+        "int": client.int_variation_detail,
+        "json": client.json_variation_detail,
+        "any": client.variation_detail,
+    }.get(accessor)
+    if method is None:
+        raise ValueError(f"unknown accessor {accessor!r}")
+    detail = method(key, context, fallback)
+    return {
+        "value": detail.value,
+        "variationIndex": detail.variation_index,
+        "reason": detail.reason.to_json(),
+    }
+
+
+def status_json(entry: Entry) -> dict[str, Any]:
+    status = entry.client.status()
+    return {
+        "etag": status.etag,
+        "lastSyncAt": status.last_sync_at,
+        "stream": str(status.stream),
+        "lastError": status.last_error,
+    }
 
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
-    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+    def log_message(self, *args: Any) -> None:
         pass
 
-    def reply(self, status: int, payload: Any, *, text: bool = False) -> None:
-        data = payload.encode("utf-8") if text else json.dumps(payload).encode("utf-8")
+    def send_json(self, status: int, value: Any) -> None:
+        data = json.dumps(value).encode()
         self.send_response(status)
-        self.send_header("Content-Type", "text/plain" if text else "application/json")
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def send_text(self, status: int, text: str) -> None:
+        data = text.encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
 
     def read_body(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length") or 0)
-        raw = self.rfile.read(length) if length else b""
-        body = json.loads(raw) if raw else {}
+        text = self.rfile.read(length).decode() if length else ""
+        body = json.loads(text) if text else {}
         if not isinstance(body, dict):
             raise TypeError("the body is not a JSON object")
         return body
@@ -179,46 +158,48 @@ class Handler(BaseHTTPRequestHandler):
     def handle_any(self) -> None:
         try:
             self.route()
-        except Exception:
-            self.reply(500, traceback.format_exc(), text=True)
+        except Exception:  # the harness fails the scenario on a 500, which is the point
+            self.send_text(500, traceback.format_exc())
 
-    do_GET = handle_any
-    do_POST = handle_any
+    do_GET = do_POST = handle_any
 
     def route(self) -> None:
-        path = self.path.split("?", 1)[0]
-        method = self.command
-        if method == "GET" and path == "/":
-            self.reply(200, {"name": "toggleslash-sdk (Python)", "capabilities": ["integer-accessor"]})
+        path = self.path.split("?")[0]
+        if self.command == "GET" and path == "/":
+            self.send_json(200, {"name": "toggleslash-sdk (Python)", "capabilities": ["integer-accessor"]})
             return
-        if method == "POST" and path == "/clients":
-            self.reply(201, create(self.read_body()))
+        if self.command == "POST" and path == "/clients":
+            self.send_json(201, {"id": create_client(self.read_body())})
             return
-        parts = path.split("/")
-        entry = None
-        if len(parts) == 4 and parts[0] == "" and parts[1] == "clients":
-            with CLIENTS_LOCK:
-                entry = CLIENTS.get(parts[2])
-        if entry is None:
-            self.read_body_quietly()
-            self.reply(404, "no such client", text=True)
+        match = CLIENT_ROUTE.match(path)
+        entry = CLIENTS.get(match.group(1)) if match else None
+        if match is None or entry is None:
+            self.send_text(404, "no such client")
             return
-        body = self.read_body() if method == "POST" else {}
-        answer = client_route(entry, parts[3], method, body)
-        if answer is None:
-            self.reply(404, "no such route", text=True)
+        action = f"{self.command} {match.group(2)}"
+        if action == "POST ready":
+            self.send_json(200, {"ready": entry.client.ready()})
+        elif action == "POST evaluate":
+            self.send_json(200, evaluate(entry, self.read_body()))
+        elif action == "GET status":
+            self.send_json(200, status_json(entry))
+        elif action == "GET hook-events":
+            self.send_json(200, {"events": list(entry.hook_events)})
+        elif action == "GET errors":
+            self.send_json(200, {"count": len(entry.errors), "messages": list(entry.errors)})
+        elif action == "POST close":
+            entry.client.close()
+            self.send_json(200, {})
         else:
-            self.reply(200, answer)
+            self.send_text(404, "no such route")
 
-    def read_body_quietly(self) -> None:
-        length = int(self.headers.get("Content-Length") or 0)
-        if length:
-            self.rfile.read(length)
+
+class Server(ThreadingHTTPServer):
+    daemon_threads = True
 
 
 def main() -> None:
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    server.daemon_threads = True
+    server = Server(("127.0.0.1", 0), Handler)
     sys.stdout.write(f"listening http://127.0.0.1:{server.server_address[1]}\n")
     sys.stdout.flush()
     server.serve_forever()

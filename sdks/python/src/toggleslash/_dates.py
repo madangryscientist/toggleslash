@@ -1,35 +1,27 @@
-"""Instants, to the "Dates" section of docs/evaluation.md.
-
-A hand-written walk over the string: no `datetime.fromisoformat` and no regular expression. The result is
-Unix milliseconds, or `None` when the text is not an instant.
-"""
+"""Instants, to the "Dates" section of docs/evaluation.md: a hand-written walk, no `datetime`, no regex."""
 
 from __future__ import annotations
 
 import math
 
-_ZERO = 0x30
+from ._json import is_number
 
 
 def _digits(text: str, start: int, length: int) -> int | None:
     if start + length > len(text):
         return None
     value = 0
-    for char in text[start : start + length]:
-        code = ord(char)
-        if not _ZERO <= code <= _ZERO + 9:
+    for c in text[start : start + length]:
+        if not "0" <= c <= "9":
             return None
-        value = value * 10 + (code - _ZERO)
+        value = value * 10 + (ord(c) - 0x30)
     return value
-
-
-def _is_leap_year(year: int) -> bool:
-    return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
 
 
 def _days_in_month(year: int, month: int) -> int:
     if month == 2:
-        return 29 if _is_leap_year(year) else 28
+        leap = year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+        return 29 if leap else 28
     return 30 if month in (4, 6, 9, 11) else 31
 
 
@@ -44,9 +36,7 @@ def _days_from_civil(year: int, month: int, day: int) -> int:
 
 
 def _parse_date(text: str) -> int | None:
-    year = _digits(text, 0, 4)
-    month = _digits(text, 5, 2)
-    day = _digits(text, 8, 2)
+    year, month, day = _digits(text, 0, 4), _digits(text, 5, 2), _digits(text, 8, 2)
     if year is None or month is None or day is None:
         return None
     if year < 1 or month < 1 or month > 12:
@@ -57,9 +47,7 @@ def _parse_date(text: str) -> int | None:
 
 
 def _parse_time(text: str) -> int | None:
-    hour = _digits(text, 0, 2)
-    minute = _digits(text, 3, 2)
-    second = _digits(text, 6, 2)
+    hour, minute, second = _digits(text, 0, 2), _digits(text, 3, 2), _digits(text, 6, 2)
     if hour is None or minute is None or second is None:
         return None
     if hour > 23 or minute > 59 or second > 59:
@@ -69,7 +57,7 @@ def _parse_time(text: str) -> int | None:
 
 def _parse_fraction(text: str, start: int) -> tuple[int, int] | None:
     end = start + 1
-    while end < len(text) and ord(text[end]) in range(_ZERO, _ZERO + 10):
+    while end < len(text) and "0" <= text[end] <= "9":
         end += 1
     if end == start + 1:
         return None
@@ -81,11 +69,10 @@ def _parse_fraction(text: str, start: int) -> tuple[int, int] | None:
 def _parse_offset(text: str) -> int | None:
     if text == "Z":
         return 0
-    sign = {"+": 1, "-": -1}.get(text[:1])
-    if sign is None or len(text) != 6 or text[3] != ":":
+    if text[:1] not in ("+", "-") or len(text) != 6 or text[3] != ":":
         return None
-    hour = _digits(text, 1, 2)
-    minute = _digits(text, 4, 2)
+    sign = 1 if text[0] == "+" else -1
+    hour, minute = _digits(text, 1, 2), _digits(text, 4, 2)
     if hour is None or minute is None:
         return None
     return None if hour > 23 or minute > 59 else sign * (hour * 60 + minute)
@@ -112,21 +99,26 @@ def _parse_instant(text: str) -> int | None:
     fraction = _parse_fraction(text, 19) if text[19] == "." else (0, 19)
     if fraction is None:
         return None
-    millis, end = fraction
+    ms, end = fraction
     offset = _parse_offset(text[end:])
     if offset is None:
         return None
-    return days * 86_400_000 + seconds * 1000 + millis - offset * 60_000
+    return days * 86_400_000 + seconds * 1000 + ms - offset * 60_000
 
 
-def to_instant(value: object) -> float | int | None:
-    """A finite number is Unix milliseconds, a string is parsed, anything else is not an instant."""
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        try:
-            number = float(value)
-        except OverflowError:
-            return None
+def to_instant(value: object) -> float | None:
+    """Unix milliseconds: a finite number is itself, a string is parsed, anything else is not an instant."""
+    if is_number(value):
+        number = float(value) if not isinstance(value, int) else _int_to_float(value)
         return number if math.isfinite(number) else None
-    return _parse_instant(value) if isinstance(value, str) else None
+    if isinstance(value, str):
+        parsed = _parse_instant(value)
+        return None if parsed is None else float(parsed)
+    return None
+
+
+def _int_to_float(value: int) -> float:
+    try:
+        return float(value)
+    except OverflowError:
+        return math.inf if value > 0 else -math.inf

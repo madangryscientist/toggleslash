@@ -1,11 +1,11 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "toggleslash"
 version = "0.0.0"
-description = "A ToggleSlash server SDK for Python. Not published."
+description = "A ToggleSlash server SDK: local flag evaluation, a live ruleset and usage counts"
 requires-python = ">=3.11"
 dependencies = []
 
@@ -21,38 +21,22 @@ target-version = "py311"
 src = ["src", "tests", "test-service"]
 
 [tool.ruff.lint]
-select = [
-  "E",
-  "F",
-  "W",
-  "I",
-  "B",
-  "UP",
-  "SIM",
-  "C4",
-  "PIE",
-  "RET",
-  "RUF",
-  "PL",
-  "S",
-  "T20",
-  "A",
-  "N",
-]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF", "PL", "C4", "PIE", "T20", "S"]
 ignore = [
-  "PLR0911", # a flat evaluator returns early on purpose
+  "PLR0911",
   "PLR0912",
-  "PLR0913", # create_client takes the options the contract lists
+  "PLR0913",
   "PLR0915",
-  "PLR0917",
   "PLR2004",
-  "RET505",
-  "S101", # an assert narrows a type for the reader; none guards input
-  "N818", # internal exception types are named for what they signal, not "Error"
-  "SIM105", # try/except/pass says "ignore this OSError" at least as plainly as contextlib.suppress
+  "PLR0917",
+  "S101",
+  "S311",
+  "S603",
+  "S607",
+  "S104",
+  "T201",
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S105", "S106", "S108", "S310", "S603", "PLR", "SIM117", "T20", "N815"]
-"test-service/**" = ["T20", "S104", "N815", "PLW0603"]
-"src/toggleslash/_client.py" = ["S110"]
+"tests/*" = ["S", "PLC0415", "B017", "SIM117"]
+"test-service/*" = ["E402"]

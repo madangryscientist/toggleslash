@@ -1,52 +1,68 @@
-"""Strings as the spec reads them: UTF-16 code units to compare, code points for patterns, UTF-8 to hash.
+"""Code point and UTF-16 helpers.
 
-A Python `str` is a sequence of code points that may also hold a lone surrogate. The spec compares by
-UTF-16 code unit, so a character above U+FFFF counts as its two surrogates; `u16` rewrites a string that
-way, after which Python's own `==`, `in`, `startswith`, `endswith` and `<` are code-unit operations.
+A Python `str` is a sequence of code points and can hold a lone surrogate. The spec's string rules are over
+UTF-16 code units, so ordering and the substring ops go through UTF-16 bytes (big-endian, so a byte compare is
+a code unit compare), and hashing replaces a lone surrogate with U+FFFD.
 """
 
 from __future__ import annotations
 
 
-def u16(text: str) -> str:
-    """`text` with every character above U+FFFF replaced by its surrogate pair."""
-    if text.isascii() or max(text) <= "￿":
+def normalise(text: str) -> str:
+    """Joins a high and a low surrogate that sit side by side into the one code point they spell."""
+    if text.isascii():
         return text
-    out: list[str] = []
-    for char in text:
-        point = ord(char)
-        if point > 0xFFFF:
-            point -= 0x10000
-            out.append(chr(0xD800 + (point >> 10)))
-            out.append(chr(0xDC00 + (point & 0x3FF)))
-        else:
-            out.append(char)
-    return "".join(out)
+    return text.encode("utf-16-be", "surrogatepass").decode("utf-16-be", "surrogatepass")
+
+
+def utf16(text: str) -> bytes:
+    return text.encode("utf-16-be", "surrogatepass")
 
 
 def code_points(text: str) -> list[int]:
-    """The code points of `text`: a valid surrogate pair is one, a lone surrogate is itself."""
-    points = [ord(char) for char in text]
-    if text.isascii() or max(points) < 0xD800:
-        return points
-    merged: list[int] = []
-    index = 0
-    count = len(points)
-    while index < count:
-        high = points[index]
-        if 0xD800 <= high <= 0xDBFF and index + 1 < count and 0xDC00 <= points[index + 1] <= 0xDFFF:
-            merged.append(((high - 0xD800) << 10) + (points[index + 1] - 0xDC00) + 0x10000)
-            index += 2
-        else:
-            merged.append(high)
-            index += 1
-    return merged
+    return [ord(c) for c in normalise(text)]
 
 
-def utf8(text: str) -> bytes:
-    """UTF-8 bytes of `text`, a lone surrogate becoming U+FFFD (what a UTF-16 encoder does)."""
-    try:
-        return text.encode("utf-8")
-    except UnicodeEncodeError:
-        units = text.encode("utf-16-le", "surrogatepass")
-        return units.decode("utf-16-le", "replace").encode("utf-8")
+def utf8_for_hash(text: str) -> bytes:
+    """UTF-8 of `text` with each lone surrogate replaced by U+FFFD."""
+    if text.isascii():
+        return text.encode("ascii")
+    return text.encode("utf-16-be", "surrogatepass").decode("utf-16-be", "replace").encode("utf-8")
+
+
+def compare(a: str, b: str) -> int:
+    """-1, 0 or 1 by UTF-16 code unit."""
+    if a.isascii() and b.isascii():
+        return -1 if a < b else (1 if a > b else 0)
+    x, y = utf16(a), utf16(b)
+    return -1 if x < y else (1 if x > y else 0)
+
+
+def contains(text: str, part: str) -> bool:
+    if text.isascii() and part.isascii():
+        return part in text
+    x, y = utf16(text), utf16(part)
+    start = 0
+    while True:
+        at = x.find(y, start)
+        if at < 0:
+            return False
+        if at % 2 == 0:
+            return True
+        start = at + 1
+
+
+def starts_with(text: str, part: str) -> bool:
+    if text.isascii() and part.isascii():
+        return text.startswith(part)
+    return utf16(text).startswith(utf16(part))
+
+
+def ends_with(text: str, part: str) -> bool:
+    if text.isascii() and part.isascii():
+        return text.endswith(part)
+    return utf16(text).endswith(utf16(part))
+
+
+def equal(a: str, b: str) -> bool:
+    return a == b or (not (a.isascii() and b.isascii()) and utf16(a) == utf16(b))
