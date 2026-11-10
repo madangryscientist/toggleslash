@@ -34,7 +34,7 @@ function cell(testid: string, state: State, path: string, format: "json" | "plai
   return `<code data-testid="${escapeHtml(testid)}" data-path="${escapeHtml(path)}" data-format="${format}">${escapeHtml(display(value, format))}</code>`;
 }
 
-/** The refresh and the browser-side evaluation. It only ever writes with `textContent`. */
+/** The refresh of the server-side table. It only ever writes with `textContent`. */
 const SCRIPT = `
 const config = JSON.parse(document.getElementById("config").textContent);
 function display(value, format) {
@@ -58,29 +58,40 @@ async function refresh() {
   }
 }
 setInterval(refresh, 1000);
-
-const status = document.querySelector('[data-testid="evaluate-status"]');
-const result = document.querySelector('[data-testid="evaluate-result"]');
-document.querySelector('[data-testid="evaluate-button"]').addEventListener("click", async () => {
-  status.textContent = "...";
-  try {
-    const response = await fetch(config.serverUrl + "/sdk/v1/evaluate", {
-      method: "POST",
-      headers: { Authorization: "Bearer " + config.clientKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ context: config.user }),
-    });
-    result.textContent = JSON.stringify(await response.json(), null, 2);
-    status.textContent = String(response.status);
-  } catch (error) {
-    result.textContent = String(error);
-    status.textContent = "error";
-  }
-});
 `;
 
 /** Keeps `?flag=` through the shopper picker, which is a GET form. */
 function extraFlagInput(flag: string | null): string {
   return flag === null ? "" : `<input type="hidden" name="flag" value="${escapeHtml(flag)}">`;
+}
+
+/** The rows `src/browser.ts` repaints (it paints whichever `data-browser-flag` cells it finds): `new-checkout` and the `?flag=` flag. */
+function browserRows(extraFlag: string | null): string {
+  const keys = new Set(["new-checkout", ...(extraFlag === null ? [] : [extraFlag])]);
+  return [...keys]
+    .map(
+      (key) => `<tr>
+<th scope="row">${escapeHtml(key)}</th>
+<td><code data-testid="browser-flag-${escapeHtml(key)}-value" data-browser-flag="${escapeHtml(key)}" data-field="value">-</code></td>
+<td><code data-testid="browser-flag-${escapeHtml(key)}-reason" data-browser-flag="${escapeHtml(key)}" data-field="reason">-</code></td>
+</tr>`,
+    )
+    .join("\n");
+}
+
+/** The SDK status as definition-list entries, each a repainted cell. */
+function statusRows(state: State): string {
+  return [
+    ["etag", "ETag of the ruleset held", "status.etag"],
+    ["last-sync-at", "Last confirmed (epoch ms)", "status.lastSyncAt"],
+    ["stream", "Stream", "status.stream"],
+    ["last-error", "Last error", "status.lastError"],
+  ]
+    .map(
+      ([name, label, path]) =>
+        `<dt>${escapeHtml(label ?? "")}</dt><dd>${cell(`status-${name}`, state, path ?? "", "plain")}</dd>`,
+    )
+    .join("\n");
 }
 
 export function renderPage(state: State, config: PageConfig): string {
@@ -96,18 +107,6 @@ export function renderPage(state: State, config: PageConfig): string {
 <td>${cell(`flag-${flag.key}-value`, state, `flags.${i}.value`, "json")}</td>
 <td>${cell(`flag-${flag.key}-reason`, state, `flags.${i}.reason.kind`, "plain")}</td>
 </tr>`,
-    )
-    .join("\n");
-
-  const statusRows = [
-    ["etag", "ETag of the ruleset held", "status.etag"],
-    ["last-sync-at", "Last confirmed (epoch ms)", "status.lastSyncAt"],
-    ["stream", "Stream", "status.stream"],
-    ["last-error", "Last error", "status.lastError"],
-  ]
-    .map(
-      ([name, label, path]) =>
-        `<dt>${escapeHtml(label ?? "")}</dt><dd>${cell(`status-${name}`, state, path ?? "", "plain")}</dd>`,
     )
     .join("\n");
 
@@ -150,19 +149,23 @@ ${rows}
 <section aria-labelledby="sdk">
 <h2 id="sdk">SDK status</h2>
 <dl>
-${statusRows}
+${statusRows(state)}
 </dl>
 </section>
 <section aria-labelledby="browser">
-<h2 id="browser">Evaluate in the browser</h2>
-<p>Asks the server for this shopper's flags with a client key, from this page.</p>
-<button type="button" data-testid="evaluate-button">Evaluate in the browser</button>
-<p>Answer: <output data-testid="evaluate-status">-</output></p>
-<pre data-testid="evaluate-result"></pre>
+<h2 id="browser">In the browser (client key)</h2>
+<p>The same flags, evaluated by the server for this shopper through the browser SDK and kept current by the change signal.</p>
+<table>
+<thead><tr><th scope="col">Flag</th><th scope="col">Value</th><th scope="col">Reason</th></tr></thead>
+<tbody>
+${browserRows(config.extraFlag)}
+</tbody>
+</table>
 </section>
 </main>
 <script type="application/json" id="config">${data}</script>
 <script>${SCRIPT}</script>
+<script type="module" src="/browser.js"></script>
 </body>
 </html>
 `;

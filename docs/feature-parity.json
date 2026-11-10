@@ -1022,9 +1022,11 @@
         "evidence": [
           "path:packages/sdk-browser",
           "doc:docs/sdk-browser.md",
-          "test:packages/sdk-browser/test/signal.test.ts"
+          "test:packages/sdk-browser/test/signal.test.ts",
+          "path:apps/example/src/browser.ts",
+          "test:packages/e2e/stack/journey.spec.ts"
         ],
-        "note": "One JavaScript SDK, server-evaluated, unpublished; no React binding, no secure mode."
+        "note": "One JavaScript SDK, server-evaluated, unpublished, shown live in the example app and the stack journey; no React binding, no secure mode."
       },
       "competitors": {
         "launchdarkly": "yes",

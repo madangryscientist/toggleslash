@@ -6,6 +6,7 @@ import { USERS } from "../src/users.ts";
 
 const CLIENT_KEY = "fs_client_this-may-reach-a-browser";
 const SERVER_URL = "http://127.0.0.1:9";
+const BROWSER_JS = "export const bundle = 1;";
 
 const STATUS: ClientStatus = {
   etag: '"7"',
@@ -30,7 +31,7 @@ function fakeClient(values: Record<string, unknown> = {}) {
 }
 
 function app(client: FlagClient) {
-  return createApp({ client, serverUrl: SERVER_URL, clientKey: CLIENT_KEY });
+  return createApp({ client, serverUrl: SERVER_URL, clientKey: CLIENT_KEY, browserJs: BROWSER_JS });
 }
 
 const get = (handler: ReturnType<typeof app>, path: string) =>
@@ -93,10 +94,24 @@ describe("GET /state", () => {
     }
   });
 
-  it("only answers GET, and only its two routes", () => {
+  it("only answers GET, and only its three routes", () => {
     const handler = app(fakeClient().client);
-    expect(handler(new Request("http://example.test/state", { method: "POST" })).status).toBe(405);
+    for (const path of ["/", "/state", "/browser.js"]) {
+      expect(handler(new Request(`http://example.test${path}`, { method: "POST" })).status).toBe(
+        405,
+      );
+    }
     expect(get(handler, "/elsewhere").status).toBe(404);
+  });
+});
+
+describe("GET /browser.js", () => {
+  it("serves the bundle it was given as JavaScript", async () => {
+    const response = get(app(fakeClient().client), "/browser.js");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toMatch(/^text\/javascript/);
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(await response.text()).toBe(BROWSER_JS);
   });
 });
 
@@ -109,7 +124,7 @@ describe("GET /", () => {
     expect(html).toContain('data-testid="current-user">pro-user<');
   });
 
-  it("has a stable test id on every value, status field and the button", async () => {
+  it("has a stable test id on every value, the browser's cells and every status field", async () => {
     const html = await get(app(fakeClient().client), "/").text();
     for (const flag of FLAGS) {
       expect(html).toContain(`data-testid="flag-${flag.key}-value"`);
@@ -118,7 +133,12 @@ describe("GET /", () => {
     for (const id of ["etag", "last-sync-at", "stream", "last-error"]) {
       expect(html).toContain(`data-testid="status-${id}"`);
     }
-    expect(html).toContain('data-testid="evaluate-button"');
+    expect(html).toContain('data-testid="browser-flag-new-checkout-value"');
+    expect(html).toContain('data-testid="browser-flag-new-checkout-reason"');
+    for (const old of ["evaluate-button", "evaluate-status", "evaluate-result"]) {
+      expect(html).not.toContain(old);
+    }
+    expect(html).toContain('<script type="module" src="/browser.js"></script>');
     expect(html).toContain(
       'data-testid="status-stream" data-path="status.stream" data-format="plain">connected<',
     );
@@ -128,6 +148,8 @@ describe("GET /", () => {
     const html = await get(app(fakeClient().client), "/?flag=journey-flag").text();
     expect(html).toContain('<input type="hidden" name="flag" value="journey-flag">');
     expect(html).toContain('data-testid="flag-journey-flag-value"');
+    expect(html).toContain('data-testid="browser-flag-journey-flag-value"');
+    expect(html).toContain('data-testid="browser-flag-journey-flag-reason"');
     expect(html).toContain('"flag":"journey-flag"');
     expect(await get(app(fakeClient().client), "/").text()).not.toContain('name="flag"');
   });

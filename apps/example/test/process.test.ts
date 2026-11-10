@@ -71,7 +71,9 @@ async function startExample(env: Record<string, string>) {
   const first = await reader.read();
   const match = /http:\/\/127\.0\.0\.1:\d+/.exec(new TextDecoder().decode(first.value));
   if (match === null)
-    throw new Error(`the example did not say where it listens: ${await child.stderr.text()}`);
+    throw new Error(
+      `the example did not say where it listens: ${await new Response(child.stderr).text()}`,
+    );
   return { child, url: match[0] };
 }
 
@@ -106,6 +108,13 @@ describe("src/server.ts", () => {
       expect(body).not.toContain("fs_server_");
     }
     expect(page).toContain(CLIENT_KEY);
+    // The page loads the bundle from this server, and the bundle holds no key.
+    expect(page).toContain('<script type="module" src="/browser.js"></script>');
+    const bundle = await fetch(`${url}/browser.js`);
+    expect(bundle.status).toBe(200);
+    const bundleText = await bundle.text();
+    expect(bundleText).not.toContain(SERVER_KEY);
+    expect(bundleText).not.toContain("fs_server_");
 
     // A day's counts are held for the next flush (ten minutes away) until the client closes.
     expect(fake.seen.filter((s) => s.path === "/sdk/v1/events")).toHaveLength(0);

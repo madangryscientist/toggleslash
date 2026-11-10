@@ -147,7 +147,7 @@ describe.skipIf(skip)("the example app, the seed and the real server", () => {
     expect(total).toBeGreaterThan(0);
   });
 
-  it("lets the browser evaluate with the client key, as the page's button does", async () => {
+  it("answers a client-key evaluate from the browser, and serves the bundle that makes it", async () => {
     const html = await (await fetch(`${appUrl()}/?user=pro-user`)).text();
     const key = /fs_client_[A-Za-z0-9_-]+/.exec(html)?.[0];
     expect(key).toBeDefined();
@@ -165,5 +165,8 @@ describe.skipIf(skip)("the example app, the seed and the real server", () => {
     const flags = record(record(await response.json())["flags"]);
     expect(record(flags["new-checkout"])["value"]).toBe(true);
     expect(html).not.toContain("fs_server_");
+
+    const bundle = await fetch(`${appUrl()}/browser.js`);
+    expect(bundle.status).toBe(200);
   });
 });

@@ -33,10 +33,12 @@ export interface State {
 
 interface AppOptions {
   client: FlagClient;
-  /** The server's base URL as the browser reaches it, for the page's "evaluate in the browser" button. */
+  /** The server's base URL as the browser reaches it, for the browser SDK on the page. */
   serverUrl: string;
   /** A client key: it may be sent to the browser. The server key is never given to this module. */
   clientKey: string;
+  /** The bundle served at `GET /browser.js` (`src/bundle.ts`), built once at startup. */
+  browserJs: string;
 }
 
 /** The shape of a flag key (the server's rule), so `?flag=` cannot carry anything else into the page. */
@@ -60,14 +62,23 @@ function json(body: unknown, status: number): Response {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 }
 
-/** The app as a `fetch` handler: `GET /` is the page and `GET /state` the page's data; both take `?user=` and `?flag=`. */
+/** The app as a `fetch` handler: `GET /` is the page, `GET /state` the page's data (both take `?user=` and `?flag=`) and `GET /browser.js` the page's browser SDK. */
 export function createApp(options: AppOptions): (request: Request) => Response {
   return (request) => {
     const url = new URL(request.url);
-    if (url.pathname !== "/" && url.pathname !== "/state") {
+    if (url.pathname !== "/" && url.pathname !== "/state" && url.pathname !== "/browser.js") {
       return json({ error: "not found" }, 404);
     }
     if (request.method !== "GET") return json({ error: "method not allowed" }, 405);
+    if (url.pathname === "/browser.js") {
+      return new Response(options.browserJs, {
+        headers: {
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    }
 
     const user = userFor(url.searchParams.get("user"));
     if (user === null) {
