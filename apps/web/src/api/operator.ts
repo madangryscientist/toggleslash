@@ -244,3 +244,38 @@ export const saveSegment = createServerFn({ method: "POST" })
       }),
     );
   });
+
+interface NewSegmentInput {
+  project: string;
+  env: string;
+  key: string;
+}
+
+function newSegmentInput(data: unknown): NewSegmentInput {
+  const d = recordOf(data);
+  return { project: str(d["project"]), env: str(d["env"]), key: str(d["key"]) };
+}
+
+/** Creates an empty segment; the dashboard opens its edit dialog next. */
+export const createSegment = createServerFn({ method: "POST" })
+  .validator(newSegmentInput)
+  .handler(({ data }): Promise<SaveResult<Segment>> =>
+    save((api) => api.createSegment(data.project, data.env, data.key)),
+  );
+
+interface DeleteSegmentInput {
+  project: string;
+  env: string;
+  segment: string;
+}
+
+function deleteSegmentInput(data: unknown): DeleteSegmentInput {
+  const d = recordOf(data);
+  return { project: str(d["project"]), env: str(d["env"]), segment: str(d["segment"]) };
+}
+
+export const deleteSegment = createServerFn({ method: "POST" })
+  .validator(deleteSegmentInput)
+  .handler(({ data }): Promise<MutationResult> =>
+    mutate((api) => api.deleteSegment(data.project, data.env, data.segment)),
+  );

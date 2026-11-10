@@ -118,14 +118,76 @@ function putSegment(found: SegmentRow, body: Body): Reply {
   return [200, found];
 }
 
-/** `.../environments/<env>/segments[/<segment>]`: list, and replace one (the server's own message for a bad body). */
-export function onSegments({ project, env, method, rest, body }: Call): Reply {
+/** Whether a rule has a `segmentMatch` clause naming the segment. */
+function namesSegment(rule: unknown, segment: string): boolean {
+  const clauses = asBody(rule)["clauses"];
+  return (
+    Array.isArray(clauses) &&
+    clauses.some((c) => {
+      const clause = asBody(c);
+      return (
+        clause["op"] === "segmentMatch" &&
+        Array.isArray(clause["values"]) &&
+        clause["values"].includes(segment)
+      );
+    })
+  );
+}
+
+/** The flags of the environment whose rules name the segment, sorted. */
+function usedBy(project: string, env: string, segment: string): string[] {
+  const prefix = `${project}/${env}/`;
+  return Object.entries(db.data.configs)
+    .filter(
+      ([id, config]) => id.startsWith(prefix) && config.rules.some((r) => namesSegment(r, segment)),
+    )
+    .map(([id]) => id.slice(prefix.length))
+    .toSorted();
+}
+
+function createSegment(segments: SegmentRow[], env: string, body: Body): Reply {
+  const key = typeof body["key"] === "string" ? body["key"] : "";
+  if (!KEY.test(key)) {
+    return failure(400, "invalid_request", "key must match ^[a-z0-9][a-z0-9_-]{0,63}$.");
+  }
+  if (segments.some((s) => s.key === key)) {
+    return failure(409, "conflict", `Segment "${key}" already exists in environment "${env}".`);
+  }
+  const made: SegmentRow = {
+    key,
+    included: names(body["included"]) ?? [],
+    excluded: names(body["excluded"]) ?? [],
+    rules: Array.isArray(body["rules"]) ? body["rules"] : [],
+    version: 1,
+  };
+  segments.push(made);
+  return [201, made];
+}
+
+function deleteSegment({ project, env }: Call, segments: SegmentRow[], found: SegmentRow): Reply {
+  const flags = usedBy(project, env, found.key);
+  if (flags.length > 0) {
+    return failure(
+      409,
+      "conflict",
+      `Segment "${found.key}" is still used by the rules of: ${flags.join(", ")}. Remove those rules first.`,
+    );
+  }
+  segments.splice(segments.indexOf(found), 1);
+  return [204, undefined];
+}
+
+/** `.../environments/<env>/segments[/<segment>]`: list, create, replace and delete (the server's own messages). */
+export function onSegments(call: Call): Reply {
+  const { project, env, method, rest, body } = call;
   const segments = segmentsOf(project, env);
   if (segments === null) return failure(404, "environment_not_found", `No environment ${env}.`);
   const [key] = rest;
   if (key === undefined && method === "GET") return [200, segments];
+  if (key === undefined && method === "POST") return createSegment(segments, env, body);
   const found = segments.find((s) => s.key === key);
   if (found === undefined) return failure(404, "segment_not_found", `No segment ${key}.`);
+  if (method === "DELETE") return deleteSegment(call, segments, found);
   if (method !== "PUT") return failure(404, "not_found", "No such route.");
   return putSegment(found, body);
 }

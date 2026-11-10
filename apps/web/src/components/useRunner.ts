@@ -21,5 +21,5 @@ export function useRunner(onChanged: () => Promise<void>) {
       setBusy(null);
     }
   };
-  return { busy, problem, run };
+  return { busy, problem, run, clear: () => setProblem(null) };
 }

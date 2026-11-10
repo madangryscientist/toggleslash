@@ -237,7 +237,16 @@ export function fixture(): Store {
     configs: {
       "shop/production/checkout-v2": checkoutConfig(),
       "shop/production/dark-mode": plain(false, 1),
-      "shop/production/search-boost": plain(false, 2),
+      // A flag rule names beta-testers, so that segment cannot be deleted; staff is used by nothing.
+      "shop/production/search-boost": {
+        ...plain(false, 2),
+        rules: [
+          {
+            clauses: [{ op: "segmentMatch", attribute: "", values: ["beta-testers"] }],
+            variation: 0,
+          },
+        ],
+      },
       "shop/staging/checkout-v2": plain(true, 1),
       "shop/staging/dark-mode": plain(true, 1),
       "shop/staging/search-boost": {
