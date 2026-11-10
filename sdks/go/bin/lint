@@ -1,0 +1,18 @@
+#!/bin/sh
+# The native lint and format check. Any finding fails; there is no warning level. Nothing is rewritten.
+set -eu
+cd "$(dirname "$0")/.."
+if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
+  run() { mise exec -- "$@"; }
+else
+  run() { "$@"; }
+fi
+run golangci-lint --version
+unformatted=$(run gofmt -l .)
+if [ -n "$unformatted" ]; then
+  echo "gofmt would change:" >&2
+  echo "$unformatted" >&2
+  exit 1
+fi
+run go vet ./...
+run golangci-lint run ./...
