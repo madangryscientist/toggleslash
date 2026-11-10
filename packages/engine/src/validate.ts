@@ -1,4 +1,5 @@
 import { BUCKET_COUNT } from "./bucket.ts";
+import { parseReference } from "./reference.ts";
 
 /**
  * The shape of a ruleset, checked at runtime because rulesets arrive as JSON. `docs/evaluation.md`
@@ -132,11 +133,16 @@ function isNegate(value: unknown): value is boolean | null | undefined {
   return isAbsent(value) || typeof value === "boolean";
 }
 
+function isAttributeName(value: unknown): value is string {
+  if (!isKey(value)) return false;
+  return !value.startsWith("/") || parseReference(value) !== null;
+}
+
 function isAttributeClause(value: unknown): value is AttributeClause {
   if (!isRecord(value) || !ATTRIBUTE_OPS.has(value["op"])) return false;
   const values = value["values"];
   return (
-    isKey(value["attribute"]) &&
+    isAttributeName(value["attribute"]) &&
     isNegate(value["negate"]) &&
     Array.isArray(values) &&
     values.every(isClauseValue)

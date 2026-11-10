@@ -492,6 +492,43 @@ public sealed class ConfigApiTests : IDisposable
         Assert.Equal(1767225600000d, clause.GetProperty("values")[1].GetDouble());
     }
 
+    private static string ReferenceRule(string attribute) =>
+        $$"""[{"clauses":[{"attribute":{{JsonSerializer.Serialize(attribute)}},"op":"in","values":["Paris"]}],"variation":0}]""";
+
+    [Fact]
+    public async Task An_attribute_reference_saves_and_is_read_back_as_written()
+    {
+        await Seed("dark-mode", "base");
+        var rules = ReferenceRule("/address/city");
+
+        await ApiServer.Expect(HttpStatusCode.OK, await Put("dark-mode", Body(1, ("rules", rules))));
+
+        var read = await ApiServer.Json(await server.Get(Config("dark-mode")));
+        Assert.Equal("/address/city", read.GetProperty("rules")[0].GetProperty("clauses")[0].GetProperty("attribute").GetString());
+    }
+
+    [Theory]
+    [InlineData("/a//b")]
+    [InlineData("/a~2")]
+    public async Task An_attribute_reference_that_is_not_valid_is_400_naming_the_field(string attribute)
+    {
+        await Seed("dark-mode", "base");
+
+        var response = await Put("dark-mode", Body(1, ("rules", ReferenceRule(attribute))));
+
+        await ExpectBadRequest(response);
+        Assert.StartsWith("rules[0].clauses[0].attribute is not a valid attribute reference.", (await ApiServer.Json(response)).GetProperty("error").GetProperty("message").GetString());
+        Assert.Equal(1, await Version("dark-mode"));
+    }
+
+    [Fact]
+    public async Task An_attribute_name_with_a_tilde_and_no_leading_slash_saves()
+    {
+        await Seed("dark-mode", "base");
+
+        await ApiServer.Expect(HttpStatusCode.OK, await Put("dark-mode", Body(1, ("rules", ReferenceRule("a~2")))));
+    }
+
     [Fact]
     public async Task A_date_clause_with_no_values_saves()
     {

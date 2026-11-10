@@ -55,7 +55,12 @@ function ClauseRow({ id, clause, problems, path, onChange, onRemove }: ClausePro
           </Select>
         </Field>
         {!segment && (
-          <Field label="Attribute" htmlFor={`${id}-attribute`} error={attributeProblem?.message}>
+          <Field
+            label="Attribute"
+            htmlFor={`${id}-attribute`}
+            error={attributeProblem?.message}
+            hint="A name, or a path such as /address/city."
+          >
             <Input
               id={`${id}-attribute`}
               data-testid={`${id}-attribute`}

@@ -200,6 +200,7 @@ internal static class Validation
     {
         if (value.ValueKind != JsonValueKind.Object || AttributeOp(OpName(value)) is not { } op) return null;
         if (!TryKey(Get(value, "attribute"), out var attribute)) return null;
+        if (attribute.StartsWith('/') && AttributeReference.Parse(attribute) is null) return null;
         if (!TryNegate(Get(value, "negate"), out var negate)) return null;
         if (Get(value, "values") is not { ValueKind: JsonValueKind.Array } values) return null;
         var parsed = new List<ClauseValue>();

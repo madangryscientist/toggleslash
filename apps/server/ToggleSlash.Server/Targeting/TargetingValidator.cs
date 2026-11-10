@@ -225,6 +225,10 @@ internal sealed class TargetingValidator(int variationCount)
         {
             return $"{path}.attribute must be a non-empty string.";
         }
+        if (attribute.GetString()!.StartsWith('/') && AttributeReference.Parse(attribute.GetString()!) is null)
+        {
+            return $"{path}.attribute is not a valid attribute reference.";
+        }
         if (!clause.TryGetProperty("values", out var valuesElement) || valuesElement.ValueKind != JsonValueKind.Array)
         {
             return $"{path}.values must be an array.";

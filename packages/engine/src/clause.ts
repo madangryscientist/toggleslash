@@ -1,5 +1,7 @@
 import { toInstant } from "./date.ts";
+import { parseReference } from "./reference.ts";
 import { compareSemanticVersions, parseSemanticVersion } from "./semver.ts";
+import { isRecord } from "./validate.ts";
 import type { AttributeClause, AttributeOp, ClauseValue } from "./validate.ts";
 
 export interface Context {
@@ -7,11 +9,24 @@ export interface Context {
   attributes?: Readonly<Record<string, unknown>> | null;
 }
 
+function ownValue(source: Readonly<Record<string, unknown>>, name: string): unknown {
+  return Object.hasOwn(source, name) ? source[name] : undefined;
+}
+
+/** The value a name or a `/` reference reaches, or undefined when it is missing. */
 function readAttribute(context: Context, name: string): unknown {
-  if (name === "key") return context.key;
+  const components = name.startsWith("/") ? parseReference(name) : [name];
+  const [first, ...rest] = components ?? [];
+  if (first === undefined) return undefined;
   const attributes = context.attributes;
-  if (!attributes || !Object.hasOwn(attributes, name)) return undefined;
-  return attributes[name];
+  let current: unknown = undefined;
+  if (first === "key") current = context.key;
+  else if (attributes) current = ownValue(attributes, first);
+  for (const component of rest) {
+    if (!isRecord(current)) return undefined;
+    current = ownValue(current, component);
+  }
+  return current;
 }
 
 function sign<T extends string | number>(a: T, b: T): number {

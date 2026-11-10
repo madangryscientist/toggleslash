@@ -71,7 +71,7 @@ This is our strongest area, so it is worth being precise about what "parity" wou
 | Context object | `{ kind, key, ...attributes }`; many kinds (user, org, device, custom) | `{ key, attributes }`; **one kind** |
 | Multi-context | `kind: "multi"` combining several kinds in one evaluation | No |
 | Context kinds | First-class resources with attributes, archive/restore | No |
-| Attribute references | `/address/city` for nested objects | No; a dot is part of the literal name |
+| Attribute references | `/address/city` for nested objects | Yes, a leading / reads a path; a dot is part of the literal name |
 | Built-in attributes | key, kind, name, email, firstName, lastName, country, ip, avatar, anonymous | key only |
 | Private attributes | Per-context or global; not stored/sent in events | No (the server stores no contexts at all) |
 | Anonymous contexts | Supported and excluded from the Contexts list | No concept |
@@ -83,7 +83,7 @@ counts only, which is a strong privacy property but rules out a whole class of f
 toward list-based segments or experiments forces a decision about storing context keys, even if not
 attributes.
 
-**What is left:** multi-context and context kinds, attribute references, built-in attributes,
+**What is left:** multi-context and context kinds, built-in attributes,
 private/anonymous semantics (or a documented equivalent), and a decision on context storage.
 
 ### 3.2 Targeting operators
@@ -538,7 +538,7 @@ Legend: **Yes** = shipped; **Partial** = some of it; **No** = absent.
 | Segment weights | Yes | Yes |
 | Nested segments | No | No |
 | Multi-context / context kinds | Yes | No |
-| Attribute references | Yes | No |
+| Attribute references | Yes | Yes |
 | Regex operator | Yes | No (by design) |
 | Semver operator | Yes | No |
 | Date operators | Yes | No |
