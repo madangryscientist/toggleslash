@@ -14,7 +14,7 @@ import {
 } from "@hackcove/ui-react";
 import { useState } from "react";
 import { deleteSegment } from "#/api/operator";
-import type { Environment, Project, Segment } from "#/api/types";
+import type { Environment, KindMembers, Project, Segment } from "#/api/types";
 import { EditSegmentDialog } from "./SegmentEditDialog";
 import { DeleteSegmentDialog, NewSegmentDialog } from "./SegmentDialogs";
 import { ruleCount } from "./text";
@@ -22,6 +22,11 @@ import { useRunner } from "./useRunner";
 
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
+}
+
+/** User keys plus every key of the other kinds. */
+function memberCount(users: string[], others: KindMembers[]): number {
+  return others.reduce((n, o) => n + o.values.length, users.length);
 }
 
 interface TableProps {
@@ -50,8 +55,20 @@ function SegmentTable({ project, environment, segments, onEdit, onDelete }: Tabl
             <TableCell tone="strong" mono>
               {segment.key}
             </TableCell>
-            <TableCell>{plural(segment.included.length, "context", "contexts")}</TableCell>
-            <TableCell>{plural(segment.excluded.length, "context", "contexts")}</TableCell>
+            <TableCell>
+              {plural(
+                memberCount(segment.included, segment.includedContexts),
+                "context",
+                "contexts",
+              )}
+            </TableCell>
+            <TableCell>
+              {plural(
+                memberCount(segment.excluded, segment.excludedContexts),
+                "context",
+                "contexts",
+              )}
+            </TableCell>
             <TableCell>{plural(ruleCount(segment.rules) ?? 0, "rule", "rules")}</TableCell>
             <TableCell align="end">
               <Cluster justify="end">

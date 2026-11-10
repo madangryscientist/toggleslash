@@ -1,4 +1,4 @@
-import type { Lifecycle } from "./types.ts";
+import type { KindMembers, Lifecycle } from "./types.ts";
 
 /** Narrowing for values that arrive as JSON, so nothing needs a type assertion. */
 export type Json = Record<string, unknown>;
@@ -15,6 +15,24 @@ export function str(value: unknown, fallback = ""): string {
 /** The strings in `value` when it is an array, else none. */
 export function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
+}
+
+/** Segment members of other kinds: the entries that are `{ contextKind: string, values: string[] }`; any other entry is dropped. */
+export function kindMembers(value: unknown): KindMembers[] {
+  if (!Array.isArray(value)) return [];
+  const out: KindMembers[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+    const { contextKind, values } = item;
+    if (
+      typeof contextKind === "string" &&
+      Array.isArray(values) &&
+      values.every((v) => typeof v === "string")
+    ) {
+      out.push({ contextKind, values: strings(values) });
+    }
+  }
+  return out;
 }
 
 /** `value` when it is an object, else an empty one, so a handler can read fields off untrusted input. */

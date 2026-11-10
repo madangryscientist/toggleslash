@@ -524,15 +524,17 @@
       "name": "Multi-context and context kinds",
       "description": "Combine user, organisation, device and custom context kinds in one evaluation.",
       "toggleslash": {
-        "status": "partial",
+        "status": "yes",
         "evidence": [
           "doc:docs/evaluation.md",
           "test:fixtures/evaluation/kinds.json",
           "api:/api/v1/projects/{project}/flags/{flag}/environments/{env}",
           "api:/api/v1/projects/{project}/environments/{env}/segments",
-          "api:/api/v1/projects/{project}/environments/{env}/segments/{segment}"
+          "api:/api/v1/projects/{project}/environments/{env}/segments/{segment}",
+          "dashboard:/flags/$flag",
+          "dashboard:/segments"
         ],
-        "note": "Evaluation and the admin API support context kinds and multi-contexts; the dashboard editors do not yet (FS-81)."
+        "note": "Kinds are free strings typed where they are used, not stored resources."
       },
       "competitors": {
         "launchdarkly": "yes",

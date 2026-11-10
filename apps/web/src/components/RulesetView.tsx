@@ -11,7 +11,7 @@ import {
   Text,
 } from "@hackcove/ui-react";
 import { Link } from "@tanstack/react-router";
-import type { PastFlag, PastRuleset, PastSegment } from "#/api/types";
+import type { KindMembers, PastFlag, PastRuleset, PastSegment } from "#/api/types";
 import { describeClause, describeServe, variationLabel } from "#/targeting/describe";
 import { stamp } from "./text";
 
@@ -54,9 +54,12 @@ function FlagCard({ flag, scope }: { flag: PastFlag; scope: Scope }) {
               Prerequisite: {p.flagKey} must serve variation {p.variation}
             </li>
           ))}
-          {config.targets.map((t) => (
-            <li key={`target-${t.variation}`}>
-              Targets: {t.contextKeys.join(", ") || "no contexts"} get{" "}
+          {config.targets.map((t, i) => (
+            // One variation can hold several targets (one per context kind), so the position is the key.
+            <li key={`target-${i}`}>
+              Targets
+              {t.contextKind === undefined || t.contextKind === "user" ? "" : ` (${t.contextKind})`}
+              : {t.contextKeys.join(", ") || "no contexts"} get{" "}
               {variationLabel(t.variation, variations)}
             </li>
           ))}
@@ -77,13 +80,19 @@ function FlagCard({ flag, scope }: { flag: PastFlag; scope: Scope }) {
   );
 }
 
+/** User keys as they are, then the other kinds' as `kind:key`. */
+function members(users: string[], others: KindMembers[]): string {
+  const all = [...users, ...others.flatMap((o) => o.values.map((v) => `${o.contextKind}:${v}`))];
+  return all.join(", ") || "none";
+}
+
 function SegmentCard({ segment }: { segment: PastSegment }) {
   return (
     <Card title={`Segment ${segment.key}`} data-testid={`past-segment-${segment.key}`}>
       <Stack gap="xs">
         <Text>
-          Included: {segment.included.join(", ") || "none"}. Excluded:{" "}
-          {segment.excluded.join(", ") || "none"}.
+          Included: {members(segment.included, segment.includedContexts)}. Excluded:{" "}
+          {members(segment.excluded, segment.excludedContexts)}.
         </Text>
         <CodeBlock label={`Rules of ${segment.key}`}>{segment.rules}</CodeBlock>
       </Stack>

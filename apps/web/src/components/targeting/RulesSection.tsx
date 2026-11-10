@@ -29,12 +29,40 @@ interface ClauseProps {
   onRemove: () => void;
 }
 
+function ClauseKind({
+  id,
+  clause,
+  error,
+  onChange,
+}: {
+  id: string;
+  clause: ClauseDraft;
+  error: string | undefined;
+  onChange: (clause: ClauseDraft) => void;
+}) {
+  return (
+    <Field label="Context kind" htmlFor={`${id}-kind`} error={error} hint="Blank is user.">
+      <Input
+        id={`${id}-kind`}
+        data-testid={`${id}-kind`}
+        width="auto"
+        placeholder="user"
+        value={clause.contextKind}
+        onChange={(e) => onChange({ ...clause, contextKind: e.currentTarget.value })}
+      />
+    </Field>
+  );
+}
+
 function ClauseRow({ id, clause, problems, path, onChange, onRemove }: ClauseProps) {
   const segment = clause.op === SEGMENT_OP;
   const own = under(problems, path);
   const opProblem = at(problems, `${path}.op`);
   const attributeProblem = at(problems, `${path}.attribute`);
-  const valuesProblem = own.find((p) => p !== opProblem && p !== attributeProblem);
+  const kindProblem = at(problems, `${path}.contextKind`);
+  const valuesProblem = own.find(
+    (p) => p !== opProblem && p !== attributeProblem && p !== kindProblem,
+  );
   return (
     <Stack gap="xs" data-testid={id}>
       <Cluster wrap align="start">
@@ -69,6 +97,9 @@ function ClauseRow({ id, clause, problems, path, onChange, onRemove }: ClausePro
               onChange={(e) => onChange({ ...clause, attribute: e.currentTarget.value })}
             />
           </Field>
+        )}
+        {!segment && (
+          <ClauseKind id={id} clause={clause} error={kindProblem?.message} onChange={onChange} />
         )}
         <ClusterGrow>
           <Field

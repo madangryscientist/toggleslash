@@ -54,6 +54,8 @@ export interface SegmentRow {
   key: string;
   included: string[];
   excluded: string[];
+  includedContexts: { contextKind: string; values: string[] }[];
+  excludedContexts: { contextKind: string; values: string[] }[];
   rules: unknown[];
   version: number;
 }
@@ -223,6 +225,29 @@ function shopFlags(): Flag[] {
   ];
 }
 
+function shopSegments(): SegmentRow[] {
+  return [
+    {
+      key: "beta-testers",
+      included: ["alice", "bob"],
+      excluded: ["mallory"],
+      includedContexts: [],
+      excludedContexts: [],
+      rules: [{ clauses: [{ op: "in", attribute: "country", values: ["NL"] }] }],
+      version: 1,
+    },
+    {
+      key: "staff",
+      included: [],
+      excluded: [],
+      includedContexts: [],
+      excludedContexts: [],
+      rules: [],
+      version: 1,
+    },
+  ];
+}
+
 export function fixture(): Store {
   return {
     projects: [named("shop", "Shop"), named("docs", "Docs")],
@@ -280,18 +305,7 @@ export function fixture(): Store {
         },
       ],
     },
-    segments: {
-      "shop/production": [
-        {
-          key: "beta-testers",
-          included: ["alice", "bob"],
-          excluded: ["mallory"],
-          rules: [{ clauses: [{ op: "in", attribute: "country", values: ["NL"] }] }],
-          version: 1,
-        },
-        { key: "staff", included: [], excluded: [], rules: [], version: 1 },
-      ],
-    },
+    segments: { "shop/production": shopSegments() },
     audit: { shop: shopAudit() },
     history: {
       "shop/checkout-v2": [

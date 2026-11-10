@@ -216,3 +216,94 @@ test("the admin token is not in the detail page", async ({ page }) => {
   await page.waitForLoadState("networkidle");
   expect(await page.content()).not.toContain(E2E_ADMIN_TOKEN);
 });
+
+test.describe("context kinds", () => {
+  test("an org target and an org clause are added, saved, and shown after a reload", async ({
+    page,
+    request,
+  }) => {
+    await openCheckout(page);
+    await page.getByTestId("add-other-target").click();
+    await page.getByTestId("other-target-1-variation").selectOption("1");
+    await page.getByTestId("other-target-1-kind").fill("org");
+    await page.getByTestId("other-target-1-keys").fill("acme\nglobex");
+    await page.getByTestId("rule-0-clause-0-kind").fill("org");
+    await page.getByTestId("rule-0-rollout-kind").fill("org");
+    await page.getByTestId("save-targeting").click();
+    await expect(page.getByTestId("notice")).toContainText("Targeting saved");
+
+    await page.reload();
+    await expect(page.getByTestId("other-target-1-kind")).toHaveValue("org");
+    await expect(page.getByTestId("other-target-1-variation")).toHaveValue("1");
+    await expect(page.getByTestId("other-target-1-keys")).toHaveValue("acme\nglobex");
+    await expect(page.getByTestId("rule-0-clause-0-kind")).toHaveValue("org");
+    await expect(page.getByTestId("rule-0-rollout-kind")).toHaveValue("org");
+    // The user target box is still only the user target.
+    await expect(page.getByTestId("targets-0")).toHaveValue("alice\nbob");
+
+    const stored = await (await request.get(CONFIG, { headers: AUTH })).json();
+    expect(stored.targets).toEqual([
+      { variation: 0, contextKeys: ["alice", "bob"] },
+      { variation: 1, contextKeys: ["acme", "globex"], contextKind: "org" },
+    ]);
+    expect(stored.rules[0].clauses[0].contextKind).toBe("org");
+    expect(stored.rules[0].rollout.contextKind).toBe("org");
+  });
+});
+
+test.describe("a flag that already holds context kinds", () => {
+  test("keeps them through an unrelated edit", async ({ page, request }) => {
+    const before = await (await request.get(CONFIG, { headers: AUTH })).json();
+    const seeded = {
+      ...before,
+      targets: [
+        { variation: 1, contextKeys: ["acme"], contextKind: "org" },
+        { variation: 0, contextKeys: ["alice", "bob"] },
+      ],
+      rules: [
+        {
+          clauses: [{ op: "in", attribute: "plan", values: ["pro"], contextKind: "org" }],
+          rollout: {
+            variations: [
+              { variation: 0, weight: 25_000 },
+              { variation: 1, weight: 75_000 },
+            ],
+            contextKind: "org",
+          },
+        },
+      ],
+    };
+    const put = await request.put(CONFIG, { headers: AUTH, data: seeded });
+    expect(put.ok()).toBe(true);
+
+    await openCheckout(page);
+    await page.getByTestId("targets-0").fill("alice\nbob\ncarol");
+    await page.getByTestId("save-targeting").click();
+    await expect(page.getByTestId("notice")).toContainText("Targeting saved");
+
+    const stored = await (await request.get(CONFIG, { headers: AUTH })).json();
+    expect(stored.targets).toEqual([
+      { variation: 1, contextKeys: ["acme"], contextKind: "org" },
+      { variation: 0, contextKeys: ["alice", "bob", "carol"] },
+    ]);
+    expect(stored.rules[0].clauses[0].contextKind).toBe("org");
+    expect(stored.rules[0].rollout.contextKind).toBe("org");
+  });
+
+  test("an invalid kind shows the problem and nothing is sent", async ({ page, request }) => {
+    await openCheckout(page);
+    await page.getByTestId("add-other-target").click();
+    await page.getByTestId("other-target-1-kind").fill("not valid");
+    await page.getByTestId("other-target-1-keys").fill("acme");
+    await page.getByTestId("rule-0-clause-0-kind").fill("multi");
+    await page.getByTestId("rule-0-rollout-kind").fill("a/b");
+    await page.getByTestId("save-targeting").click();
+
+    await expect(page.getByTestId("config-error")).toBeVisible();
+    // One message each: the other-kind target, the clause and the rollout.
+    await expect(page.getByText("A context kind uses letters")).toHaveCount(3);
+    await expect(page.getByTestId("notice")).toHaveCount(0);
+    const stored = await (await request.get(CONFIG, { headers: AUTH })).json();
+    expect(stored.version).toBe(3);
+  });
+});

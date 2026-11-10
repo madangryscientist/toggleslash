@@ -17,9 +17,74 @@ interface Props {
 
 const KIND_LABELS = { variation: "A variation", rollout: "A percentage rollout" } as const;
 
+function VariationPicker({
+  id,
+  serve,
+  variations,
+  onChange,
+}: {
+  id: string;
+  serve: Extract<ServeDraft, { kind: "variation" }>;
+  variations: string[];
+  onChange: (next: ServeDraft) => void;
+}) {
+  return (
+    <Field label="Variation" htmlFor={`${id}-variation`}>
+      <Select
+        id={`${id}-variation`}
+        data-testid={`${id}-variation`}
+        width="auto"
+        value={String(serve.variation)}
+        onChange={(e) => onChange({ kind: "variation", variation: Number(e.currentTarget.value) })}
+      >
+        {variations.map((v, i) => (
+          <option key={i} value={String(i)}>
+            {i}: {v}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+}
+
+type RolloutServe = Extract<ServeDraft, { kind: "rollout" }>;
+
+function RolloutKind({
+  id,
+  serve,
+  error,
+  onChange,
+}: {
+  id: string;
+  serve: RolloutServe;
+  error: string | undefined;
+  onChange: (next: ServeDraft) => void;
+}) {
+  return (
+    <Field
+      label="Bucket by context kind"
+      htmlFor={`${id}-rollout-kind`}
+      error={error}
+      hint="Blank is user."
+    >
+      <Input
+        id={`${id}-rollout-kind`}
+        data-testid={`${id}-rollout-kind`}
+        width="auto"
+        placeholder="user"
+        value={serve.contextKind}
+        onChange={(e) => onChange({ ...serve, contextKind: e.currentTarget.value })}
+      />
+    </Field>
+  );
+}
+
 /** What a rule or the fallthrough serves: one variation, or a split between them by percentage. */
 export function ServeEditor({ id, label, serve, variations, onChange, problems, path }: Props) {
-  const wholeProblem = problems.find((p) => !p.path.includes(".rollout.entries["));
+  const kindPath = `${path}.rollout.contextKind`;
+  const wholeProblem = problems.find(
+    (p) => !p.path.includes(".rollout.entries[") && p.path !== kindPath,
+  );
   return (
     <Stack gap="sm">
       <Field label={label} htmlFor={`${id}-kind`} error={wholeProblem?.message}>
@@ -46,23 +111,7 @@ export function ServeEditor({ id, label, serve, variations, onChange, problems, 
         </Select>
       </Field>
       {serve.kind === "variation" ? (
-        <Field label="Variation" htmlFor={`${id}-variation`}>
-          <Select
-            id={`${id}-variation`}
-            data-testid={`${id}-variation`}
-            width="auto"
-            value={String(serve.variation)}
-            onChange={(e) =>
-              onChange({ kind: "variation", variation: Number(e.currentTarget.value) })
-            }
-          >
-            {variations.map((v, i) => (
-              <option key={i} value={String(i)}>
-                {i}: {v}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        <VariationPicker id={id} serve={serve} variations={variations} onChange={onChange} />
       ) : (
         <Stack gap="xs">
           {serve.entries.map((entry, i) => (
@@ -80,7 +129,7 @@ export function ServeEditor({ id, label, serve, variations, onChange, problems, 
                 value={entry.percent}
                 onChange={(e) =>
                   onChange({
-                    kind: "rollout",
+                    ...serve,
                     entries: serve.entries.map((x, j) =>
                       j === i ? { ...x, percent: e.currentTarget.value } : x,
                     ),
@@ -89,6 +138,12 @@ export function ServeEditor({ id, label, serve, variations, onChange, problems, 
               />
             </Field>
           ))}
+          <RolloutKind
+            id={id}
+            serve={serve}
+            error={at(problems, kindPath)?.message}
+            onChange={onChange}
+          />
           <Text tone="muted" data-testid={`${id}-total`}>
             Total {rolloutTotal(serve.entries) / 1000}% (it must be 100%)
           </Text>

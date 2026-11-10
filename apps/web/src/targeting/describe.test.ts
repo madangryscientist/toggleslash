@@ -26,9 +26,34 @@ describe("describeServe", () => {
     };
     expect(describeServe(serve, variations)).toBe("roll out 25.5% 0 (true), 74.5% 1 (false)");
   });
+  it("says which context kind a rollout buckets by, unless it is user", () => {
+    const entries = [
+      { variation: 0, weight: 50_000 },
+      { variation: 1, weight: 50_000 },
+    ];
+    expect(describeServe({ kind: "rollout", entries, contextKind: "org" }, variations)).toBe(
+      "roll out 50% 0 (true), 50% 1 (false) by org",
+    );
+    expect(describeServe({ kind: "rollout", entries, contextKind: "user" }, variations)).toBe(
+      "roll out 50% 0 (true), 50% 1 (false)",
+    );
+  });
 });
 
 describe("describeClause", () => {
+  const base = { op: "in", attribute: "plan", values: ["pro"], negate: false };
+  it("reads as today for a user clause", () => {
+    expect(describeClause(base)).toBe('plan in "pro"');
+    expect(describeClause({ ...base, contextKind: "user" })).toBe('plan in "pro"');
+  });
+  it("puts a non-user kind first", () => {
+    expect(describeClause({ ...base, contextKind: "org" })).toBe('org plan in "pro"');
+  });
+  it("leaves a segment clause alone", () => {
+    expect(
+      describeClause({ op: "segmentMatch", attribute: "", values: ["beta"], negate: false }),
+    ).toBe("in segment beta");
+  });
   it("reads an attribute clause and a negated one", () => {
     const c = { op: "in", attribute: "country", values: ["NL", "BE"], negate: false };
     expect(describeClause(c)).toBe('country in "NL", "BE"');

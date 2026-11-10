@@ -2,6 +2,7 @@ import { Button, Cluster, ClusterGrow, Dialog, Field, Stack, Textarea } from "@h
 import { useState, type FormEvent } from "react";
 import { saveSegment } from "#/api/operator";
 import type { Environment, Project, Segment } from "#/api/types";
+import { formatKindKeys, parseKindKeys } from "#/targeting/values";
 import { parseMembers, ruleCount } from "./text";
 
 interface EditProps {
@@ -15,6 +16,8 @@ interface EditProps {
 interface Draft {
   included: string;
   excluded: string;
+  includedKinds: string;
+  excludedKinds: string;
   rules: string;
 }
 
@@ -54,6 +57,36 @@ function SegmentFields({ draft, onChange, rulesError }: FieldsProps) {
           </Field>
         </ClusterGrow>
       </Cluster>
+      <Cluster align="start">
+        <ClusterGrow>
+          <Field
+            label="Included, other kinds"
+            htmlFor="segment-included-kinds"
+            hint="One kind:key per line, such as org:acme."
+          >
+            <Textarea
+              id="segment-included-kinds"
+              rows={2}
+              value={draft.includedKinds}
+              onChange={(e) => onChange({ ...draft, includedKinds: e.currentTarget.value })}
+            />
+          </Field>
+        </ClusterGrow>
+        <ClusterGrow>
+          <Field
+            label="Excluded, other kinds"
+            htmlFor="segment-excluded-kinds"
+            hint="One kind:key per line. Wins over included."
+          >
+            <Textarea
+              id="segment-excluded-kinds"
+              rows={2}
+              value={draft.excludedKinds}
+              onChange={(e) => onChange({ ...draft, excludedKinds: e.currentTarget.value })}
+            />
+          </Field>
+        </ClusterGrow>
+      </Cluster>
       <Field
         label="Rules"
         htmlFor="segment-rules"
@@ -71,15 +104,32 @@ function SegmentFields({ draft, onChange, rulesError }: FieldsProps) {
   );
 }
 
+/** Both other-kind lists, or the first line the operator has to fix, named with its list. */
+function parseBothKinds(draft: Draft) {
+  const included = parseKindKeys(draft.includedKinds);
+  if (!included.ok)
+    return { ok: false, message: `Included, other kinds. ${included.message}` } as const;
+  const excluded = parseKindKeys(draft.excludedKinds);
+  if (!excluded.ok)
+    return { ok: false, message: `Excluded, other kinds. ${excluded.message}` } as const;
+  return { ok: true, included: included.entries, excluded: excluded.entries } as const;
+}
+
+function draftOf(segment: Segment): Draft {
+  return {
+    included: segment.included.join("\n"),
+    excluded: segment.excluded.join("\n"),
+    includedKinds: formatKindKeys(segment.includedContexts),
+    excludedKinds: formatKindKeys(segment.excludedContexts),
+    rules: segment.rules,
+  };
+}
+
 const CONFLICT =
   "Someone else changed this segment, so this was not saved. Your edits are still here: copy what you need, then reload the page to get the latest version.";
 
 export function EditSegmentDialog({ project, environment, segment, onClose, onSaved }: EditProps) {
-  const [draft, setDraft] = useState<Draft>({
-    included: segment.included.join("\n"),
-    excluded: segment.excluded.join("\n"),
-    rules: segment.rules,
-  });
+  const [draft, setDraft] = useState<Draft>(() => draftOf(segment));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const rulesError =
@@ -89,6 +139,11 @@ export function EditSegmentDialog({ project, environment, segment, onClose, onSa
     event.preventDefault();
     if (rulesError !== undefined) {
       setError(rulesError);
+      return;
+    }
+    const kinds = parseBothKinds(draft);
+    if (!kinds.ok) {
+      setError(kinds.message);
       return;
     }
     setSaving(true);
@@ -101,6 +156,8 @@ export function EditSegmentDialog({ project, environment, segment, onClose, onSa
           segment: segment.key,
           included: parseMembers(draft.included),
           excluded: parseMembers(draft.excluded),
+          includedContexts: kinds.included,
+          excludedContexts: kinds.excluded,
           rules: draft.rules,
           version: segment.version,
         },

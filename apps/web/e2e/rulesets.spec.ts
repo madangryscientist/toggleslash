@@ -19,6 +19,7 @@ test("shows the flags as they were under the hash, not as they are now", async (
     'country in "NL" → serve 0 (true)',
   );
   await expect(page.getByTestId("past-segment-beta-testers")).toBeVisible();
+  await expect(page.getByTestId("past-segment-beta-testers")).toContainText("alice, org:acme");
 });
 
 test("shows no salt, and no token is in the page or its address", async ({ page }) => {

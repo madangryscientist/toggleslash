@@ -92,8 +92,62 @@ describe("segments", () => {
       "production",
       "vip",
     );
-    expect(sent).toEqual({ key: "vip", included: [], excluded: [], rules: [] });
-    expect(segment).toEqual({ key: "vip", included: [], excluded: [], rules: "[]", version: 1 });
+    expect(sent).toEqual({
+      key: "vip",
+      included: [],
+      excluded: [],
+      includedContexts: [],
+      excludedContexts: [],
+      rules: [],
+    });
+    expect(segment).toEqual({
+      key: "vip",
+      included: [],
+      excluded: [],
+      includedContexts: [],
+      excludedContexts: [],
+      rules: "[]",
+      version: 1,
+    });
+  });
+
+  test("saving sends the other kinds' members, and reading drops a malformed entry", async () => {
+    let sent: unknown;
+    const doFetch: Fetch = (_input, init) => {
+      sent = typeof init.body === "string" ? JSON.parse(init.body) : null;
+      expect(init.method).toBe("PUT");
+      return Promise.resolve(
+        json({
+          key: "vip",
+          included: [],
+          excluded: [],
+          includedContexts: [
+            { contextKind: "org", values: ["acme"] },
+            { contextKind: "org", values: [1] },
+            { values: ["x"] },
+          ],
+          rules: [],
+          version: 2,
+        }),
+      );
+    };
+    const body = {
+      included: [],
+      excluded: [],
+      includedContexts: [{ contextKind: "org", values: ["acme"] }],
+      excludedContexts: [],
+      rules: [],
+      version: 1,
+    };
+    const segment = await createAdminApi(connection, doFetch).putSegment(
+      "shop",
+      "production",
+      "vip",
+      body,
+    );
+    expect(sent).toEqual(body);
+    expect(segment.includedContexts).toEqual([{ contextKind: "org", values: ["acme"] }]);
+    expect(segment.excludedContexts).toEqual([]);
   });
 
   test("deleting sends DELETE to the segment's path", async () => {
@@ -141,7 +195,16 @@ describe("ruleset at a hash", () => {
         salt: "must-not-come-through",
       },
     ],
-    segments: [{ key: "beta", included: ["u1"], excluded: [], rules: [], salt: "nor-this" }],
+    segments: [
+      {
+        key: "beta",
+        included: ["u1"],
+        excluded: [],
+        includedContexts: [{ contextKind: "org", values: ["acme"] }],
+        rules: [],
+        salt: "nor-this",
+      },
+    ],
   };
 
   test("reads the flags with their variations, and drops every field the page does not show", async () => {
@@ -152,6 +215,10 @@ describe("ruleset at a hash", () => {
     expect(answer.ruleset.hash).toBe(hash);
     expect(answer.ruleset.flags[0]?.variations).toEqual(["true", '"blue"']);
     expect(answer.ruleset.flags[0]?.config.version).toBe(3);
+    expect(answer.ruleset.segments[0]?.includedContexts).toEqual([
+      { contextKind: "org", values: ["acme"] },
+    ]);
+    expect(answer.ruleset.segments[0]?.excludedContexts).toEqual([]);
     expect(JSON.stringify(answer)).not.toContain("must-not-come-through");
     expect(JSON.stringify(answer)).not.toContain("nor-this");
   });
