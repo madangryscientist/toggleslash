@@ -2,13 +2,14 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { list, record, show, str } from "./json.ts";
+import { statusShape } from "./checks.ts";
 import { bodyText, usageEvents } from "./requests.ts";
 import { FakeServer, type Recorded } from "./server.ts";
 import { REPO_ROOT, type Service } from "./service.ts";
 import { type RunState, sentinelFor } from "./state.ts";
 import { boolFlag, runStep } from "./steps.ts";
 
-export const SCENARIOS_DIR = join(REPO_ROOT, "fixtures/sdk");
+const SCENARIOS_DIR = join(REPO_ROOT, "fixtures/sdk");
 
 export interface Scenario {
   file: string;
@@ -103,7 +104,7 @@ async function privacyProblem(state: RunState): Promise<string | null> {
   const errors = await state.service.client(state.client, "errors", "GET");
   if (leaks(JSON.stringify(errors["messages"] ?? []), state))
     return "an onError message carried the context";
-  return null;
+  return statusShape(await state.service.client(state.client, "status", "GET"), state);
 }
 
 function recorded(server: FakeServer): string {

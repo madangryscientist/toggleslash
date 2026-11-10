@@ -5,7 +5,7 @@
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { list, partialMismatch, type Rec, record, show, str } from "./json.ts";
+import { list, partialMismatch, type Rec, record, show, str, toJson } from "./json.ts";
 import { FakeServer } from "./server.ts";
 import { REPO_ROOT, type Service } from "./service.ts";
 
@@ -15,7 +15,7 @@ const DIR = join(REPO_ROOT, "fixtures/evaluation");
  * Contract 5.5 makes a ruleset whose `flags` or `segments` is not an array `bad_ruleset`, so an SDK holds
  * no ruleset there and answers `NOT_READY`; the evaluator alone counts them as empty.
  */
-export const SKIPPED = new Set([
+const SKIPPED = new Set([
   "load: flags that is not an array counts as empty",
   "load: segments that is not an array counts as empty",
 ]);
@@ -37,7 +37,7 @@ export interface VectorOutcome {
   failures: string[];
 }
 
-export function loadVectors(): Vector[] {
+function loadVectors(): Vector[] {
   return readdirSync(DIR)
     .filter((file) => file.endsWith(".json") && file !== "buckets.json")
     .toSorted()
@@ -62,7 +62,7 @@ export function loadVectors(): Vector[] {
 function grouped(vectors: Vector[]): Vector[][] {
   const groups = new Map<string, Vector[]>();
   for (const vector of vectors) {
-    const key = JSON.stringify([vector.flags, vector.segments]);
+    const key = toJson([vector.flags, vector.segments]);
     groups.set(key, [...(groups.get(key) ?? []), vector]);
   }
   return [...groups.values()];

@@ -65,7 +65,7 @@ function kill(child: ChildProcess): void {
   }
 }
 
-export class ServiceError extends Error {}
+class ServiceError extends Error {}
 
 export class Service {
   constructor(readonly url: string) {}

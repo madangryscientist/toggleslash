@@ -42,7 +42,9 @@ sdk-conformance` runs the same thing against the TypeScript service, in about 12
 
 The service listens on `127.0.0.1`, prints `listening http://127.0.0.1:<port>` on a line of its own once
 it does, and speaks JSON. It holds any number of clients at once; the harness runs several scenarios in
-parallel, each with its own client. Durations are whole milliseconds, in fields ending in `Ms`.
+parallel, each with its own client, and a client stays answerable after `close` (the harness reads its
+status and errors then). Durations are whole milliseconds, in fields ending in `Ms`; `lastSyncAt` in a
+status is whole epoch milliseconds, or null.
 
 | Request | Body | Answer |
 | --- | --- | --- |
@@ -97,7 +99,8 @@ bumps the tag (`"v2"`, ...).
 
 ### Steps
 
-Every step has a `do`. Strings in a step may use `{{url}}`, `{{key}}`, `{{etag}}` (the tag the server
+Every step has a `do`. An `evaluate` step's `flag` (but for `{{i}}`) and `fallback` are taken as written; other strings in a step (options,
+contexts, expectations, scripted answers, chunks, rulesets and checks) may use `{{url}}`, `{{key}}`, `{{etag}}` (the tag the server
 holds now), `{{today}}` (the UTC day) and `{{sentinel}}` (this run's sentinel key, below); the string
 `"{{context}}"` on its own is the default context.
 
@@ -105,9 +108,8 @@ holds now), `{{today}}` (the UTC day) and `{{sentinel}}` (this run's sentinel ke
 | --- | --- |
 | `ruleset` | replaces the server's ruleset and bumps its tag: `flags`, `segments`. A flag `{ "key", "serves": bool }` is a boolean flag; with `"count": n` it is n of them, `{{i}}` in the key numbering them from 0 |
 | `script` | queues answers for a `route` (`ruleset`, `stream` or `events`), used in order before the server answers normally. An answer has `status` (200), `body` or `json`, `headers`, `hang` (never answer), `hangBody` (send the headers, never finish the body), `sse` (chunks to write on a stream it opens), `end` (end that stream after them) and `times` (a number or `"always"`) |
-| `unscript` | drops what is queued for a `route` |
 | `create` | creates the client. Defaults: `url` `{{url}}`, `sdkKey` `{{key}}`, `stream` true, `pollIntervalMs` 30000, `flushIntervalMs` 30000, `requestTimeoutMs` 2000; `options` overrides them |
-| `ready` | calls `ready`; `expect` is the answer, `withinMs` and `atLeastMs` bound how long it took |
+| `ready` | calls `ready`; `expect` is the answer, `withinMs` bounds how long it took |
 | `evaluate` | calls `evaluate` with `flag`, `fallback` (required), `context` (default `{{context}}`) and `accessor` (default `any`), and matches the answer against `expect` field by field. `times: n` repeats the call; `each: n` makes n calls with `{{i}}` in the flag key counting from 0; `withinMs` bounds each |
 | `close` | calls `close`; `calls: n` makes n calls at once; `withinMs` bounds them |
 | `wait` | sleeps `ms` |
@@ -144,8 +146,8 @@ fake server recorded:
 
 - **Privacy (section 12).** Each run makes a sentinel context key and a sentinel attribute value, and adds
   the attribute to every context a scenario sends (the default context carries both). Neither may appear
-  in any request's path, headers or body, or in an `onError` message, and no `status` may hold the
-  sentinel key or the SDK key.
+  in any request's path, headers or body, or in an `onError` message, and no `status` (each one a step
+  reads, and one more after close) may hold the sentinel key or the SDK key.
 - **Protocol.** Every request goes to one of the three SDK routes with `Authorization: Bearer <key>` and no
   header outside what an HTTP library sends by itself (`accept`, `accept-encoding`, `connection`,
   `user-agent` and the like) plus `if-none-match` and `content-type`. Every usage request is
@@ -280,7 +282,7 @@ named here is in the file named before the colon.
 | ruleset falls back to polling with Retry-After %j | rate-limit: a Retry-After that is not whole seconds is ignored |
 | stream falls back to its backoff with no Retry-After | rate-limit: a 429 on the stream with no valid Retry-After falls back to the backoff |
 | does not go straight to the stream after a 429 on the first load | rate-limit: a 429 on the first load holds the first stream attempt |
-| holds the fetch a stream asked for when it answers 429, and the stream reconnect with it | rate-limit: a 429 on a refresh the stream asked for holds the next refresh and the reconnect |
+| ends the stream when the refresh it asked for answers 429 (section 7.2), and holds that refresh and the reconnect together | rate-limit: a 429 on a refresh the stream asked for ends the stream and holds the refresh and the reconnect |
 | keeps answering from the last ruleset while every route is limited | rate-limit: evaluation keeps answering while every route is limited |
 | answers the fallback, without throwing, when the first load was limited | rate-limit: a 429 on the first load holds the first stream attempt |
 | closes at once during a wait | rate-limit: close does not wait out a Retry-After hold |

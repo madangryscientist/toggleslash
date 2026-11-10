@@ -17,7 +17,7 @@ const STREAM_STATES = ["off", "connecting", "connected", "disconnected", "closed
 const ERROR_CODE = /^(http_\d{3}|timeout|bad_ruleset|network)$/;
 const CHECKS = ["requests", "status", "errors", "hookEvents", "openStreams"];
 
-export function checkNames(step: Rec): string[] {
+function checkNames(step: Rec): string[] {
   return Object.keys(step).filter((name) => CHECKS.includes(name));
 }
 

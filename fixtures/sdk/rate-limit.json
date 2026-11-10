@@ -213,7 +213,7 @@
       ]
     },
     {
-      "name": "a 429 on a refresh the stream asked for holds the next refresh and the reconnect",
+      "name": "a 429 on a refresh the stream asked for ends the stream and holds the refresh and the reconnect",
       "contract": "7.4",
       "steps": [
         {
@@ -272,9 +272,6 @@
         {
           "do": "mark",
           "name": "held"
-        },
-        {
-          "do": "dropStreams"
         },
         {
           "do": "waitUntil",

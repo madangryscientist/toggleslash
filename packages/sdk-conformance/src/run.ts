@@ -12,7 +12,7 @@ export interface Summary {
   vectors: VectorOutcome;
 }
 
-export interface RunOptions {
+interface RunOptions {
   serviceUrl: string;
   /** Only scenarios and vectors whose name contains this. */
   only?: string | undefined;

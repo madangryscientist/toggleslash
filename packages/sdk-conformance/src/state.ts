@@ -4,7 +4,7 @@ import type { FakeServer } from "./server.ts";
 import type { Service } from "./service.ts";
 
 /** A point a later step can measure from: a request count, a time on both clocks, an error count. */
-export interface Mark {
+interface Mark {
   seq: number;
   at: number;
   wall: number;
@@ -12,7 +12,7 @@ export interface Mark {
 }
 
 /** The two values every context carries, which no request may ever contain. */
-export interface Sentinel {
+interface Sentinel {
   key: string;
   attribute: string;
 }
@@ -31,7 +31,7 @@ export function sentinelFor(scenario: number): Sentinel {
   return { key: `ctx-sentinel-key-${tag}`, attribute: `ctx-sentinel-attr-${tag}` };
 }
 
-export function defaultContext(sentinel: Sentinel): Rec {
+function defaultContext(sentinel: Sentinel): Rec {
   return { key: sentinel.key, attributes: { sentinel: sentinel.attribute } };
 }
 
@@ -49,7 +49,7 @@ export function withSentinel(context: unknown, sentinel: Sentinel): unknown {
   return { ...context, attributes: { ...attributes, sentinel: sentinel.attribute } };
 }
 
-export function today(): string {
+function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 

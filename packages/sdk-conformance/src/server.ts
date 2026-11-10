@@ -110,10 +110,6 @@ export class FakeServer {
     this.scripts.set(route, [...(this.scripts.get(route) ?? []), ...answers]);
   }
 
-  unscript(route: Route): void {
-    this.scripts.delete(route);
-  }
-
   start(): void {
     this.server = Bun.serve({
       hostname: "127.0.0.1",
@@ -169,11 +165,10 @@ export class FakeServer {
       path: url.pathname + url.search,
       route: ROUTES[`${request.method} ${url.pathname}`] ?? "other",
       headers: Object.fromEntries(request.headers),
-      body: new Uint8Array(),
+      body: new Uint8Array(await request.arrayBuffer()),
       answered: null,
     };
     this.requests.push(seen);
-    seen.body = new Uint8Array(await request.arrayBuffer());
     const response = await this.answer(seen, request.signal);
     if (response !== null) seen.answered = response.status;
     return response ?? new Response(null, { status: 499 });

@@ -111,9 +111,6 @@ async function timed<T>(step: Rec, what: string, run: () => Promise<T>): Promise
   const within = optNum(step, "withinMs");
   if (within !== undefined && took > within)
     throw new Error(`${what} took ${took} ms, expected at most ${within}`);
-  const atLeast = optNum(step, "atLeastMs");
-  if (atLeast !== undefined && took < atLeast)
-    throw new Error(`${what} took ${took} ms, expected at least ${atLeast}`);
   return result;
 }
 
@@ -205,7 +202,6 @@ export const STEPS: Record<string, Step> = {
       route(step),
       list(step["answers"], "answers").map((raw) => answer(raw, state)),
     ),
-  unscript: (state, step) => state.server.unscript(route(step)),
   create,
   ready,
   evaluate,
@@ -224,7 +220,8 @@ export const STEPS: Record<string, Step> = {
 
 export async function runStep(state: RunState, raw: unknown): Promise<void> {
   if (!isRecord(raw)) throw new Error(`a step is not an object: ${show(raw)}`);
-  const run = STEPS[str(raw, "do")];
+  const name = str(raw, "do");
+  const run = Object.hasOwn(STEPS, name) ? STEPS[name] : undefined;
   if (run === undefined) throw new Error(`no step "${str(raw, "do")}"`);
   await run(state, raw);
 }
