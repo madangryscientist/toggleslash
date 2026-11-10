@@ -1,112 +1,302 @@
 // Package toggleslash is the ToggleSlash server SDK for Go.
 //
-// A Client keeps one ruleset current by following the server's stream (polling when the stream is down) and
-// evaluates flags locally, so the typed methods (BoolVariation, StringVariation, IntVariation, Float64Variation
-// and JSONVariation, each with a ...Detail twin) do no I/O and never block. Usage counts, which hold no context
-// and nothing about an end user, are sent in batches. Nothing here panics at a caller and no method returns an
-// error: a failure becomes the fallback you passed, with a reason, and is told to the WithOnError callback.
+// It keeps a copy of an environment's ruleset, follows the server for changes, evaluates flags locally
+// and sends usage counts. Nothing about an end user leaves the process.
 //
-//	client := toggleslash.New("https://flags.example.com", os.Getenv("TOGGLESLASH_SDK_KEY"))
+//	client := toggleslash.Create("https://flags.example.com", sdkKey)
 //	defer client.Close()
 //	client.Ready()
-//	on := client.BoolVariation("new-checkout", toggleslash.UserContext("user-1"), false)
+//	ctx, _ := toggleslash.ParseJSON([]byte(`{"key": "u1", "attributes": {"plan": "pro"}}`))
+//	on := client.BoolVariation("new-checkout", ctx, false)
 //
-// The contract is docs/sdk-contract.md in the ToggleSlash repository, and sdks/go/DESIGN.md maps each of its
-// names to Go.
+// The contract this implements is docs/sdk-contract.md in the ToggleSlash repository. In short: no
+// method panics or returns an error to its caller, Variation and Status never do I/O or wait, the last
+// good ruleset is kept while the server is away, and every method is safe to call from many goroutines.
 package toggleslash
 
 import (
+	"context"
+	"errors"
 	"net/http"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/eval"
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
+	"github.com/madangryscientist/toggleslash/sdks/go/internal/evaluator"
 )
 
-const (
-	defaultInterval = 30 * time.Second
-	defaultTimeout  = 10 * time.Second
-	// streamIdle is how long the stream may go without a byte (the server sends a keep-alive every 25 s).
-	streamIdle = 60 * time.Second
-	// maxRetryAfter is the longest wait a 429 can ask for.
-	maxRetryAfter = 300 * time.Second
-	backoffBase   = time.Second
+var (
+	errTimeout = errors.New("timeout")
+	errClosed  = errors.New("closed")
 )
 
-// config holds the options after the defaults. The seams (the fields after onError) are for tests in this
-// package: they are not options a caller can pass.
-type config struct {
-	url             string
-	sdkKey          string
-	stream          bool
-	pollInterval    time.Duration
-	flushInterval   time.Duration
-	requestTimeout  time.Duration
-	afterEvaluation func(EvaluationEvent)
-	onError         func(error)
-
-	httpClient *http.Client
-	now        func() time.Time
-	jitter     func() float64
-	idle       time.Duration
-	evaluate   func(*eval.Ruleset, string, jsonvalue.Value) eval.Result
+// view is everything Status shows and the ruleset the evaluator reads, as one immutable value. A writer
+// copies it, changes the copy and stores the pointer, so a reader sees one moment, never a mix.
+type view struct {
+	ruleset    *evaluator.Ruleset
+	etag       string
+	lastSyncAt time.Time
+	stream     StreamState
+	lastError  string
 }
 
-// Option configures a Client.
-type Option func(*config)
+// Client is a ToggleSlash server SDK client. Make one with Create. It is safe for concurrent use.
+type Client struct {
+	cfg  config
+	base string
+	http *http.Client
+	tr   *http.Transport // the transport the client made, or nil when one was injected
 
-// WithStream turns the stream on or off. It is on by default; off polls only.
-func WithStream(on bool) Option { return func(c *config) { c.stream = on } }
+	view    atomic.Pointer[view]
+	writeMu sync.Mutex // a copy of the view and its store; never held across I/O or a callback
 
-// WithPollInterval sets how often the ruleset is polled when the stream is down or off, and the longest
-// reconnect wait. The default is 30 seconds; zero or negative is the default.
-func WithPollInterval(d time.Duration) Option {
-	return func(c *config) {
-		if d > 0 {
-			c.pollInterval = d
+	root   context.Context
+	cancel context.CancelCauseFunc
+
+	readyCh   chan struct{}
+	readyOnce sync.Once
+	readyVal  atomic.Bool
+	firstHeld atomic.Bool // the first load's result, known before the ready channel closes
+
+	syncDone  chan struct{}
+	flushDone chan struct{}
+	syncGid   atomic.Uint64
+	flushGid  atomic.Uint64
+
+	syncHold  hold // ruleset and stream share it
+	usageHold hold // the events route has its own
+
+	usageMu     sync.Mutex
+	counts      map[usageKey]int64
+	countClosed bool
+	flushMu     sync.Mutex
+
+	closeStarted atomic.Bool
+	closerGid    atomic.Uint64
+	closeDone    chan struct{}
+}
+
+// Create makes a client and starts it. It returns at once and never fails: a URL it cannot use makes
+// each request a "network" error that Status and the onError function report.
+func Create(url, sdkKey string, opts ...Option) *Client {
+	cfg := config{
+		url:            strings.TrimRight(url, "/"),
+		sdkKey:         sdkKey,
+		stream:         true,
+		pollInterval:   defaultPollInterval,
+		flushInterval:  defaultFlushInterval,
+		requestTimeout: defaultRequestTimeout,
+		watchdog:       defaultWatchdog,
+		retryAfterCap:  defaultRetryAfterCap,
+	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&cfg)
 		}
+	}
+	c := &Client{cfg: cfg, base: cfg.url, counts: map[usageKey]int64{}}
+	c.applyDefaults()
+	c.root, c.cancel = context.WithCancelCause(context.Background())
+	c.readyCh = make(chan struct{})
+	c.syncDone = make(chan struct{})
+	c.flushDone = make(chan struct{})
+	c.closeDone = make(chan struct{})
+	initial := &view{stream: StreamOff}
+	if cfg.stream {
+		initial.stream = StreamConnecting
+	}
+	c.view.Store(initial)
+	go c.runSync()
+	go c.runFlush()
+	return c
+}
+
+func (c *Client) applyDefaults() {
+	if c.cfg.now == nil {
+		c.cfg.now = time.Now
+	}
+	if c.cfg.sleep == nil {
+		c.cfg.sleep = realSleep
+	}
+	if c.cfg.jitter == nil {
+		c.cfg.jitter = realJitter
+	}
+	if c.cfg.evaluate == nil {
+		c.cfg.evaluate = func(rs *evaluator.Ruleset, flagKey string, ctx Context) evaluator.Result {
+			return rs.Evaluate(flagKey, ctx)
+		}
+	}
+	if c.cfg.httpClient != nil {
+		c.http = c.cfg.httpClient
+		return
+	}
+	// A clone of the default transport with no proxy from the environment, so the SDK talks to the one
+	// URL it was given. Redirects are not followed: a 3xx is an http_3xx error and the key is never
+	// replayed to another place.
+	if base, ok := http.DefaultTransport.(*http.Transport); ok {
+		c.tr = base.Clone()
+	} else {
+		c.tr = &http.Transport{}
+	}
+	c.tr.Proxy = nil
+	c.http = &http.Client{
+		Transport: c.tr,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 }
 
-// WithFlushInterval sets how often usage counts are sent. The default is 30 seconds; zero or negative is
-// the default.
-func WithFlushInterval(d time.Duration) Option {
-	return func(c *config) {
-		if d > 0 {
-			c.flushInterval = d
+// update copies the view, lets fn change the copy and stores it. It does nothing once the client is
+// closed, so a late result never moves Status. It reports whether it applied.
+func (c *Client) update(fn func(v *view)) bool {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	old := c.view.Load()
+	if old.stream == StreamClosed {
+		return false
+	}
+	nv := *old
+	fn(&nv)
+	c.view.Store(&nv)
+	return true
+}
+
+func (c *Client) markClosed() {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	nv := *c.view.Load()
+	nv.stream = StreamClosed
+	c.view.Store(&nv)
+}
+
+// Ready blocks until the first ruleset attempt has settled and reports whether a ruleset is held. The
+// wait is bounded by the request timeout. The answer is fixed when the first attempt settles, so asking
+// again, or after a later load, gives the same answer. After Close it is false if it had not settled.
+// Called from the SDK's own goroutine (an onError function, for the first load's failure) it returns at
+// once with what is held.
+func (c *Client) Ready() bool {
+	select {
+	case <-c.readyCh:
+		return c.readyVal.Load()
+	default:
+	}
+	if c.onLoopGoroutine() {
+		return c.firstHeld.Load()
+	}
+	<-c.readyCh
+	return c.readyVal.Load()
+}
+
+func (c *Client) settle(held bool) {
+	c.readyOnce.Do(func() {
+		c.readyVal.Store(held)
+		close(c.readyCh)
+	})
+}
+
+// Status returns one consistent snapshot. It reads memory and never waits.
+func (c *Client) Status() Status {
+	v := c.view.Load()
+	return Status{ETag: v.etag, LastSyncAt: v.lastSyncAt, Stream: v.stream, LastError: v.lastError}
+}
+
+// Close stops following the server, abandons the requests in flight, waits for the SDK's goroutines,
+// then sends the usage counts still pending. It is idempotent and safe from many goroutines: each call
+// returns when the one shutdown is done. It returns within about twice the request timeout. The error is
+// always nil; it is there so a Client is an io.Closer.
+func (c *Client) Close() error {
+	if !c.closeStarted.CompareAndSwap(false, true) {
+		if c.closerGid.Load() == goroutineID() {
+			return nil // called again from a callback the shutdown itself is running
 		}
+		<-c.closeDone
+		return nil
+	}
+	defer close(c.closeDone)
+	defer func() { _ = recover() }()
+	c.closerGid.Store(goroutineID())
+	c.shutdown()
+	return nil
+}
+
+func (c *Client) shutdown() {
+	c.markClosed()
+	c.cancel(errClosed)
+	c.usageMu.Lock()
+	c.countClosed = true
+	c.usageMu.Unlock()
+	me := goroutineID()
+	if c.syncGid.Load() != me {
+		<-c.syncDone
+	}
+	if c.flushGid.Load() != me {
+		<-c.flushDone
+	}
+	c.settle(false)
+	for _, err := range c.flush(true) {
+		c.report(err)
+	}
+	if c.tr != nil {
+		c.tr.CloseIdleConnections()
 	}
 }
 
-// WithRequestTimeout sets the longest any one request may take, and so the longest Ready waits. The
-// default is 10 seconds; zero or negative is the default.
-func WithRequestTimeout(d time.Duration) Option {
-	return func(c *config) {
-		if d > 0 {
-			c.requestTimeout = d
-		}
+// report hands an error to the onError function. A panic in that function is ignored. No SDK lock is held
+// by any caller.
+func (c *Client) report(err error) {
+	if err == nil || c.cfg.onError == nil {
+		return
+	}
+	defer func() { _ = recover() }()
+	c.cfg.onError(err)
+}
+
+// onLoopGoroutine reports whether the caller is one of the SDK's own goroutines (it is, inside an
+// onError function the SDK called there).
+func (c *Client) onLoopGoroutine() bool {
+	me := goroutineID()
+	return me != 0 && (me == c.syncGid.Load() || me == c.flushGid.Load())
+}
+
+func goroutineID() uint64 {
+	var buf [64]byte
+	n := runtime.Stack(buf[:], false)
+	s := strings.TrimPrefix(string(buf[:n]), "goroutine ")
+	end := strings.IndexByte(s, ' ')
+	if end < 0 {
+		return 0
+	}
+	id, err := strconv.ParseUint(s[:end], 10, 64)
+	if err != nil {
+		return 0
+	}
+	return id
+}
+
+// hold is a Retry-After hold: a point in time before which nothing is sent.
+type hold struct {
+	mu    sync.Mutex
+	until time.Time
+}
+
+// extend moves the hold later; it never shortens it.
+func (h *hold) extend(t time.Time) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if t.After(h.until) {
+		h.until = t
 	}
 }
 
-// WithAfterEvaluation sets a function called synchronously, on the caller's goroutine, after every
-// variation method, a fallback included, with what the caller is about to get. A panic in it goes to the
-// OnError function and never reaches the caller, who gets the same answer and the same usage count with or
-// without it. A nil function is ignored.
-func WithAfterEvaluation(f func(EvaluationEvent)) Option {
-	return func(c *config) {
-		if f != nil {
-			c.afterEvaluation = f
-		}
+func (h *hold) remaining(now time.Time) time.Duration {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if d := h.until.Sub(now); d > 0 {
+		return d
 	}
-}
-
-// WithOnError sets a function told about every failure the SDK absorbs (a failed sync, a failed usage
-// request, a hook that panicked). The value is an *Error. It is never needed for correctness; a panic in it is
-// ignored. A nil function is ignored.
-func WithOnError(f func(error)) Option {
-	return func(c *config) {
-		if f != nil {
-			c.onError = f
-		}
-	}
+	return 0
 }

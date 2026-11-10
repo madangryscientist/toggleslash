@@ -1,22 +1,18 @@
 #!/bin/sh
-# Run every test under the race detector, print the evaluation vector and bucket-pin counts the phase 2
-# check compares with the fixtures, then build the conformance test service into .build/ (gitignored) so
-# bin/test-service can run it without building anything.
+# Builds, then runs the native tests (the evaluation vectors included) under the race detector.
 set -eu
 cd "$(dirname "$0")/.."
-if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
+
+if command -v mise >/dev/null 2>&1; then
   run() { mise exec -- "$@"; }
 else
   run() { "$@"; }
 fi
-run go version
-run go vet ./...
-out=$(run go test -race -count=1 -v ./... 2>&1) || { printf '%s\n' "$out"; exit 1; }
-printf '%s\n' "$out" | grep -E '^(ok|FAIL|---  FAIL|\?)' || true
-vectors=$(printf '%s\n' "$out" | sed -n 's/^vectors: //p')
-pins=$(printf '%s\n' "$out" | sed -n 's/^pins: //p')
-echo "vectors: ${vectors:-0} pins: ${pins:-0}"
-if [ -f test-service/main.go ]; then
-  mkdir -p .build
-  run go build -o .build/test-service ./test-service
-fi
+
+run go build ./...
+run go test -race -count=1 ./...
+# The vector test prints its counts on stdout, which a passing package hides without -v.
+run go test -race -count=1 -v -run '^TestVectorsAndPins$' ./internal/evaluator | grep '^vectors: '
+# The test service's binary is the last thing built; bin/test-service runs it.
+mkdir -p build
+run go build -o build/test-service ./test-service

@@ -1,14 +1,30 @@
+# golangci-lint v2. The rule set is "standard" (errcheck, govet, ineffassign, staticcheck, unused) plus the
+# linters named below. Nothing is switched off by a //nolint comment in the source, and no rule is ignored
+# except what is listed here, each with its reason.
 version: "2"
+
+run:
+  timeout: 5m
+
 linters:
   default: standard
   enable:
-    - errorlint
     - bodyclose
+    - errorlint
+    - gocritic
     - misspell
+    - nilerr
+    - noctx
     - unconvert
+    - unparam
+    - whitespace
+  exclusions:
+    rules:
+      # A test may ignore the result of a call it makes only to exercise it (a Close in a cleanup, a write to a
+      # recorder), and a test double has parameters it does not use.
+      - path: _test\.go
+        linters: [errcheck, unparam]
+
 formatters:
   enable:
     - gofmt
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0

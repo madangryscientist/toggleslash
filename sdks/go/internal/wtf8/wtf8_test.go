@@ -1,57 +1,43 @@
 package wtf8
 
-import (
-	"slices"
-	"testing"
-)
+import "testing"
 
-// lone is a string holding one lone high surrogate, U+D83D, as WTF-8.
-var lone = string(AppendRune(nil, 0xD83D))
-
-func TestLoneSurrogateIsKept(t *testing.T) {
-	if len(lone) != 3 || !HasSurrogate(lone) {
-		t.Fatalf("lone surrogate = %q", lone)
+func TestCompareUsesUTF16Units(t *testing.T) {
+	// U+10000 is the units D800 DC00, so it sorts below U+E000 even though its code point is higher.
+	if Compare("\U00010000", "\uE000") >= 0 {
+		t.Error("supplementary should sort below U+E000 by UTF-16 unit")
 	}
-	if got := CodePoints("a" + lone + "b"); !slices.Equal(got, []rune{'a', 0xD83D, 'b'}) {
-		t.Fatalf("code points = %x", got)
-	}
-	if got := UTF16(lone); !slices.Equal(got, []uint16{0xD83D}) {
-		t.Fatalf("utf16 = %x", got)
-	}
-	if got := ToUTF8(lone); got != "�" {
-		t.Fatalf("to utf8 = %q", got)
+	if Compare("a", "a") != 0 || Compare("a", "b") >= 0 || Compare("b", "a") <= 0 || Compare("a", "ab") >= 0 {
+		t.Error("basic order")
 	}
 }
 
-func TestFromGoReplacesInvalidBytes(t *testing.T) {
-	if got := FromGo("a\xffb"); got != "a�b" {
-		t.Fatalf("got %q", got)
+func TestLoneSurrogate(t *testing.T) {
+	lone := "\xed\xa0\x80"
+	if !HasLoneSurrogate(lone) || HasLoneSurrogate("\U0001F600") {
+		t.Error("HasLoneSurrogate")
+	}
+	if ToUTF8(lone+"a") != "\uFFFDa" {
+		t.Error("ToUTF8")
+	}
+	if got := CodePoints("a" + lone); len(got) != 2 || got[1] != 0xD800 {
+		t.Errorf("CodePoints %v", got)
+	}
+	if !Contains("x"+lone+"y", lone) || !HasPrefix(lone+"y", lone) || !HasSuffix("y"+lone, lone) {
+		t.Error("unit-based search")
+	}
+	// A lone high surrogate matches the first half of a pair, by UTF-16 unit.
+	if !Contains("\U00010000", lone) || !HasPrefix("\U00010000", lone) {
+		t.Error("lone high surrogate should match the first unit of a pair")
 	}
 }
 
-func TestCompareIsByUTF16Unit(t *testing.T) {
-	// U+FF5E is one unit 0xFF5E; U+1F600 is the pair D83D DE00. By unit the emoji sorts first, by
-	// UTF-8 byte or code point it sorts last.
-	if Compare("\U0001F600", "～") >= 0 {
-		t.Error("the emoji should sort before U+FF5E by UTF-16 unit")
+func TestSanitize(t *testing.T) {
+	if Sanitize("a\xffb") != "a\uFFFDb" {
+		t.Error("invalid byte")
 	}
-	if Compare(lone, "～") >= 0 || Compare("a", "a") != 0 || Compare("b", "a") <= 0 {
-		t.Error("compare order wrong")
-	}
-}
-
-func TestSubstringOperationsAreByUnit(t *testing.T) {
-	if !Contains("x"+lone+"y", lone) || Contains("xy", lone) {
-		t.Error("contains with a surrogate needle")
-	}
-	// A lone high surrogate is the first unit of an emoji, so it is a prefix of it by unit.
-	if !HasPrefix("\U0001F600", lone) {
-		t.Error("a high surrogate is a prefix of the pair it starts")
-	}
-	if HasSuffix("\U0001F600", lone) {
-		t.Error("a high surrogate is not a suffix of a pair")
-	}
-	if !HasSuffix("ab", "b") || !HasPrefix("ab", "a") || !Contains("abc", "") {
-		t.Error("plain ordinal operations")
+	// A surrogate pair written as two three-byte sequences becomes one code point.
+	if Sanitize("\xed\xa0\xbd\xed\xb8\x80") != "\U0001F600" {
+		t.Error("pair")
 	}
 }

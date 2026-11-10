@@ -1,95 +1,94 @@
 package toggleslash
 
-import "bytes"
+import "strings"
 
-// sseEvent is one dispatched Server-Sent Event.
-type sseEvent struct {
-	name string
-	data string
-}
-
-// sseParser reads a Server-Sent Events byte stream to the WHATWG rules the contract names. It works on
-// bytes: a UTF-8 sequence never holds a CR or LF byte, so a character split across two reads is whole by the
-// time its line is complete. LF, CRLF and a lone CR end a line (a CR at the end of one read is remembered, so
-// the LF that starts the next read is not a second line end); a line that starts with ":" is a comment; a
-// field with no ":" has an empty value; one leading space of a value is dropped; a leading BOM is dropped;
-// several "data" lines join with LF; an event with no "data" line is dropped; the name is "message" when none
-// was given; an event still open when the stream ends is never delivered.
+// sseParser reads Server-Sent Events the way the WHATWG standard does: a line ends on LF, CRLF or a lone
+// CR (and a CR at the end of one read waits for the next byte), a line starting with ":" is a comment, an
+// event with no data line is dropped, and an event still incomplete when the stream ends is discarded.
+// Only the "event" and "data" fields are read.
 type sseParser struct {
-	line      []byte
-	afterCR   bool
-	started   bool
-	name      string
-	data      []byte
-	hasData   bool
-	bomPrefix []byte
+	started bool
+	head    []byte // the first bytes, held back until a byte order mark is ruled in or out
+	line    []byte
+	sawCR   bool
+	name    string
+	data    strings.Builder
+	hasData bool
 }
 
-var bom = []byte{0xEF, 0xBB, 0xBF}
+var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
-// feed adds bytes and returns the events they complete.
-func (p *sseParser) feed(chunk []byte) []sseEvent {
+// feed adds a chunk and calls emit for each complete event.
+func (p *sseParser) feed(chunk []byte, emit func(name, data string)) {
 	if !p.started {
-		// A BOM may arrive split; hold back a prefix of it until it is known to be one.
-		chunk = append(p.bomPrefix, chunk...)
-		p.bomPrefix = nil
-		if len(chunk) < len(bom) && bytes.HasPrefix(bom, chunk) {
-			p.bomPrefix = append([]byte(nil), chunk...)
-			return nil
+		p.head = append(p.head, chunk...)
+		if len(p.head) < len(utf8BOM) && string(p.head) == string(utf8BOM[:len(p.head)]) {
+			return // could still be a byte order mark
 		}
 		p.started = true
-		chunk = bytes.TrimPrefix(chunk, bom)
+		chunk = p.head
+		p.head = nil
+		if len(chunk) >= len(utf8BOM) && string(chunk[:len(utf8BOM)]) == string(utf8BOM) {
+			chunk = chunk[len(utf8BOM):]
+		}
 	}
-	var events []sseEvent
 	for _, b := range chunk {
-		switch {
-		case b == '\n' && p.afterCR:
-			p.afterCR = false
-		case b == '\n' || b == '\r':
-			p.afterCR = b == '\r'
-			if event, ok := p.endLine(); ok {
-				events = append(events, event)
+		if p.sawCR {
+			p.sawCR = false
+			if b == '\n' {
+				continue
 			}
+		}
+		switch b {
+		case '\r':
+			p.sawCR = true
+			p.endLine(emit)
+		case '\n':
+			p.endLine(emit)
 		default:
-			p.afterCR = false
 			p.line = append(p.line, b)
 		}
 	}
-	return events
 }
 
-func (p *sseParser) endLine() (sseEvent, bool) {
+func (p *sseParser) endLine(emit func(name, data string)) {
 	line := p.line
 	p.line = p.line[:0]
 	if len(line) == 0 {
-		return p.dispatch()
+		if p.hasData {
+			name := p.name
+			if name == "" {
+				name = "message"
+			}
+			data := p.data.String()
+			data = strings.TrimSuffix(data, "\n")
+			p.reset()
+			emit(name, data)
+			return
+		}
+		p.reset()
+		return
 	}
 	if line[0] == ':' {
-		return sseEvent{}, false
+		return
 	}
-	field, value, _ := bytes.Cut(line, []byte{':'})
-	value = bytes.TrimPrefix(value, []byte{' '})
-	switch string(field) {
+	field, value := string(line), ""
+	if i := strings.IndexByte(field, ':'); i >= 0 {
+		field, value = field[:i], field[i+1:]
+		value = strings.TrimPrefix(value, " ")
+	}
+	switch field {
 	case "event":
-		p.name = string(value)
+		p.name = value
 	case "data":
-		if p.hasData {
-			p.data = append(p.data, '\n')
-		}
-		p.data = append(p.data, value...)
+		p.data.WriteString(value)
+		p.data.WriteByte('\n')
 		p.hasData = true
 	}
-	return sseEvent{}, false
 }
 
-func (p *sseParser) dispatch() (sseEvent, bool) {
-	name, data, hasData := p.name, p.data, p.hasData
-	p.name, p.data, p.hasData = "", nil, false
-	if !hasData {
-		return sseEvent{}, false
-	}
-	if name == "" {
-		name = "message"
-	}
-	return sseEvent{name: name, data: string(data)}, true
+func (p *sseParser) reset() {
+	p.name = ""
+	p.data.Reset()
+	p.hasData = false
 }

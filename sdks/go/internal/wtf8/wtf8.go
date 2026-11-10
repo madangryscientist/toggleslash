@@ -1,8 +1,10 @@
-// Package wtf8 holds the string operations the evaluator needs on WTF-8: UTF-8 in which a lone UTF-16
-// surrogate is kept as the three bytes UTF-8 forbids for it (ED A0..BF xx). Every string the SDK reads
-// from JSON is in this form, and a valid surrogate pair is always the one four-byte sequence, so byte
-// equality is UTF-16 code unit equality. The spec compares by UTF-16 code unit and matches by code point,
-// and Go's own string functions know neither, so this package supplies both.
+// Package wtf8 holds the string helpers the SDK needs because a JSON string may carry a lone
+// surrogate (docs/evaluation.md, "Reading JSON"), which Go's UTF-8 strings cannot hold.
+//
+// A string here is WTF-8: UTF-8, plus the three-byte encoding of a lone surrogate (U+D800 to
+// U+DFFF on its own). A high surrogate followed by a low one is never two three-byte sequences:
+// it is the one four-byte sequence of the supplementary code point, so two strings are the same
+// UTF-16 code units exactly when they are the same bytes.
 package wtf8
 
 import (
@@ -10,164 +12,196 @@ import (
 	"unicode/utf8"
 )
 
-// replacement is U+FFFD.
-const replacement = "�"
+// Replacement is U+FFFD, what malformed input and a lone surrogate become where text must be UTF-8.
+const Replacement = 0xFFFD
 
-func isSurrogateLead(s string, i int) bool {
-	return s[i] == 0xED && i+2 < len(s) && s[i+1] >= 0xA0 && s[i+1] <= 0xBF && s[i+2]&0xC0 == 0x80
-}
+func isHigh(r rune) bool { return r >= 0xD800 && r <= 0xDBFF }
+func isLow(r rune) bool  { return r >= 0xDC00 && r <= 0xDFFF }
 
-// HasSurrogate reports whether s holds a lone surrogate.
-func HasSurrogate(s string) bool {
-	for i := 0; ; {
-		at := strings.IndexByte(s[i:], 0xED)
-		if at < 0 {
-			return false
-		}
-		i += at
-		if isSurrogateLead(s, i) {
-			return true
-		}
-		i++
+func isCont(b byte) bool { return b&0xC0 == 0x80 }
+
+// DecodeRune decodes the first code point of s and its width. A lone surrogate decodes to itself.
+// A malformed sequence decodes to Replacement with width 1. For an empty s it returns (0, 0).
+func DecodeRune(s string) (rune, int) {
+	if s == "" {
+		return 0, 0
 	}
-}
-
-// Next decodes the code point at byte offset i and its length in bytes. A lone surrogate is its own code
-// point. Bytes that are not WTF-8 decode as U+FFFD of length 1, which a canonical string never holds.
-func Next(s string, i int) (rune, int) {
-	c := s[i]
-	if c < utf8.RuneSelf {
+	c := s[0]
+	switch {
+	case c < 0x80:
 		return rune(c), 1
+	case c >= 0xC2 && c <= 0xDF:
+		if len(s) >= 2 && isCont(s[1]) {
+			return rune(c&0x1F)<<6 | rune(s[1]&0x3F), 2
+		}
+	case c >= 0xE0 && c <= 0xEF:
+		if len(s) >= 3 && isCont(s[1]) && isCont(s[2]) {
+			r := rune(c&0x0F)<<12 | rune(s[1]&0x3F)<<6 | rune(s[2]&0x3F)
+			if r >= 0x800 {
+				return r, 3
+			}
+		}
+	case c >= 0xF0 && c <= 0xF4:
+		if len(s) >= 4 && isCont(s[1]) && isCont(s[2]) && isCont(s[3]) {
+			r := rune(c&0x07)<<18 | rune(s[1]&0x3F)<<12 | rune(s[2]&0x3F)<<6 | rune(s[3]&0x3F)
+			if r >= 0x10000 && r <= 0x10FFFF {
+				return r, 4
+			}
+		}
 	}
-	if isSurrogateLead(s, i) {
-		return 0xD000 | rune(s[i+1]&0x3F)<<6 | rune(s[i+2]&0x3F), 3
-	}
-	return utf8.DecodeRuneInString(s[i:])
+	return Replacement, 1
 }
 
-// AppendRune appends the WTF-8 form of cp: a surrogate as three bytes, anything else as UTF-8.
-func AppendRune(dst []byte, cp rune) []byte {
-	if cp >= 0xD800 && cp <= 0xDFFF {
-		return append(dst, 0xE0|byte(cp>>12), 0x80|byte(cp>>6)&0x3F, 0x80|byte(cp)&0x3F)
+// AppendRune appends the WTF-8 encoding of r, a lone surrogate included. A value above U+10FFFF
+// or below zero becomes Replacement.
+func AppendRune(dst []byte, r rune) []byte {
+	switch {
+	case r < 0:
+		return append(dst, 0xEF, 0xBF, 0xBD)
+	case r < 0x80:
+		return append(dst, byte(r))
+	case r < 0x800:
+		return append(dst, 0xC0|byte(r>>6), 0x80|byte(r&0x3F))
+	case r < 0x10000:
+		return append(dst, 0xE0|byte(r>>12), 0x80|byte(r>>6&0x3F), 0x80|byte(r&0x3F))
+	case r <= 0x10FFFF:
+		return append(dst, 0xF0|byte(r>>18), 0x80|byte(r>>12&0x3F), 0x80|byte(r>>6&0x3F), 0x80|byte(r&0x3F))
 	}
-	return utf8.AppendRune(dst, cp)
+	return append(dst, 0xEF, 0xBF, 0xBD)
 }
 
-// FromGo makes a Go string canonical: bytes that are not valid UTF-8 become U+FFFD.
-func FromGo(s string) string {
+// Sanitize returns s as well-formed WTF-8. Valid UTF-8 is returned as it is. Otherwise a malformed
+// byte becomes Replacement, a lone surrogate stays, and a high surrogate directly followed by a low
+// one becomes the one code point they spell.
+func Sanitize(s string) string {
 	if utf8.ValidString(s) {
 		return s
 	}
-	return strings.ToValidUTF8(s, replacement)
+	out := make([]byte, 0, len(s)+8)
+	for i := 0; i < len(s); {
+		r, n := DecodeRune(s[i:])
+		i += n
+		if isHigh(r) && i < len(s) {
+			if next, m := DecodeRune(s[i:]); isLow(next) {
+				r = 0x10000 + (r-0xD800)<<10 + (next - 0xDC00)
+				i += m
+			}
+		}
+		out = AppendRune(out, r)
+	}
+	return string(out)
 }
 
-// CodePoints returns the code points of s; a lone surrogate is a code point of its own.
-func CodePoints(s string) []rune {
-	points := make([]rune, 0, len(s))
+// HasLoneSurrogate reports whether the well-formed WTF-8 string s holds a lone surrogate.
+func HasLoneSurrogate(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == 0xED && i+1 < len(s) && s[i+1] >= 0xA0 {
+			return true
+		}
+	}
+	return false
+}
+
+// ToUTF8 returns s with every lone surrogate replaced by U+FFFD: the bytes that get hashed.
+func ToUTF8(s string) string {
+	if !HasLoneSurrogate(s) {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
 	for i := 0; i < len(s); {
-		cp, n := Next(s, i)
-		points = append(points, cp)
+		r, n := DecodeRune(s[i:])
+		if r >= 0xD800 && r <= 0xDFFF {
+			b.WriteString("�")
+		} else {
+			b.WriteString(s[i : i+n])
+		}
 		i += n
 	}
-	return points
+	return b.String()
+}
+
+// CodePoints returns the code points of s: a valid pair is one, a lone surrogate is itself.
+func CodePoints(s string) []rune {
+	out := make([]rune, 0, len(s))
+	for i := 0; i < len(s); {
+		r, n := DecodeRune(s[i:])
+		out = append(out, r)
+		i += n
+	}
+	return out
 }
 
 // UTF16 returns the UTF-16 code units of s.
 func UTF16(s string) []uint16 {
-	units := make([]uint16, 0, len(s))
+	out := make([]uint16, 0, len(s))
 	for i := 0; i < len(s); {
-		cp, n := Next(s, i)
+		r, n := DecodeRune(s[i:])
 		i += n
-		if cp >= 0x10000 {
-			cp -= 0x10000
-			units = append(units, uint16(0xD800+(cp>>10)), uint16(0xDC00+(cp&0x3FF)))
+		if r >= 0x10000 {
+			r -= 0x10000
+			out = append(out, uint16(0xD800+(r>>10)), uint16(0xDC00+(r&0x3FF)))
 		} else {
-			units = append(units, uint16(cp))
+			out = append(out, uint16(r))
 		}
 	}
-	return units
+	return out
 }
 
-// ToUTF8 is s with each lone surrogate replaced by U+FFFD, which is what encoding to UTF-8 does.
-func ToUTF8(s string) string {
-	if !HasSurrogate(s) {
-		return s
-	}
-	var out strings.Builder
-	for i := 0; i < len(s); {
-		if isSurrogateLead(s, i) {
-			out.WriteString(replacement)
-			i += 3
-			continue
-		}
-		out.WriteByte(s[i])
-		i++
-	}
-	return out.String()
-}
-
-func firstUnit(cp rune) int {
-	if cp >= 0x10000 {
-		return 0xD800 + int((cp-0x10000)>>10)
-	}
-	return int(cp)
-}
-
-// Compare orders a and b by UTF-16 code unit: -1, 0 or 1.
+// Compare orders a and b by UTF-16 code unit: -1, 0 or 1. It is not code point order, which
+// differs for a supplementary character against U+E000 to U+FFFF.
 func Compare(a, b string) int {
-	i, j := 0, 0
-	for i < len(a) && j < len(b) {
-		ca, na := Next(a, i)
-		cb, nb := Next(b, j)
-		if ca != cb {
-			if ua, ub := firstUnit(ca), firstUnit(cb); ua != ub {
-				if ua < ub {
-					return -1
-				}
-				return 1
-			}
-			// The same high surrogate: the low surrogates differ.
-			if ca < cb {
+	if a == b {
+		return 0
+	}
+	ua, ub := UTF16(a), UTF16(b)
+	for i := 0; i < len(ua) && i < len(ub); i++ {
+		if ua[i] != ub[i] {
+			if ua[i] < ub[i] {
 				return -1
 			}
 			return 1
 		}
-		i += na
-		j += nb
 	}
 	switch {
-	case i < len(a):
-		return 1
-	case j < len(b):
+	case len(ua) < len(ub):
 		return -1
+	case len(ua) > len(ub):
+		return 1
 	}
 	return 0
 }
 
-// Contains is JavaScript's includes: a match in UTF-16 code units.
-func Contains(s, sub string) bool {
-	if !HasSurrogate(sub) {
-		return strings.Contains(s, sub)
+// Contains reports whether v occurs in a, by UTF-16 code unit.
+func Contains(a, v string) bool {
+	if !HasLoneSurrogate(v) {
+		return strings.Contains(a, v)
 	}
-	return indexUnits(UTF16(s), UTF16(sub)) >= 0
+	ua, uv := UTF16(a), UTF16(v)
+	for i := 0; i+len(uv) <= len(ua); i++ {
+		if equalUnits(ua[i:i+len(uv)], uv) {
+			return true
+		}
+	}
+	return false
 }
 
-// HasPrefix is JavaScript's startsWith.
-func HasPrefix(s, prefix string) bool {
-	if !HasSurrogate(prefix) {
-		return strings.HasPrefix(s, prefix)
+// HasPrefix reports whether a begins with v, by UTF-16 code unit.
+func HasPrefix(a, v string) bool {
+	if !HasLoneSurrogate(v) {
+		return strings.HasPrefix(a, v)
 	}
-	u, p := UTF16(s), UTF16(prefix)
-	return len(p) <= len(u) && equalUnits(u[:len(p)], p)
+	ua, uv := UTF16(a), UTF16(v)
+	return len(uv) <= len(ua) && equalUnits(ua[:len(uv)], uv)
 }
 
-// HasSuffix is JavaScript's endsWith.
-func HasSuffix(s, suffix string) bool {
-	if !HasSurrogate(suffix) {
-		return strings.HasSuffix(s, suffix)
+// HasSuffix reports whether a ends with v, by UTF-16 code unit.
+func HasSuffix(a, v string) bool {
+	if !HasLoneSurrogate(v) {
+		return strings.HasSuffix(a, v)
 	}
-	u, p := UTF16(s), UTF16(suffix)
-	return len(p) <= len(u) && equalUnits(u[len(u)-len(p):], p)
+	ua, uv := UTF16(a), UTF16(v)
+	return len(uv) <= len(ua) && equalUnits(ua[len(ua)-len(uv):], uv)
 }
 
 func equalUnits(a, b []uint16) bool {
@@ -176,14 +210,5 @@ func equalUnits(a, b []uint16) bool {
 			return false
 		}
 	}
-	return len(a) == len(b)
-}
-
-func indexUnits(s, sub []uint16) int {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if equalUnits(s[i:i+len(sub)], sub) {
-			return i
-		}
-	}
-	return -1
+	return true
 }

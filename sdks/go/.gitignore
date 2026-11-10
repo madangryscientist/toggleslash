@@ -1,5 +1,4 @@
-# Build output: bin/test builds the test service here, and bin/test-service runs it.
-.build/
-# A compiled test binary, a coverage profile.
+build/
 *.test
 *.out
+coverage.txt
