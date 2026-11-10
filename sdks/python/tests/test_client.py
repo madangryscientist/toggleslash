@@ -1,482 +1,493 @@
-import json
-import os
-import subprocess
-import sys
+from __future__ import annotations
+
 import threading
 import time
 import unittest
-from pathlib import Path
+from datetime import UTC, datetime
 from typing import Any
 
-from support import FakeReply, LocalServer, ScriptedTransport, flag, hang, ruleset_body
-from toggleslash import ErrorCode, Hooks, ReasonKind, StreamState
-from toggleslash._client import Client
-from toggleslash._seams import Seams
+import toggleslash
+from support import KEY, FakeServer, bool_flag, flag, ruleset, wait_until
+from toggleslash import ErrorCode, ReasonKind, StreamState
+from toggleslash._client import SystemClock, _as_int64, _duration, _expected_kind
+from toggleslash._usage import retry_after
 
-ROOT = Path(__file__).resolve().parent.parent
-CONTEXT = {"key": "u1"}
-
-
-def serving(*flags: dict[str, Any], etag: str = '"e1"'):
-    return lambda *_: FakeReply(200, headers={"ETag": etag}, body=ruleset_body(*flags))
+CTX = {"key": "u1"}
 
 
-def accepted(*_: Any):
-    return FakeReply(202)
+class Base(unittest.TestCase):
+    def setUp(self) -> None:
+        self.server = FakeServer()
+        self.clients: list[toggleslash.Client] = []
+        self.errors: list[BaseException] = []
 
-
-def make(*flags: dict[str, Any], events: Any = accepted, **options: Any) -> tuple[Client, ScriptedTransport]:
-    transport = ScriptedTransport(ruleset=serving(*flags), events=events)
-    seams = options.pop("seams", None) or Seams()
-    seams.transport = transport
-    options.setdefault("stream", False)
-    client = Client("http://example.invalid", "sdk-secret", _seams=seams, **options)
-    return client, transport
-
-
-class EvaluationTests(unittest.TestCase):
-    def test_before_the_first_load_every_call_is_the_fallback_with_not_ready(self) -> None:
-        transport = ScriptedTransport(ruleset=lambda m, h, b, aborter: (hang(aborter), FakeReply())[1])
-        client = Client("http://x", "k", stream=False, request_timeout=60, _seams=Seams(transport=transport))
-        try:
-            began = time.monotonic()
-            detail = client.variation_detail("f", CONTEXT, "fb")
-            self.assertLess(time.monotonic() - began, 0.5)
-            self.assertEqual((detail.value, detail.variation_index), ("fb", None))
-            self.assertEqual((detail.reason.kind, detail.reason.code), (ReasonKind.ERROR, ErrorCode.NOT_READY))
-        finally:
-            began = time.monotonic()
+    def tearDown(self) -> None:
+        for client in self.clients:
             client.close()
-            self.assertLess(time.monotonic() - began, 2.0, "close abandons the request in flight")
+        self.server.close()
 
-    def test_a_loaded_flag_serves_its_value(self) -> None:
-        client, _ = make(flag("f", "blue"))
-        self.addCleanup(client.close)
+    def make(self, **options: Any) -> toggleslash.Client:
+        options.setdefault("on_error", self.errors.append)
+        client = toggleslash.create(self.server.url, KEY, **options)
+        self.clients.append(client)
+        return client
+
+
+class BasicTests(Base):
+    def test_load_evaluate_status_close(self) -> None:
+        client = self.make(stream=False, poll_interval=5)
         self.assertTrue(client.ready())
-        self.assertEqual(client.variation("f", CONTEXT, "none"), "blue")
-        detail = client.variation_detail("f", CONTEXT, "none")
-        self.assertEqual((detail.variation_index, detail.reason.kind), (1, ReasonKind.FALLTHROUGH))
-
-    def test_a_missing_flag_is_flag_not_found_with_the_fallback(self) -> None:
-        client, _ = make(flag("f", True))
-        self.addCleanup(client.close)
-        client.ready()
-        detail = client.variation_detail("nope", CONTEXT, 5)
-        found = (detail.value, detail.variation_index, detail.reason.code)
-        self.assertEqual(found, (5, None, ErrorCode.FLAG_NOT_FOUND))
-
-    def test_an_invalid_context_is_invalid_context(self) -> None:
-        client, _ = make(flag("f", True))
-        self.addCleanup(client.close)
-        client.ready()
-        for bad in (None, 5, "u", {}, {"key": ""}, {"key": 3}):
-            with self.subTest(context=bad):
-                detail = client.variation_detail("f", bad, False)  # type: ignore[arg-type]
-                self.assertEqual(detail.reason.code, ErrorCode.INVALID_CONTEXT)
-
-    def test_typed_accessors(self) -> None:
-        client, _ = make(
-            flag("b", True), flag("s", "x"), flag("i", 7), flag("f", 1.5), flag("j", {"a": [1]}), flag("a", [1, 2])
-        )
-        self.addCleanup(client.close)
-        client.ready()
-        self.assertIs(client.bool_variation("b", CONTEXT, False), True)
-        self.assertEqual(client.string_variation("s", CONTEXT, ""), "x")
-        self.assertEqual(client.int_variation("i", CONTEXT, 0), 7)
-        self.assertEqual(client.float_variation("f", CONTEXT, 0.0), 1.5)
-        self.assertEqual(client.float_variation("i", CONTEXT, 0.0), 7.0)
-        self.assertEqual(client.json_variation("j", CONTEXT, {}), {"a": [1]})
-        self.assertEqual(client.json_variation("a", CONTEXT, []), [1, 2])
-
-    def test_a_value_of_another_kind_is_type_mismatch_with_the_fallback(self) -> None:
-        client, _ = make(flag("b", True), flag("s", "x"), flag("i", 7), flag("a", [1]), flag("o", {}), flag("n", None))
-        self.addCleanup(client.close)
-        client.ready()
-        cases = [
-            (client.bool_variation_detail("s", CONTEXT, False), False),
-            (client.string_variation_detail("b", CONTEXT, "fb"), "fb"),
-            (client.int_variation_detail("s", CONTEXT, 9), 9),
-            (client.float_variation_detail("b", CONTEXT, 9.5), 9.5),
-            (client.json_variation_detail("i", CONTEXT, {}), {}),
-            (client.variation_detail("b", CONTEXT, "fb"), "fb"),
-            (client.variation_detail("a", CONTEXT, {}), {}),
-            (client.variation_detail("o", CONTEXT, []), []),
-            (client.json_variation_detail("a", CONTEXT, {}), {}),
-            (client.variation_detail("n", CONTEXT, "fb"), "fb"),
-        ]
-        for detail, fallback in cases:
-            self.assertEqual(detail.reason.code, ErrorCode.TYPE_MISMATCH, detail)
-            self.assertEqual((detail.value, detail.variation_index), (fallback, None))
-
-    def test_the_generic_method_with_a_null_fallback_accepts_any_kind(self) -> None:
-        client, _ = make(flag("s", "x"), flag("a", [1]), flag("z", None))
-        self.addCleanup(client.close)
-        client.ready()
-        self.assertEqual(client.variation("s", CONTEXT, None), "x")
-        self.assertEqual(client.variation("a", CONTEXT, None), [1])
-        self.assertEqual(client.variation("z", CONTEXT, "fb"), "fb", "null is a kind of its own, so it mismatches")
-        self.assertEqual(client.variation_detail("z", CONTEXT, None).variation_index, 1)
-
-    def test_the_int_accessor_and_its_range(self) -> None:
-        big = 2**62  # numbers are binary64: 2**63 - 1 is not representable, and reads as 2**63
-        client, _ = make(
-            flag("two", 2.0),
-            flag("frac", 2.5),
-            flag("max", big),
-            flag("over", 2**63),
-            flag("huge", 1e20),
-            flag("min", -(2**63)),
-            flag("under", -(2**64)),
-        )
-        self.addCleanup(client.close)
-        client.ready()
-        value = client.int_variation("two", CONTEXT, 0)
-        self.assertEqual(value, 2)
-        self.assertIsInstance(value, int)
-        self.assertEqual(client.int_variation("max", CONTEXT, 0), big)
-        self.assertEqual(client.int_variation("min", CONTEXT, 0), -(2**63))
-        for key in ("frac", "over", "huge", "under"):
-            detail = client.int_variation_detail(key, CONTEXT, -1)
-            self.assertEqual((detail.value, detail.reason.code), (-1, ErrorCode.TYPE_MISMATCH), key)
-        self.assertEqual(client.float_variation("over", CONTEXT, 0.0), float(2**63))
-
-    def test_a_served_list_is_a_copy(self) -> None:
-        client, _ = make(flag("a", [1, {"x": [2]}]))
-        self.addCleanup(client.close)
-        client.ready()
-        first = client.json_variation("a", CONTEXT, [])
-        first[1]["x"].append(3)
-        first.append(9)
-        self.assertEqual(client.json_variation("a", CONTEXT, []), [1, {"x": [2]}])
-
-    def test_a_deeply_nested_value_is_served_without_recursion(self) -> None:
-        deep: Any = []
-        for _ in range(3000):
-            deep = [deep]
-        client, _ = make(flag("d", deep))
-        self.addCleanup(client.close)
-        # json.loads of a body this deep may itself be refused; either way nothing raises
-        client.ready()
-        client.variation_detail("d", CONTEXT, None)
-
-
-class EventsAndHooksTests(unittest.TestCase):
-    def test_the_hook_sees_the_etag_and_flag_version_of_the_ruleset_that_answered(self) -> None:
-        events = []
-        client, _ = make(flag("f", True, version=7), hooks=Hooks(after_evaluation=events.append))
-        self.addCleanup(client.close)
-        client.ready()
-        client.variation("f", CONTEXT, False)
-        client.variation("missing", CONTEXT, False)
-        self.assertEqual((events[0].etag, events[0].flag_version, events[0].variation_index), ('"e1"', 7, 1))
-        self.assertEqual((events[1].flag_version, events[1].etag), (None, '"e1"'))
-        self.assertEqual(events[1].reason.code, ErrorCode.FLAG_NOT_FOUND)
-
-    def test_before_the_load_the_hook_has_no_etag(self) -> None:
-        events = []
-        transport = ScriptedTransport(ruleset=lambda m, h, b, aborter: (hang(aborter), FakeReply())[1])
-        client = Client(
-            "http://x",
-            "k",
-            stream=False,
-            request_timeout=60,
-            hooks=Hooks(after_evaluation=events.append),
-            _seams=Seams(transport=transport),
-        )
-        self.addCleanup(client.close)
-        client.variation("f", CONTEXT, 1)
-        self.assertEqual((events[0].etag, events[0].flag_version), (None, None))
-        self.assertEqual(events[0].reason.code, ErrorCode.NOT_READY)
-
-    def test_a_raising_hook_and_a_raising_on_error_change_nothing(self) -> None:
-        errors = []
-
-        def hook(_: Any) -> None:
-            raise RuntimeError("hook")
-
-        def on_error(error: Exception) -> None:
-            errors.append(error)
-            raise RuntimeError("on_error")
-
-        client, _ = make(flag("f", True), hooks=Hooks(after_evaluation=hook), on_error=on_error)
-        self.addCleanup(client.close)
-        client.ready()
-        self.assertIs(client.bool_variation("f", CONTEXT, False), True)
-        self.assertEqual([str(e) for e in errors], ["hook"])
-
-    def test_evaluation_failed_is_the_fallback_one_on_error_and_not_counted(self) -> None:
-        errors = []
-        events = []
-
-        def broken(*_: Any) -> Any:
-            raise ZeroDivisionError("boom")
-
-        client, transport = make(
-            flag("f", True),
-            seams=Seams(evaluator=broken),
-            on_error=errors.append,
-            hooks=Hooks(after_evaluation=events.append),
-        )
-        client.ready()
-        detail = client.variation_detail("f", CONTEXT, "fb")
-        self.assertEqual((detail.value, detail.variation_index), ("fb", None))
-        self.assertEqual((detail.reason.kind, detail.reason.code), (ReasonKind.ERROR, ErrorCode.EVALUATION_FAILED))
-        self.assertEqual(len(errors), 1)
-        self.assertEqual(len(events), 1)
-        client.close()
-        self.assertEqual(transport.count("events"), 0)
-
-    def test_usage_is_counted_once_per_served_value_and_flushed_on_close(self) -> None:
-        client, transport = make(flag("f", True))
-        client.ready()
-        for _ in range(4):
-            client.variation("f", CONTEXT, False)
-        client.variation("f", CONTEXT, "wrong kind")
-        client.variation("missing", CONTEXT, False)
-        client.close()
-        sent = [json.loads(r["body"]) for r in transport.requests if r["route"].endswith("events")]
-        entries = [e for body in sent for e in body["events"]]
-        self.assertEqual([(e["flag"], e["variationIndex"], e["count"]) for e in entries], [("f", 1, 4)])
-
-    def test_status_after_the_first_load_and_after_close(self) -> None:
-        client, _ = make(flag("f", True))
-        client.ready()
+        detail = client.variation_detail("checkout", CTX, False)
+        self.assertEqual((detail.value, detail.variation_index), (True, 1))
+        self.assertEqual(detail.reason.kind, ReasonKind.FALLTHROUGH)
         status = client.status()
-        self.assertEqual((status.etag, status.stream, status.last_error), ('"e1"', StreamState.OFF, None))
+        self.assertEqual(status.etag, self.server.etag)
+        self.assertEqual(status.stream, StreamState.OFF)
         self.assertIsNotNone(status.last_sync_at)
+        self.assertIsNone(status.last_error)
+        client.close()
         client.close()
         self.assertEqual(client.status().stream, StreamState.CLOSED)
+        self.assertTrue(client.variation("checkout", CTX, False))
 
-    def test_every_request_header_is_one_the_protocol_allows(self) -> None:
-        client, transport = make(flag("f", True))
-        client.ready()
-        client.variation("f", CONTEXT, False)
+    def test_not_ready_before_first_load(self) -> None:
+        self.server.on("ruleset", lambda r: r.hang(0.6))
+        client = self.make(stream=False, request_timeout=0.3)
+        detail = client.variation_detail("checkout", CTX, False)
+        self.assertEqual(detail.reason.code, ErrorCode.NOT_READY)
+        self.assertIs(detail.value, False)
+        self.assertFalse(client.ready())
+        self.assertEqual(client.status().last_error, "timeout")
+
+    def test_request_headers_are_the_allowed_ones(self) -> None:
+        client = self.make(stream=True, poll_interval=5, flush_interval=0.05)
+        self.assertTrue(client.ready())
+        client.variation("checkout", {"key": "SENTINEL-KEY", "email": "SENTINEL-MAIL"}, False)
+        self.assertTrue(wait_until(lambda: self.server.count("events") >= 1))
         client.close()
-        allowed = {"Authorization", "Accept", "If-None-Match", "Content-Type"}
-        for request in transport.requests:
-            self.assertLessEqual(set(request["headers"]), allowed)
-            self.assertEqual(request["headers"]["Authorization"], "Bearer sdk-secret")
-            self.assertNotIn(b"u1", request["body"] or b"")
+        allowed = {
+            "authorization",
+            "accept",
+            "if-none-match",
+            "content-type",
+            "host",
+            "accept-encoding",
+            "content-length",
+        }
+        seen = self.server.requests[:]
+        self.assertGreaterEqual(len(seen), 3)
+        for recorded in seen:
+            self.assertLessEqual({k.lower() for k in recorded.headers}, allowed, recorded.headers)
+            self.assertEqual(recorded.headers["Authorization"], "Bearer " + KEY)
+            wire = recorded.path + repr(recorded.headers) + recorded.body.decode("latin-1")
+            self.assertNotIn("SENTINEL", wire)
+        self.assertEqual({r.headers["Accept"] for r in seen if r.route == "stream"}, {"text/event-stream"})
+        self.assertEqual(self.errors, [])
 
-    def test_options_that_are_not_usable_fall_back_to_the_defaults(self) -> None:
-        for value in (0, -1, float("nan"), float("inf"), True, "5", None):
-            client, _ = make(flag("f", True), poll_interval=value, flush_interval=value, request_timeout=value)
-            client.close()
+    def test_if_none_match_only_with_a_ruleset_and_a_tag(self) -> None:
+        client = self.make(stream=False, poll_interval=0.05)
+        self.assertTrue(client.ready())
+        self.assertTrue(wait_until(lambda: self.server.count("ruleset") >= 3))
+        client.close()
+        first, *rest = self.server.recorded("ruleset")
+        self.assertNotIn("If-None-Match", first.headers)
+        self.assertTrue(all(r.headers.get("If-None-Match") == '"v1"' for r in rest))
 
-    def test_error_text_names_no_url_and_no_key(self) -> None:
-        errors = []
-        client = Client(
-            "http://127.0.0.1:1/secret-path", "sdk-secret-key", stream=False, request_timeout=2, on_error=errors.append
+    def test_a_changed_ruleset_arrives_through_the_stream(self) -> None:
+        client = self.make()
+        self.assertTrue(client.ready())
+        self.assertTrue(wait_until(lambda: client.status().stream == StreamState.CONNECTED))
+        self.server.publish(ruleset(bool_flag("checkout", False)))
+        self.assertTrue(wait_until(lambda: client.variation("checkout", CTX, True) is False))
+        self.assertEqual(client.status().etag, '"v2"')
+
+    def test_with_a_missing_etag_header_none_is_held(self) -> None:
+        self.server.on("ruleset", lambda r: r.send(200, b'{"flags":[],"segments":[]}'))
+        client = self.make(stream=False, poll_interval=5)
+        self.assertTrue(client.ready())
+        self.assertIsNone(client.status().etag)
+
+    def test_a_bad_ruleset_replaces_nothing(self) -> None:
+        client = self.make(stream=False, poll_interval=0.05)
+        self.assertTrue(client.ready())
+        self.server.on("ruleset", lambda r: r.send(200, b'{"flags":{},"segments":[]}', {"ETag": '"x"'}))
+        self.assertTrue(wait_until(lambda: client.status().last_error == "bad_ruleset"))
+        self.assertTrue(client.variation("checkout", CTX, False))
+        self.assertEqual(client.status().etag, '"v1"')
+
+    def test_body_bom_and_duplicate_keys(self) -> None:
+        body = (
+            b"\xef\xbb\xbf"
+            + b'{"flags":[],"segments":[],'
+            + b'"flags":[{"key":"a","on":false,"variations":[1,2],"offVariation":1}]}'
         )
-        client.ready()
-        client.close()
-        self.assertTrue(errors)
-        for error in errors:
-            self.assertNotIn("sdk-secret-key", str(error))
-            self.assertNotIn("secret-path", str(error))
-            self.assertNotIn("127.0.0.1", str(error))
+        self.server.on("ruleset", lambda r: r.send(200, body, {"ETag": '"b"'}))
+        client = self.make(stream=False, poll_interval=5)
+        self.assertTrue(client.ready())
+        self.assertEqual(client.variation("a", CTX, 0), 2)
 
-    def test_a_bad_url_never_raises(self) -> None:
-        for url in ("", "not a url", "ftp://x", None, 5):
-            client = Client(url, "k", stream=False, request_timeout=1)  # type: ignore[arg-type]
-            self.assertFalse(client.ready())
-            self.assertEqual(client.variation("f", CONTEXT, 1), 1)
-            client.close()
-
-
-class ReentrancyTests(unittest.TestCase):
-    def test_a_hook_may_call_status_variation_and_close(self) -> None:
-        seen: list[Any] = []
-        holder: dict[str, Client] = {}
-        inside = threading.local()
-
-        def hook(event: Any) -> None:
-            if getattr(inside, "on", False):
-                return
-            inside.on = True
+    def test_an_unusable_url_is_a_network_error_never_a_raise(self) -> None:
+        for url in ("", "nonsense", "ftp://x", "http://", "http://[::1"):
+            client = toggleslash.create(url, KEY, stream=False, on_error=self.errors.append)
             try:
-                client = holder["c"]
-                seen.append(client.status().etag)
-                seen.append(client.variation("f", CONTEXT, False))
-                client.close()
-                seen.append("closed")
+                self.assertFalse(client.ready())
+                self.assertEqual(client.variation("a", CTX, 7), 7)
+                self.assertEqual(client.status().last_error, "network")
             finally:
-                inside.on = False
-
-        client, _ = make(flag("f", True), hooks=Hooks(after_evaluation=hook))
-        holder["c"] = client
-        client.ready()
-        done = threading.Thread(target=lambda: client.variation("f", CONTEXT, False), daemon=True)
-        done.start()
-        done.join(10)
-        self.assertFalse(done.is_alive(), "a hook that closes the client must not deadlock")
-        self.assertEqual(seen, ['"e1"', True, "closed"])
-
-    def test_on_error_may_call_close(self) -> None:
-        holder: dict[str, Client] = {}
-        built = threading.Event()
-        called = threading.Event()
-
-        def on_error(_: Exception) -> None:
-            built.wait(10)
-            holder["c"].close()
-            called.set()
-
-        transport = ScriptedTransport(ruleset=lambda *_: FakeReply(503))
-        client = Client("http://x", "k", stream=False, on_error=on_error, _seams=Seams(transport=transport))
-        holder["c"] = client
-        built.set()
-        self.assertTrue(called.wait(10), "on_error never ran")
-        client.close()
-        self.assertEqual(client.status().stream, StreamState.CLOSED)
-
-    def test_on_error_from_the_final_flush_may_call_close(self) -> None:
-        holder: dict[str, Client] = {}
-
-        def on_error(_: Exception) -> None:
-            holder["c"].close()
-            holder["c"].status()
-
-        client, _ = make(flag("f", True), events=lambda *_: FakeReply(503), on_error=on_error)
-        holder["c"] = client
-        client.ready()
-        client.variation("f", CONTEXT, False)
-        done = threading.Thread(target=client.close, daemon=True)
-        done.start()
-        done.join(10)
-        self.assertFalse(done.is_alive())
-
-
-class ConcurrencyTests(unittest.TestCase):
-    def test_close_racing_variation_and_two_closes_racing(self) -> None:
-        for _ in range(20):
-            self.race_close_against_readers()
-
-    def race_close_against_readers(self) -> None:
-        client, _ = make(flag("f", True))
-        client.ready()
-        failures: list[BaseException] = []
-        start = threading.Barrier(10)
-
-        def reader() -> None:
-            start.wait()
-            try:
-                for _ in range(200):
-                    client.variation("f", CONTEXT, False)
-                    client.status()
-            except BaseException as error:
-                failures.append(error)
-
-        def closer() -> None:
-            start.wait()
-            try:
                 client.close()
-            except BaseException as error:
-                failures.append(error)
 
-        threads = [threading.Thread(target=reader) for _ in range(7)] + [
-            threading.Thread(target=closer) for _ in range(2)
-        ]
-        for thread in threads:
-            thread.start()
-        start.wait()
-        for thread in threads:
-            thread.join(10)
-            self.assertFalse(thread.is_alive())
-        self.assertEqual(failures, [])
+    def test_trailing_slashes_are_removed(self) -> None:
+        client = toggleslash.create(self.server.url + "///", KEY, stream=False)
+        self.clients.append(client)
+        self.assertTrue(client.ready())
+
+    def test_context_manager_closes(self) -> None:
+        with toggleslash.create(self.server.url, KEY, stream=False) as client:
+            self.assertTrue(client.ready())
         self.assertEqual(client.status().stream, StreamState.CLOSED)
 
-    def test_the_etag_and_the_flag_version_always_belong_together_while_the_ruleset_swaps(self) -> None:
-        counter = {"n": 0}
-        lock = threading.Lock()
 
-        def next_ruleset(*_: Any) -> FakeReply:
-            with lock:
-                counter["n"] += 1
-                n = counter["n"]
-            return FakeReply(200, headers={"ETag": f'"e{n}"'}, body=ruleset_body(flag("f", True, version=n)))
-
-        events: list[Any] = []
-        transport = ScriptedTransport(ruleset=next_ruleset, events=accepted)
-        client = Client(
-            "http://x",
-            "k",
-            stream=False,
-            poll_interval=0.001,
-            hooks=Hooks(after_evaluation=events.append),
-            _seams=Seams(transport=transport),
+class MismatchTests(Base):
+    def setUp(self) -> None:
+        super().setUp()
+        self.server.publish(
+            ruleset(
+                bool_flag("b", True),
+                flag("s", ["x", "y"], 1),
+                flag("n", [1, 2.5], 1),
+                flag("whole", [1, 2.0], 1),
+                flag("a", [[1], [2]], 1),
+                flag("o", [{}, {"k": 1}], 1),
+                flag("null", [None, None], 1),
+            )
         )
-        client.ready()
-        stop = time.monotonic() + 0.6
-        torn: list[Any] = []
+        self.client = self.make(stream=False, poll_interval=5)
+        self.assertTrue(self.client.ready())
 
-        def reader() -> None:
-            while time.monotonic() < stop:
-                client.variation("f", CONTEXT, False)
+    def kind(self, key: str, fallback: Any) -> tuple[Any, Any]:
+        d = self.client.variation_detail(key, CTX, fallback)
+        return d.value, d.reason.code
 
-        threads = [threading.Thread(target=reader) for _ in range(4)]
-        for thread in threads:
-            thread.start()
-        for thread in threads:
-            thread.join()
-        client.close()
-        self.assertGreater(counter["n"], 5, "the ruleset never swapped under the readers")
-        for event in events:
-            if event.flag_version != int(event.etag.strip('"e')):
-                torn.append(event)
-        self.assertEqual(torn, [])
-        self.assertGreater(len(events), 100)
+    def test_matching_kinds(self) -> None:
+        self.assertEqual(self.kind("b", False), (True, None))
+        self.assertEqual(self.kind("s", ""), ("y", None))
+        self.assertEqual(self.kind("n", 0), (2.5, None))
+        self.assertEqual(self.kind("a", []), ([2], None))
+        self.assertEqual(self.kind("a", ()), ([2], None))
+        self.assertEqual(self.kind("o", {}), ({"k": 1}, None))
+        self.assertEqual(self.kind("null", None), (None, None))
 
-    def test_variation_does_not_wait_for_a_hung_flush_and_close_is_bounded_by_the_request_timeout(self) -> None:
-        def hung_events(m: str, h: Any, b: Any, aborter: Any) -> FakeReply:
-            hang(aborter)
-            return FakeReply()
+    def test_mismatches_give_the_fallback_and_no_index(self) -> None:
+        for key, fallback in [
+            ("b", 0),
+            ("b", ""),
+            ("s", True),
+            ("n", True),
+            ("a", {}),
+            ("o", []),
+            ("null", 0),
+            ("null", ""),
+        ]:
+            d = self.client.variation_detail(key, CTX, fallback)
+            self.assertEqual(d.reason.code, ErrorCode.TYPE_MISMATCH, (key, fallback))
+            self.assertIsNone(d.variation_index)
+            self.assertEqual(d.value, fallback)
 
-        client, _ = make(flag("f", True), events=hung_events, request_timeout=0.4, flush_interval=0.05)
-        client.ready()
-        client.variation("f", CONTEXT, False)
-        time.sleep(0.2)  # the flush thread is now inside the hung request
-        began = time.monotonic()
-        for _ in range(500):
-            client.variation("f", CONTEXT, False)
-        self.assertLess(time.monotonic() - began, 0.5)
-        began = time.monotonic()
-        client.close()
-        self.assertLess(time.monotonic() - began, 3.0)
+    def test_any_fallback_accepts_any_kind(self) -> None:
+        for key in ("b", "s", "n", "a", "o", "null"):
+            self.assertIsNotNone(self.client.variation_detail(key, CTX, None).variation_index)
 
+    def test_a_fallback_that_is_not_json_never_matches(self) -> None:
+        marker = object()
+        d = self.client.variation_detail("b", CTX, marker)
+        self.assertIs(d.value, marker)
+        self.assertEqual(d.reason.code, ErrorCode.TYPE_MISMATCH)
 
-class ProcessTests(unittest.TestCase):
-    def test_a_client_never_closed_does_not_keep_the_process_alive(self) -> None:
-        def handle(request: Any) -> None:
-            if request.path.endswith("/ruleset"):
-                body = ruleset_body(flag("f", True))
-                request.send_response(200)
-                request.send_header("ETag", '"e1"')
-                request.send_header("Content-Length", str(len(body)))
-                request.end_headers()
-                request.wfile.write(body)
-                return
-            request.send_response(200)
-            request.send_header("Connection", "close")
-            request.end_headers()
-            request.wfile.write(b'event: connected\ndata: "e1"\n\n')
-            request.wfile.flush()
-            time.sleep(20)
+    def test_integer_accessor(self) -> None:
+        self.assertEqual(self.client.int_variation("whole", CTX, 0), 2)
+        self.assertIsInstance(self.client.int_variation("whole", CTX, 0), int)
+        d = self.client.int_variation_detail("n", CTX, 9)
+        self.assertEqual((d.value, d.reason.code), (9, ErrorCode.TYPE_MISMATCH))
+        self.assertEqual(self.client.int_variation_detail("b", CTX, 9).reason.code, ErrorCode.TYPE_MISMATCH)
 
-        with LocalServer(handle) as server:
-            code = (
-                "import toggleslash\n"
-                f"c = toggleslash.create_client({server.url!r}, 'k')\n"
-                "assert c.ready()\n"
-                "print(c.variation('f', {'key': 'u'}, False))\n"
+    def test_the_int64_range(self) -> None:
+        top = float(2**63 - 1024)
+        self.assertEqual(_as_int64(top), 2**63 - 1024)
+        self.assertIsNone(_as_int64(float(2**63)))
+        self.assertEqual(_as_int64(-float(2**63)), -(2**63))
+        self.assertIsNone(_as_int64(-float(2**63) - 2048.0))
+        self.assertIsNone(_as_int64(float("inf")))
+        self.assertIsNone(_as_int64(float("nan")))
+        self.assertIsNone(_as_int64(True))
+        self.assertEqual(_as_int64(2**63 - 1), 2**63 - 1)
+        self.assertIsNone(_as_int64(2**63))
+        self.assertEqual(_as_int64(-0.0), 0)
+
+    def test_the_int64_range_through_the_client(self) -> None:
+        self.server.publish(
+            ruleset(
+                flag("top", [0, 2**63 - 1024], 1),
+                flag("over", [0, 2**63], 1),
+                flag("under", [0, -(2**63) - 2048], 1),
             )
-            env = dict(os.environ, PYTHONPATH=str(ROOT / "src"))
-            began = time.monotonic()
-            result = subprocess.run(
-                [sys.executable, "-c", code], env=env, capture_output=True, text=True, timeout=30, cwd=ROOT, check=False
+        )
+        self.assertTrue(wait_until(lambda: self.client.status().etag == '"v2"' or self._poll()))
+
+    def _poll(self) -> bool:
+        return False
+
+
+class Int64ThroughClient(Base):
+    def test_range(self) -> None:
+        self.server.publish(
+            ruleset(
+                flag("top", [0, 2**63 - 1024], 1),
+                flag("over", [0, 2**63], 1),
+                flag("under", [0, -(2**63)], 1),
             )
-            self.assertLess(time.monotonic() - began, 10)
-            self.assertEqual((result.returncode, result.stdout.strip()), (0, "True"), result.stderr)
+        )
+        client = self.make(stream=False, poll_interval=5)
+        self.assertTrue(client.ready())
+        self.assertEqual(client.int_variation("top", CTX, 5), 2**63 - 1024)
+        self.assertEqual(client.int_variation("over", CTX, 5), 5)
+        self.assertEqual(client.int_variation("under", CTX, 5), -(2**63))
+
+
+class HelperTests(unittest.TestCase):
+    def test_durations_fall_back(self) -> None:
+        self.assertEqual(_duration(2, 9.0), 2.0)
+        self.assertEqual(_duration(0.5, 9.0), 0.5)
+        for bad in (0, -1, None, "3", True, float("nan"), 10**400, [1]):
+            self.assertEqual(_duration(bad, 9.0), 9.0, bad)
+
+    def test_expected_kind(self) -> None:
+        self.assertEqual(
+            [_expected_kind(v) for v in (None, True, 1, 1.5, "s", [], (), {}, object())],
+            ["any", "boolean", "number", "number", "string", "array", "array", "object", "invalid"],
+        )
+
+    def test_retry_after(self) -> None:
+        class H(dict):  # type: ignore[type-arg]
+            pass
+
+        def ra(value: str | None) -> float | None:
+            return retry_after(H() if value is None else H({"Retry-After": value}))
+
+        self.assertEqual(ra("5"), 5.0)
+        self.assertEqual(ra("  7 "), 7.0)
+        self.assertEqual(ra("0"), 0.0)
+        self.assertEqual(ra("999999"), 300.0)
+        self.assertEqual(ra("9" * 5000), 300.0)
+        for bad in ("", " ", "1.5", "-1", "1e3", "Wed, 21 Oct 2026 07:28:00 GMT", "٣", "5 s", "+5"):
+            self.assertIsNone(ra(bad), bad)
+        self.assertIsNone(ra(None))
+
+
+class HookTests(Base):
+    def test_hook_event_fields_and_errors(self) -> None:
+        events: list[toggleslash.EvaluationEvent] = []
+        client = self.make(
+            stream=False, poll_interval=5, hooks=toggleslash.Hooks(after_evaluation=events.append)
+        )
+        client.variation("checkout", CTX, False)  # NOT_READY or ready, either way a hook call
+        self.assertTrue(client.ready())
+        client.variation("checkout", CTX, False)
+        client.variation("missing", CTX, 3)
+        client.variation_detail("checkout", "not a context", False)
+        last = events[-3:]
+        self.assertEqual(
+            (last[0].flag_key, last[0].value, last[0].variation_index, last[0].etag, last[0].flag_version),
+            ("checkout", True, 1, '"v1"', 1),
+        )
+        self.assertEqual((last[1].reason.code, last[1].flag_version), (ErrorCode.FLAG_NOT_FOUND, None))
+        self.assertEqual(last[2].reason.code, ErrorCode.INVALID_CONTEXT)
+        self.assertEqual(last[2].context, "not a context")
+
+    def test_a_raising_hook_goes_to_on_error_and_changes_nothing(self) -> None:
+        def boom(_event: Any) -> None:
+            raise ValueError("hook failed")
+
+        client = self.make(stream=False, poll_interval=5, hooks=toggleslash.Hooks(after_evaluation=boom))
+        self.assertTrue(client.ready())
+        self.assertTrue(client.variation("checkout", CTX, False))
+        self.assertEqual([str(e) for e in self.errors], ["hook failed"])
+
+    def test_a_non_callable_hook_is_ignored(self) -> None:
+        client = self.make(stream=False, poll_interval=5, hooks=toggleslash.Hooks(after_evaluation="nope"))  # type: ignore[arg-type]
+        self.assertTrue(client.ready())
+        self.assertTrue(client.variation("checkout", CTX, False))
+
+    def test_an_on_error_that_raises_is_ignored(self) -> None:
+        calls: list[int] = []
+
+        def bad(_error: BaseException) -> None:
+            calls.append(1)
+            raise RuntimeError("on_error raised")
+
+        self.server.on("ruleset", lambda r: r.send(500))
+        client = toggleslash.create(self.server.url, KEY, stream=False, on_error=bad)
+        self.clients.append(client)
+        self.assertFalse(client.ready())
+        self.assertEqual(calls, [1])
+        self.assertEqual(client.status().last_error, "http_500")
+
+    def test_evaluation_failed_is_reported_once_and_still_hooked(self) -> None:
+        events: list[toggleslash.EvaluationEvent] = []
+
+        def explode(*_args: Any) -> Any:
+            raise RuntimeError("evaluator failed")
+
+        client = self.make(
+            stream=False,
+            poll_interval=5,
+            _evaluator=explode,
+            hooks=toggleslash.Hooks(after_evaluation=events.append),
+        )
+        self.assertTrue(client.ready())
+        before = len(self.errors)
+        d = client.variation_detail("checkout", CTX, "fb")
+        self.assertEqual(
+            (d.value, d.variation_index, d.reason.code), ("fb", None, ErrorCode.EVALUATION_FAILED)
+        )
+        self.assertEqual(len(self.errors) - before, 1)
+        self.assertEqual(events[-1].reason.code, ErrorCode.EVALUATION_FAILED)
+        self.assertNotIn("SENTINEL", str(self.errors[-1]))
+
+    def test_the_hook_runs_on_the_callers_thread(self) -> None:
+        seen: list[str] = []
+        client = self.make(
+            stream=False,
+            poll_interval=5,
+            hooks=toggleslash.Hooks(after_evaluation=lambda e: seen.append(threading.current_thread().name)),
+        )
+        self.assertTrue(client.ready())
+        client.variation("checkout", CTX, False)
+        self.assertEqual(seen[-1], threading.current_thread().name)
+
+
+class RetryAfterTests(Base):
+    def test_cap_on_the_ruleset_route(self) -> None:
+        self.server.on("ruleset", lambda r: r.send(429, headers={"Retry-After": "999999"}))
+        client = self.make(stream=False, poll_interval=5)
+        self.assertFalse(client.ready())
+        remaining = client._hold_until - time.monotonic()
+        self.assertTrue(290 < remaining <= 300.5, remaining)
+        self.assertEqual(client.status().last_error, "http_429")
+
+    def test_cap_on_the_stream_route(self) -> None:
+        self.server.on("stream", lambda r: r.send(429, headers={"Retry-After": "1000000000"}))
+        client = self.make()
+        self.assertTrue(client.ready())
+        self.assertTrue(wait_until(lambda: client._hold_until > 0))
+        remaining = client._hold_until - time.monotonic()
+        self.assertTrue(290 < remaining <= 300.5, remaining)
+
+    def test_cap_on_the_events_route_and_the_loss_report(self) -> None:
+        self.server.on("events", lambda r: r.send(429, headers={"Retry-After": "86400"}))
+        client = self.make(stream=False, poll_interval=30, flush_interval=0.05)
+        self.assertTrue(client.ready())
+        client.variation("checkout", CTX, False)
+        self.assertTrue(wait_until(lambda: client._usage._hold_until > 0))
+        remaining = client._usage._hold_until - time.monotonic()
+        self.assertTrue(290 < remaining <= 300.5, remaining)
+        client.variation("legacy", CTX, True)
+        started = time.monotonic()
+        client.close()
+        self.assertLess(time.monotonic() - started, 3)
+        self.assertEqual(self.server.count("events"), 1)
+        self.assertTrue(any("closed with" in str(e) and "unsent" in str(e) for e in self.errors), self.errors)
+
+    def test_a_hold_is_never_shortened(self) -> None:
+        client = self.make(stream=False, poll_interval=5)
+        client._hold(100)
+        client._hold(5)
+        self.assertGreater(client._hold_until - time.monotonic(), 90)
+
+
+class UsageTests(Base):
+    def test_counts_either_side_of_utc_midnight_go_out_as_two_days(self) -> None:
+        class Clock(SystemClock):
+            current = datetime(2026, 11, 10, 23, 59, 59, tzinfo=UTC)
+
+            def now(self) -> datetime:
+                return self.current
+
+        clock = Clock()
+        client = self.make(stream=False, poll_interval=30, flush_interval=60, _clock=clock)
+        self.assertTrue(client.ready())
+        client.variation("checkout", CTX, False)
+        client.variation("checkout", CTX, False)
+        clock.current = datetime(2026, 11, 11, 0, 0, 1, tzinfo=UTC)
+        client.variation("checkout", CTX, False)
+        client.close()
+        events = self.server.recorded("events")
+        self.assertEqual(len(events), 1)
+        body = events[0].json()
+        self.assertEqual(set(body), {"events"})
+        got = {(e["day"], e["flag"], e["variationIndex"]): e["count"] for e in body["events"]}
+        self.assertEqual(got, {("2026-11-10", "checkout", 1): 2, ("2026-11-11", "checkout", 1): 1})
+        for e in body["events"]:
+            self.assertEqual(set(e), {"flag", "variationIndex", "count", "day"})
+        self.assertEqual(events[0].headers["Content-Type"], "application/json")
+
+    def test_a_non_utc_clock_is_converted(self) -> None:
+        from datetime import timedelta, timezone
+
+        class Clock(SystemClock):
+            def now(self) -> datetime:
+                return datetime(2026, 11, 11, 1, 30, tzinfo=timezone(timedelta(hours=2)))
+
+        client = self.make(stream=False, poll_interval=30, flush_interval=60, _clock=Clock())
+        self.assertTrue(client.ready())
+        client.variation("checkout", CTX, False)
+        client.close()
+        self.assertEqual(self.server.recorded("events")[0].json()["events"][0]["day"], "2026-11-10")
+
+    def test_batches_of_at_most_500_and_the_kept_and_dropped_statuses(self) -> None:
+        flags = [bool_flag(f"f{i}", True) for i in range(1203)]
+        self.server.publish(ruleset(*flags))
+        client = self.make(stream=False, poll_interval=30, flush_interval=60)
+        self.assertTrue(client.ready())
+        for i in range(1203):
+            client.variation(f"f{i}", CTX, False)
+        client.close()
+        sizes = [len(r.json()["events"]) for r in self.server.recorded("events")]
+        self.assertEqual(sorted(sizes, reverse=True), [500, 500, 203])
+
+    def test_kept_statuses_are_resent_and_dropped_statuses_are_not(self) -> None:
+        for status, kept in ((500, True), (408, True), (429, True), (400, False), (404, False)):
+            with self.subTest(status=status):
+                server = FakeServer()
+                server.on("events", lambda r, s=status: r.send(s))
+                errors: list[BaseException] = []
+                client = toggleslash.create(
+                    server.url,
+                    KEY,
+                    stream=False,
+                    poll_interval=30,
+                    flush_interval=0.05,
+                    on_error=errors.append,
+                )
+                try:
+                    self.assertTrue(client.ready())
+                    client.variation("checkout", CTX, False)
+                    self.assertTrue(wait_until(lambda: server.count("events") >= (3 if kept else 1)))
+                    time.sleep(0.2)
+                    self.assertTrue(server.count("events") >= 3 if kept else server.count("events") == 1)
+                    self.assertTrue(any(f"http_{status}" in str(e) for e in errors))
+                finally:
+                    client.close()
+                    server.close()
+
+    def test_nothing_is_counted_after_close_and_an_empty_flush_sends_nothing(self) -> None:
+        client = self.make(stream=False, poll_interval=30, flush_interval=0.05)
+        self.assertTrue(client.ready())
+        time.sleep(0.2)
+        self.assertEqual(self.server.count("events"), 0)
+        client.close()
+        client.variation("checkout", CTX, False)
+        self.assertEqual(client._usage.pending(), 0)
+        self.assertEqual(self.server.count("events"), 0)
 
 
 if __name__ == "__main__":

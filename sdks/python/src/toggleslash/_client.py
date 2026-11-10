@@ -1,360 +1,594 @@
-"""The client: evaluation, hooks, status and close (contract 2, 4, 5, 6, 10 and 11)."""
+"""The client: options, evaluation, the sync loop, usage and close (contract 2 to 12)."""
 
 from __future__ import annotations
 
+import dataclasses
 import math
+import random
 import threading
-from collections.abc import Callable, Mapping
-from datetime import timedelta
+import time
+from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
-from ._evaluate import evaluate
-from ._http import HttpTransport
-from ._seams import Seams
-from ._sync import Snapshot, Sync
+from . import _json
+from ._evaluate import Ruleset, evaluate, load_ruleset
+from ._http import (
+    STREAM_IDLE_SECONDS,
+    Aborted,
+    Aborts,
+    Endpoint,
+    NetworkFailure,
+    RequestTimeout,
+    Transport,
+)
+from ._sse import SseParser
 from ._types import (
-    ClientStatus,
-    Context,
+    Detail,
     ErrorCode,
     EvaluationEvent,
     Hooks,
+    LastError,
     Reason,
     ReasonKind,
-    VariationDetail,
+    Status,
+    StreamState,
+    ToggleSlashError,
 )
-from ._usage import Usage
+from ._usage import Usage, retry_after
 
-DEFAULT_POLL_INTERVAL = 30.0
-DEFAULT_FLUSH_INTERVAL = 30.0
-DEFAULT_REQUEST_TIMEOUT = 10.0
-# Longer than anyone means, and short enough for `threading` to accept as a timeout.
-MAX_SECONDS = 10.0 * 365 * 86400
+DEFAULT_POLL_SECONDS = 30.0
+DEFAULT_FLUSH_SECONDS = 30.0
+DEFAULT_TIMEOUT_SECONDS = 10.0
+MAX_WAIT_SECONDS = 31_536_000.0
+INT64_MIN = -(2**63)
+INT64_MAX = 2**63 - 1
 
-_INT64_MIN = -(2**63)
-_INT64_MAX = 2**63 - 1
+Evaluator = Callable[[Ruleset, Any, Any], tuple[Any, "int | None", Reason]]
 
 
-def _seconds(value: object, default: float) -> float:
-    """A duration option: seconds as a number or a `timedelta`. Anything unusable is the default."""
-    try:
-        if isinstance(value, timedelta):
-            value = value.total_seconds()
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            return default
-        number = float(value)
-        if not math.isfinite(number) or number <= 0:
-            return default
-        return min(number, MAX_SECONDS)
-    except Exception:
+class SystemClock:
+    """Real time. A test passes a clock with the same three methods."""
+
+    def monotonic(self) -> float:
+        return time.monotonic()
+
+    def now(self) -> datetime:
+        return datetime.now(UTC)
+
+    def wait(self, event: threading.Event, seconds: float) -> bool:
+        """Wait for ``event`` up to ``seconds``; True when it was set."""
+        return event.wait(max(0.0, min(seconds, MAX_WAIT_SECONDS)))
+
+
+def _jitter() -> float:
+    return 0.5 + random.random() * 0.5
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _Held:
+    """The ruleset and the ETag that names it: swapped together by one assignment."""
+
+    ruleset: Ruleset | None
+    etag: str | None
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _State:
+    last_sync_at: datetime | None
+    stream: StreamState
+    last_error: str | None
+
+
+def _duration(value: Any, default: float) -> float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
         return default
+    try:
+        seconds = float(value)
+    except OverflowError:
+        return default
+    if math.isnan(seconds) or seconds <= 0:
+        return default
+    return min(seconds, MAX_WAIT_SECONDS)
 
 
-def _kind(value: object) -> str:
-    if value is None:
-        return "null"
-    if isinstance(value, bool):
+def _expected_kind(fallback: Any) -> str:
+    if fallback is None:
+        return "any"
+    if isinstance(fallback, bool):
         return "boolean"
-    if isinstance(value, (int, float)):
+    if isinstance(fallback, int | float):
         return "number"
-    if isinstance(value, str):
+    if isinstance(fallback, str):
         return "string"
-    if isinstance(value, (list, tuple)):
+    if isinstance(fallback, list | tuple):
         return "array"
-    if isinstance(value, Mapping):
+    if isinstance(fallback, dict):
         return "object"
-    return "other"
+    return "invalid"
 
 
-def _copy(value: Any) -> Any:
-    """A copy of a served list or dict, so a caller who changes it cannot change the ruleset held."""
-    if not isinstance(value, (list, dict)):
-        return value
-    root: Any = [] if isinstance(value, list) else {}
-    stack = [(value, root)]
-    while stack:
-        source, target = stack.pop()
-        items = enumerate(source) if isinstance(source, list) else source.items()
-        for key, item in items:
-            if isinstance(item, (list, dict)):
-                child: Any = [] if isinstance(item, list) else {}
-                stack.append((item, child))
-            else:
-                child = item
-            if isinstance(target, list):
-                target.append(child)
-            else:
-                target[key] = child
-    return root
+def _served_matches(kind: str, value: Any) -> bool:
+    if kind == "any":
+        return True
+    if value is None or kind == "invalid":
+        return False
+    if kind == "boolean":
+        return isinstance(value, bool)
+    if kind == "number":
+        return isinstance(value, int | float) and not isinstance(value, bool)
+    if kind == "string":
+        return isinstance(value, str)
+    if kind == "array":
+        return isinstance(value, list)
+    return isinstance(value, dict)
 
 
-class _Accessor:
-    """What a typed method accepts of a served value, and what it turns it into."""
-
-    def __init__(self, kinds: frozenset[str] | None, convert: Callable[[Any], tuple[bool, Any]] | None = None) -> None:
-        self.kinds = kinds  # None: the fallback's kind decides (the generic method)
-        self.convert = convert
-
-    def accept(self, value: Any, fallback: Any) -> tuple[bool, Any]:
-        kind = _kind(value)
-        if self.kinds is None:
-            if fallback is not None and kind != _kind(fallback):
-                return False, None
-        elif kind not in self.kinds:
-            return False, None
-        elif fallback is not None and _kind(fallback) in self.kinds and kind != _kind(fallback):
-            return False, None  # a JSON accessor keeps array and object apart, as the generic method does
-        if self.convert is not None:
-            return self.convert(value)
-        return True, value
-
-
-def _to_int(value: Any) -> tuple[bool, Any]:
+def _as_int64(value: Any) -> int | None:
+    """The served number as an integer, or None when it has a fraction or leaves 64 bits."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
     if isinstance(value, float):
-        if not math.isfinite(value) or value != math.floor(value):
-            return False, None
+        if not math.isfinite(value) or not value.is_integer():
+            return None
         value = int(value)
-    if not _INT64_MIN <= value <= _INT64_MAX:
-        return False, None
-    return True, value
+    return value if INT64_MIN <= value <= INT64_MAX else None
 
 
-def _to_float(value: Any) -> tuple[bool, Any]:
-    return True, float(value)
-
-
-_GENERIC = _Accessor(None)
-_BOOL = _Accessor(frozenset({"boolean"}))
-_STRING = _Accessor(frozenset({"string"}))
-_INT = _Accessor(frozenset({"number"}), _to_int)
-_FLOAT = _Accessor(frozenset({"number"}), _to_float)
-_JSON = _Accessor(frozenset({"array", "object"}))
-
-
-def _fallback(fallback: Any, code: ErrorCode) -> VariationDetail:
-    return VariationDetail(fallback, None, Reason(ReasonKind.ERROR, code=code))
-
-
-def _flag_version(snapshot: Snapshot | None, flag_key: str) -> Any:
-    if snapshot is None:
-        return None
-    entry = snapshot.ruleset.flags.get(flag_key)
-    if entry is None or entry.status != "ready" or entry.flag is None:
-        return None
-    return entry.flag.get("version")
+def _error_detail(fallback: Any, code: ErrorCode) -> Detail:
+    return Detail(fallback, None, Reason(ReasonKind.ERROR, code=code))
 
 
 class Client:
-    """A ToggleSlash server SDK client. Build one with `toggleslash.create_client`.
-
-    Every method is safe to call from any thread and none raises. `variation` and the typed methods read
-    memory and never wait for the network."""
+    """A ToggleSlash server SDK client. Build one with :func:`toggleslash.create`."""
 
     def __init__(
         self,
-        url: str,
-        sdk_key: str,
+        url: Any,
+        sdk_key: Any,
         *,
         stream: bool = True,
-        poll_interval: float | timedelta | None = None,
-        flush_interval: float | timedelta | None = None,
-        request_timeout: float | timedelta | None = None,
-        hooks: Hooks | None = None,
-        on_error: Callable[[Exception], None] | None = None,
-        _seams: Seams | None = None,
+        poll_interval: Any = DEFAULT_POLL_SECONDS,
+        flush_interval: Any = DEFAULT_FLUSH_SECONDS,
+        request_timeout: Any = DEFAULT_TIMEOUT_SECONDS,
+        hooks: Any = None,
+        on_error: Any = None,
+        _transport: Any = None,
+        _clock: Any = None,
+        _jitter_source: Callable[[], float] | None = None,
+        _stream_watchdog: float = STREAM_IDLE_SECONDS,
+        _evaluator: Evaluator | None = None,
     ) -> None:
-        seams = _seams or Seams()
+        base = url.rstrip("/") if isinstance(url, str) else ""
+        self._endpoint = Endpoint(base)
+        self._headers = {"Authorization": "Bearer " + (sdk_key if isinstance(sdk_key, str) else "")}
+        self._stream_on = stream is not False
+        self._poll_interval = _duration(poll_interval, DEFAULT_POLL_SECONDS)
+        self._flush_interval = _duration(flush_interval, DEFAULT_FLUSH_SECONDS)
+        self._request_timeout = _duration(request_timeout, DEFAULT_TIMEOUT_SECONDS)
+        hook = getattr(hooks, "after_evaluation", None) if hooks is not None else None
+        self._after_evaluation = hook if callable(hook) else None
         self._on_error = on_error if callable(on_error) else None
-        hook = getattr(hooks, "after_evaluation", None)
-        self._hook: Callable[[EvaluationEvent], Any] | None = hook if callable(hook) else None
-        self._evaluator = seams.evaluator or evaluate
-        base_url = url.rstrip("/") if isinstance(url, str) else ""
-        key = sdk_key if isinstance(sdk_key, str) else ""
-        timeout = _seconds(request_timeout, DEFAULT_REQUEST_TIMEOUT)
-        self._flush_interval = _seconds(flush_interval, DEFAULT_FLUSH_INTERVAL)
-        transport = seams.transport or HttpTransport(base_url)
-        self._stop = threading.Event()
-        self._sync = Sync(
-            transport,
-            key,
-            stream=stream is not False,
-            poll_interval=_seconds(poll_interval, DEFAULT_POLL_INTERVAL),
-            request_timeout=timeout,
-            report=self._report,
-            stop=self._stop,
-            seams=seams,
-        )
-        self._usage = Usage(transport, key, timeout, self._report, seams.monotonic, seams.wall)
+        self._transport = _transport if _transport is not None else Transport()
+        self._clock = _clock if _clock is not None else SystemClock()
+        self._jitter = _jitter_source if _jitter_source is not None else _jitter
+        self._watchdog = _stream_watchdog
+        self._evaluator: Evaluator = _evaluator if _evaluator is not None else evaluate
+
+        self._held = _Held(None, None)
+        self._state_lock = threading.Lock()
+        self._state = _State(None, StreamState.CONNECTING if self._stream_on else StreamState.OFF, None)
+        self._closing = threading.Event()
+        self._aborts = Aborts()
+        self._hold_until = 0.0
+        self._ready_event = threading.Event()
+        self._ready_value = False
         self._close_lock = threading.Lock()
-        self._closer: int | None = None
-        self._closed = False
-        self._flush_thread = threading.Thread(target=self._flush_loop, name="toggleslash-flush", daemon=True)
-        self._sync.start()
-        try:
-            self._flush_thread.start()
-        except RuntimeError as error:
-            self._report(error)
+        self._close_started = False
+        self._closed = threading.Event()
+        self._usage = Usage(
+            endpoint=self._endpoint,
+            headers=self._headers,
+            transport=self._transport,
+            monotonic=self._clock.monotonic,
+            request_timeout=self._request_timeout,
+            report=self._report_usage,
+        )
+        self._sync_thread = threading.Thread(target=self._run_sync, name="toggleslash-sync", daemon=True)
+        self._flush_thread = threading.Thread(target=self._run_flush, name="toggleslash-flush", daemon=True)
 
-    # -- the public methods -------------------------------------------------------------------------------
-
-    def ready(self) -> bool:
-        """Blocks until the first load has finished, then says whether a ruleset is held."""
-        return self._sync.ready()
-
-    def variation(self, flag_key: str, context: Context, fallback: Any) -> Any:
-        """The value the flag serves `context`, or `fallback`. The fallback's JSON kind (`None` for any)
-        must match the served kind."""
-        return self._evaluate(flag_key, context, fallback, _GENERIC).value
-
-    def variation_detail(self, flag_key: str, context: Context, fallback: Any) -> VariationDetail:
-        return self._evaluate(flag_key, context, fallback, _GENERIC)
-
-    def bool_variation(self, flag_key: str, context: Context, fallback: bool) -> bool:
-        return self._evaluate(flag_key, context, fallback, _BOOL).value
-
-    def bool_variation_detail(self, flag_key: str, context: Context, fallback: bool) -> VariationDetail:
-        return self._evaluate(flag_key, context, fallback, _BOOL)
-
-    def string_variation(self, flag_key: str, context: Context, fallback: str) -> str:
-        return self._evaluate(flag_key, context, fallback, _STRING).value
-
-    def string_variation_detail(self, flag_key: str, context: Context, fallback: str) -> VariationDetail:
-        return self._evaluate(flag_key, context, fallback, _STRING)
-
-    def int_variation(self, flag_key: str, context: Context, fallback: int) -> int:
-        """A served number with a fraction, or outside the signed 64-bit range, is `TYPE_MISMATCH`; `2.0` is `2`."""
-        return self._evaluate(flag_key, context, fallback, _INT).value
-
-    def int_variation_detail(self, flag_key: str, context: Context, fallback: int) -> VariationDetail:
-        return self._evaluate(flag_key, context, fallback, _INT)
-
-    def float_variation(self, flag_key: str, context: Context, fallback: float) -> float:
-        return self._evaluate(flag_key, context, fallback, _FLOAT).value
-
-    def float_variation_detail(self, flag_key: str, context: Context, fallback: float) -> VariationDetail:
-        return self._evaluate(flag_key, context, fallback, _FLOAT)
-
-    def json_variation(self, flag_key: str, context: Context, fallback: Any) -> Any:
-        """A served list or dict (a copy: changing it does not change the ruleset held)."""
-        return self._evaluate(flag_key, context, fallback, _JSON).value
-
-    def json_variation_detail(self, flag_key: str, context: Context, fallback: Any) -> VariationDetail:
-        return self._evaluate(flag_key, context, fallback, _JSON)
-
-    def status(self) -> ClientStatus:
-        """What this client has loaded and how its stream is doing. Local: it makes no request."""
-        return self._sync.status()
-
-    def flush(self) -> None:
-        """Sends the pending usage counts now, under the rules of contract 9. An extra the contract allows."""
-        try:
-            self._usage.flush()
-        except Exception as error:
-            self._report(error)
-
-    def close(self) -> None:
-        """Stops following the server, sends the final usage flush and returns. Safe to call twice, from
-        any thread and from a callback."""
-        me = threading.get_ident()
-        if self._closer == me:  # called from a callback of this very close
-            return
-        with self._close_lock:
-            if self._closed:
-                return
-            self._closer = me
-            try:
-                self._usage.stop_recording()
-                self._sync.begin_close()
-                self._stop.set()
-                self._sync.join()
-                if self._flush_thread.is_alive() and self._flush_thread is not threading.current_thread():
-                    self._flush_thread.join()
-                self._usage.flush(final=True)
-            except Exception as error:
-                self._report(error)
-            finally:
-                self._closer = None
-                self._closed = True
+    def _start(self) -> None:
+        self._sync_thread.start()
+        self._flush_thread.start()
 
     def __enter__(self) -> Client:
         return self
 
-    def __exit__(self, *exc: object) -> None:
+    def __exit__(self, *_exc: object) -> None:
         self.close()
 
-    # -- inside -------------------------------------------------------------------------------------------
+    # ------------------------------------------------------------------ callbacks
 
-    def _report(self, error: BaseException) -> None:
+    def _notify(self, error: BaseException) -> None:
+        """Hand an error to ``on_error``. No SDK lock is held; whatever it raises is dropped."""
         callback = self._on_error
         if callback is None:
             return
         try:
-            callback(error)  # type: ignore[arg-type]
+            callback(error)
         except Exception:
-            pass  # a faulty on_error must not break the client
+            pass
 
-    def _flush_loop(self) -> None:
-        try:
-            while not self._stop.wait(self._flush_interval):
-                self._usage.flush()
-        except BaseException as error:
-            self._report(error)
+    def _report_usage(self, code: str, message: str) -> None:
+        self._notify(ToggleSlashError(message, code))
 
-    def _evaluate(self, flag_key: str, context: Context, fallback: Any, accessor: _Accessor) -> VariationDetail:
-        snapshot = self._sync.held  # read once: the ruleset and its ETag always belong together
-        failure: Exception | None = None
+    # ------------------------------------------------------------------ evaluation
+
+    def variation(self, flag_key: str, context: Any, fallback: Any) -> Any:
+        """The flag's value for ``context``, or ``fallback``. Never raises."""
+        return self._detail(flag_key, context, fallback, False).value
+
+    def variation_detail(self, flag_key: str, context: Any, fallback: Any) -> Detail:
+        """Like :meth:`variation`, with the variation index and the reason."""
+        return self._detail(flag_key, context, fallback, False)
+
+    def int_variation(self, flag_key: str, context: Any, fallback: int) -> int:
+        """The integer accessor: a fraction or a value beyond signed 64 bits is ``TYPE_MISMATCH``."""
+        return self._detail(flag_key, context, fallback, True).value
+
+    def int_variation_detail(self, flag_key: str, context: Any, fallback: int) -> Detail:
+        return self._detail(flag_key, context, fallback, True)
+
+    def _detail(self, flag_key: Any, context: Any, fallback: Any, integer: bool) -> Detail:
+        held = self._held
+        failure: BaseException | None = None
         try:
-            if snapshot is None:
-                detail = _fallback(fallback, ErrorCode.NOT_READY)
-            else:
-                result = self._evaluator(snapshot.ruleset, flag_key, context)
-                if result.variation_index is None:
-                    detail = VariationDetail(fallback, None, result.reason)
-                else:
-                    accepted, value = accessor.accept(result.value, fallback)
-                    if not accepted:
-                        detail = _fallback(fallback, ErrorCode.TYPE_MISMATCH)
-                    else:
-                        detail = VariationDetail(_copy(value), result.variation_index, result.reason)
-                        self._usage.record(flag_key, result.variation_index)
+            detail = self._compute(held, flag_key, context, fallback, integer)
         except Exception as error:
             failure = error
-            detail = _fallback(fallback, ErrorCode.EVALUATION_FAILED)
+            detail = _error_detail(fallback, ErrorCode.EVALUATION_FAILED)
         if failure is not None:
-            self._report(failure)
-        hook = self._hook
-        if hook is not None:
-            try:
-                hook(
-                    EvaluationEvent(
-                        flag_key=flag_key,
-                        context=context,
-                        value=detail.value,
-                        variation_index=detail.variation_index,
-                        reason=detail.reason,
-                        etag=snapshot.etag if snapshot is not None else None,
-                        flag_version=_flag_version(snapshot, flag_key),
-                    )
-                )
-            except Exception as error:
-                self._report(error)
+            self._notify(
+                ToggleSlashError("evaluation failed: " + type(failure).__name__, "evaluation_failed")
+            )
+        self._run_hook(held, flag_key, context, detail)
         return detail
 
+    def _compute(self, held: _Held, flag_key: Any, context: Any, fallback: Any, integer: bool) -> Detail:
+        ruleset = held.ruleset
+        if ruleset is None:
+            return _error_detail(fallback, ErrorCode.NOT_READY)
+        value, index, reason = self._evaluator(ruleset, flag_key, context)
+        if index is None:
+            return Detail(fallback, None, reason)
+        kind = _expected_kind(fallback)
+        if integer:
+            if kind != "number":
+                return _error_detail(fallback, ErrorCode.TYPE_MISMATCH)
+            whole = _as_int64(value)
+            if whole is None:
+                return _error_detail(fallback, ErrorCode.TYPE_MISMATCH)
+            value = whole
+        elif not _served_matches(kind, value):
+            return _error_detail(fallback, ErrorCode.TYPE_MISMATCH)
+        self._usage.add(flag_key, index, self._clock.now().astimezone(UTC).strftime("%Y-%m-%d"))
+        return Detail(value, index, reason)
 
-def create_client(
+    def _run_hook(self, held: _Held, flag_key: Any, context: Any, detail: Detail) -> None:
+        hook = self._after_evaluation
+        if hook is None:
+            return
+        version: int | None = None
+        try:
+            version = held.ruleset.flag_version(flag_key) if held.ruleset is not None else None
+        except Exception:
+            version = None
+        try:
+            hook(
+                EvaluationEvent(
+                    flag_key,
+                    context,
+                    detail.value,
+                    detail.variation_index,
+                    detail.reason,
+                    held.etag,
+                    version,
+                )
+            )
+        except Exception as error:
+            self._notify(error)
+
+    # ------------------------------------------------------------------ ready, status
+
+    def ready(self) -> bool:
+        """Block until the first ruleset attempt has settled (bounded). True if a ruleset is held."""
+        if self._ready_event.is_set():
+            return self._ready_value
+        if threading.current_thread() in (self._sync_thread, self._flush_thread):
+            return self._held.ruleset is not None
+        self._ready_event.wait(self._request_timeout + 1.0)
+        self._settle(self._held.ruleset is not None)
+        return self._ready_value
+
+    def _settle(self, value: bool) -> None:
+        with self._state_lock:
+            if self._ready_event.is_set():
+                return
+            self._ready_value = value
+            self._ready_event.set()
+
+    def status(self) -> Status:
+        """One snapshot of the ETag, the last sync, the stream and the last error."""
+        with self._state_lock:
+            held, state = self._held, self._state
+        return Status(held.etag, state.last_sync_at, state.stream, state.last_error)
+
+    def _set_stream(self, stream: StreamState) -> None:
+        with self._state_lock:
+            if self._state.stream is StreamState.CLOSED:
+                return
+            self._state = dataclasses.replace(self._state, stream=stream)
+
+    def _synced(self, held: _Held | None) -> None:
+        now = self._clock.now().astimezone(UTC)
+        with self._state_lock:
+            if held is not None:
+                self._held = held
+            self._state = dataclasses.replace(self._state, last_sync_at=now, last_error=None)
+
+    def _clear_error(self) -> None:
+        with self._state_lock:
+            self._state = dataclasses.replace(self._state, last_error=None)
+
+    def _sync_error(self, code: str, message: str) -> None:
+        """A failure of a ruleset or stream request. Nothing is set for a failure close caused."""
+        with self._state_lock:
+            if self._closing.is_set():
+                return
+            self._state = dataclasses.replace(self._state, last_error=code)
+        self._notify(ToggleSlashError(message, code))
+
+    # ------------------------------------------------------------------ the sync thread
+
+    def _run_sync(self) -> None:
+        try:
+            try:
+                self._fetch_ruleset()
+            except Exception:
+                pass
+            finally:
+                self._settle(self._held.ruleset is not None)
+            self._loop()
+        except Exception:
+            pass
+
+    def _hold(self, seconds: float) -> None:
+        until = self._clock.monotonic() + seconds
+        with self._state_lock:
+            self._hold_until = max(self._hold_until, until)
+
+    def _wait_hold(self) -> None:
+        while not self._closing.is_set():
+            remaining = self._hold_until - self._clock.monotonic()
+            if remaining <= 0:
+                return
+            if self._clock.wait(self._closing, remaining):
+                return
+
+    def _loop(self) -> None:
+        failures = 0
+        while not self._closing.is_set():
+            if self._stream_on:
+                self._wait_hold()
+                if self._closing.is_set():
+                    return
+            connected = self._follow() if self._stream_on else False
+            if self._closing.is_set():
+                return
+            failures = 0 if connected else failures + 1
+            if self._stream_on:
+                ceiling = min(self._poll_interval, 2.0 ** min(failures, 16))
+                delay = ceiling * self._jitter()
+            else:
+                delay = self._poll_interval
+            if self._clock.wait(self._closing, delay):
+                return
+            self._wait_hold()
+            if self._closing.is_set():
+                return
+            if not connected:
+                self._fetch_ruleset()
+
+    def _fetch_ruleset(self) -> bool:
+        """The ruleset request of 7.1. True when it was a sync."""
+        headers = {"Accept": "application/json", **self._headers}
+        held = self._held
+        if held.ruleset is not None and held.etag is not None:
+            headers["If-None-Match"] = held.etag
+        try:
+            response = self._transport.fetch(
+                self._endpoint,
+                "GET",
+                "/sdk/v1/ruleset",
+                headers,
+                None,
+                self._request_timeout,
+                self._aborts,
+            )
+        except RequestTimeout:
+            self._sync_error(LastError.TIMEOUT, "ruleset request failed: timeout")
+            return False
+        except Aborted:
+            return False
+        except NetworkFailure:
+            self._sync_error(LastError.NETWORK, "ruleset request failed: network")
+            return False
+        status = response.status
+        if status == 304:
+            self._synced(None)
+            return True
+        if status == 200:
+            return self._accept(response)
+        if status == 429:
+            seconds = retry_after(response.headers)
+            if seconds is not None:
+                self._hold(seconds)
+        code = f"http_{status}"
+        self._sync_error(code, f"ruleset request failed: {code}")
+        return False
+
+    def _accept(self, response: Any) -> bool:
+        try:
+            raw = _json.loads(response.body)
+        except (ValueError, RecursionError):
+            raw = None
+        if not (
+            isinstance(raw, dict)
+            and isinstance(raw.get("flags"), list)
+            and isinstance(raw.get("segments"), list)
+        ):
+            self._sync_error(LastError.BAD_RULESET, "ruleset request failed: bad_ruleset")
+            return False
+        etag = response.headers.get("ETag") if response.headers is not None else None
+        self._synced(_Held(load_ruleset(raw), etag if isinstance(etag, str) else None))
+        return True
+
+    # ------------------------------------------------------------------ the stream
+
+    def _follow(self) -> bool:
+        """One stream attempt (7.2). True when it connected."""
+        self._set_stream(StreamState.CONNECTING)
+        stream = None
+        try:
+            try:
+                stream = self._transport.open_stream(
+                    self._endpoint,
+                    "/sdk/v1/stream",
+                    {"Accept": "text/event-stream", **self._headers},
+                    self._request_timeout,
+                    self._watchdog,
+                    self._aborts,
+                )
+            except RequestTimeout:
+                self._sync_error(LastError.TIMEOUT, "stream request failed: timeout")
+                return False
+            except Aborted:
+                return False
+            except NetworkFailure:
+                self._sync_error(LastError.NETWORK, "stream request failed: network")
+                return False
+            if stream.status != 200 or stream.bodyless:
+                if stream.status == 429:
+                    seconds = retry_after(stream.headers)
+                    if seconds is not None:
+                        self._hold(seconds)
+                code = f"http_{stream.status}"
+                self._sync_error(code, f"stream request failed: {code}")
+                return False
+            return self._read_events(stream)
+        finally:
+            if stream is not None:
+                stream.close()
+            self._set_stream(StreamState.DISCONNECTED)
+
+    def _read_events(self, stream: Any) -> bool:
+        parser = SseParser()
+        connected = False
+        while True:
+            try:
+                chunk = stream.read()
+            except RequestTimeout:
+                self._sync_error(LastError.TIMEOUT, "stream failed: timeout")
+                return connected
+            except Aborted:
+                return connected
+            except NetworkFailure:
+                self._sync_error(LastError.NETWORK, "stream failed: network")
+                return connected
+            if not chunk:
+                return connected
+            for name, data in parser.feed(chunk):
+                if name == "connected":
+                    connected = True
+                    self._set_stream(StreamState.CONNECTED)
+                    self._clear_error()
+                elif name != "changed":
+                    continue
+                if self._closing.is_set():
+                    return connected
+                held = self._held
+                if held.ruleset is not None and held.etag is not None and held.etag == data:
+                    self._synced(None)
+                elif not self._fetch_ruleset():
+                    return False
+
+    # ------------------------------------------------------------------ usage and close
+
+    def _run_flush(self) -> None:
+        while not self._clock.wait(self._closing, self._flush_interval):
+            try:
+                self._usage.flush()
+            except Exception:
+                pass
+
+    def close(self) -> None:
+        """Stop, send the final usage flush and return. Safe twice, and from many threads."""
+        with self._close_lock:
+            leader = not self._close_started
+            self._close_started = True
+        if not leader:
+            self._closed.wait(4 * self._request_timeout)
+            return
+        try:
+            with self._state_lock:
+                self._closing.set()
+                self._state = dataclasses.replace(self._state, stream=StreamState.CLOSED)
+            self._aborts.abort_all()
+            deadline = time.monotonic() + self._request_timeout
+            me = threading.current_thread()
+            for thread in (self._sync_thread, self._flush_thread):
+                if thread is not me and thread.is_alive():
+                    thread.join(max(0.0, deadline - time.monotonic()))
+            self._usage.stop()
+            self._final_flush()
+            self._settle(False)
+        finally:
+            self._closed.set()
+
+    def _final_flush(self) -> None:
+        try:
+            self._usage.flush(lock_timeout=self._request_timeout)
+        except Exception:
+            pass
+        pending = self._usage.pending()
+        if pending and self._usage.holding():
+            self._notify(
+                ToggleSlashError(
+                    f"closed with {pending} usage counts unsent: the server asked to wait",
+                    "usage_unsent",
+                )
+            )
+
+
+def create(
     url: str,
     sdk_key: str,
     *,
     stream: bool = True,
-    poll_interval: float | timedelta | None = None,
-    flush_interval: float | timedelta | None = None,
-    request_timeout: float | timedelta | None = None,
+    poll_interval: float = DEFAULT_POLL_SECONDS,
+    flush_interval: float = DEFAULT_FLUSH_SECONDS,
+    request_timeout: float = DEFAULT_TIMEOUT_SECONDS,
     hooks: Hooks | None = None,
-    on_error: Callable[[Exception], None] | None = None,
+    on_error: Callable[[BaseException], Any] | None = None,
+    _transport: Any = None,
+    _clock: Any = None,
+    _jitter_source: Callable[[], float] | None = None,
+    _stream_watchdog: float = STREAM_IDLE_SECONDS,
+    _evaluator: Evaluator | None = None,
 ) -> Client:
-    """Starts a client: two daemon threads, and a first load that begins at once. It returns without waiting
-    for the network and never raises. Durations are seconds (a number or a `timedelta`); `None`, zero or a
-    negative one is the default (30 s, 30 s and 10 s)."""
-    return Client(
+    """Start a client: two daemon threads, and the first ruleset request at once. It returns
+    immediately; call ``client.ready()`` to wait for the first answer."""
+    client = Client(
         url,
         sdk_key,
         stream=stream,
@@ -363,4 +597,11 @@ def create_client(
         request_timeout=request_timeout,
         hooks=hooks,
         on_error=on_error,
+        _transport=_transport,
+        _clock=_clock,
+        _jitter_source=_jitter_source,
+        _stream_watchdog=_stream_watchdog,
+        _evaluator=_evaluator,
     )
+    client._start()
+    return client

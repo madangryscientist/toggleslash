@@ -1,242 +1,188 @@
-# Python SDK: design
+# ToggleSlash Python server SDK: design
 
-This is the design of the ToggleSlash server SDK for Python, written before the code, to
-[`docs/sdk-contract.md`](../../docs/sdk-contract.md) (the contract) and
-[`docs/evaluation.md`](../../docs/evaluation.md) (the spec). It is built from
-[`docs/sdk-authoring/PROMPT.md`](../../docs/sdk-authoring/PROMPT.md); the run report is [`RUN.md`](RUN.md).
+This is the design the SDK in this directory was built to (phase 1 of
+[`docs/sdk-authoring/PROMPT.md`](../../docs/sdk-authoring/PROMPT.md)). The contract is
+[`docs/sdk-contract.md`](../../docs/sdk-contract.md), evaluation is
+[`docs/evaluation.md`](../../docs/evaluation.md) and the harness protocol is
+[`docs/sdk-test-service.md`](../../docs/sdk-test-service.md). Section numbers below are the contract's.
 
-Inputs: language Python. Runtime, minimum version and package manager were not given, so each is a
-decision (see "The minimum runtime and the toolchain").
+The distribution and the import name are both `toggleslash` (`import toggleslash`). Nothing is registered
+under that name.
 
-## The mapping table
+## 1. The mapping table (contract 2)
 
-The distribution and the import package are both `toggleslash`. Everything below is in
-`toggleslash` unless it says otherwise. Durations are seconds, as an `int`, a `float` or a
-`datetime.timedelta`.
+Durations are `float` seconds (an `int` is accepted). `create` is a module function, `toggleslash.create(...)`,
+that returns a `toggleslash.Client`. Python names are `snake_case`.
 
-| Name | In Python |
-| --- | --- |
-| `create` | `toggleslash.create_client(url, sdk_key, *, stream=True, poll_interval=None, flush_interval=None, request_timeout=None, hooks=None, on_error=None) -> Client`. It starts two daemon threads and returns without waiting for the network. It never raises. |
-| `ready` | `Client.ready() -> bool`. Blocks the calling thread until the first load has finished (bounded by `request_timeout`), then answers whether a ruleset is held. Any number of calls, from any thread; after `close` it answers `False` if nothing had loaded. |
-| `variation` | `Client.variation(flag_key, context, fallback)`: the generic method, with the fallback's JSON kind doing the work (a `None` fallback accepts any served value). Typed methods beside it: `bool_variation`, `string_variation`, `int_variation`, `float_variation`, `json_variation`. |
-| `variationDetail` | `Client.variation_detail(flag_key, context, fallback) -> VariationDetail`, a frozen dataclass `(value, variation_index, reason)`; `variation_index` is `None` when the value is the fallback. Every typed method has a `_detail` twin (`bool_variation_detail` and so on). |
-| `status` | `Client.status() -> ClientStatus`, a frozen dataclass `(etag, last_sync_at, stream, last_error)`. `last_sync_at` is a timezone-aware UTC `datetime.datetime` or `None`. One consistent snapshot, read from memory. |
-| `close` | `Client.close() -> None`. Idempotent and safe from any thread and from a callback. `Client` is also a context manager that calls it. |
-| `url` | required argument `url: str`. Trailing `/` characters are removed; nothing else is validated. |
-| `sdkKey` | required argument `sdk_key: str`. |
-| `stream` | keyword `stream: bool = True`. `False` is polling only. The default is `True` in the signature, so `False` and "not given" differ with no sentinel. |
-| `pollInterval` | keyword `poll_interval=None`, meaning 30 s. A `None`, zero, negative or non-numeric value is the default. |
-| `flushInterval` | keyword `flush_interval=None`, meaning 30 s, with the same fallback. |
-| `requestTimeout` | keyword `request_timeout=None`, meaning 10 s, with the same fallback. |
-| `hooks.afterEvaluation` | `hooks=Hooks(after_evaluation=callable)`; the callable gets one `EvaluationEvent`. A `Hooks` whose `after_evaluation` is not callable is ignored. |
-| `onError` | keyword `on_error=callable`, default none (ignore). It gets one `Exception` instance. |
-| `accessor shape` | Both. One generic method (`variation`, `variation_detail`) over the fallback's kind, and typed methods: `bool_variation`, `string_variation`, `int_variation`, `float_variation`, `json_variation`, each with a `_detail` twin. A typed method also needs the served value to be of its own kind, whatever the fallback is: `bool_variation` never answers a non-bool. `int_variation` is the integer accessor (below). |
-| `onError thread` | The thread that met the failure: the SDK's sync thread for a failed ruleset or stream attempt, its flush thread for a failed usage request (the caller of `close` for the final flush), and the caller's own thread for an evaluation that raised and for a hook that raised. No SDK lock is held during the call. |
+| Name | Python | Default and meaning |
+| --- | --- | --- |
+| `create` | `toggleslash.create(url=..., sdk_key=..., ...)` returns a `Client`. All arguments after the first two are keyword-only. | Starts two daemon threads and returns at once; it does not wait for the network. |
+| `ready` | `client.ready() -> bool` | Blocks until the first ruleset attempt has settled, bounded by `request_timeout` (plus a 1 s grace for work the SDK does not control, such as a name lookup). True if a ruleset is held. The answer is fixed at the first settle. |
+| `variation` | `client.variation(flag_key, context, fallback)` | Generic: the expected kind is read off the type of `fallback` (`bool`, `int` or `float`, `str`, `list` or `tuple`, `dict`; `None` accepts any kind). |
+| `variationDetail` | `client.variation_detail(flag_key, context, fallback) -> Detail` | `Detail` has `value`, `variation_index` (`int` or `None`) and `reason`. Also `client.int_variation_detail`. |
+| `status` | `client.status() -> Status` | A frozen dataclass: `etag`, `last_sync_at` (aware UTC `datetime` or `None`), `stream` (`StreamState`), `last_error` (`str` or `None`). One snapshot. |
+| `close` | `client.close()` | Stops, joins (bounded), sends the final usage flush. Safe twice and from many threads. Returns within about twice `request_timeout`. |
+| `url` | `url=` (required, `str`) | The server's base URL. Trailing `/` are removed. |
+| `sdkKey` | `sdk_key=` (required, `str`) | A server key. |
+| `stream` | `stream=True` | `bool`. Off means poll only. |
+| `pollInterval` | `poll_interval=30.0` | Seconds. |
+| `flushInterval` | `flush_interval=30.0` | Seconds. |
+| `requestTimeout` | `request_timeout=10.0` | Seconds, the whole request, body included. |
+| `hooks.afterEvaluation` | `hooks=Hooks(after_evaluation=fn)`; default `None` | `fn(event: EvaluationEvent) -> None`, called on the caller's thread. The return value is ignored; a non-callable is ignored. |
+| `onError` | `on_error=fn`; default `None` (ignore) | `fn(error: BaseException) -> None`. |
+| `accessor shape` | Both: the generic `variation` and `variation_detail` (kind from the fallback's type), and `int_variation` and `int_variation_detail` for the integer accessor. | There is no `bool_variation`, `string_variation` or `float_variation`: the generic method already compares the fallback's kind, and an `int` fallback to the generic method is the `number` kind with no integer rule (the harness `number` accessor), while `int_variation` applies contract 4's fractional and signed 64-bit rules. The `json` accessor is the generic method with a `list` or `dict` fallback. |
+| `onError thread` | The SDK's own thread for what that thread did (a failed ruleset or stream attempt on `toggleslash-sync`, a failed usage request on `toggleslash-flush`); the caller's thread for a hook that raised and for `EVALUATION_FAILED`; the thread that called `close` for a usage request in the final flush and for counts lost at close. | No SDK lock is held while it runs. |
 
-**The closed sets** keep their spelling as `enum.StrEnum` members, so `ReasonKind.OFF == "OFF"` and
-they serialise as the canonical text: `ReasonKind` (`OFF`, `PREREQUISITE_FAILED`, `TARGET_MATCH`,
-`RULE_MATCH`, `FALLTHROUGH`, `ERROR`), `ErrorCode` (the evaluator's seven and the SDK's `NOT_READY`,
-`TYPE_MISMATCH`, `EVALUATION_FAILED`) and `StreamState` (`off`, `connecting`, `connected`,
-`disconnected`, `closed`). `Reason` is a frozen dataclass `(kind, rule_index, flag_key, code)` with
-the fields that do not apply `None`. `last_error` is a plain `str`, one of `http_<status>`,
-`timeout`, `bad_ruleset`, `network` (or `None`); the module constants `TIMEOUT`, `BAD_RULESET` and
-`NETWORK` hold the three fixed ones.
+A fallback whose type is not a JSON value (an arbitrary object, a `datetime`) never matches a served value
+and answers `ERROR TYPE_MISMATCH`: it is the caller's fallback, so it is still returned unchanged.
 
-**The integer accessor.** `int_variation` returns a Python `int`. A served number that has a
-fractional part, is not finite, or is outside the signed 64-bit range is `ERROR TYPE_MISMATCH` and
-the caller gets the fallback; `2.0` is the integer `2`. Python's `int` is unbounded, so the contract
-and the prompt would leave the range rule unchecked; the harness's scenario "an integer accessor
-refuses a served fraction with TYPE_MISMATCH" serves `1e20` and expects the mismatch, so the SDK
-bounds its integer accessor to the 64-bit signed range, as the Go, Java and C# SDKs do.
-`bool` is never an integer here (`True` is not `1`), in the served value or in the fallback.
+**The closed sets keep their spelling.** `toggleslash.ReasonKind`, `toggleslash.ErrorCode` and
+`toggleslash.StreamState` are `enum.StrEnum`s whose member names and values are the canonical spelling
+(`ReasonKind.RULE_MATCH == "RULE_MATCH"`, `ErrorCode.NOT_READY == "NOT_READY"`, `StreamState.CONNECTED ==
+"connected"`). They compare equal to the plain string. `reason` is a frozen dataclass `Reason(kind, code)`, with
+`code` the `ErrorCode` for an `ERROR` and `None` otherwise. `Status.last_error` is a plain `str`
+(`"http_503"`, `"timeout"`, `"bad_ruleset"`, `"network"`), with the four constants in `toggleslash.LastError`
+(`TIMEOUT`, `BAD_RULESET`, `NETWORK`; `http_<status>` is built).
 
-## Concurrency
+**"Not given" versus false or zero.** Python keyword defaults carry the defaults themselves
+(`stream=True`, `poll_interval=30.0`), so "not given" is the default. A caller who passes `stream=False` gets
+off, and passing `None` for an interval also gets the default. A non-positive or non-numeric duration (a
+`bool` included) falls back to the default (contract 2, SHOULD).
 
-Python threads, and a GIL that a free-threaded build may not have, so nothing relies on the GIL.
+## 2. Concurrency (contract 6)
 
-- **The held ruleset.** One immutable `Snapshot(ruleset, etag)` object. Evaluation reads the
-  `self._held` attribute once into a local and uses only that, so the ruleset and the ETag a hook
-  reports always belong together. A load replaces the attribute with one new `Snapshot`: one reference
-  store, which a reader sees whole or not at all.
-- **Locks.** There are four, each held for a handful of in-memory operations and never across I/O or a
-  callback:
-  1. `Sync._state_lock` guards the mutable status (`stream`, `last_sync_at`, `last_error`) and the
-     replacement of `_held`, so `status()` is one consistent snapshot. `variation` never takes it;
-     `status()` takes it for a few field reads.
-  2. `Usage._lock` guards the pending-count dictionary and the "recording stopped" flag. `variation`
-     takes it for one dictionary add. A flush takes it only to swap the dictionary out and to merge
-     kept counts back in.
-  3. `Usage._flush_lock` makes flushes serial, and guards the `Retry-After` hold of the events route.
-     Only the flush thread, `flush()` and `close` take it, and a flush holds it across its requests;
-     evaluation never touches it.
-  4. `Client._close_lock` makes `close` run once and lets every other caller wait for the same
-     shutdown. A call to `close` made on the thread that is already inside `close` (from a callback)
-     returns at once instead of waiting for itself.
-  Plus `Sync._inflight_lock`, a tiny lock around the set of sync requests `close` aborts.
-  An evaluation takes only the usage lock, which is never held by a request, so a hung server or a
-  hung flush cannot slow `variation` down.
-- **Callbacks.** `afterEvaluation` and `onError` are called with no lock held. Code that raises an
-  error collects it, releases its locks and then reports it, so a callback may call `status`,
-  `variation` and even `close` on the same client without deadlock.
-- **Threads.** Two, both `daemon=True`, started by `create`: `toggleslash-sync` (the first load, then
-  the stream and poll loop) and `toggleslash-flush`. Neither keeps a process alive. A request in
-  progress is on one of these threads or, for the final flush, on the thread that called `close`.
-- **Waits.** Every wait is a `threading.Event.wait(timeout)` on one `_stop` event, so `close` wakes
-  the sync loop, the flush loop and a `Retry-After` hold at once.
-- **Close.** `close` takes `_close_lock` (so a second or concurrent call blocks until the first is
-  done, then returns), sets the closing flag, sets the stream state to `closed`, stops recording usage
-  counts, sets `_stop`, aborts the sync requests in flight (shutting their sockets down, which makes
-  the blocked read return), joins the sync and flush threads (skipping the calling thread, so `close`
-  from a callback on one of them does not join itself), settles `ready` (false when nothing loaded),
-  and sends the final flush under `_flush_lock`. A `close` that reaches the lock after the first has
-  finished returns at once.
-- **Abort rule.** Only sync requests (ruleset and stream) are registered for abort. A usage request
-  already in flight is left to finish, bounded by `request_timeout`, as the contract allows.
-- **The tests the harness cannot run** are in `tests/`: many threads calling every operation, `close`
-  racing `variation` and itself, a ruleset request and a usage flush that hang, swaps under readers
-  (a hook's `etag` against its `flag_version`), and hooks that call back into the client.
+- **The ruleset and its ETag** live in one immutable object, `_Held(ruleset, etag)`, referenced by one attribute.
+  A swap is one attribute assignment (atomic under the GIL and in free-threaded builds for a single reference),
+  and an evaluation reads the attribute once, so it sees the old pair or the new pair. The `etag` and
+  `flagVersion` a hook reports come from that same read.
+- **The status** is one immutable `_State` (`last_sync_at`, `stream`, `last_error`) replaced under a short
+  `_state_lock`. The lock covers a few assignments and never an I/O call or a callback. `status()` reads the
+  reference once (with the held ETag from one read of `_held`), so it is a snapshot.
+- **Threads the SDK starts**, both daemon (contract 6.6): `toggleslash-sync` runs the first load and then the loop
+  of 7.3, `toggleslash-flush` runs the usage flush on `flush_interval`. A hook, `onError` or any callback never
+  runs on an SDK thread except `onError` (see the table).
+- **Locks.** `_state_lock` (above), `_usage_lock` (the counts dictionary, held for an add or a swap of the dictionary and
+  never during I/O), `_flush_lock` (serialises flushes; only the flush thread and `close` take it, never an
+  evaluation), `_close_lock` (decides who performs the shutdown). Evaluation takes `_usage_lock` for the length of
+  one dictionary add and no other lock. A request in flight holds none of them, so a hung server cannot slow an
+  evaluation down.
+- **Callbacks.** The hook and `onError` run with no SDK lock held (errors are gathered under a lock and raised to
+  the callback after it is released). `ready` called from the SDK's own thread (`threading.current_thread()` is
+  the sync or flush thread) returns at once with the state held, and `close` from an SDK thread skips joining
+  itself.
+- **Close.** `close` sets the closing flag and the stream state to `closed` under `_state_lock`, sets a
+  `threading.Event` both loops wait on (so no timer outlives it), aborts the in-flight ruleset and stream
+  sockets (below), joins the sync and flush threads with a bound of `request_timeout`, takes `_flush_lock`
+  (waiting for a flush already running, bounded) and runs the final flush, then settles an unsettled `ready` as
+  false. A second or concurrent caller waits for the same shutdown on an `Event`, bounded by four times
+  `request_timeout`, and returns. A daemon thread stuck in a name lookup cannot be interrupted; `close` does not
+  wait for it past its bound.
 
-## HTTP and SSE
+## 3. HTTP and SSE
 
-**Client.** `http.client` (`HTTPConnection` or `HTTPSConnection` by the scheme of `url`), one
-connection per request, closed after it. The URL is split with `urllib.parse.urlsplit` only to find the
-host, port and any path prefix; a URL that cannot be used is a `network` failure, never an exception.
-The headers set by the SDK are exactly `Authorization`, `Accept` (stream only), `If-None-Match`
-(ruleset only, when an ETag is held) and `Content-Type` (events only); `http.client` adds `Host`,
-`Accept-Encoding: identity` and `Content-Length`.
+- **HTTP client.** `http.client` (`HTTPConnection` and `HTTPSConnection`, the default TLS context, certificates
+  verified), one new connection per request, no redirects, no proxy lookup. `urllib` is not used because it
+  adds a `User-Agent` and follows redirects, and the contract wants neither decision made for it.
+- **`request_timeout` bounds the whole request, body included.** `http.client`'s own `timeout` is per socket
+  operation. So each request starts a `threading.Timer` daemon for `request_timeout` that marks the request
+  timed out and calls `shutdown` on the **socket the SDK itself holds**: `fetch` calls `conn.connect()` first
+  and keeps `sock = conn.sock`, because `http.client` sets `conn.sock` to `None` after `getresponse()` for an
+  answer that ends with the connection. The timer is cancelled when the body has been read, and a request
+  whose timer fired is a `timeout` even if the read looked complete (a shutdown makes a read-until-close body
+  look finished). The connect step also carries the socket timeout. The same hold on the socket lets `close`
+  abort an in-flight ruleset or stream request (`shutdown` of every registered socket).
+- **The stream** is opened with the same timer, which is cancelled when the response headers arrive; the
+  watchdog then takes over: `sock.settimeout(60)` on the held socket, and the body is read with
+  `HTTPResponse.read1`, so each read that returns bytes (a `: keep-alive` included) restarts the 60 s, and a
+  read that raises `TimeoutError` is `timeout`. The watchdog length is a seam (`stream_watchdog`). A status
+  other than 200 is `http_<status>`; a 429 reads `Retry-After`.
+- **SSE.** A short hand-written parser, `_sse.py`, to the WHATWG rules the contract names: it decodes UTF-8
+  incrementally (a multi-byte character split across reads is held back), ends a line on LF, CRLF or a lone CR
+  (a CR at the end of a chunk waits for the next byte to see whether an LF follows), ignores a line that
+  starts with `:`, reads `event` and `data` (one leading space removed from a value, several `data` lines
+  joined with LF), drops an event with no `data` line, names an event `message` when no name was given, and
+  discards an event still incomplete at the end of the stream. The SDK acts on `connected` and `changed`.
 
-**The whole-request bound (7.1).** `http.client` bounds each socket operation, not the request, so the
-SDK does not use its timeout for that. Each request starts a `threading.Timer` for `request_timeout`
-whose callback marks the request timed out and shuts the connection's socket down; that unblocks
-whatever the thread is reading (headers, a body that trickles, a body that never ends), which then
-fails, and the SDK reports `timeout` because the flag is set. The connect is bounded by `request_timeout`
-through the socket timeout. The timer is cancelled when the request ends. The body is read in the same window: a server that
-sends headers and never the body is a `timeout`. A hostname lookup and a TCP connect are the one thing the socket
-shutdown cannot interrupt (there is no socket to shut down yet): `close` waits for them, bounded by the
-platform's resolver and by `request_timeout` for the connect.
+## 4. Dependencies
 
-**The stream (7.2).** The same timer bounds the open, from the request until the response headers
-arrive; it is cancelled then. After that the socket's timeout is the watchdog (60 s, a seam for the
-tests; the reader keeps its own reference to the socket, because `http.client` lets go of
-`connection.sock` for an answer that ends with the connection): each `read1` call that gets no byte within it raises `TimeoutError`, which is `timeout`, and
-every read that does get bytes (a keep-alive comment included) starts the 60 s again. A status other
-than 200 is `http_<status>` (a 429 is also read for `Retry-After`). A clean end of the stream is not an
-error.
+| Dependency | Kind | Why |
+| --- | --- | --- |
+| none | runtime | `http.client`, `threading`, `hashlib` (SHA-256), `json` and `socket` cover everything. |
+| `ruff` 0.17.4 | lint | One tool for lint and format check, pinned in `mise.toml`. |
+| `unittest` | test | In the standard library, so the tests need nothing installed. |
+| `python` 3.15.2 | toolchain | Pinned in `mise.toml` for the checks; the package itself supports 3.11 and later. |
 
-**Server-Sent Events.** A hand-written parser in `_sse.py`, about sixty lines, to the WHATWG rules the
-contract names: bytes go through an incremental UTF-8 decoder (so a character split across reads
-survives); LF, CRLF and a lone CR end a line, with a CR at the end of one read remembered so its LF at
-the start of the next is not a second line end; a line that starts with `:` is a comment; a field with
-no `:` has an empty value; one leading space of a value is dropped; a leading U+FEFF is dropped;
-several `data` lines are joined with LF; an event with no `data` line is dropped; the event name is
-`message` when none was given; and an event incomplete when the stream ends is never delivered. Only
-`event` and `data` are read. No SSE library is used.
+## 5. JSON
 
-## Dependencies
+`json.loads` with two hooks, through `toggleslash._json.loads`:
 
-Runtime: none. The standard library has HTTP (`http.client`), JSON (`json`), SHA-256 (`hashlib`),
-threads (`threading`) and time.
+- `parse_constant` raises, so `NaN`, `Infinity` and `-Infinity` (which Python's parser accepts and JSON does
+  not) are a parse error.
+- `parse_int` returns a `float` for an integer literal beyond plus or minus 2^53 (the spec reads every number
+  as binary64: `9007199254740993` is `9007199254740992.0`, and a literal of thousands of digits becomes a
+  float without ever calling `int()` on it, which keeps the interpreter's integer-digit limit away), the
+  `int` otherwise, and `-0.0` for the literal `-0`.
+- `1e999` is `float('inf')` naturally (Python's `float` does not raise on overflow of a literal).
+- A lone surrogate (`"\ud800"`) is kept: a Python `str` is a sequence of code points and holds U+D800 on its
+  own. A valid escaped pair (`"😀"`) the parser combines into one code point.
+- A duplicate key in an object keeps the last value (the `json` default); a leading byte order mark is
+  skipped by decoding the body as `utf-8-sig`.
+- Output to the harness uses `json.dumps(ensure_ascii=True)`, so a lone surrogate leaves as `\ud800`.
 
-Test and lint: `unittest` and `unittest.mock` (standard library) for the tests, and `ruff` (pinned in
-`mise.toml`) for lint and format. The test service uses `http.server` from the standard library.
+The public API takes a context as a `dict` of what `json.loads` returns (`None`, `bool`, `int`, `float`,
+`str`, `list`, `dict`), or any `Mapping`. The vectors' `1e999` and lone surrogates reach the SDK through
+the same parser in the test service, so they are kept. A `Mapping` other than `dict`, and a `tuple`, are read as
+the object and array they stand for.
 
-## JSON
+## 6. Minimum runtime and toolchain
 
-The parser is `json.loads` from the standard library, with two arguments:
+- **Minimum Python 3.11.** It has `enum.StrEnum` and `datetime.UTC`, and 3.10 reached end of life on
+  2026-10-01. The checks run on 3.15.2, the latest stable release on 2026-11-10 (`mise ls-remote python`).
+- **Lint and format: `ruff`** (current mainstream, one tool, fast). **Test framework: `unittest`** from the
+  standard library, so `bin/test` needs nothing installed. **Build tool: none for the checks** (`bin/test` byte-compiles every
+  source, test and service file as its build step); `pyproject.toml` uses the `setuptools` backend so that
+  `pip install ./sdks/python` works from a checkout.
+- **The integer accessor** uses Python's `int`, bounded to signed 64 bits by the SDK (an `int` is unbounded):
+  a served number that is not finite, has a fractional part, or lies outside -2^63 to 2^63-1 is
+  `TYPE_MISMATCH`; `2.0` is the integer `2`.
+- **No type checker is run.** The code is annotated; `py.typed` is shipped.
 
-- `parse_int` returns a Python `int` for a literal of at most 18 characters whose value is within
-  plus or minus 2^53 (every such integer is exact in binary64), and a `float` otherwise. The 18
-  characters only keep `int()` away from a long literal; the 2^53 test decides. `9007199254740993`
-  therefore reads as `9007199254740992.0`, and a literal with thousands of digits is `inf`, not an error,
-  and does not meet Python's integer-digit limit (which raises `ValueError` from `int()`). So a served
-  `9223372036854775807` is the binary64 `2^63`, which is outside the integer accessor's range.
-- `parse_constant` raises, so `NaN`, `Infinity` and `-Infinity` (which are not JSON) are errors.
-
-`json.loads` reads `1e999` as `inf` and `-0.0` as `-0.0`, and keeps a lone surrogate (`"\ud800"`) as a
-one-character `str` holding it (`str` is a sequence of code points and may hold a surrogate), so the
-vectors' contexts and rulesets keep what the spec requires; a valid pair written as two `\u` escapes is
-combined into one code point by the parser. A body is decoded as UTF-8 first; text that is not UTF-8,
-or a document that is too deep, is `bad_ruleset`.
-
-Everything that compares or tests a number goes through one helper that turns an `int` into a `float`
-(an `int` too big for a `float` is `inf`, which never matches), so a context built in Python with
-`9007199254740993` compares as the binary64 the spec says, and `bool` is checked before `int` everywhere,
-since `True` is an `int` in Python. The public API takes a context as any `collections.abc.Mapping`
-with string keys (a `dict`, whether built by hand or by `json.loads`); there is no wrapper type, because
-the standard types already hold `1e999` and lone surrogates.
-
-**Strings.** The spec compares by UTF-16 code unit and matches patterns by code point. The evaluator
-converts a string to its UTF-16 form where it matters (every character above U+FFFF becomes two
-surrogate characters, which are code units in a Python `str`), so `in`, `contains`, `startsWith`,
-`endsWith` and the orderings are the same operations on the same units as JavaScript, and the
-surrogate-pair examples of the spec hold. Patterns read both the pattern and the candidate as code
-points, merging a valid pair into one and keeping a lone surrogate as itself. Hashing replaces a lone
-surrogate with U+FFFD, then encodes UTF-8.
-
-## The minimum runtime and the toolchain
-
-- **Runtime.** CPython, the current mainstream one (PyPy is not tested).
-- **Minimum version: Python 3.11**, the oldest version in upstream security support (3.10 reached end of
-  life in October 2026) and the first with `enum.StrEnum`, which carries the closed sets above. Declared
-  as `requires-python = ">=3.11"` in `pyproject.toml`.
-- **Developed and tested on** the version `mise.toml` pins (3.15.2). CI runs that one only; the SDK uses no
-  feature newer than 3.11, which a test of the minimum would confirm and this run does not have a runner for.
-- **Package manager and build backend.** `pip` with `setuptools` and a `src` layout, declared in
-  `pyproject.toml`: the mainstream default and a pure-Python package with no dependencies.
-- **Lint and format: `ruff`** (`ruff check` and `ruff format --check`), the current mainstream choice, one
-  fast tool for both, installable by mise.
-- **Tests: `unittest`** from the standard library, over pytest, so the SDK needs no dependency to be
-  tested and `bin/test` needs nothing mise does not pin. The vector test is a `unittest` that reads
-  `fixtures/` at test time.
-- **Build.** Python has no compile step; `bin/test` runs `python -m compileall -f` over the sources
-  first, which fails on a syntax error, and then runs the tests under `python -X dev -W error`, which
-  turns on the development checks and makes every warning an error. Python has no race detector, so
-  the concurrency tests carry the weight (see above).
-- **No type checker** is run: a second pinned tool and a second set of opinions about the same code. The
-  code is fully annotated and ships a `py.typed` marker.
-- **The integer accessor** is `int_variation`, bounded to signed 64 bits (see above).
-
-## The package layout
+## 7. The package layout
 
 ```
 sdks/python/
-  pyproject.toml            package metadata, requires-python, ruff settings
-  mise.toml                 python and ruff pins
-  DESIGN.md README.md RUN.md .gitignore
-  bin/lint bin/test bin/test-service
+  mise.toml  pyproject.toml  .gitignore  README.md  DESIGN.md  RUN.md
+  bin/lint  bin/test  bin/test-service
   src/toggleslash/
-    __init__.py             the public API: create_client, Client, the types
-    py.typed
-    _types.py               ReasonKind, ErrorCode, StreamState, Reason, VariationDetail, ClientStatus, ...
-    _text.py                UTF-16 form, code points, UTF-8 for hashing
-    _bucket.py              SHA-256 bucketing
-    _pattern.py             the `matches` parser and Pike VM (no `re`)
-    _semver.py  _dates.py  _reference.py
-    _validate.py            the shape checks of a ruleset, flag and segment
-    _ruleset.py             compile a ruleset: flag entries, segments, the target index
-    _clause.py              attribute clauses
-    _context.py             context validation and normalising
-    _evaluate.py            the evaluator: evaluate(ruleset, flag_key, context)
-    _json.py                the JSON reader
-    _http.py                one request with a whole-request bound, and the stream reader
-    _sse.py                 the SSE parser
-    _retry.py               reading a Retry-After
-    _usage.py               usage counts, batches, the events hold
-    _seams.py               the test seams (clock, wait, jitter, watchdog, transport, evaluator)
-    _sync.py                the sync loop: first load, stream, backoff, Retry-After, hold
-    _client.py              Client: evaluation, hooks, status, close
-  tests/                    unittest: vectors, SSE, Retry-After, usage, sync, client, concurrency
-  test-service/
-    main.py README.md       the conformance test service and its accessor mapping
+    __init__.py     the public names
+    _types.py       Reason, Detail, Status, EvaluationEvent, Hooks, the closed sets
+    _client.py      create, Client, the loops, usage, close
+    _http.py        fetch with the whole-request timer, stream open and read
+    _sse.py         the SSE parser
+    _usage.py       the counts and the batches
+    _json.py        the JSON reader
+    _evaluate.py    the ruleset and the evaluator (no network, no threads)
+    _pattern.py     the `matches` parser and Pike VM
+    _semver.py  _dates.py  _bucket.py  _context.py  _reference.py
+  tests/            unittest: vectors, evaluator units, client tests with a loopback server
+  test-service/     main.py and README.md (compiled by bin/test with the tests)
 ```
 
-The evaluator modules (`_text` to `_evaluate`) import nothing from the client side and no network
-module, and use no regular expression. `README.md` carries the quickstart and links to the mapping
-table above. The distribution is named `toggleslash` and nothing is registered under it.
+`bin/test` runs the unittest discovery in `tests/` under `python -X dev -W error` with `src` on the path.
 
-## Test seams
+## 8. Evaluator decisions (phase 2)
 
-`Client` takes a private keyword `_seams`, a `Seams` dataclass (`_seams.py`) of the things a test
-replaces: the transport (a callable returning a reply object), the monotonic and wall clocks, the wait
-(so a test moves time instead of sleeping), the jitter, the stream watchdog and the evaluator. The
-public `create_client` does not accept it, and nothing is read from the environment.
+- **Strings.** A Python `str` is a sequence of code points. The spec compares in UTF-16 code units for
+  equality, `contains`, `startsWith`, `endsWith` and order, and in code points for patterns. The evaluator
+  turns a string into code units with a `_units()` helper (a code point above U+FFFF becomes its surrogate pair,
+  each half held in one `str` character) and compares those, so a non-BMP character sorts as its pair does.
+  For patterns, `code_points()` joins an adjacent high and low surrogate back into one code point first; a lone
+  surrogate stays as it is.
+- **Hashing.** The string is encoded as UTF-8 and, where it holds a lone surrogate, as U+FFFD for that surrogate.
+- **Kind names** are checked with a character walk, never a regular expression.
+- **`matches`** is the spec's Pike VM in `_pattern.py`. No `re` module appears in the evaluator.
+- **Attribute reads** use own keys of a `dict` only. A `bool` is tested before a number everywhere.
+
+### Disagreements with other implementations
+
+None found so far; any that turns up is recorded here with both readings and the file and line of each.

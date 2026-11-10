@@ -1,67 +1,64 @@
-"""Contexts: validating a context and reading it as a map from kind to key and attributes."""
+"""Contexts: validation and the map from kind to ``(key, attributes)`` (evaluation.md, "Context")."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any
 
-from ._bucket import bucket
-from ._validate import is_kind
+_KIND_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-")
 
-DEFAULT_KIND = "user"
-
-# kind -> (key, attributes or None)
-KindContext = tuple[str, "Mapping[str, Any] | None"]
-Contexts = dict[str, KindContext]
+Normalised = dict[str, tuple[str, "Mapping[str, Any] | None"]]
 
 
-def _read_entry(value: Mapping[str, Any]) -> KindContext | None:
-    key = value.get("key")
-    attributes = value.get("attributes")
+def is_kind(value: Any) -> bool:
+    """A kind is one or more ASCII letters, digits, ``.``, ``_`` or ``-``, and not ``kind`` or ``multi``.
+
+    Checked by walking the characters: the evaluator uses no regular expression of the platform.
+    """
+    if not isinstance(value, str) or value == "" or value in ("kind", "multi"):
+        return False
+    return all(ch in _KIND_CHARS for ch in value)
+
+
+def _entry(raw: Any) -> tuple[str, Mapping[str, Any] | None] | None:
+    if not isinstance(raw, Mapping):
+        return None
+    key = raw.get("key")
     if not isinstance(key, str) or key == "":
         return None
-    if attributes is None:
-        return key, None
-    return (key, attributes) if isinstance(attributes, Mapping) else None
-
-
-def _read_multi(value: Mapping[str, Any]) -> Contexts | None:
-    contexts = value.get("contexts")
-    if value.get("key") is not None or value.get("attributes") is not None:
+    attributes = raw.get("attributes")
+    if attributes is not None and not isinstance(attributes, Mapping):
         return None
-    if not isinstance(contexts, Mapping):
-        return None
-    normalised: Contexts = {}
-    for kind, raw in contexts.items():
-        if not is_kind(kind) or not isinstance(raw, Mapping) or raw.get("kind") is not None:
-            return None
-        entry = _read_entry(raw)
-        if entry is None:
-            return None
-        normalised[kind] = entry
-    return normalised or None
+    return key, attributes
 
 
-def normalise_context(value: object) -> Contexts | None:
-    """The context as a map from kind to `(key, attributes)`, or `None` when it is not valid."""
-    if not isinstance(value, Mapping):
+def normalise(context: Any) -> Normalised | None:
+    """The context as ``{kind: (key, attributes)}``, or ``None`` when it is not valid."""
+    if not isinstance(context, Mapping):
         return None
-    kind = value.get("kind")
+    kind = context.get("kind")
     if kind is None:
-        kind = DEFAULT_KIND
+        kind = "user"
+    elif not isinstance(kind, str):
+        return None
     if kind == "multi":
-        return _read_multi(value)
+        if context.get("key") is not None or context.get("attributes") is not None:
+            return None
+        contexts = context.get("contexts")
+        if not isinstance(contexts, Mapping) or len(contexts) == 0:
+            return None
+        out: Normalised = {}
+        for name, raw in contexts.items():
+            if not is_kind(name) or not isinstance(raw, Mapping) or raw.get("kind") is not None:
+                return None
+            entry = _entry(raw)
+            if entry is None:
+                return None
+            out[name] = entry
+        return out
     if not is_kind(kind):
         return None
-    entry = _read_entry(value)
-    return None if entry is None else {kind: entry}
-
-
-def kind_bucket(key: str, salt: str, kind: str | None, contexts: Contexts) -> int:
-    """The bucket for the key of `kind` (absent is `user`), or 0 when the context lacks that kind."""
-    chosen = DEFAULT_KIND if kind is None else kind
-    context = contexts.get(chosen)
-    if context is None:
-        return 0
-    context_key = context[0]
-    return bucket(key, salt, context_key if chosen == DEFAULT_KIND else f"{chosen}:{context_key}")
+    entry = _entry(context)
+    if entry is None:
+        return None
+    return {kind: entry}

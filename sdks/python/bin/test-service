@@ -2,7 +2,7 @@
 # Starts the conformance test service on a port the OS picks and prints `listening http://127.0.0.1:<port>`.
 set -eu
 cd "$(dirname "$0")/.."
-if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
-  PYTHONPATH=src exec mise exec -- python -X dev test-service/main.py
+if command -v mise >/dev/null 2>&1; then
+  exec mise exec -- python -X dev test-service/main.py
 fi
-PYTHONPATH=src exec python -X dev test-service/main.py
+exec python3 -X dev test-service/main.py

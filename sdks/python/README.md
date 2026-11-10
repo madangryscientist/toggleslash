@@ -1,66 +1,69 @@
 # ToggleSlash server SDK for Python
 
-Feature flags evaluated locally, in your process, from a ruleset the ToggleSlash server keeps current. It
-meets [`docs/sdk-contract.md`](../../docs/sdk-contract.md), uses only the Python standard library (3.11 or
-later) and is **not published**: there is no package index entry to install from.
+The Python server SDK of [ToggleSlash](../../README.md). It follows the language-neutral
+[`docs/sdk-contract.md`](../../docs/sdk-contract.md) and evaluates flags locally, to
+[`docs/evaluation.md`](../../docs/evaluation.md), against a ruleset it keeps current from the server. It uses the
+standard library only (Python 3.11 or newer) and is not published anywhere: use it from a checkout of this
+repository.
 
 ## Quickstart
 
-Install from a checkout of this repository:
-
 ```sh
-pip install ./sdks/python
+pip install ./sdks/python        # from the root of a checkout, in a virtual environment
 ```
-
-or put `sdks/python/src` on `PYTHONPATH`. Then:
 
 ```python
 import toggleslash
 
-client = toggleslash.create_client("https://flags.example.com", "sdk-key-from-your-environment")
-try:
-    client.ready()  # optional: waits for the first load, never longer than request_timeout
-    context = {"key": "user-42", "plan": "pro"}
-    if client.bool_variation("new-checkout", context, False):
-        ...
-finally:
-    client.close()  # sends the last usage counts and stops the two background threads
+client = toggleslash.create(
+    "https://toggleslash.example.invalid",  # the server's base URL
+    "sdk-key-from-the-dashboard",           # a server SDK key
+)
+
+if client.ready():  # waits for the first load attempt, bounded by request_timeout
+    print("ruleset loaded")
+
+context = {"key": "user-42", "plan": "pro"}
+if client.variation("new-checkout", context, False):  # the fallback fixes the expected kind
+    print("new checkout")
+
+detail = client.variation_detail("banner-text", context, "welcome")
+print(detail.value, detail.variation_index, detail.reason)
+
+client.close()  # flushes usage counts and stops the background threads
 ```
 
-`create_client` returns at once and never raises. `variation` and its typed siblings never wait for the
-network: before the first load they answer your fallback with the reason `ERROR` / `NOT_READY`. A `Client` is
-also a context manager (`with toggleslash.create_client(...) as client:`).
+`toggleslash.create` also works as a context manager target:
+`with toggleslash.create(url, key) as client: ...` closes on exit.
 
-Read the key from the environment, never from source.
+## Mapping from the contract
 
-## The API
-
-Every name in the contract and its Python spelling is in the table in
-[`DESIGN.md`](DESIGN.md#the-mapping-table), along with the design choices behind it.
+The full table (every name, option and default, and what is a `Detail`, a `Status` and a `StreamState`) is
+section 1 of [`DESIGN.md`](DESIGN.md). In short: `create`, `client.ready()`, `client.variation(...)`,
+`client.variation_detail(...)`, `client.int_variation(...)` and `client.int_variation_detail(...)` for the
+integer accessor, `client.status()`, `client.close()`; options `stream`, `poll_interval`, `flush_interval`,
+`request_timeout` (seconds), `hooks` and `on_error`.
 
 ## Guarantees
 
-The contract's section 5, as this SDK keeps it:
+- Nothing raises at a caller: a failure becomes your fallback with an `ERROR` reason, goes to `on_error`, or both.
+- `variation`, `variation_detail` and `status` read memory only: they never wait on the network, a load or a flush.
+- `ready()` settles after the first attempt, is bounded by `request_timeout`, and gives the same answer each time.
+- The SDK keeps evaluating from the last good ruleset while the server is unreachable; only a valid ruleset replaces one.
+- No evaluation context, attribute or SDK key appears in a request body or URL (the key is the `Authorization`
+  header only), a log line, a status or an error the SDK builds.
+- `close()` is safe to call twice and from many threads, and returns within about twice `request_timeout`.
 
-1. It never raises at a caller, whatever the server, the network, a context, a hook or `on_error` does.
-2. `variation`, `variation_detail` and `status` never do I/O and never wait.
-3. `ready` settles after the first attempt and gives the same answer every time.
-4. While the server is unreachable it keeps evaluating from the last good ruleset.
-5. Only something with the shape of a ruleset replaces a ruleset.
+## Check it
 
-It also sends no context, context key or attribute anywhere: usage counts carry a flag, a variation index and
-a day.
-
-## Running the checks
-
-The toolchain is pinned in [`mise.toml`](mise.toml) (`mise install` from this directory). The `bin` scripts
-find it themselves.
+From the root of the repository:
 
 ```sh
-sdks/python/bin/lint      # ruff check and ruff format --check
-sdks/python/bin/test      # byte-compile, then every unit test and every evaluation vector, with warnings as errors
-bun run conformance -- --service sdks/python/bin/test-service   # from the repository root: the conformance harness
+sdks/python/bin/lint                                            # ruff check and ruff format --check
+sdks/python/bin/test                                            # unittest, under python -X dev -W error, and every evaluation vector
+bun run conformance -- --service sdks/python/bin/test-service   # the shared conformance harness
 ```
 
-The test service is described in [`test-service/README.md`](test-service/README.md). A report of the run that
-built this SDK is in [`RUN.md`](RUN.md).
+`mise.toml` pins Python and ruff; with `mise` installed the scripts use those versions. See
+[`test-service/README.md`](test-service/README.md) for the conformance service, [`DESIGN.md`](DESIGN.md) for the
+design decisions and [`RUN.md`](RUN.md) for the report of the run that wrote this SDK.
