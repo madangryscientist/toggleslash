@@ -1,5 +1,5 @@
 /**
- * The admin API calls the operator pages make: environments, SDK keys, segments and the audit log.
+ * The admin API calls the operator pages make: SDK keys, segments and the audit log.
  * Worker only. A key's plaintext appears in exactly one answer (`createKey`) and is never cached here.
  */
 import { ApiFailure, apiPath, list, type Call } from "./http.server.ts";
@@ -11,7 +11,6 @@ import type {
   AuditFilters,
   AuditPage,
   CreatedKey,
-  Environment,
   KeyKind,
   PastFlag,
   PastRuleset,
@@ -20,14 +19,6 @@ import type {
 } from "./types.ts";
 
 export const AUDIT_PAGE_SIZE = 25;
-
-export function toEnvironment(raw: Json): Environment {
-  return {
-    key: str(raw["key"]),
-    name: str(raw["name"], str(raw["key"])),
-    createdAt: str(raw["createdAt"]),
-  };
-}
 
 function toKey(raw: Json): ApiKey {
   return {
@@ -110,13 +101,6 @@ function auditQuery(filters: AuditFilters, cursor: string | null): string {
 
 export function createOperatorApi(call: Call) {
   return {
-    async createEnvironment(project: string, key: string, name: string): Promise<Environment> {
-      const made = await call("POST", apiPath("projects", project, "environments"), { key, name });
-      if (!isRecord(made))
-        throw new ApiFailure("error", "The server's answer was not an environment.");
-      return toEnvironment(made);
-    },
-
     /** Every key of the environment, revoked ones included. Never a hash or a plaintext. */
     async keys(project: string, env: string): Promise<ApiKey[]> {
       return (await list(call, apiPath("projects", project, "environments", env, "keys"))).map(

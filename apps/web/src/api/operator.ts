@@ -1,5 +1,5 @@
 /**
- * The server functions of the operator pages: environments, SDK keys, segments and the audit log.
+ * The server functions of the operator pages: SDK keys, segments and the audit log.
  * Their handlers run in the Worker, with the admin token. The one answer that carries a key's
  * plaintext is `createKey`'s; no loader returns it.
  */
@@ -9,7 +9,6 @@ import type {
   AuditFilters,
   AuditLoaded,
   CreatedKey,
-  Environment,
   Failure,
   KeyKind,
   KeysLoaded,
@@ -134,23 +133,6 @@ export const loadRuleset = createServerFn({ method: "GET" })
       flag: data.flag,
       found: await api.ruleset(data.project, data.env, data.hash, data.flag),
     })),
-  );
-
-interface NewEnvironmentInput {
-  project: string;
-  key: string;
-  name: string;
-}
-
-function newEnvironmentInput(data: unknown): NewEnvironmentInput {
-  const d = recordOf(data);
-  return { project: str(d["project"]), key: str(d["key"]), name: str(d["name"]) };
-}
-
-export const createEnvironment = createServerFn({ method: "POST" })
-  .validator(newEnvironmentInput)
-  .handler(({ data }): Promise<SaveResult<Environment>> =>
-    save((api) => api.createEnvironment(data.project, data.key, data.name)),
   );
 
 interface NewKeyInput {

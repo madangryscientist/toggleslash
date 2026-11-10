@@ -11,7 +11,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { API_PORT, E2E_ADMIN_TOKEN } from "./constants.ts";
 import { db, flag, plain, reset, type Config, type Flag } from "./fake-data.ts";
 import { answer, lifecycleRoute, listed } from "./fake-flags.ts";
-import { auditPage, createEnvironment, onKeys, onSegments, rulesetAt } from "./fake-operator.ts";
+import { createEnvironment, deleteEnvironment, renameEnvironment } from "./fake-environments.ts";
+import { auditPage, onKeys, onSegments, rulesetAt } from "./fake-operator.ts";
 import {
   historyOf,
   patchFlag,
@@ -194,16 +195,29 @@ function onEnvironmentRoute(ctx: Ctx, rest: string[], query: URLSearchParams) {
     : onEnvironment(ctx, rest);
 }
 
-async function onProject(ctx: Ctx, rest: string[], query: URLSearchParams) {
+/** `.../environments[/<env>[/...]]`: the collection, one environment's own verbs, else the routes under it. */
+async function onEnvironments(ctx: Ctx, rest: string[], query: URLSearchParams) {
   const { req, res, project } = ctx;
-  const [kind, ...more] = rest;
-  if (kind === "environments" && more.length === 0) {
+  const [env, ...more] = rest;
+  if (env === undefined) {
     if (req.method === "POST") {
       return reply(res, createEnvironment(project, await readBody(req)));
     }
     return send(res, 200, db.data.environments[project] ?? []);
   }
-  if (kind === "environments") return onEnvironmentRoute(ctx, more, query);
+  if (more.length === 0 && req.method === "PATCH") {
+    return reply(res, renameEnvironment(project, env, await readBody(req)));
+  }
+  if (more.length === 0 && req.method === "DELETE") {
+    return reply(res, deleteEnvironment(project, env));
+  }
+  return onEnvironmentRoute(ctx, rest, query);
+}
+
+async function onProject(ctx: Ctx, rest: string[], query: URLSearchParams) {
+  const { res, project } = ctx;
+  const [kind, ...more] = rest;
+  if (kind === "environments") return onEnvironments(ctx, more, query);
   if (kind === "audit" && more.length === 0) return reply(res, auditPage(project, query));
   if (kind === "flags") return onFlags(ctx, more, query);
   return problem(res, 404, "not_found", "No such route.");

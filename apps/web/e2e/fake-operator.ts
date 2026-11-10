@@ -1,27 +1,10 @@
-/** The fake API's operator routes: environments, SDK keys, segments and the project audit log. */
+/** The fake API's operator routes: SDK keys, segments and the project audit log. */
 import { PAST_RULESET_HASH, PLANTED_SALT } from "./constants.ts";
 import { asBody, failure, type Body, type Reply } from "./fake-config.ts";
 import { db, type KeyRow, type SegmentRow } from "./fake-data.ts";
 
 const KEY = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const NOW = "2026-11-05T08:00:00Z";
-
-export function createEnvironment(project: string, body: Body): Reply {
-  const key = typeof body["key"] === "string" ? body["key"] : "";
-  if (!KEY.test(key)) {
-    return failure(400, "invalid_request", "key must match ^[a-z0-9][a-z0-9_-]{0,63}$.");
-  }
-  if (typeof body["name"] !== "string" || body["name"].trim() === "") {
-    return failure(400, "invalid_request", "name is required.");
-  }
-  const list = (db.data.environments[project] ??= []);
-  if (list.some((e) => e.key === key)) {
-    return failure(409, "conflict", `An environment with key ${key} already exists.`);
-  }
-  const made = { key, name: body["name"], createdAt: NOW };
-  list.push(made);
-  return [201, made];
-}
 
 function keysOf(project: string, env: string): KeyRow[] | null {
   if (!(db.data.environments[project] ?? []).some((e) => e.key === env)) return null;
