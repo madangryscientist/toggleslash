@@ -1,0 +1,315 @@
+{
+  "scenarios": [
+    {
+      "name": "the hook gets the flag, the context, the result, the tag and the flag version",
+      "contract": "10",
+      "steps": [
+        {
+          "do": "create",
+          "options": {
+            "hook": true
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "expect": {
+            "value": true
+          }
+        },
+        {
+          "do": "expect",
+          "hookEvents": {
+            "count": 1,
+            "events": [
+              {
+                "flagKey": "checkout",
+                "context": "{{context}}",
+                "value": true,
+                "variationIndex": 1,
+                "reason": {
+                  "kind": "FALLTHROUGH"
+                },
+                "etag": "{{etag}}",
+                "flagVersion": 1
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "the hook gets the tag the evaluation used",
+      "contract": "10",
+      "steps": [
+        {
+          "do": "create",
+          "options": {
+            "hook": true
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "status": {
+            "stream": "connected"
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false
+        },
+        {
+          "do": "ruleset",
+          "flags": [
+            {
+              "key": "checkout",
+              "serves": false
+            }
+          ]
+        },
+        {
+          "do": "publish"
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 2000,
+          "status": {
+            "etag": "{{etag}}"
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": true
+        },
+        {
+          "do": "expect",
+          "hookEvents": {
+            "count": 2,
+            "events": [
+              {
+                "etag": "\"v1\""
+              },
+              {
+                "etag": "{{etag}}",
+                "value": false
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a fallback before the first load reaches the hook with no index, tag or version",
+      "contract": "10",
+      "steps": [
+        {
+          "do": "script",
+          "route": "ruleset",
+          "answers": [
+            {
+              "hang": true
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {
+            "hook": true
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "expect": {
+            "value": false,
+            "variationIndex": null,
+            "reason": {
+              "kind": "ERROR",
+              "code": "NOT_READY"
+            }
+          }
+        },
+        {
+          "do": "expect",
+          "hookEvents": {
+            "count": 1,
+            "events": [
+              {
+                "flagKey": "checkout",
+                "context": "{{context}}",
+                "value": false,
+                "variationIndex": null,
+                "reason": {
+                  "kind": "ERROR",
+                  "code": "NOT_READY"
+                },
+                "etag": null,
+                "flagVersion": null
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "an unknown flag has no version, a mismatch keeps the flag's version",
+      "contract": "10",
+      "steps": [
+        {
+          "do": "create",
+          "options": {
+            "hook": true
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "evaluate",
+          "flag": "no-such-flag",
+          "fallback": false
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": "x"
+        },
+        {
+          "do": "expect",
+          "hookEvents": {
+            "count": 2,
+            "events": [
+              {
+                "flagKey": "no-such-flag",
+                "variationIndex": null,
+                "flagVersion": null,
+                "reason": {
+                  "kind": "ERROR",
+                  "code": "FLAG_NOT_FOUND"
+                }
+              },
+              {
+                "flagKey": "checkout",
+                "value": "x",
+                "variationIndex": null,
+                "flagVersion": 1,
+                "reason": {
+                  "kind": "ERROR",
+                  "code": "TYPE_MISMATCH"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a hook that throws goes to onError, and the evaluation still answers and counts",
+      "contract": "10",
+      "steps": [
+        {
+          "do": "create",
+          "options": {
+            "hookThrows": true
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "times": 2,
+          "expect": {
+            "value": true,
+            "variationIndex": 1
+          }
+        },
+        {
+          "do": "expect",
+          "errors": 2,
+          "hookEvents": {
+            "count": 2
+          }
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "expect",
+          "requests": {
+            "route": "events",
+            "events": [
+              {
+                "flag": "checkout",
+                "variationIndex": 1,
+                "count": 2,
+                "day": "{{today}}"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "an onError that throws is ignored",
+      "contract": "10",
+      "steps": [
+        {
+          "do": "script",
+          "route": "ruleset",
+          "answers": [
+            {
+              "status": 500
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {
+            "hookThrows": true,
+            "onErrorThrows": true,
+            "stream": false
+          }
+        },
+        {
+          "do": "ready",
+          "expect": false
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "expect": {
+            "value": false,
+            "variationIndex": null,
+            "reason": {
+              "kind": "ERROR",
+              "code": "NOT_READY"
+            }
+          }
+        },
+        {
+          "do": "expect",
+          "errors": 2
+        }
+      ]
+    }
+  ]
+}

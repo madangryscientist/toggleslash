@@ -1,0 +1,183 @@
+{
+  "scenarios": [
+    {
+      "name": "close stops every request and is safe to call twice at once",
+      "contract": "11",
+      "steps": [
+        {
+          "do": "create",
+          "options": {
+            "flushIntervalMs": 300
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "status": {
+            "stream": "connected"
+          }
+        },
+        {
+          "do": "close",
+          "calls": 2,
+          "withinMs": 2000
+        },
+        {
+          "do": "mark",
+          "name": "closed"
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "wait",
+          "ms": 800
+        },
+        {
+          "do": "expect",
+          "requests": {
+            "since": "closed",
+            "count": 0
+          },
+          "openStreams": 0,
+          "errors": 0
+        }
+      ]
+    },
+    {
+      "name": "evaluation still answers from the ruleset after close",
+      "contract": "11",
+      "steps": [
+        {
+          "do": "create",
+          "options": {
+            "hook": true
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "variationIndex": 1,
+            "reason": {
+              "kind": "FALLTHROUGH"
+            }
+          }
+        },
+        {
+          "do": "expect",
+          "hookEvents": {
+            "count": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "close before the first load settles ready false",
+      "contract": "11",
+      "steps": [
+        {
+          "do": "script",
+          "route": "ruleset",
+          "answers": [
+            {
+              "hang": true
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {
+            "requestTimeoutMs": 5000
+          }
+        },
+        {
+          "do": "close",
+          "withinMs": 1000
+        },
+        {
+          "do": "ready",
+          "expect": false,
+          "withinMs": 500
+        },
+        {
+          "do": "expect",
+          "errors": 0,
+          "requests": {
+            "route": "stream",
+            "count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "close abandons a stream mid-backoff without an error",
+      "contract": "11",
+      "steps": [
+        {
+          "do": "script",
+          "route": "stream",
+          "answers": [
+            {
+              "status": 503,
+              "times": "always"
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {}
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "requests": {
+            "route": "stream",
+            "count": 1
+          }
+        },
+        {
+          "do": "mark",
+          "name": "m"
+        },
+        {
+          "do": "close",
+          "withinMs": 1000
+        },
+        {
+          "do": "wait",
+          "ms": 500
+        },
+        {
+          "do": "expect",
+          "requests": {
+            "since": "m",
+            "route": "stream",
+            "count": 0
+          },
+          "errors": {
+            "since": "m",
+            "max": 0
+          }
+        }
+      ]
+    }
+  ]
+}

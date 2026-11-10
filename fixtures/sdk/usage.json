@@ -1,0 +1,461 @@
+{
+  "scenarios": [
+    {
+      "name": "counts are summed per flag, variation and day, and sent on close",
+      "contract": "9",
+      "steps": [
+        {
+          "do": "create",
+          "options": {}
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "times": 3
+        },
+        {
+          "do": "evaluate",
+          "flag": "legacy",
+          "fallback": true,
+          "times": 2
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "expect",
+          "requests": {
+            "route": "events",
+            "count": 1,
+            "method": "POST",
+            "events": [
+              {
+                "flag": "checkout",
+                "variationIndex": 1,
+                "count": 3,
+                "day": "{{today}}"
+              },
+              {
+                "flag": "legacy",
+                "variationIndex": 0,
+                "count": 2,
+                "day": "{{today}}"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a fallback, a mismatch, an unknown flag and an invalid context count nothing",
+      "contract": "9",
+      "steps": [
+        {
+          "do": "script",
+          "route": "ruleset",
+          "answers": [
+            {
+              "hang": true
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {
+            "requestTimeoutMs": 500
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "expect": {
+            "value": false,
+            "variationIndex": null,
+            "reason": {
+              "kind": "ERROR",
+              "code": "NOT_READY"
+            }
+          }
+        },
+        {
+          "do": "ready",
+          "expect": false
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 4000,
+          "status": {
+            "etag": "{{etag}}"
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": "x",
+          "expect": {
+            "reason": {
+              "kind": "ERROR",
+              "code": "TYPE_MISMATCH"
+            }
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "no-such-flag",
+          "fallback": false,
+          "expect": {
+            "reason": {
+              "kind": "ERROR",
+              "code": "FLAG_NOT_FOUND"
+            }
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "context": {
+            "attributes": {}
+          },
+          "expect": {
+            "value": false,
+            "reason": {
+              "kind": "ERROR",
+              "code": "INVALID_CONTEXT"
+            }
+          }
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "expect",
+          "requests": {
+            "route": "events",
+            "count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "counts are sent every flush interval, and a flush with nothing to send sends nothing",
+      "contract": "9",
+      "steps": [
+        {
+          "do": "create",
+          "options": {
+            "flushIntervalMs": 300
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 2000,
+          "requests": {
+            "route": "events",
+            "count": 1
+          }
+        },
+        {
+          "do": "mark",
+          "name": "first"
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "times": 2
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 2000,
+          "requests": {
+            "route": "events",
+            "since": "first",
+            "count": 1
+          }
+        },
+        {
+          "do": "mark",
+          "name": "second"
+        },
+        {
+          "do": "wait",
+          "ms": 800
+        },
+        {
+          "do": "expect",
+          "requests": [
+            {
+              "route": "events",
+              "since": "first",
+              "count": 1,
+              "events": [
+                {
+                  "flag": "checkout",
+                  "variationIndex": 1,
+                  "count": 2,
+                  "day": "{{today}}"
+                }
+              ]
+            },
+            {
+              "route": "events",
+              "since": "second",
+              "count": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "counts refused with 5xx, 408 or 429 are kept and sent summed",
+      "contract": "9",
+      "steps": [
+        {
+          "do": "create",
+          "options": {
+            "flushIntervalMs": 300
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "script",
+          "route": "events",
+          "answers": [
+            {
+              "status": 500
+            },
+            {
+              "status": 408
+            },
+            {
+              "status": 429
+            },
+            {
+              "status": 503
+            }
+          ]
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 5000,
+          "requests": {
+            "route": "events",
+            "count": 2
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 5000,
+          "requests": {
+            "route": "events",
+            "count": 5
+          }
+        },
+        {
+          "do": "expect",
+          "requests": {
+            "route": "events",
+            "nth": 4,
+            "answered": 200,
+            "events": [
+              {
+                "flag": "checkout",
+                "variationIndex": 1,
+                "count": 2,
+                "day": "{{today}}"
+              }
+            ]
+          },
+          "errors": {
+            "min": 4
+          }
+        }
+      ]
+    },
+    {
+      "name": "counts refused with another 4xx are dropped",
+      "contract": "9",
+      "steps": [
+        {
+          "do": "create",
+          "options": {
+            "flushIntervalMs": 300
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "script",
+          "route": "events",
+          "answers": [
+            {
+              "status": 400
+            }
+          ]
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 2000,
+          "requests": {
+            "route": "events",
+            "count": 1
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "legacy",
+          "fallback": false
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 2000,
+          "requests": {
+            "route": "events",
+            "count": 2
+          }
+        },
+        {
+          "do": "expect",
+          "requests": {
+            "route": "events",
+            "nth": 1,
+            "events": [
+              {
+                "flag": "legacy",
+                "variationIndex": 0,
+                "count": 1,
+                "day": "{{today}}"
+              }
+            ]
+          },
+          "errors": {
+            "min": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "a flush of more than 500 entries goes in requests of at most 500",
+      "contract": "9",
+      "steps": [
+        {
+          "do": "ruleset",
+          "flags": [
+            {
+              "key": "f-{{i}}",
+              "serves": true,
+              "count": 600
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {}
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "evaluate",
+          "flag": "f-{{i}}",
+          "fallback": false,
+          "each": 600,
+          "expect": {
+            "value": true
+          }
+        },
+        {
+          "do": "close"
+        },
+        {
+          "do": "expect",
+          "requests": {
+            "route": "events",
+            "batchSizes": [500, 100]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a usage request is bounded by the request timeout, close included",
+      "contract": "11",
+      "steps": [
+        {
+          "do": "create",
+          "options": {
+            "requestTimeoutMs": 800
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "script",
+          "route": "events",
+          "answers": [
+            {
+              "hang": true
+            }
+          ]
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false
+        },
+        {
+          "do": "close",
+          "withinMs": 2500
+        },
+        {
+          "do": "expect",
+          "requests": {
+            "route": "events",
+            "count": 1
+          },
+          "errors": {
+            "min": 1
+          }
+        }
+      ]
+    }
+  ]
+}

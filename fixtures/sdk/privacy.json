@@ -1,0 +1,144 @@
+{
+  "scenarios": [
+    {
+      "name": "a single context's key and attributes leave nothing in any request",
+      "contract": "12",
+      "steps": [
+        {
+          "do": "create",
+          "options": {
+            "flushIntervalMs": 300
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "status": {
+            "stream": "connected"
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "context": {
+            "key": "{{sentinel}}",
+            "attributes": {
+              "email": "{{sentinel}}@example.test",
+              "plan": "pro",
+              "tags": ["{{sentinel}}"]
+            }
+          },
+          "expect": {
+            "value": true
+          }
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 2000,
+          "requests": {
+            "route": "events",
+            "count": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "a multi-kind context leaves nothing in any request",
+      "contract": "12",
+      "steps": [
+        {
+          "do": "create",
+          "options": {
+            "flushIntervalMs": 300
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "context": {
+            "kind": "multi",
+            "contexts": {
+              "user": {
+                "key": "{{sentinel}}"
+              },
+              "org": {
+                "key": "{{sentinel}}-org",
+                "attributes": {
+                  "name": "{{sentinel}}"
+                }
+              }
+            }
+          },
+          "expect": {
+            "value": true
+          }
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 2000,
+          "requests": {
+            "route": "events",
+            "count": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "an invalid context and a failed evaluation leave nothing in any request or error",
+      "contract": "12",
+      "steps": [
+        {
+          "do": "create",
+          "options": {
+            "hookThrows": true,
+            "flushIntervalMs": 300
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "context": {
+            "kind": "{{sentinel}}"
+          },
+          "expect": {
+            "reason": {
+              "kind": "ERROR",
+              "code": "INVALID_CONTEXT"
+            }
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "expect": {
+            "value": true
+          }
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 2000,
+          "requests": {
+            "route": "events",
+            "count": 1
+          }
+        }
+      ]
+    }
+  ]
+}

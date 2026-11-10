@@ -1,0 +1,23 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "sdk-conformance",
+  "sourceRoot": "packages/sdk-conformance/src",
+  "projectType": "application",
+  "targets": {
+    "typecheck": { "command": "tsc -p packages/sdk-conformance/tsconfig.json" },
+    "lint": {
+      "command": "oxlint --type-aware --deny-warnings packages/sdk-conformance && bun scripts/check-slop.ts packages/sdk-conformance"
+    },
+    "test": {
+      "command": "bun --bun vitest run",
+      "options": { "cwd": "packages/sdk-conformance" },
+      "inputs": [
+        "default",
+        "{workspaceRoot}/packages/sdk/src/**/*",
+        "{workspaceRoot}/packages/sdk/test-service/**/*",
+        "{workspaceRoot}/packages/engine/src/**/*",
+        "{workspaceRoot}/fixtures/**/*"
+      ]
+    }
+  }
+}

@@ -152,3 +152,8 @@ It evaluates nothing itself; see its [README](../packages/sdk-openfeature/README
 `packages/sdk/test` runs against a fake server (`fake-server.ts`) and a fake clock (`fake-clock.ts`), so there is
 no network and no real timer: first load, `304`, a stream change, a reconnect, the server down at start and later,
 the flush on close, and a check after every test that no promise rejected unhandled.
+
+`packages/sdk/test-service/main.ts` is the SDK's conformance test service: it wraps `createClient` in the
+protocol of [`sdk-test-service.md`](sdk-test-service.md), and `bun run conformance -- --service "bun
+packages/sdk/test-service/main.ts"` runs every scenario in `fixtures/sdk` and every evaluation vector
+through it, against a real HTTP server on real time. `bunx nx test sdk-conformance` does the same in the gate.

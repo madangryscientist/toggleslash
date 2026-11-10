@@ -1,0 +1,12 @@
+{
+  "name": "@hackcove/toggleslash-sdk-conformance",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The conformance harness every ToggleSlash server SDK runs through its test service.",
+  "license": "MIT",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "1.4.4",
+    "vitest": "5.0.5"
+  }
+}
