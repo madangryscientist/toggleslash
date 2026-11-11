@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "The cross-language end-to-end test: the real C# server, the real CLI and the real TypeScript SDK.",
-  "license": "MIT",
+  "license": "Elastic-2.0",
   "type": "module",
   "dependencies": {
     "@hackcove/toggleslash-sdk": "workspace:*",

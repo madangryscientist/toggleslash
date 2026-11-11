@@ -5,7 +5,7 @@ Gem::Specification.new do |spec|
   spec.version = '0.0.0'
   spec.summary = 'A ToggleSlash server SDK for Ruby (unpublished).'
   spec.authors = ['ToggleSlash']
-  spec.license = 'MIT'
+  spec.license = 'Elastic-2.0'
   spec.required_ruby_version = '>= 3.3'
   spec.files = Dir['lib/**/*.rb']
   spec.require_paths = ['lib']

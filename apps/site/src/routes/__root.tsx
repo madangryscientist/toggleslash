@@ -19,7 +19,8 @@ export const Route = createRootRoute({
       { title: "ToggleSlash: feature flags you can self-host" },
       {
         name: "description",
-        content: "ToggleSlash is an open source feature flag service. MIT, self-hostable.",
+        content:
+          "ToggleSlash is a source-available feature flag service under the Elastic License 2.0, self-hostable.",
       },
     ],
     links: [{ rel: "stylesheet", href: appCss }],

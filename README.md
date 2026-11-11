@@ -1,6 +1,6 @@
 # ToggleSlash
 
-Open source feature flags you can run yourself. MIT licensed. The product has no domain
+Feature flags you can run yourself. Source available under the Elastic License 2.0. The product has no domain
 yet.
 
 > **Status: early, and nothing is published.** You can run ToggleSlash on your own machine or server:
@@ -49,4 +49,4 @@ send a change. [`docs/`](docs) has the rest of the documentation, including the 
 
 ## Licence
 
-MIT, see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+Elastic License 2.0, see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).

@@ -24,11 +24,11 @@ product surface a buyer compares, we are much closer to the beginning.
 
 | | LaunchDarkly (2026) | ToggleSlash (today) |
 | --- | --- | --- |
-| What it is | A hosted runtime-control platform: flags, release automation (Release Autopilot), experimentation, observability, AgentControl for LLM apps, and enterprise governance | A self-hosted, MIT-licensed feature-flag service: one C# server, a TypeScript engine, a TypeScript server SDK, a CLI, a dashboard and a site |
+| What it is | A hosted runtime-control platform: flags, release automation (Release Autopilot), experimentation, observability, AgentControl for LLM apps, and enterprise governance | A self-hosted, source-available (Elastic License 2.0) feature-flag service: one C# server, a TypeScript engine, a TypeScript server SDK, a CLI, a dashboard and a site |
 | Delivery | SaaS, global edge, 70T+ evaluations/day, <200 ms config propagation, 99.99% claimed | One process with SQLite behind it; Docker/compose for self-hosting; no published image |
 | SDKs | 25+ native SDKs across server, client, mobile, edge and AI, plus OpenFeature providers | One server-side TypeScript SDK; the C# evaluator is used only inside the server |
 | Integrations | 80+ (GitHub, GitLab, Slack, Teams, Datadog, Sentry, Segment, Terraform, warehouses, CDNs, MCP, and more) | OpenAPI document, a partial CLI, and the dashboard. No Terraform, MCP, GitHub app or chat integration |
-| Commercial model | Free Developer tier, pay-as-you-go Foundation, custom Enterprise; no per-seat pricing | MIT, self-hosted, no vendor, no usage meter |
+| Commercial model | Free Developer tier, pay-as-you-go Foundation, custom Enterprise; no per-seat pricing | Elastic License 2.0 (source-available), self-hosted, no vendor, no usage meter |
 | Governance | SSO/SAML, SCIM, custom RBAC, teams, views, approvals, unlimited audit history, critical environments, SOC 2 / ISO 27001 / ISO 27701 / FedRAMP Moderate | One bootstrap admin token, hashed SDK keys, an audit log, no user accounts |
 
 The honest framing: **LaunchDarkly is a control plane; ToggleSlash is a flag server.** Most of what
@@ -53,7 +53,7 @@ Maturity: 0 none, 1 minimal, 2 usable for a small team, 3 strong, 4 LaunchDarkly
 | Observability | 0 | 4 | None; LaunchDarkly has session replay, errors, logs, traces, metrics and alerts |
 | AI / AgentControl | 0 | 4 | None; LaunchDarkly configures prompts, models, evals and agent graphs |
 | Operations and scale | 1.5 | 4 | SQLite, one process, in-memory rate limits, no HA, no multi-region; LaunchDarkly sells global delivery as the product |
-| Openness / self-hosting | 4 | 1 | MIT and self-hosted, which LaunchDarkly is not (its Relay Proxy is open source; the platform is not) |
+| Openness / self-hosting | 4 | 1 | Elastic License 2.0 (source-available) and self-hosted, which LaunchDarkly is not (its Relay Proxy is open source; the platform is not) |
 
 Rough overall: **~65% of the core flag primitive, ~15 to 20% of the product surface** a LaunchDarkly
 buyer evaluates.
@@ -607,7 +607,7 @@ Legend: **Yes** = shipped; **Partial** = some of it; **No** = absent.
 | Data export | Yes | No |
 | Observability | Yes | No |
 | AgentControl | Yes | No |
-| Self-hosted / open source | Relay only | Yes (MIT) |
+| Self-hosted / open source | Relay only | Yes (Elastic License 2.0) |
 
 ## Appendix B: sources
 

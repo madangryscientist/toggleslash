@@ -11,7 +11,7 @@ function Home() {
   return (
     <div className="space-y-4">
       <h1 className="text-3xl font-bold">ToggleSlash</h1>
-      <p>Open source feature flags you can run yourself. MIT licensed.</p>
+      <p>Feature flags you can run yourself. Source available under the Elastic License 2.0.</p>
       <p>
         ToggleSlash is in early development and nothing is published yet. The server, the CLI and
         the TypeScript server SDK work; the code is not yet open to the public.

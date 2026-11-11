@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "A server-side OpenFeature provider over the ToggleSlash TypeScript SDK.",
-  "license": "MIT",
+  "license": "Elastic-2.0",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"

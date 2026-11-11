@@ -1,6 +1,6 @@
 # Build a ToggleSlash server SDK
 
-You are building a **server SDK** for ToggleSlash, an open source feature flag service, in one language,
+You are building a **server SDK** for ToggleSlash, a source-available feature flag service, in one language,
 inside this repository. Nobody answers questions while you work. Where this prompt leaves something open on
 purpose, decide and write the reason down; where it is unclear, assume, record it as a guess, and go on.
 Both go in your run report (phase 6), which the next version of this prompt is written from.

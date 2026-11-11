@@ -13,8 +13,8 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 
 | Metric | ToggleSlash | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| ✅ yes | 28 | 63 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
-| 🟡 partial | 11 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
+| ✅ yes | 27 | 63 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
+| 🟡 partial | 12 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
 | ❌ no | 27 | 3 | 9 | 7 | 6 | 7 | 7 | 9 | 17 |
 
 ## Matrix
@@ -103,7 +103,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Capability | ToggleSlash | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | Self-hosted | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ |
-| Open source | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
+| Open source | 🟡 | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
 | HA and shared database | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Rate limits | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Security headers, body limits and timeouts | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
@@ -206,7 +206,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Capability | Status | Evidence and note |
 | --- | :---: | --- |
 | Self-hosted | ✅ | `path:apps/server/Dockerfile`<br>`path:compose.yaml`<br>`doc:docs/self-hosting.md` |
-| Open source | ✅ | `path:LICENSE` |
+| Open source | 🟡 | `path:LICENSE`<br>Source available under the Elastic License 2.0, which is not an OSI open-source licence: no hosted or managed service for third parties. |
 | HA and shared database | ❌ | SQLite and one process per database; the in-memory lock and notifier do not cross processes. |
 | Rate limits | ✅ | `path:apps/server/ToggleSlash.Server/Limits/RequestLimiter.cs`<br>`doc:docs/self-hosting.md`<br>`test:apps/server/ToggleSlash.Server.Tests/RateLimitTests.cs`<br>`test:packages/sdk/test/rate-limit.test.ts`<br>In memory, one process; a restart resets the counts. No per-route admin limits or per-plan quotas. Only LaunchDarkly was read for this row; the other vendors' cells are not assessed. |
 | Security headers, body limits and timeouts | ✅ | `path:apps/server/ToggleSlash.Server/Hardening/SecurityHeaders.cs`<br>`path:apps/server/ToggleSlash.Server/Hardening/RequestLimits.cs`<br>`path:apps/web/src/api/security-headers.server.ts`<br>`test:apps/server/ToggleSlash.Server.Tests/HardeningTests.cs`<br>`test:apps/server/ToggleSlash.Server.Tests/CorsTests.cs`<br>`test:apps/web/e2e/security-headers.spec.ts`<br>`doc:docs/self-hosting.md`<br>No HSTS from either: terminate TLS in front and set it there. Request timeouts are cooperative: a handler that ignores its cancellation token runs to completion. Not compared with other vendors. |
