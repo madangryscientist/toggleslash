@@ -1,130 +1,217 @@
 # Go SDK: run report
 
+Sweep run 16 (FS-150), Go regenerated cold. The removed `sdks/go` and its workflow were not read, in the
+tree or in git history. Sibling SDKs and the TypeScript SDK were read where a point needed them.
+
 ## Prompt version
 
-- Prompt: 8a5998785117be9a6cd1a715aef7b1981855d7cc (`git log -1 --format=%H -- docs/sdk-authoring`, taken at the start of the run and again at phase 6; unchanged)
-- Model: Claude Sonnet 5.5 (`claude-sonnet-5-5`), run as ticket FS-96 in a T3 Code thread
-- Date: 2026-11-10
-- Input: language Go; runtime chosen: the Go toolchain with the standard library only (no runtime dependency); minimum version chosen: Go 1.26 (`go 1.26` in `go.mod`), developed on 1.27.3; package manager chosen: Go modules (module `github.com/madangryscientist/toggleslash/sdks/go`, package `toggleslash`)
-- Toolchain: `mise.toml` pins `go = "1.27.3"` and `golangci-lint = "2.15.0"`. `go version` prints `go version go1.27.3 linux/amd64`; `golangci-lint --version` prints `golangci-lint has version 2.15.0 built with go1.27.0`. The race detector needs cgo, so a C compiler must exist (it does on this machine and on `ubuntu-latest`).
+- Prompt: `01bdb4874f46968087cb4c357d0f73239f03cf42` (`git log -1 --format=%H -- docs/sdk-authoring`, main after FS-149)
+- Model: Claude Sonnet 5.5 (`claude-sonnet-5-5`)
+- Date: 2026-11-12
+- Input: language Go; runtime chosen: Go 1.27.4 toolchain; minimum version chosen: Go 1.26 (`go.mod`);
+  package manager chosen: Go modules (nothing is published, so no registry)
+- Toolchain: `mise.toml` pins `go = "1.27.4"` (prints `go version go1.27.4 linux/amd64`),
+  `golangci-lint = "2.15.0"` (prints `golangci-lint has version 2.15.0 built with go1.27.0`) and
+  `zig = "0.17.1"` (prints `0.17.1`, the C compiler for the race detector). Bun 1.4.2 (the repository's
+  `BUN_VERSION`) runs the harness.
 
 ## Results
 
-- Vectors: 1371 passed of 1371; bucket pins: 17 passed of 17 (`bin/test` prints `vectors: 1371 pins: 17`, equal to the phase 2 count command's `1371 17`)
-- Conformance: `scenarios: 81 passed, 0 failed, 0 skipped; vectors: 1369 passed, 0 failed, 2 skipped` (exit 0; the 2 skips are the two named `load:` vectors)
+- Vectors: 1371 passed of 1371; bucket pins: 17 passed of 17 (`bin/test` prints `vectors: 1371 pins: 17`)
+- Conformance: `scenarios: 81 passed, 0 failed, 0 skipped; vectors: 1369 passed, 0 failed, 2 skipped`
 - Capabilities advertised: `integer-accessor`
-- Native tests: 69 top-level tests passed of 69 (109 counting subtests), all under `go test -race -count=1`; also green at `-count=3`. Each of the harness's 81 scenarios and the vectors are separate from these.
+- Native tests: 72 passed of 72 top-level tests (83 with subtests, none failing), under `-race`:
+  the SDK package 53, `internal/evaluator` 3, `internal/jsonvalue` 11, `internal/wtf8` 5. The test service
+  (`test-service`, `package main`) has no test files; the harness exercises it.
+- Stability (checklist, "passes 10 times in a row"): ten consecutive `bin/test` runs on the committed
+  tree, all exit 0 with `vectors: 1371 pins: 17`; then an eleventh with the CPU loaded (12 busy shell loops,
+  `nproc` is 12, started before `bin/test` and killed after it, build included): exit 0, same counts. No
+  flake, so the ten never restarted. The tree did not change after those runs except this file.
+- Lint: `bin/lint` prints `0 issues.` (gofmt clean, `go vet` clean).
 
 ## Decisions
 
-1. Module path `github.com/madangryscientist/toggleslash/sdks/go` with the package named `toggleslash` (`go` is a keyword), over a path that ends in a name: a consumer imports it with an alias or just uses `toggleslash.`.
-2. Minimum Go 1.26, over the newest toolchain: Go supports the two newest releases (1.27 and 1.26) and the SDK uses nothing newer than 1.26 (`DESIGN.md` "The minimum runtime"), nothing was built or run on 1.26 itself. CI and `mise.toml` use 1.27.3, the version on the machine.
-3. No runtime dependency, over `encoding/json` plus a regexp or SSE library: the stdlib covers HTTP, SHA-256 and sync. `DESIGN.md` "Dependencies" says so.
-4. A hand-written JSON reader and writer in `internal/jsonvalue`, over `encoding/json`: it errors on `1e999` and replaces a lone surrogate with U+FFFD, which the spec forbids. Strings are held as WTF-8 (`internal/wtf8`) so a lone surrogate survives and comparison is by UTF-16 code unit.
-5. Typed accessors (`Bool`, `String`, `Int` as `int64`, `Float64`, `JSON`) plus `...Detail` twins returning a generic `Detail[T]`, over one generic method: Go methods cannot have type parameters, and a typed method keeps the kind check inside the SDK.
-6. Options are functional (`WithStream`, `WithPollInterval`, `WithFlushInterval`, `WithRequestTimeout`, `WithAfterEvaluation`, `WithOnError`) over a config struct: the idiom, and `New` stays two required arguments.
-7. Test seams (`httpClient`, `now`, `jitter`, `idle`, `evaluate`) are fields of an unexported `config` that `newConfig` builds and `start(cfg)` takes. Tests are in package `toggleslash` and reach them; no exported option, no global, no environment variable.
-8. The ruleset and its ETag sit in one immutable `snapshot` behind an `atomic.Pointer`; `statusMu`, `usageMu` and `flushMu` guard the rest; no lock is held across a network call or a callback. Callbacks run on a `worker` so `Close` from inside one cannot deadlock.
-9. Redirects are not followed (`CheckRedirect` returns `http.ErrUseLastResponse`, a 3xx is `http_3xx`): Go's client would otherwise resend `Authorization` on a same-host redirect.
-10. A network error reports fixed text only (`network`, `timeout`), never the `*url.Error` text, which carries the URL.
-11. The events route applies `Retry-After` for 429 only, as contract 9 says (the TypeScript SDK applies it more broadly; see guess 9).
-12. `NoVariation = -1` for the variation index of a fallback in `Detail`, over `*int`: a plain int is easy to compare; the test service writes it as `null`.
-13. `Value` is a type alias for the internal JSON value with constructors (`Null`, `Bool`, `Number`, `String`, `Array`, `Object`), so a caller can build an attribute or read a JSON flag without importing an internal package.
-14. Lint: `golangci-lint` (standard set plus `errorlint`, `bodyclose`, `misspell`, `unconvert`) with `gofmt -l` and `go vet`, over `staticcheck` alone: one pinned tool covers them. `bin/lint` rewrites nothing. `usestdlibvars` was tried and dropped: it wants `http.StatusOK` for every status literal in the tests, which makes the table tests less readable.
-15. CI toolchain: `jdx/mise-action` limited to `go golangci-lint` (as the Python workflow does), over `actions/setup-go` plus a golangci-lint action: one file (`mise.toml`) names both versions, where setup-go would split them across three places.
-16. `bin/test-service` runs the binary `bin/test` built into `.build/` and rebuilds only when it is missing, so the harness's 30 s wait never covers a cold compile.
-17. Test service state: a `map` of entries under one mutex, each entry with its own small mutex for the hook events and error messages; the handler recovers a panic into a 500 with its text.
-18. An unclosed client test is a re-exec of the test binary as a subprocess (`TestUnclosedClientHelper` with an environment variable that only the test reads), over an in-process check, because only a separate process can show that it exits.
+1. Lint and format: `gofmt -l`, `go vet` and golangci-lint v2 over `go vet`'s own set, with the named
+   linters in `.golangci.yml` (bodyclose, contextcheck, errorlint, noctx, nilerr, gosec, misspell, unconvert,
+   unparam, revive, predeclared, copyloopvar) on top of golangci-lint's standard set, because the SDK handles
+   keys and network input and these catch leaked bodies, lost contexts and error comparison slips. Each
+   exclusion carries its reason in the file: gosec and unparam in tests (throwaway fixtures); gosec in the
+   test service (loopback tool); contextcheck in the test service and `usage.go` (the final flush is detached
+   from the lifetime context on purpose, DESIGN.md section 2); gosec G404 for reconnect jitter in
+   `toggleslash.go` (spread, not a secret); gosec G115 in `internal/wtf8` and `internal/jsonvalue` (masked or
+   range-checked narrowing); revive `unused-parameter` in tests (handler signatures).
+2. The typed accessors are methods, with one generic function `variation[T]` behind them (`client.go`),
+   because Go methods cannot have type parameters. The order is the contract's section 4.
+3. `StringVariation` maps a lone surrogate in the served string to U+FFFD: a Go `string` is bytes, and the
+   public value must be valid UTF-8 text. `JSONVariation` keeps the lone surrogate in the `Value`
+   (DESIGN.md section 5).
+4. The HTTP transport is a clone of the default with `DisableCompression = true` (so no `Accept-Encoding`
+   is sent: the header list is exactly the protocol's plus the three the client adds, see the table below)
+   and `CheckRedirect` returning `http.ErrUseLastResponse` (a redirect is an HTTP status, not followed).
+5. `SyncError` is an exported type (`Code`, `Usage`), so a caller of `WithOnError` can `errors.As` it. Its
+   text is fixed: the code and nothing else (`TestSyncErrorTextHoldsOnlyTheCode`).
+6. Usage requests (`POST /sdk/v1/events`) use `context.Background()` with the request timeout, not the
+   lifetime context, so `Close` can wait for an in-flight flush and the final flush can run after the
+   lifetime is cancelled. Close stays bounded by about twice the request timeout
+   (`TestCloseReturnsWithinTwiceTheTimeoutWhenTheServerHangs`).
+7. `Close` does not wait for a goroutine that is inside an application callback: each loop sets an atomic
+   marker (`syncCB`, `flushCB`) around `onError`, and `waitFor` polls the done channel and the marker
+   together. This is what contract section 6, item 4 asks (a `close` on the SDK's own thread SHOULD NOT wait
+   for the work that thread is doing); `TestCloseFromInsideACallbackDoesNotDeadlock`.
+8. The nesting limit of the JSON parser is 10000 levels; the contract's "Bounds" asks for at least 512. It
+   is there because a Go stack overflow is fatal, not recoverable (`TestNestingLimit`).
+9. `FlagVersion` follows the TypeScript engine's `versionOf` rule (`packages/engine/src`): the version of a
+   flag in the ruleset, absent for a missing or malformed flag, absent above the largest `int64`.
+   `internal/evaluator/flagversion_test.go`.
+10. The stream has one `time.AfterFunc` timer, first the open bound and then the idle watchdog, reset by any
+    bytes, a fetch pauses it (contract 7.2, "Bounds"). Retry-After is read on 429 only, digits only, and
+    capped at 300 s (contract 7.4); the ruleset and stream share one hold (the sync goroutine only), events
+    have their own under `flushMu`.
+11. The toolchain step in the workflow is `jdx/mise-action` (as the other SDK workflows do), not
+    `actions/setup-go`, because zig and golangci-lint come from the same `mise.toml` as go. It is limited to
+    `go golangci-lint zig`, or it would also install the root `.tool-versions` (a second Bun, .NET).
+12. The race detector needs cgo and the prompt says no C compiler is assumed, so `mise.toml` pins `zig` and
+    `bin/test` sets `CC="$(mise where zig)/zig cc"` by path. Build output goes in `.build/` (ignored).
+13. The zig pin: the `gh api` tag lookup gave a stale tag for the newest release, so the version
+    was taken from `https://ziglang.org/download/index.json` and checked with `mise ls-remote zig`.
+14. Test seams are unexported options of the package's own config (`withClock`, `withJitter`, `withIdle`,
+    `withTLSConfig`, `withEvaluate`, `toggleslash.go`), set only by tests, never a global or an environment
+    variable (contract 13).
+15. The test service is `package main` in the SDK's own module (`test-service/`), so `go vet ./...` and
+    `go build ./...` cover it and the SDK needs no second module.
+16. `sdks/go/internal/...` packages: `jsonvalue` (parser and `Value`), `wtf8` (WTF-8 and UTF-16 order),
+    `evaluator` (the spec). No third-party dependency, no `go.sum` (DESIGN.md section 4).
 
 ## Guesses
 
-1. The checklist's native hook-future line is not applicable to Go and `PROMPT.md` and `CHECKLIST.md` do not say how to mark such a line. Where: CHECKLIST.md, "Native tests", the future line. Assumed: the hook is a plain synchronous func, there are no futures; the line does not apply and RUN.md says so.
-2. The contract names Python and Ruby for unbounded integers, and the checklist says the `huge` scenario applies "in a language with unbounded integers too", but it is not said that a language with `int64` must also pass it. Where: sdk-contract.md section 4 "Typed languages"; CHECKLIST.md. Assumed: `integer-accessor` is advertised for Go too (PROMPT.md says "Go counts"), and the integer accessor returns `TYPE_MISMATCH` for a fraction or a value outside signed 64 bits, with `2.0` read as `2`.
-3. Go adds `User-Agent: Go-http-client/1.1` (or 2.0), `Accept-Encoding: gzip`, `Host` and `Content-Length` itself, and the checklist allows "only `Authorization`, `Accept`, `If-None-Match` and `Content-Type`". Where: CHECKLIST.md, "Code and documents", telemetry line; contract 12. Assumed: those four are shown not to identify a user or a machine (see Checklist), and the source scan holds the four the SDK sets.
-4. The phase 4 example commands and the `bin/` examples in `PROMPT.md` lean on Python (`python -m`, `mise exec`). Where: PROMPT.md "Entry points". Assumed: the Go scripts do the same job (find `mise.toml`, `cd` to the SDK, run native commands) with a `run` function like the Python ones.
-5. The spec says `version` is "carried for the API; evaluation does not read it", but it is not said whether a flag with a missing or non-count `version` or a missing `salt` is malformed. Where: evaluation.md "Flag" table and "Errors at load" (the header and body checks). Assumed: `salt` (a string, may be empty) and `version` (a count) are required for a well-formed flag; a flag lacking either is `ERROR MALFORMED_FLAG`. No vector contradicts this; the TypeScript engine or the C# evaluator may read it differently, and this run did not compare them.
-6. Duplicate keys in a JSON object, a leading byte order mark, and a ruleset body of unlimited size are not specified. Where: sdk-contract.md section 7.1 and evaluation.md. Assumed: the last value wins and the first position is kept; a leading BOM is skipped; there is no size cap on the ruleset body (the request timeout bounds the read).
-7. Whether a `3xx` is `http_<status>` or follows the redirect is not said. Where: contract 7.1, 8. Assumed: not followed, reported as `http_3xx` (decision 9).
-8. The CI toolchain step offers two options and says "which one is a decision" but not how to confirm the action's tool list name `golangci-lint` is a mise tool name. Where: PROMPT.md phase 5, item 4. Assumed: the tool names in `install_args` are the same as the keys in `mise.toml`; checked by reading the Python workflow, not by a CI run, which this run cannot make.
-9. The TypeScript SDK applies `Retry-After` on the events route for statuses other than 429, while the contract says 429. Where: sdk-contract.md section 9 against `packages/sdk/src`. Assumed: the contract wins (decision 11), and the harness agrees (`rate-limit.json` passes).
-10. The `hooks` and `onError` privacy rule says no context in `onError` messages, but a Go `error` can wrap a cause that does. Where: contract 10, 12. Assumed: the SDK's own `*Error` carries a fixed message, an operation name and a code, never a wrapped cause; a source scan (`TestNoLoggingAndNoContextInErrors`) holds that.
-11. The test-service protocol says the harness waits 30 s for `listening`, but a compiled language builds in more than that cold. Where: sdk-test-service.md "Starting". Assumed: `bin/test` builds the binary as its last step, `bin/test-service` builds only if missing (decision 16). In CI the order `bin/lint`, `bin/test`, then the harness makes that work; run alone on a clean checkout the first start may be slow.
-12. Go's `net/http` server does not notice a client disconnect until the handler reads or writes, so a test handler that hangs must first drain the request body. Where: not in any document; it cost this run one hung test. Assumed: every hung test handler drains the body first.
+None. Each point I stopped on was settled by the contract, the protocol page, the checklist, `language-notes/go.md`
+or the TypeScript SDK, and is recorded above as a decision with where it was settled.
 
 ## Stuck points
 
-None. No contract, harness, scenario or vector bug was found, and no outside help was needed.
+None.
 
 ## Proposed prompt changes
 
-1. For guess 1, in `CHECKLIST.md`, after "Where hooks may return a future,", add: "A language whose hook is a plain function marks the line `n/a: no futures` in RUN.md."
-2. For guess 2, in `CHECKLIST.md` "Native tests", change "in a language with unbounded integers too" to "in a language with `int64` or unbounded integers", and name the native test.
-3. For guess 3, in `CHECKLIST.md` "Code and documents", after "finds only `Authorization`, `Accept`, `If-None-Match` and `Content-Type`", add: "plus headers the HTTP client adds on its own (`User-Agent`, `Accept-Encoding`, `Host`, `Content-Length`), listed in RUN.md with the reason each does not identify a user or a machine".
-4. For guess 4, in `PROMPT.md` "Entry points", give the three scripts as language-neutral pseudocode (cd, find the pinned toolchain, run) and move the Python text into `language-notes/python.md`.
-5. For guess 5, in `docs/evaluation.md` "Ruleset", add one sentence saying what an evaluator does with a flag that lacks a required field.
-6. For guess 6, in `docs/sdk-contract.md` section 7.1, add: "A duplicate JSON key keeps the last value; a leading byte order mark is skipped; the SDK need not cap the body".
-7. For guess 7, in `docs/sdk-contract.md` section 8, add: "A redirect is not followed; its status is the `http_<status>` code".
-8. For guess 11, in `PROMPT.md` "Entry points", add: "A compiled language builds in `bin/test` and `bin/test-service` runs the built binary, rebuilding only if it is missing."
-9. For guess 12, add `language-notes/go.md` with these facts, dated 2026-11-10 and this run's prompt hash: `encoding/json` errors on `1e999` and replaces a lone surrogate, so write the reader; `net/http` adds `User-Agent`, `Accept-Encoding`, `Host` and `Content-Length`; a hung test handler must drain the request body; `-race` needs cgo and a C compiler; `context.WithTimeoutCause` bounds a body read; `CheckRedirect` must return `http.ErrUseLastResponse`; `go vet` and `golangci-lint` are the pinned lint; `usestdlibvars` is noisy in table tests; `pkill -f 'go test'` kills the shell that ran it, so stop a test by its process id.
+None.
 
 ## Checklist
 
-### The two executable checks
+The two executable checks
 
-- [x] `bin/test` runs every vector but `buckets.json` and every bucket pin: `TestVectors` and `TestBucketPins` in `internal/eval/vectors_test.go` read `../../../../fixtures/evaluation` at test time; `bin/test` printed `vectors: 1371 pins: 17`, and the phase 2 count command printed `1371 17`.
-- [x] The harness exits 0 with only the 2 named vector skips: `bun run conformance -- --service sdks/go/bin/test-service` printed `scenarios: 81 passed, 0 failed, 0 skipped; vectors: 1369 passed, 0 failed, 2 skipped`, exit 0. No scenario skips because `integer-accessor` is advertised.
+- [x] `bin/test` runs every vector but `buckets.json` and every pin, count equals phase 2's: `bin/test` prints
+  `vectors: 1371 pins: 17` (`TestVectors`, `TestBucketPins` in `internal/evaluator/vectors_test.go`, read
+  from `fixtures/evaluation/` at test time).
+- [x] Ten runs in a row plus one under CPU load: see Results, "Stability". All eleven exit 0 with
+  `vectors: 1371 pins: 17`.
+- [x] The harness exits 0 with only the 2 named vector skips: `scenarios: 81 passed, 0 failed, 0 skipped;
+  vectors: 1369 passed, 0 failed, 2 skipped`, exit 0 (`bun run conformance -- --service sdks/go/bin/test-service`).
 
-### What the harness checks
+What the harness checks (all met when the harness passes; named per line)
 
-- [x] Both context shapes: the harness (`privacy.json`, the `kinds.json` vectors) passed.
-- [x] Result order and the mismatch rule: the harness (`evaluation.json`, `usage.json`) passed; native `TestTypedAccessors`, `TestEvaluatorPanicGivesFallbackAndOneOnError`.
-- [x] `integer-accessor`, a fraction is `TYPE_MISMATCH`, `2.0` is `2`: harness `evaluation.json`; native `TestTypedAccessors`.
-- [x] Nothing raises: harness (every scenario; the service answers 500 on a panic); native `TestHookAndOnErrorPanicsNeverReachTheCaller`, `TestAnUnusableURLIsAnetworkFailureNotAPanic`.
-- [x] `NOT_READY` at once: harness `load.json`; native `TestNotReadyBeforeTheFirstLoad`.
-- [x] `ready` settles, bounded, repeatable, false after close: harness `load.json`, `close.json`; native `TestReadySettlesAfterTheFirstAttemptAndIsFixed`, `TestReadyIsBoundedByTheRequestTimeout`, `TestReadyIsFalseAfterCloseIfNothingLoaded`.
-- [x] A non-ruleset never replaces the one held: harness `status.json`; native `TestOnlyAJSONObjectWithFlagsAndSegmentsReplacesTheRuleset`, `TestEmptyFlagsAndSegmentsIsAValidRuleset`.
-- [x] Ruleset request, `If-None-Match`, ETag kept exactly, URL joining: harness `load.json`, `status.json`; native `TestIfNoneMatchIsTheETagAsReceivedAndOnlyWhenHeld`, `TestNoETagMeansNoIfNoneMatch`, `TestURLTrailingSlashIsStripped`.
-- [x] The stream, SSE parsing, refresh on change: harness `stream.json`, `load.json`, `status.json`; native `TestSSEParser` (17 cases), `TestStreamChangedEventFetchesOnlyANewTag`, `TestConnectedEventClearsLastError`, `TestStreamNon200IsHTTPStatusAndPollsAfterwards`.
-- [x] The loop and the jittered backoff: harness `backoff.json`, `stream.json`; native `TestDelayIsBoundedAndJittered`, `TestAStreamThatWasUpIsRetriedWithoutAPoll`, `TestNonPositiveDurationsFallBackToTheDefault`.
-- [x] `429` and `Retry-After` on every route: harness `rate-limit.json`; native `TestRetryAfterMustBeWholeDigits`, `TestUsageHoldAfter429AndCloseReportsTheUnsentCounts`.
-- [x] Status fields, states, `lastError` codes: harness `status.json` and the shape check; native `TestHTTPFailureCodes`, `TestANetworkFailureIsNetworkAndNamesNothing`.
-- [x] Usage counts: harness `usage.json`, `rate-limit.json`; native `TestUsageIsSummedAndSentOnCloseWithTheExactBody`, `TestBatchesOfAtMost500`, `TestAFailedFlushIsKeptAndStopsTheFlush`, `TestARefusedBatchIsDroppedAndTheFlushContinues`, `TestOnlyServedResultsAreCounted`.
-- [x] Hook events, `onError`, a hook that raises and an `onError` that raises: harness `hooks.json`; native `TestHookEventCarriesWhatTheCallerGot`, `TestHookAndOnErrorPanicsNeverReachTheCaller`.
-- [x] `close` in order, twice at once, during a hold, with a final flush: harness `close.json`, `rate-limit.json`, `usage.json`, `status.json`; native `TestCloseIsPromptAndLeavesNoStreamOpen`, `TestConcurrentUseUnderRace` (two racing `Close` calls), `TestNothingIsCountedAfterClose`.
-- [x] No context, key or attribute in any request or `onError` message, and no extra header: harness `privacy.json` and the after-scenario checks; native `TestRequestsCarryOnlyAllowedHeadersAndNoContext`. Source search: `TestNoLoggingAndNoContextInErrors` (in `source_test.go`) walks every non-test `.go` file and fails on `log`, `fmt.Print*`, `println` or a context, key or attribute in an `&Error{... Message:}`.
+- [x] Both context shapes: harness `privacy.json` and `kinds.json` vectors.
+- [x] Result order and the mismatch rule with the SDK's codes: harness `evaluation.json`, `usage.json`.
+- [x] `integer-accessor`: harness `evaluation.json`; `TestIntVariationRange`.
+- [x] No operation raises: the test service answers 500 on a panic, no scenario failed
+  (`TestCallbackPanicsAreContained`).
+- [x] `NOT_READY` at once: harness `load.json`; `TestNotReadyAndMismatch`.
+- [x] `ready` settles, bounded, repeatable: harness `load.json`, `close.json`; `TestReadyAndVariation`.
+- [x] A non-ruleset never replaces the held one: harness `status.json`; `TestBadRulesetKeepsTheOneHeld`.
+- [x] Ruleset request, `If-None-Match`, ETag kept exactly, URL joining: harness `load.json`, `status.json`;
+  `TestConditionalRequestAndNotModified`, `TestNewWithTrailingSlashAndNilOption`.
+- [x] The stream: harness `stream.json`, `load.json`, `status.json`; `TestStreamConnectsAndFollowsChanges`,
+  `TestStreamFailedFetchEndsTheStream`, `TestSSEParserRules`.
+- [x] Loop and jittered backoff: harness `backoff.json`, `stream.json`; `TestStreamBackoffDelayFormula`,
+  `TestPollingIntervalOnAFakeClock`.
+- [x] `429` and `Retry-After` on every route: harness `rate-limit.json`.
+- [x] Status fields, states, `lastError` codes: harness `status.json`; `TestInitialStatus`,
+  `TestStreamHTTPErrorIsReported`.
+- [x] Usage counts: harness `usage.json`, `rate-limit.json`; `TestUsageCountsPerFlagIndexAndDay`,
+  `TestAtMost500EntriesPerRequest`, `TestUsageResultTable`.
+- [x] Hook events and `onError`: harness `hooks.json`; `TestCallbackPanicsAreContained`.
+- [x] `close` in order, twice, during a hold, with a final flush: harness `close.json`, `rate-limit.json`,
+  `usage.json`, `status.json`; `TestRetryAfterHoldsUsageAndFinalFlushReportsIt`.
+- [x] No context, key or attribute in a request, an error or a log line: harness `privacy.json` and the
+  after-scenario checks; `TestNoContextInLogsOrErrors` (`usage_test.go`). Source search from `sdks/go`:
+  `grep -rn '"log"\|log\.\|slog\|fmt\.Print\|fmt\.Fprint' --include=*.go . | grep -v _test.go` finds only
+  `test-service/main.go` (its own start-up lines: the listen address and two fatal errors, no context).
+  Errors are built in three places only: `usage.go:125` (a count of unsent entries), `internal/jsonvalue/parse.go:16`
+  (`ErrSyntax`, a fixed text, `TestErrorCarriesNoInput`) and `client.go:20` (`errTimeout`). `panicError`
+  (`client.go`) wraps the application's or the evaluator's own panic value; the evaluator panics only with
+  its own `invalidPattern{}` (`pattern_parse.go:49`), which it recovers and otherwise re-raises
+  (`pattern_parse.go:336`), so a panic value is a Go runtime error, never a context's text.
 
-### Native tests
+Native tests
 
-- [x] Many goroutines at once, `Close` racing `Variation`, two `Close` calls racing, with the race detector: `TestConcurrentUseUnderRace` (16 goroutines), run under `go test -race`.
-- [x] `Variation` returns within a bound while a ruleset request hangs and while a usage flush hangs: `TestVariationIsBoundedWhileTheNetworkHangs` (its handler hangs both the ruleset route and the events route, and a count is recorded for the flusher to hang on).
-- [x] One ruleset or the other across a swap: `TestASwapExposesOneRulesetOrTheOther` (a hook's `etag` and `flagVersion` and the served value agree under concurrent swaps).
-- [x] A hook and an `onError` that call back into the client do not deadlock: `TestCallbacksMayCallTheClient`; also `TestCloseFromInsideACallback`.
-- [x] A quiet stream dropped as `timeout`, a keep-alive restarts the window, through a seam on a real loopback socket: `TestAQuietStreamIsDroppedAsATimeout`, `TestAKeepAliveRestartsTheIdleWindow`.
-- [x] A `Retry-After` above 300 held for 300 s on the ruleset, stream and events routes: `TestRetryAfterAbove300IsHeldFor300OnTheRulesetAndStreamRoutes`, `TestUsageRetryAfterAbove300IsHeldFor300` (clock seam).
-- [x] Counts either side of a UTC midnight go out as two days: `TestCountsEitherSideOfUTCMidnightGoOutAsTwoDays`, `TestTheDayIsUTCNotLocal`.
-- [x] An evaluation that panics gives the fallback, `EVALUATION_FAILED` and one `onError`: `TestEvaluatorPanicGivesFallbackAndOneOnError`.
-- [ ] n/a, hooks may return a future: Go hooks are plain synchronous funcs, there is no future; a hook that panics is `TestHookAndOnErrorPanicsNeverReachTheCaller`.
-- [x] A served number outside signed 64 bits is `TYPE_MISMATCH` on the integer accessor: `TestTypedAccessors` (the `int64` range, `-2^63`, `1e999`); harness `evaluation.json` (`huge`).
-- [x] A client never closed does not keep the process from exiting: `TestAnUnclosedClientDoesNotKeepTheProcessAlive` (a subprocess re-exec). It is close to trivial in Go, where goroutines never keep a process alive after `main` returns, but it is run.
+- [x] All operations from many goroutines, `close` racing `variation`, two closes racing, no error, deadlock or
+  race, under `-race`: `TestManyGoroutinesAllOperations`, `TestCloseRacingVariation`,
+  `TestCloseIsIdempotentAndRacing` (all under `go test -race`, `zig cc` as the C compiler).
+- [x] SHOULD: an `https` URL reaches the TLS path with a local certificate: `TestTLSWithALocalCertificate`
+  (`sync_test.go`).
+- [x] `variation` returns within a bound while a ruleset request hangs and while a usage flush hangs:
+  `TestVariationDoesNotBlockOnAHungRuleset`, `TestVariationDoesNotBlockOnAHungFlush`.
+- [x] A reader sees one ruleset or the other across a swap, `etag` and `flagVersion` from the same one:
+  `TestSwapAtomicityOfEventETagAndVersion` (the snapshot is one `atomic.Pointer`, DESIGN.md section 2).
+- [x] SHOULD: callbacks may call back into the client, and `ready` from the SDK's own goroutine returns without
+  waiting: `TestHooksAndCallbacksAreReentrant`, `TestOnErrorMayCallClientMethods` (`onError` runs on the sync
+  goroutine and calls `Ready`), `TestCloseFromInsideACallbackDoesNotDeadlock`.
+- [x] A stream that gets no bytes for 60 s is dropped as `timeout`, a keep-alive restarts it, through a seam on
+  a real quiet loopback socket: `TestStreamWatchdog` (`withIdle(250ms)`, seven keep-alives, then silence;
+  default `defaultIdle = 60 * time.Second`, `toggleslash.go`).
+- [x] A `Retry-After` above 300 is held for 300 s on the ruleset, stream and events routes, through a seam:
+  `TestRetryAfterOnRulesetHoldsAndCaps`, `TestRetryAfterCapOnRulesetAndStreamRoutes`,
+  `TestRetryAfterCapOnEventsRoute` (`maxRetryAfter`, `sync.go:18`).
+- [x] Counts either side of a UTC midnight go out as two days: `TestUTCMidnightGivesTwoDays`.
+- [x] An evaluation that raises gives the fallback, `ERROR EVALUATION_FAILED` and one `onError`:
+  `TestEvaluationFailedGivesFallbackAndOneOnError`.
+- [x] n/a: no futures. A hook is a plain function; a hook that panics goes to `onError`
+  (`TestCallbackPanicsAreContained`).
+- [x] With `integer-accessor`, a served number outside signed 64 bits is `TYPE_MISMATCH`: `TestIntVariationRange`
+  (the `int64` range), harness `huge`.
+- [x] A client that is never closed does not keep the process from exiting: met by construction, Go goroutines
+  never keep a process alive; the only goroutines the client starts are the two in `startLoops`
+  (`client.go:122`).
 
-### Code and documents
+Code and documents
 
-- [x] `DESIGN.md` passes the phase 1 row check (the mapping table has a row per operation and option); `README.md` links to the table (`DESIGN.md#the-mapping-table`).
-- [x] Names keep the canonical meaning and defaults, and the reason kinds, error codes, stream states and `lastError` codes keep their spelling (`types.go`: `ReasonRuleMatch` is `RULE_MATCH`, `ErrorCode` is `NOT_READY` and so on, `SyncErrorCode` is `http_503`, `timeout`, `bad_ruleset`, `network`); the harness checks the spelling on the wire.
-- [x] No platform regular expression: `TestNoPlatformRegexpInTheSDK` finds no `regexp` or `regexp/syntax` import in any non-test file; the matcher is `internal/eval/pattern_parse.go` and `pattern.go` (a Pike VM).
-- [x] Every runtime dependency has a line in `DESIGN.md`: there are none, and "Dependencies" says so; `go.mod` has no `require`.
-- [x] No telemetry and no identifying header: `TestOnlyTheAllowedHeadersAreSet` finds only `Authorization` (`sync.go:188`, `sync.go:238`, `usage.go:164`), `Accept` (`sync.go:239`), `If-None-Match` (`sync.go:190`) and `Content-Type` (`usage.go:165`). Go's `net/http` itself adds `User-Agent` (the fixed string `Go-http-client/<n>`), `Accept-Encoding: gzip`, `Host` (the server the user configured) and `Content-Length`. None carries a user, a machine, a host name or a key: the User-Agent names the Go HTTP client library and is the same on every machine, the Accept-Encoding is a capability, and the other two describe the request. They are not set by the SDK and are not removable without replacing the transport.
-- [x] Every extra is one contract 13 allows, and none weakens contract 5: the typed accessors and `...Detail` twins, `UserContext` / `NewContext` / `MultiContext` / `WithAttribute` constructors, the public `Value` type with `ParseJSON`, and `NoVariation`. None sends anything new.
-- [x] Test seams are not a global or an environment variable: the five fields of the unexported `config` (decision 7). `TestNoEnvironmentVariablesAreRead` scans every non-test source file for `os.Getenv`, `os.LookupEnv` and `os.Environ` (comment lines skipped); there is no scan for package-level state, and the only package variables are the Value constructor aliases, the accessor tables, one sentinel error and a byte order mark, none of them written after start. The only test that reads an environment variable is `TestUnclosedClientHelper`, in a test file.
-- [x] `bin/lint`, `bin/test` and `bin/test-service` exist, are executable, `cd` to the SDK and use `mise exec` for the pinned toolchain (`ls -l sdks/go/bin`).
-- [x] `test-service/README.md` maps every accessor (`bool`, `string`, `number`, `int`, `json`, `any`) to an SDK method.
-- [x] `.github/workflows/sdk-go.yml` follows the skeleton, filters on its paths and pins every action by SHA (`actions/checkout` v7.0.1, `oven-sh/setup-bun` v2.2.0 and `jdx/mise-action` v5.2.7, each with its tag in a comment, the same SHAs as `ci.yml` and `sdk-python.yml`). This run cannot run the workflow; it was checked by `bunx oxfmt --check` and by reading it against the Python one.
+- [x] `DESIGN.md` has the mapping table (section 1) and `README.md` links to it; every row of the contract's
+  names has a line there.
+- [x] Names keep the canonical meaning and defaults; reason kinds, error codes, stream states and `lastError`
+  codes keep their spelling (`types.go`: `ReasonKind`, `ErrorCode`, `StreamState`, `SyncErrorCode`).
+- [x] The evaluator has no platform regex: `grep -rn 'regexp' sdks/go --include=*.go` finds only
+  `test-service/main.go:14,37` (the test service's own route table, not the evaluator); `internal/evaluator`
+  has its own pattern matcher (`pattern.go`, `pattern_parse.go`).
+- [x] The lint configuration names its rule set and every ignore has a reason beside it (`.golangci.yml`).
+- [x] Every runtime dependency has a line in `DESIGN.md`: there are none (section 4); no `go.sum`.
+- [x] No telemetry, and request headers are only the protocol's: `grep -rn 'Header\.\(Set\|Add\)' --include=*.go`
+  finds `Authorization` (`sync.go:40`), `Accept` (`sync.go:102`, `sync.go:270`), `If-None-Match` (`sync.go:104`)
+  and `Content-Type` (`usage.go:171`). Captured on a loopback listener (a throwaway program outside the
+  tree), one request per route; `TestHeadersSentOnEveryRoute` holds the allowlist.
 
-### Repository
+  | Route | Set by the SDK | Added by `net/http` |
+  | --- | --- | --- |
+  | `GET /sdk/v1/ruleset` | `Authorization`, `Accept: application/json` | `Host` (from the URL), `User-Agent: Go-http-client/1.1` |
+  | `GET /sdk/v1/ruleset`, conditional | the above and `If-None-Match` | `Host`, `User-Agent: Go-http-client/1.1` |
+  | `GET /sdk/v1/stream` | `Authorization`, `Accept: text/event-stream` | `Host`, `User-Agent: Go-http-client/1.1` |
+  | `POST /sdk/v1/events` | `Authorization`, `Content-Type: application/json` | `Host`, `User-Agent: Go-http-client/1.1`, `Content-Length` |
 
-- [x] No em dash or en dash: `bun scripts/check-dashes.ts` exit 0.
-- [x] `bun run format:check` passes (`All matched files use the correct format.`, 354 files).
-- [x] Only `sdks/go/` and `.github/workflows/sdk-go.yml` changed: the phase 6 scope check printed `scope ok`.
-- [x] No package published, no name reserved, no tag: nothing was run outside the worktree except `git push` of branch `fs-96`.
-- [x] Commit subject `chore(sdk-go): a Go server SDK built from the authoring prompt`: a Conventional Commit, not `feat`; no `Co-Authored-By` and no AI attribution line.
-- [x] `RUN.md` follows `RUN-TEMPLATE.md`: the section grep printed nothing, and every line of the list above has its evidence.
+  `User-Agent` names the library's runtime (`Go-http-client/1.1`), not the host or the user. `Host` is the
+  server's own address, read by a handler outside the header map as `r.Host`. `Content-Length` is the body
+  size. There is no `Accept-Encoding` (`DisableCompression`) and no `Connection` header.
+- [x] Every extra beyond the contract is an idiomatic one that contract 13 allows: typed accessors, context builders and the unexported seams are on its list; the exported `SyncError` type and `ReadyContext` are the same kind (they add no request and weaken nothing in contract 5).
+- [x] Test seams are options on the package's own config, not globals or environment variables (decision 14).
+- [x] `bin/lint`, `bin/test` and `bin/test-service` exist, are executable, `cd` to the SDK and use only the
+  `mise.toml` toolchain (`bin/lint` runs through `mise exec --`; `bin/test` names zig by path).
+- [x] `test-service/README.md` maps every accessor (`bool`, `string`, `number`, `int`, `json`, `any`).
+- [x] `.github/workflows/sdk-go.yml` follows the skeleton, filters on its paths, pins every action by commit SHA.
+
+Repository
+
+- [x] No em or en dash in a file written: `bun scripts/check-dashes.ts` exits 0.
+- [x] `bun run format:check` passes (`mise.toml`, `.golangci.yml` and the workflow formatted with `bunx oxfmt`).
+- [x] Only `sdks/go/` and the one workflow changed: the phase 6 scope check prints `scope ok`.
+- [x] No package was published and no name reserved.
+- [x] The commit subject is a Conventional Commit of type `chore`, with no `Co-Authored-By` and no AI attribution.
+- [x] The workflow job is `runs-on: ubuntu-latest`, no `if:`, triggers `pull_request` and `push` only, installs
+  its own toolchain; `bun scripts/check-workflows.ts .github/workflows/*.yml` reports `8 workflow(s) read, 0 failure(s)`.
+- [x] `RUN.md` follows `RUN-TEMPLATE.md`, with evidence for every line above.

@@ -1,65 +1,70 @@
 // Package toggleslash is the ToggleSlash server SDK for Go.
 //
-// A Client keeps one ruleset current by following the server's stream (polling when the stream is down) and
-// evaluates flags locally, so the typed methods (BoolVariation, StringVariation, IntVariation, Float64Variation
-// and JSONVariation, each with a ...Detail twin) do no I/O and never block. Usage counts, which hold no context
-// and nothing about an end user, are sent in batches. Nothing here panics at a caller and no method returns an
-// error: a failure becomes the fallback you passed, with a reason, and is told to the WithOnError callback.
+// A Client keeps a copy of one environment's ruleset, follows the server for changes and evaluates flags
+// locally, so an evaluation is a memory read: it never waits for the network. It keeps docs/sdk-contract.md
+// and evaluates to docs/evaluation.md; DESIGN.md has the mapping of the contract's names to this package.
 //
-//	client := toggleslash.New("https://flags.example.com", os.Getenv("TOGGLESLASH_SDK_KEY"))
+//	client := toggleslash.New("https://flags.example.com", sdkKey)
 //	defer client.Close()
 //	client.Ready()
-//	on := client.BoolVariation("new-checkout", toggleslash.UserContext("user-1"), false)
+//	on := client.BoolVariation("new-checkout", toggleslash.UserContext("u1", nil), false)
 //
-// The contract is docs/sdk-contract.md in the ToggleSlash repository, and sdks/go/DESIGN.md maps each of its
-// names to Go.
+// Nothing in this package panics at a caller or returns an error from an evaluation: a failure becomes the
+// caller's fallback with a Reason of kind ReasonError, or goes to the WithOnError callback, or both.
 package toggleslash
 
 import (
-	"net/http"
+	"crypto/tls"
+	"math/rand/v2"
+	"strings"
 	"time"
-
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/eval"
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
 )
 
 const (
-	defaultInterval = 30 * time.Second
-	defaultTimeout  = 10 * time.Second
-	// streamIdle is how long the stream may go without a byte (the server sends a keep-alive every 25 s).
-	streamIdle = 60 * time.Second
-	// maxRetryAfter is the longest wait a 429 can ask for.
-	maxRetryAfter = 300 * time.Second
-	backoffBase   = time.Second
+	defaultPollInterval   = 30 * time.Second
+	defaultFlushInterval  = 30 * time.Second
+	defaultRequestTimeout = 10 * time.Second
+	defaultIdle           = 60 * time.Second
 )
 
-// config holds the options after the defaults. The seams (the fields after onError) are for tests in this
-// package: they are not options a caller can pass.
+// Option changes how New builds a Client.
+type Option func(*config)
+
+// config is read-only once New has returned: the goroutines read it without a lock.
 type config struct {
-	url             string
-	sdkKey          string
 	stream          bool
 	pollInterval    time.Duration
 	flushInterval   time.Duration
 	requestTimeout  time.Duration
-	afterEvaluation func(EvaluationEvent)
+	afterEvaluation func(Event)
 	onError         func(error)
 
-	httpClient *http.Client
-	now        func() time.Time
-	jitter     func() float64
-	idle       time.Duration
-	evaluate   func(*eval.Ruleset, string, jsonvalue.Value) eval.Result
+	// Seams for tests in this package; there is no exported option for any of them.
+	clock     clock
+	jitter    func() float64 // in [0.5, 1)
+	idle      time.Duration  // the stream watchdog
+	tlsConfig *tls.Config
+	evaluate  evaluateFunc
 }
 
-// Option configures a Client.
-type Option func(*config)
+func defaultConfig() config {
+	return config{
+		stream:         true,
+		pollInterval:   defaultPollInterval,
+		flushInterval:  defaultFlushInterval,
+		requestTimeout: defaultRequestTimeout,
+		clock:          realClock{},
+		jitter:         func() float64 { return 0.5 + rand.Float64()/2 },
+		idle:           defaultIdle,
+		evaluate:       defaultEvaluate,
+	}
+}
 
-// WithStream turns the stream on or off. It is on by default; off polls only.
+// WithStream turns the stream (GET /sdk/v1/stream) on or off. The default is on. Off means poll only.
 func WithStream(on bool) Option { return func(c *config) { c.stream = on } }
 
-// WithPollInterval sets how often the ruleset is polled when the stream is down or off, and the longest
-// reconnect wait. The default is 30 seconds; zero or negative is the default.
+// WithPollInterval sets how often the client polls when the stream is down or off, and the longest wait
+// before it reconnects. The default is 30 s. A duration of zero or less is ignored.
 func WithPollInterval(d time.Duration) Option {
 	return func(c *config) {
 		if d > 0 {
@@ -68,8 +73,8 @@ func WithPollInterval(d time.Duration) Option {
 	}
 }
 
-// WithFlushInterval sets how often usage counts are sent. The default is 30 seconds; zero or negative is
-// the default.
+// WithFlushInterval sets how often usage counts are sent. The default is 30 s. A duration of zero or less
+// is ignored.
 func WithFlushInterval(d time.Duration) Option {
 	return func(c *config) {
 		if d > 0 {
@@ -78,8 +83,8 @@ func WithFlushInterval(d time.Duration) Option {
 	}
 }
 
-// WithRequestTimeout sets the longest any one request may take, and so the longest Ready waits. The
-// default is 10 seconds; zero or negative is the default.
+// WithRequestTimeout sets the longest any one request may take, body included. The default is 10 s. A
+// duration of zero or less is ignored.
 func WithRequestTimeout(d time.Duration) Option {
 	return func(c *config) {
 		if d > 0 {
@@ -88,25 +93,27 @@ func WithRequestTimeout(d time.Duration) Option {
 	}
 }
 
-// WithAfterEvaluation sets a function called synchronously, on the caller's goroutine, after every
-// variation method, a fallback included, with what the caller is about to get. A panic in it goes to the
-// OnError function and never reaches the caller, who gets the same answer and the same usage count with or
-// without it. A nil function is ignored.
-func WithAfterEvaluation(f func(EvaluationEvent)) Option {
-	return func(c *config) {
-		if f != nil {
-			c.afterEvaluation = f
-		}
-	}
-}
+// WithAfterEvaluation sets a callback that runs after every evaluation, a fallback included, once per
+// call, on the goroutine that called the accessor, before the accessor returns. A panic in it goes to the
+// WithOnError callback and the caller gets the same answer.
+func WithAfterEvaluation(f func(Event)) Option { return func(c *config) { c.afterEvaluation = f } }
 
-// WithOnError sets a function told about every failure the SDK absorbs (a failed sync, a failed usage
-// request, a hook that panicked). The value is an *Error. It is never needed for correctness; a panic in it is
-// ignored. A nil function is ignored.
-func WithOnError(f func(error)) Option {
-	return func(c *config) {
-		if f != nil {
-			c.onError = f
-		}
-	}
-}
+// WithOnError sets a callback told about every failure the client absorbs: a failed ruleset, stream or
+// usage request, an evaluation that panicked, a callback that panicked and usage counts lost at Close. It
+// runs on the client's own goroutine (the sync goroutine for a ruleset or stream failure, the flush
+// goroutine for a usage failure, the goroutine that called Close for the final flush) or, for a panic in an
+// evaluation or in WithAfterEvaluation, on the goroutine that called the accessor. No lock of the client is
+// held when it runs. A panic in it is ignored.
+func WithOnError(f func(error)) Option { return func(c *config) { c.onError = f } }
+
+func withClock(k clock) Option { return func(c *config) { c.clock = k } }
+
+func withJitter(f func() float64) Option { return func(c *config) { c.jitter = f } }
+
+func withIdle(d time.Duration) Option { return func(c *config) { c.idle = d } }
+
+func withTLSConfig(t *tls.Config) Option { return func(c *config) { c.tlsConfig = t } }
+
+func withEvaluate(f evaluateFunc) Option { return func(c *config) { c.evaluate = f } }
+
+func trimURL(u string) string { return strings.TrimRight(u, "/") }

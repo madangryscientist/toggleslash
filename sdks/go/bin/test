@@ -1,22 +1,26 @@
 #!/bin/sh
-# Run every test under the race detector, print the evaluation vector and bucket-pin counts the phase 2
-# check compares with the fixtures, then build the conformance test service into .build/ (gitignored) so
-# bin/test-service can run it without building anything.
+# Builds everything, runs the native tests under the race detector (never a cached result), prints the
+# vector and pin counts, and builds the test service binary last. The race detector needs cgo, so a C
+# compiler is pinned in mise.toml (zig) and named by path: a zig elsewhere on PATH can shadow it.
 set -eu
-cd "$(dirname "$0")/.."
-if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
-  run() { mise exec -- "$@"; }
+here=$(cd "$(dirname "$0")" && pwd)
+cd "$here/.."
+
+if command -v mise >/dev/null 2>&1; then
+	zig=$(mise where zig)/zig
+	run() { mise exec -- "$@"; }
 else
-  run() { "$@"; }
+	zig=$(command -v zig)
+	run() { "$@"; }
 fi
-run go version
+export CGO_ENABLED=1
+export CC="$zig cc"
+
 run go vet ./...
-out=$(run go test -race -count=1 -v ./... 2>&1) || { printf '%s\n' "$out"; exit 1; }
-printf '%s\n' "$out" | grep -E '^(ok|FAIL|---  FAIL|\?)' || true
-vectors=$(printf '%s\n' "$out" | sed -n 's/^vectors: //p')
-pins=$(printf '%s\n' "$out" | sed -n 's/^pins: //p')
-echo "vectors: ${vectors:-0} pins: ${pins:-0}"
-if [ -f test-service/main.go ]; then
-  mkdir -p .build
-  run go build -o .build/test-service ./test-service
-fi
+run go test -race -count=1 ./...
+
+counts=$(run go test -race -count=1 -v -run '^(TestVectors|TestBucketPins)$' ./internal/evaluator |
+	awk '/ vectors: [0-9]+$/ { v = $NF } / pins: [0-9]+$/ { p = $NF } END { if (v == "" || p == "") exit 1; print "vectors: " v " pins: " p }')
+echo "$counts"
+
+run go build -o .build/test-service ./test-service

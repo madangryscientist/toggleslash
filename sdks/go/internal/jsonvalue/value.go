@@ -1,21 +1,17 @@
-// Package jsonvalue is the JSON value type the SDK reads rulesets, contexts and served values with.
+// Package jsonvalue is the SDK's JSON: a value type, a parser and a writer.
 //
-// encoding/json cannot be used for this: it returns an error for a number such as 1e999, where the spec
-// reads +Infinity, and it turns a lone surrogate in a string into U+FFFD, where the spec keeps it. So this
-// package has its own value and its own reader and writer. Numbers are float64. Strings are WTF-8 (see
-// package wtf8): a lone surrogate is kept, a valid escaped pair becomes one four-byte sequence.
+// encoding/json cannot be used: it errors on 1e999 and replaces a lone surrogate with U+FFFD, and the
+// spec needs both kept. Numbers here are binary64, and strings are WTF-8 (see package wtf8).
 package jsonvalue
 
 import (
 	"math"
-
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/wtf8"
 )
 
 // Kind is the JSON type of a Value.
 type Kind uint8
 
-// The kinds. The zero Value is Null.
+// The kinds. The zero Value is null.
 const (
 	KindNull Kind = iota
 	KindBool
@@ -25,108 +21,100 @@ const (
 	KindObject
 )
 
-// Member is one key and value of an object.
-type Member struct {
-	Key   string
-	Value Value
-}
-
-type object struct {
-	keys []string
-	vals map[string]Value
-}
-
-// Value is an immutable JSON value. The zero Value is null.
+// Value is one JSON value. It is immutable once built; share it freely.
 type Value struct {
 	kind Kind
 	b    bool
 	n    float64
 	s    string
 	arr  []Value
-	obj  *object
+	obj  *Object
 }
 
-// Null is the JSON null.
+// Object is a JSON object. A key given twice keeps its last value.
+type Object struct {
+	keys []string
+	m    map[string]Value
+}
+
+// Null is the null value.
 func Null() Value { return Value{} }
 
-// Bool is a JSON boolean.
+// Bool makes a boolean.
 func Bool(b bool) Value { return Value{kind: KindBool, b: b} }
 
-// Number is a JSON number. +Inf, -Inf and negative zero are kept.
+// Number makes a number.
 func Number(n float64) Value { return Value{kind: KindNumber, n: n} }
 
-// String is a JSON string. Bytes of s that are not valid UTF-8 become U+FFFD.
-func String(s string) Value { return Value{kind: KindString, s: wtf8.FromGo(s)} }
+// String makes a string. s must be WTF-8 (use wtf8.FromGo for a Go string of unknown origin).
+func String(s string) Value { return Value{kind: KindString, s: s} }
 
-// Array is a JSON array of items.
-func Array(items ...Value) Value {
-	return Value{kind: KindArray, arr: append([]Value(nil), items...)}
-}
+// Array makes an array. The slice is not copied.
+func Array(items []Value) Value { return Value{kind: KindArray, arr: items} }
 
-// Object is a JSON object. A repeated key keeps its first position and its last value, as JSON.parse does.
-func Object(members ...Member) Value {
-	o := &object{vals: make(map[string]Value, len(members))}
-	for _, m := range members {
-		key := wtf8.FromGo(m.Key)
-		if _, seen := o.vals[key]; !seen {
-			o.keys = append(o.keys, key)
-		}
-		o.vals[key] = m.Value
+// NewObject makes an empty object under construction.
+func NewObject() *Object { return &Object{m: map[string]Value{}} }
+
+// Set sets a key. A key set twice keeps the last value and its first position.
+func (o *Object) Set(key string, v Value) {
+	if _, ok := o.m[key]; !ok {
+		o.keys = append(o.keys, key)
 	}
-	return Value{kind: KindObject, obj: o}
+	o.m[key] = v
 }
 
-// Kind returns the value's JSON type.
+// Get returns the value of an own key.
+func (o *Object) Get(key string) (Value, bool) {
+	v, ok := o.m[key]
+	return v, ok
+}
+
+// Keys returns the keys in the order they were first set.
+func (o *Object) Keys() []string { return o.keys }
+
+// Len is the number of keys.
+func (o *Object) Len() int { return len(o.keys) }
+
+// ObjectValue wraps an object as a Value.
+func ObjectValue(o *Object) Value { return Value{kind: KindObject, obj: o} }
+
+// Kind returns the JSON type.
 func (v Value) Kind() Kind { return v.kind }
 
 // IsNull reports whether v is null.
 func (v Value) IsNull() bool { return v.kind == KindNull }
 
-// IsObject reports whether v is a JSON object.
-func (v Value) IsObject() bool { return v.kind == KindObject }
+// AsBool returns the boolean and whether v is one.
+func (v Value) AsBool() (bool, bool) { return v.b, v.kind == KindBool }
 
-// Bool returns the boolean and true when v is one.
-func (v Value) Bool() (bool, bool) { return v.b, v.kind == KindBool }
+// AsNumber returns the number and whether v is one.
+func (v Value) AsNumber() (float64, bool) { return v.n, v.kind == KindNumber }
 
-// Number returns the number and true when v is one.
-func (v Value) Number() (float64, bool) { return v.n, v.kind == KindNumber }
+// AsString returns the string and whether v is one.
+func (v Value) AsString() (string, bool) { return v.s, v.kind == KindString }
 
-// Text returns the string and true when v is one. The string is WTF-8.
-func (v Value) Text() (string, bool) { return v.s, v.kind == KindString }
+// AsArray returns the items and whether v is an array. The slice is shared: do not change it.
+func (v Value) AsArray() ([]Value, bool) { return v.arr, v.kind == KindArray }
 
-// Items returns the elements and true when v is an array. The slice must not be modified.
-func (v Value) Items() ([]Value, bool) { return v.arr, v.kind == KindArray }
+// AsObject returns the object and whether v is one.
+func (v Value) AsObject() (*Object, bool) { return v.obj, v.kind == KindObject }
 
-// Get returns the member of an object by key. It is false for a missing key and for a value that is not
-// an object. Only the object's own members are found.
-func (v Value) Get(key string) (Value, bool) {
+// IsFiniteNumber reports whether v is a number that is neither infinite nor NaN.
+func (v Value) IsFiniteNumber() bool {
+	return v.kind == KindNumber && !math.IsInf(v.n, 0) && !math.IsNaN(v.n)
+}
+
+// Field returns an own key of an object value; it is null and false when v is not an object or the
+// key is absent.
+func (v Value) Field(key string) (Value, bool) {
 	if v.kind != KindObject {
 		return Value{}, false
 	}
-	m, ok := v.obj.vals[key]
-	return m, ok
+	return v.obj.Get(key)
 }
 
-// Field is Get without the flag: a missing member is null, which the spec treats the same way.
-func (v Value) Field(key string) Value {
-	m, _ := v.Get(key)
-	return m
-}
-
-// Keys returns an object's keys in the order they first appeared. The slice must not be modified.
-func (v Value) Keys() []string {
-	if v.kind != KindObject {
-		return nil
-	}
-	return v.obj.keys
-}
-
-// IsCount reports whether v is a non-negative integral number.
-func (v Value) IsCount() bool {
-	return v.kind == KindNumber && !math.IsInf(v.n, 0) && v.n == math.Trunc(v.n) && v.n >= 0
-}
-
-// Equal is deep equality with IEEE numbers (so -0 equals 0), for tests.
+// Equal is the spec's equality: same kind and same content, numbers by IEEE-754 (so -0 equals 0, and
+// NaN equals nothing), objects without regard to key order.
 func Equal(a, b Value) bool {
 	if a.kind != b.kind {
 		return false
@@ -151,12 +139,12 @@ func Equal(a, b Value) bool {
 		}
 		return true
 	default:
-		if len(a.obj.keys) != len(b.obj.keys) {
+		if a.obj.Len() != b.obj.Len() {
 			return false
 		}
 		for _, k := range a.obj.keys {
-			other, ok := b.obj.vals[k]
-			if !ok || !Equal(a.obj.vals[k], other) {
+			bv, ok := b.obj.Get(k)
+			if !ok || !Equal(a.obj.m[k], bv) {
 				return false
 			}
 		}
