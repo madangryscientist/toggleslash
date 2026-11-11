@@ -18,7 +18,7 @@ what it cannot see.
 - [ ] `$L/bin/test` passes 10 times in a row, and once more with the CPU loaded (one busy shell loop per logical CPU, so `nproc` of them, at normal priority, started before `bin/test` and kept running until it ends, its build included),
   with the counts in `RUN.md`: a timer test that races the SDK's loops fails only under load. Such a failure is a
   bug in the test (it asserts something it did not control): fix the test, and record it in `RUN.md` as a decision,
-  not a guess. A test that races a fixed number of rounds against background workers waits until each worker has
+  not a guess. The ten runs then start again from the first. A test that races a fixed number of rounds against background workers waits until each worker has
   made progress, not only until the rounds are done.
 - [ ] The harness exits 0, with the only skips the 2 named vectors and, without `integer-accessor`, the 2
   scenarios that require it (sdk-test-service.md, "Running it").
