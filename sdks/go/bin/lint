@@ -1,18 +1,20 @@
 #!/bin/sh
-# The native lint and format check. Any finding fails; there is no warning level. Nothing is rewritten.
+# The native lint and format check, no warnings allowed: gofmt (any file it would change fails), go vet and
+# golangci-lint (rules in .golangci.yml), all over the whole module including the test service.
 set -eu
 cd "$(dirname "$0")/.."
-if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
-  run() { mise exec -- "$@"; }
+
+if command -v mise >/dev/null 2>&1; then
+	tool() { mise exec -- "$@"; }
 else
-  run() { "$@"; }
+	tool() { "$@"; }
 fi
-run golangci-lint --version
-unformatted=$(run gofmt -l .)
+
+unformatted="$(tool gofmt -l .)"
 if [ -n "$unformatted" ]; then
-  echo "gofmt would change:" >&2
-  echo "$unformatted" >&2
-  exit 1
+	echo "gofmt would change:" >&2
+	echo "$unformatted" >&2
+	exit 1
 fi
-run go vet ./...
-run golangci-lint run ./...
+tool go vet ./...
+tool golangci-lint run --max-issues-per-linter 0 --max-same-issues 0 ./...

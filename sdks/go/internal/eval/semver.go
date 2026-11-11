@@ -2,23 +2,20 @@ package eval
 
 import "strings"
 
-// Semantic versions, to the "Semantic versions" section of docs/evaluation.md. A hand-written walk over the
-// string: no regular expression and no library. Nothing here converts a numeric part to a number.
-
-type semanticVersion struct {
+type semver struct {
 	major, minor, patch string
 	prerelease          []string
 }
 
-func isDigit(c byte) bool { return c >= '0' && c <= '9' }
+func isDigitByte(c byte) bool { return c >= '0' && c <= '9' }
 
-func isIdentifierChar(c byte) bool {
-	return isDigit(c) || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c == '-'
+func isIdentifierByte(c byte) bool {
+	return isDigitByte(c) || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c == '-'
 }
 
 func allDigits(s string) bool {
 	for i := 0; i < len(s); i++ {
-		if !isDigit(s[i]) {
+		if !isDigitByte(s[i]) {
 			return false
 		}
 	}
@@ -30,15 +27,15 @@ func isNumericPart(s string) bool {
 	return s != "" && allDigits(s) && (s == "0" || s[0] != '0')
 }
 
-// identifiers splits on ".": none empty, each of ASCII letters, digits and "-".
+// identifiers splits on "." and checks that none is empty and each is ASCII letters, digits and "-".
 func identifiers(s string) ([]string, bool) {
 	parts := strings.Split(s, ".")
-	for _, part := range parts {
-		if part == "" {
+	for _, p := range parts {
+		if p == "" {
 			return nil, false
 		}
-		for i := 0; i < len(part); i++ {
-			if !isIdentifierChar(part[i]) {
+		for i := 0; i < len(p); i++ {
+			if !isIdentifierByte(p[i]) {
 				return nil, false
 			}
 		}
@@ -46,13 +43,11 @@ func identifiers(s string) ([]string, bool) {
 	return parts, true
 }
 
-// splitAt splits at the first sep; found is false when there is none.
-func splitAt(s string, sep byte) (before, after string, found bool) {
-	at := strings.IndexByte(s, sep)
-	if at < 0 {
-		return s, "", false
+func splitAt(s string, sep byte) (string, string, bool) {
+	if i := strings.IndexByte(s, sep); i >= 0 {
+		return s[:i], s[i+1:], true
 	}
-	return s[:at], s[at+1:], true
+	return s, "", false
 }
 
 func prereleaseIdentifiers(s string) ([]string, bool) {
@@ -60,65 +55,61 @@ func prereleaseIdentifiers(s string) ([]string, bool) {
 	if !ok {
 		return nil, false
 	}
-	for _, part := range parts {
-		if allDigits(part) && !isNumericPart(part) {
+	for _, p := range parts {
+		if allDigits(p) && !isNumericPart(p) {
 			return nil, false
 		}
 	}
 	return parts, true
 }
 
-// numericParts reads MAJOR.MINOR.PATCH, or a short form (MAJOR, MAJOR.MINOR) when short is allowed.
 func numericParts(s string, short bool) ([]string, bool) {
-	numbers := strings.Split(s, ".")
-	if len(numbers) > 3 || len(numbers) < 3 && !short {
+	nums := strings.Split(s, ".")
+	if len(nums) > 3 || len(nums) < 3 && !short {
 		return nil, false
 	}
-	for _, n := range numbers {
+	for _, n := range nums {
 		if !isNumericPart(n) {
 			return nil, false
 		}
 	}
-	return numbers, true
+	return nums, true
 }
 
-// parseSemanticVersion is the version s spells, or false when it is not one.
-func parseSemanticVersion(s string) (semanticVersion, bool) {
-	withoutBuild, build, hasBuild := splitAt(s, '+')
-	// Build metadata: identifiers only, and leading zeros are fine.
+func parseSemver(text string) (semver, bool) {
+	withoutBuild, build, hasBuild := splitAt(text, '+')
 	if hasBuild {
 		if _, ok := identifiers(build); !ok {
-			return semanticVersion{}, false
+			return semver{}, false
 		}
 	}
-	core, prerelease, hasPrerelease := splitAt(withoutBuild, '-')
-	var pre []string
-	if hasPrerelease {
+	core, pre, hasPre := splitAt(withoutBuild, '-')
+	var preParts []string
+	if hasPre {
 		var ok bool
-		if pre, ok = prereleaseIdentifiers(prerelease); !ok {
-			return semanticVersion{}, false
+		if preParts, ok = prereleaseIdentifiers(pre); !ok {
+			return semver{}, false
 		}
 	}
-	// The short forms carry no suffix.
-	numbers, ok := numericParts(core, !hasBuild && !hasPrerelease)
+	nums, ok := numericParts(core, !hasBuild && !hasPre)
 	if !ok {
-		return semanticVersion{}, false
+		return semver{}, false
 	}
-	v := semanticVersion{major: numbers[0], minor: "0", patch: "0", prerelease: pre}
-	if len(numbers) > 1 {
-		v.minor = numbers[1]
+	v := semver{major: nums[0], minor: "0", patch: "0", prerelease: preParts}
+	if len(nums) > 1 {
+		v.minor = nums[1]
 	}
-	if len(numbers) > 2 {
-		v.patch = numbers[2]
+	if len(nums) > 2 {
+		v.patch = nums[2]
 	}
 	return v, true
 }
 
-func sign(order int) int {
+func sign(c int) int {
 	switch {
-	case order < 0:
+	case c < 0:
 		return -1
-	case order > 0:
+	case c > 0:
 		return 1
 	}
 	return 0
@@ -129,45 +120,43 @@ func compareNumeric(a, b string) int {
 	if len(a) != len(b) {
 		return sign(len(a) - len(b))
 	}
-	return strings.Compare(a, b)
+	return sign(strings.Compare(a, b))
 }
 
 func compareIdentifier(a, b string) int {
-	aNumeric, bNumeric := allDigits(a), allDigits(b)
+	an, bn := allDigits(a), allDigits(b)
 	switch {
-	case aNumeric && bNumeric:
+	case an && bn:
 		return compareNumeric(a, b)
-	case aNumeric:
+	case an:
 		return -1
-	case bNumeric:
+	case bn:
 		return 1
 	}
-	return strings.Compare(a, b)
+	return sign(strings.Compare(a, b))
 }
 
 func comparePrerelease(a, b []string) int {
-	// No prerelease is above any prerelease of the same core.
 	if len(a) == 0 || len(b) == 0 {
 		return sign(len(b) - len(a))
 	}
-	for i := 0; i < min(len(a), len(b)); i++ {
-		if order := compareIdentifier(a[i], b[i]); order != 0 {
-			return order
+	for i := 0; i < len(a) && i < len(b); i++ {
+		if c := compareIdentifier(a[i], b[i]); c != 0 {
+			return c
 		}
 	}
 	return sign(len(a) - len(b))
 }
 
-// compareSemanticVersions is -1, 0 or 1 by SemVer 2.0.0 section 11; build metadata is already gone.
-func compareSemanticVersions(a, b semanticVersion) int {
-	for _, order := range [3]int{
-		compareNumeric(a.major, b.major),
-		compareNumeric(a.minor, b.minor),
-		compareNumeric(a.patch, b.patch),
-	} {
-		if order != 0 {
-			return order
-		}
+func compareSemver(a, b semver) int {
+	if c := compareNumeric(a.major, b.major); c != 0 {
+		return c
+	}
+	if c := compareNumeric(a.minor, b.minor); c != 0 {
+		return c
+	}
+	if c := compareNumeric(a.patch, b.patch); c != 0 {
+		return c
 	}
 	return comparePrerelease(a.prerelease, b.prerelease)
 }

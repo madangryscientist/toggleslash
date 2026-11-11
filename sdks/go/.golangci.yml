@@ -1,14 +1,37 @@
 version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
 linters:
+  # The default set (errcheck, govet, ineffassign, staticcheck, unused) plus the rules below.
   default: standard
   enable:
-    - errorlint
     - bodyclose
+    - copyloopvar
+    - errorlint
+    - gocritic
     - misspell
+    - nilerr
+    - noctx
+    - predeclared
+    - revive
     - unconvert
-formatters:
-  enable:
-    - gofmt
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0
+    - unparam
+    - wastedassign
+  settings:
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: error-return
+        - name: error-naming
+        - name: increment-decrement
+        - name: var-naming
+        - name: indent-error-flow
+        - name: context-as-argument
+    gocritic:
+      # The diagnostic checks (likely bugs) only. The style tag is left off: it asks for named results, no shadowed
+      # builtins and the like, which change no behaviour and would churn a port of the spec's own wording.
+      enabled-tags: [diagnostic]

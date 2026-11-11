@@ -2,165 +2,229 @@ package eval
 
 import (
 	"math"
+	"strings"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/wtf8"
+	"github.com/madangryscientist/toggleslash/sdks/go/jsonvalue"
 )
 
-// readAttribute is the value a name or a "/" reference reaches in one context; false when it is missing.
-// "key" as the first component reads the context key; every other step reads an object's own members.
-func readAttribute(c *kindContext, components []string) (jsonvalue.Value, bool) {
+// readAttribute is the value a name or a "/" reference reaches, or null when it is missing.
+func readAttribute(kc kindContext, c *attributeClause) jsonvalue.Value {
+	name := c.attribute
+	var rest []string
+	if c.reference != nil {
+		name, rest = c.reference[0], c.reference[1:]
+	}
 	var current jsonvalue.Value
-	found := false
-	if components[0] == "key" {
-		current, found = c.keyValue, true
-	} else if c.attrs.IsObject() {
-		current, found = c.attrs.Get(components[0])
+	if name == "key" {
+		current = jsonvalue.FromString(kc.key)
+	} else if kc.attrs.Kind() == jsonvalue.Object {
+		current, _ = kc.attrs.Get(name)
 	}
-	for _, component := range components[1:] {
-		if !found || !current.IsObject() {
-			return jsonvalue.Value{}, false
+	for _, component := range rest {
+		if current.Kind() != jsonvalue.Object {
+			return jsonvalue.Value{}
 		}
-		current, found = current.Get(component)
+		current, _ = current.Get(component)
 	}
-	return current, found
+	return current
 }
 
-func signFloat(a, b float64) int {
+func signOf(c int) int {
 	switch {
-	case a < b:
+	case c < 0:
 		return -1
-	case a > b:
+	case c > 0:
 		return 1
 	}
 	return 0
 }
 
-// compare is -1, 0 or 1 for two finite numbers or two strings (by UTF-16 code unit); otherwise false.
+// compare is -1, 0 or 1 for two finite numbers or two strings (by UTF-16 code unit); ok is false otherwise.
 func compare(attribute, value jsonvalue.Value) (int, bool) {
-	if a, ok := attribute.Number(); ok {
-		b, isNumber := value.Number()
-		if !isNumber || math.IsInf(a, 0) {
+	if a, ok := attribute.AsNumber(); ok {
+		v, isNum := value.AsNumber()
+		if !isNum || math.IsInf(a, 0) || math.IsNaN(a) {
 			return 0, false
 		}
-		return signFloat(a, b), true
+		switch {
+		case a < v:
+			return -1, true
+		case a > v:
+			return 1, true
+		}
+		return 0, true
 	}
-	if a, ok := attribute.Text(); ok {
-		if b, isText := value.Text(); isText {
-			return wtf8.Compare(a, b), true
+	if a, ok := attribute.AsString(); ok {
+		if v, isStr := value.AsString(); isStr {
+			return signOf(jsonvalue.CompareUTF16(a, v)), true
 		}
 	}
 	return 0, false
 }
 
-// matchesPattern: a valid pattern and a match somewhere in the candidate. Compiled per call.
-func matchesPattern(attribute, value string) bool {
-	program, ok := compilePattern(value)
-	return ok && patternMatches(program, attribute)
-}
-
-func matchesString(op opcode, attribute, value string) bool {
-	switch op {
-	case opMatches:
-		return matchesPattern(attribute, value)
-	case opContains:
-		return wtf8.Contains(attribute, value)
-	case opStartsWith:
-		return wtf8.HasPrefix(attribute, value)
+// hasLoneSurrogate reports whether s (WTF-8) holds a lone surrogate: the bytes ED A0..BF xx.
+func hasLoneSurrogate(s string) bool {
+	for i := 0; i+1 < len(s); i++ {
+		if s[i] == 0xED && s[i+1] >= 0xA0 {
+			return true
+		}
 	}
-	return wtf8.HasSuffix(attribute, value)
+	return false
 }
 
-func matchesOrder(op opcode, order int) bool {
+func indexUnits(hay, needle []uint16) bool {
+	for i := 0; i+len(needle) <= len(hay); i++ {
+		if equalUnits(hay[i:i+len(needle)], needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func equalUnits(a, b []uint16) bool {
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return len(a) == len(b)
+}
+
+// stringOp is contains, startsWith or endsWith on UTF-16 code units. Without a lone surrogate in either
+// string, UTF-8 bytes order and match exactly as the units do, so the byte functions answer.
+func stringOp(op, attribute, value string) bool {
+	if !hasLoneSurrogate(attribute) && !hasLoneSurrogate(value) {
+		switch op {
+		case "contains":
+			return strings.Contains(attribute, value)
+		case "startsWith":
+			return strings.HasPrefix(attribute, value)
+		}
+		return strings.HasSuffix(attribute, value)
+	}
+	a, v := jsonvalue.UTF16(attribute), jsonvalue.UTF16(value)
 	switch op {
-	case opLt:
+	case "contains":
+		return indexUnits(a, v)
+	case "startsWith":
+		return len(v) <= len(a) && equalUnits(a[:len(v)], v)
+	}
+	return len(v) <= len(a) && equalUnits(a[len(a)-len(v):], v)
+}
+
+func matchesOrder(op string, order int) bool {
+	switch op {
+	case "lt":
 		return order < 0
-	case opLte:
+	case "lte":
 		return order <= 0
-	case opGt:
+	case "gt":
 		return order > 0
 	}
 	return order >= 0
 }
 
-func matchesSemver(op opcode, attribute, value jsonvalue.Value) bool {
-	a, okA := attribute.Text()
-	b, okB := value.Text()
-	if !okA || !okB {
+func matchesSemver(op string, attribute, value jsonvalue.Value) bool {
+	a, ok := attribute.AsString()
+	v, ok2 := value.AsString()
+	if !ok || !ok2 {
 		return false
 	}
-	candidate, okC := parseSemanticVersion(a)
-	target, okT := parseSemanticVersion(b)
-	if !okC || !okT {
+	candidate, ok := parseSemver(a)
+	target, ok2 := parseSemver(v)
+	if !ok || !ok2 {
 		return false
 	}
-	order := compareSemanticVersions(candidate, target)
+	order := compareSemver(candidate, target)
 	switch op {
-	case opSemverEq:
+	case "semverEq":
 		return order == 0
-	case opSemverLt:
+	case "semverLt":
 		return order < 0
-	case opSemverLte:
+	case "semverLte":
 		return order <= 0
-	case opSemverGt:
+	case "semverGt":
 		return order > 0
 	}
 	return order >= 0
 }
 
-func matchesDate(op opcode, attribute, value jsonvalue.Value) bool {
-	candidate, okC := toInstant(attribute)
-	target, okT := toInstant(value)
-	if !okC || !okT {
+// toInstant is a finite number as itself, a string parsed as an instant, and anything else not an instant.
+func toInstant(v jsonvalue.Value) (float64, bool) {
+	if f, ok := v.AsNumber(); ok {
+		return f, !math.IsInf(f, 0) && !math.IsNaN(f)
+	}
+	if s, ok := v.AsString(); ok {
+		return parseInstant(s)
+	}
+	return 0, false
+}
+
+func matchesDate(op string, attribute, value jsonvalue.Value) bool {
+	candidate, ok := toInstant(attribute)
+	target, ok2 := toInstant(value)
+	if !ok || !ok2 {
 		return false
 	}
-	if op == opBefore {
+	if op == "before" {
 		return candidate < target
 	}
 	return candidate > target
 }
 
-func matchesValue(op opcode, attribute, value jsonvalue.Value) bool {
-	switch op {
-	case opIn:
-		if a, ok := attribute.Bool(); ok {
-			b, isBool := value.Bool()
-			return isBool && a == b
+func (c *attributeClause) matchesValue(attribute jsonvalue.Value, index int) bool {
+	value := c.values[index]
+	switch c.op {
+	case "in":
+		if b, ok := attribute.AsBool(); ok {
+			vb, isBool := value.AsBool()
+			return isBool && b == vb
 		}
 		order, ok := compare(attribute, value)
 		return ok && order == 0
-	case opContains, opStartsWith, opEndsWith, opMatches:
-		a, okA := attribute.Text()
-		b, okB := value.Text()
-		return okA && okB && matchesString(op, a, b)
-	case opSemverEq, opSemverLt, opSemverLte, opSemverGt, opSemverGte:
-		return matchesSemver(op, attribute, value)
-	case opBefore, opAfter:
-		return matchesDate(op, attribute, value)
+	case "contains", "startsWith", "endsWith", "matches":
+		a, ok := attribute.AsString()
+		v, ok2 := value.AsString()
+		if !ok || !ok2 {
+			return false
+		}
+		if c.op == "matches" {
+			p := c.patterns[index]
+			return p != nil && p.matches(a)
+		}
+		return stringOp(c.op, a, v)
+	case "semverEq", "semverLt", "semverLte", "semverGt", "semverGte":
+		return matchesSemver(c.op, attribute, value)
+	case "before", "after":
+		return matchesDate(c.op, attribute, value)
 	}
 	order, ok := compare(attribute, value)
-	return ok && matchesOrder(op, order)
+	return ok && matchesOrder(c.op, order)
 }
 
-// attributeClauseMatches: does one attribute clause hold? It reads the context of its kind. A missing
+// matches reports whether one attribute clause holds. It reads the context of its kind. A missing
 // attribute, or a missing kind, fails it, whatever negate says.
-func attributeClauseMatches(c *clause, ctxs contexts) bool {
-	context := ctxs.get(c.kind)
-	if context == nil {
+func (c *attributeClause) matches(ctxs contexts) bool {
+	kind := c.kind
+	if kind == "" {
+		kind = DefaultKind
+	}
+	kc, ok := ctxs[kind]
+	if !ok {
 		return false
 	}
-	attribute, found := readAttribute(context, c.components)
-	if !found || attribute.IsNull() {
+	attribute := readAttribute(kc, c)
+	if attribute.IsNull() {
 		return false
 	}
-	candidates, isArray := attribute.Items()
-	if !isArray {
-		candidates = []jsonvalue.Value{attribute}
+	candidates := []jsonvalue.Value{attribute}
+	if arr, isArr := attribute.AsArray(); isArr {
+		candidates = arr
 	}
 	matched := false
 	for _, candidate := range candidates {
-		for _, value := range c.values {
-			if matchesValue(c.op, candidate, value) {
+		for i := range c.values {
+			if c.matchesValue(candidate, i) {
 				matched = true
 				break
 			}

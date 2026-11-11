@@ -1,22 +1,27 @@
 #!/bin/sh
-# Run every test under the race detector, print the evaluation vector and bucket-pin counts the phase 2
-# check compares with the fixtures, then build the conformance test service into .build/ (gitignored) so
-# bin/test-service can run it without building anything.
+# Builds and runs the native tests under the race detector, prints the vector and pin counts, then
+# builds the test service the conformance harness starts. The race detector needs cgo, so a C compiler is
+# required: mise.toml pins zig and this uses it as `zig cc`.
 set -eu
 cd "$(dirname "$0")/.."
-if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
-  run() { mise exec -- "$@"; }
+
+if command -v mise >/dev/null 2>&1; then
+	tool() { mise exec -- "$@"; }
 else
-  run() { "$@"; }
+	tool() { "$@"; }
 fi
-run go version
-run go vet ./...
-out=$(run go test -race -count=1 -v ./... 2>&1) || { printf '%s\n' "$out"; exit 1; }
-printf '%s\n' "$out" | grep -E '^(ok|FAIL|---  FAIL|\?)' || true
-vectors=$(printf '%s\n' "$out" | sed -n 's/^vectors: //p')
-pins=$(printf '%s\n' "$out" | sed -n 's/^pins: //p')
-echo "vectors: ${vectors:-0} pins: ${pins:-0}"
-if [ -f test-service/main.go ]; then
-  mkdir -p .build
-  run go build -o .build/test-service ./test-service
+
+# A zig elsewhere on PATH (such as ~/.local/bin) can shadow the pinned one even inside `mise exec`, so name the
+# pinned compiler by its path.
+if command -v mise >/dev/null 2>&1 && pinned="$(mise where zig 2>/dev/null)" && [ -x "$pinned/zig" ]; then
+	CC="${CC:-$pinned/zig cc}"
+	export CC
+elif command -v zig >/dev/null 2>&1; then
+	CC="${CC:-zig cc}"
+	export CC
 fi
+
+tool go test -race -count=1 ./...
+tool go test -count=1 -v -run '^TestFixtureCounts$' ./internal/eval | grep '^vectors:'
+mkdir -p .build
+tool go build -o .build/test-service ./test-service

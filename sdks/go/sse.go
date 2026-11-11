@@ -1,95 +1,100 @@
 package toggleslash
 
-import "bytes"
+import "github.com/madangryscientist/toggleslash/sdks/go/jsonvalue"
 
-// sseEvent is one dispatched Server-Sent Event.
+// sseEvent is one dispatched server-sent event. Only the event and data fields are read.
 type sseEvent struct {
 	name string
 	data string
 }
 
-// sseParser reads a Server-Sent Events byte stream to the WHATWG rules the contract names. It works on
-// bytes: a UTF-8 sequence never holds a CR or LF byte, so a character split across two reads is whole by the
-// time its line is complete. LF, CRLF and a lone CR end a line (a CR at the end of one read is remembered, so
-// the LF that starts the next read is not a second line end); a line that starts with ":" is a comment; a
-// field with no ":" has an empty value; one leading space of a value is dropped; a leading BOM is dropped;
-// several "data" lines join with LF; an event with no "data" line is dropped; the name is "message" when none
-// was given; an event still open when the stream ends is never delivered.
+// sseParser reads a server-sent event stream as the WHATWG HTML standard describes: LF, CRLF and a lone CR end
+// a line; a line starting with a colon is a comment; a field is split at the first colon and one leading space of
+// its value is dropped; several data lines are joined with LF; an event with no data line is dropped; an event with
+// no name is "message"; an event still being read when the stream ends is discarded. A leading byte order mark is
+// skipped. Bytes may arrive split anywhere, including inside a CRLF or a BOM.
 type sseParser struct {
+	bomPos    int // how many bytes of the BOM have matched; 3 means the start of the stream is behind us
+	pendingCR bool
 	line      []byte
-	afterCR   bool
-	started   bool
 	name      string
 	data      []byte
 	hasData   bool
-	bomPrefix []byte
 }
 
-var bom = []byte{0xEF, 0xBB, 0xBF}
+var utf8BOM = [3]byte{0xEF, 0xBB, 0xBF}
 
-// feed adds bytes and returns the events they complete.
+// feed adds bytes and returns the events they completed.
 func (p *sseParser) feed(chunk []byte) []sseEvent {
-	if !p.started {
-		// A BOM may arrive split; hold back a prefix of it until it is known to be one.
-		chunk = append(p.bomPrefix, chunk...)
-		p.bomPrefix = nil
-		if len(chunk) < len(bom) && bytes.HasPrefix(bom, chunk) {
-			p.bomPrefix = append([]byte(nil), chunk...)
-			return nil
-		}
-		p.started = true
-		chunk = bytes.TrimPrefix(chunk, bom)
-	}
-	var events []sseEvent
+	var out []sseEvent
 	for _, b := range chunk {
-		switch {
-		case b == '\n' && p.afterCR:
-			p.afterCR = false
-		case b == '\n' || b == '\r':
-			p.afterCR = b == '\r'
-			if event, ok := p.endLine(); ok {
-				events = append(events, event)
+		if p.bomPos < 3 {
+			if b == utf8BOM[p.bomPos] {
+				p.bomPos++
+				continue
 			}
+			p.line = append(p.line, utf8BOM[:p.bomPos]...)
+			p.bomPos = 3
+		}
+		if p.pendingCR {
+			p.pendingCR = false
+			if b == '\n' {
+				continue
+			}
+		}
+		switch b {
+		case '\r':
+			p.pendingCR = true
+			out = p.endLine(out)
+		case '\n':
+			out = p.endLine(out)
 		default:
-			p.afterCR = false
 			p.line = append(p.line, b)
 		}
 	}
-	return events
+	return out
 }
 
-func (p *sseParser) endLine() (sseEvent, bool) {
+func (p *sseParser) endLine(out []sseEvent) []sseEvent {
 	line := p.line
 	p.line = p.line[:0]
 	if len(line) == 0 {
-		return p.dispatch()
+		if p.hasData {
+			name := p.name
+			if name == "" {
+				name = "message"
+			}
+			data := p.data
+			if n := len(data); n > 0 {
+				data = data[:n-1] // the LF every data line added
+			}
+			out = append(out, sseEvent{name: name, data: jsonvalue.LossyUTF8(data)})
+		}
+		p.name = ""
+		p.data = p.data[:0]
+		p.hasData = false
+		return out
 	}
 	if line[0] == ':' {
-		return sseEvent{}, false
+		return out
 	}
-	field, value, _ := bytes.Cut(line, []byte{':'})
-	value = bytes.TrimPrefix(value, []byte{' '})
+	field, value := line, []byte(nil)
+	for i, b := range line {
+		if b == ':' {
+			field, value = line[:i], line[i+1:]
+			if len(value) > 0 && value[0] == ' ' {
+				value = value[1:]
+			}
+			break
+		}
+	}
 	switch string(field) {
 	case "event":
-		p.name = string(value)
+		p.name = jsonvalue.LossyUTF8(value)
 	case "data":
-		if p.hasData {
-			p.data = append(p.data, '\n')
-		}
 		p.data = append(p.data, value...)
+		p.data = append(p.data, '\n')
 		p.hasData = true
 	}
-	return sseEvent{}, false
-}
-
-func (p *sseParser) dispatch() (sseEvent, bool) {
-	name, data, hasData := p.name, p.data, p.hasData
-	p.name, p.data, p.hasData = "", nil, false
-	if !hasData {
-		return sseEvent{}, false
-	}
-	if name == "" {
-		name = "message"
-	}
-	return sseEvent{name: name, data: string(data)}, true
+	return out
 }

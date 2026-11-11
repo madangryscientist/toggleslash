@@ -1,57 +1,29 @@
 package eval
 
 import (
-	"strings"
+	"math"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
+	"github.com/madangryscientist/toggleslash/sdks/go/jsonvalue"
 )
 
 // The shape of a ruleset, checked at runtime because rulesets arrive as JSON. docs/evaluation.md is
 // normative for what counts as malformed. Null and absent are the same for an optional field.
 
-type opcode uint8
-
-const (
-	opIn opcode = iota
-	opContains
-	opStartsWith
-	opEndsWith
-	opLt
-	opLte
-	opGt
-	opGte
-	opSemverEq
-	opSemverLt
-	opSemverLte
-	opSemverGt
-	opSemverGte
-	opBefore
-	opAfter
-	opMatches
-	opSegmentMatch
-)
-
-var attributeOps = map[string]opcode{
-	"in": opIn, "contains": opContains, "startsWith": opStartsWith, "endsWith": opEndsWith,
-	"lt": opLt, "lte": opLte, "gt": opGt, "gte": opGte,
-	"semverEq": opSemverEq, "semverLt": opSemverLt, "semverLte": opSemverLte,
-	"semverGt": opSemverGt, "semverGte": opSemverGte,
-	"before": opBefore, "after": opAfter, "matches": opMatches,
+type attributeClause struct {
+	op        string
+	attribute string
+	reference []string // the components of a "/" reference; nil for a literal name
+	values    []jsonvalue.Value
+	patterns  []pattern // per value, for the matches op; a nil entry is an invalid pattern
+	negate    bool
+	kind      string // "" is user
 }
 
-// clause is an attribute clause or a segmentMatch clause.
 type clause struct {
-	op          opcode
-	negate      bool
-	kind        string   // the context kind of an attribute clause
-	components  []string // the attribute name, or the parts of its "/" reference
-	values      []jsonvalue.Value
+	segment     bool
+	attr        *attributeClause
 	segmentKeys []string
-}
-
-type serve struct {
-	variation int
-	rollout   *rollout
+	negate      bool
 }
 
 type weighted struct {
@@ -60,8 +32,13 @@ type weighted struct {
 }
 
 type rollout struct {
-	variations []weighted
 	kind       string
+	variations []weighted
+}
+
+type serve struct {
+	variation int
+	rollout   *rollout
 }
 
 type rule struct {
@@ -69,480 +46,504 @@ type rule struct {
 	serve
 }
 
+type target struct {
+	variation int
+	keys      []string
+	kind      string
+}
+
 type prerequisite struct {
 	flagKey   string
 	variation float64
 }
 
-// targetHit is a target that lists a key: its place in targets and the variation it serves.
+type flagHeader struct {
+	key          string
+	on           bool
+	variations   []jsonvalue.Value
+	offVariation int // -1 when absent
+}
+
+type flag struct {
+	flagHeader
+	salt             string
+	version          float64
+	prerequisites    []prerequisite
+	rules            []rule
+	fallthroughServe serve
+	targets          targetIndex
+}
+
+type segmentRule struct {
+	clauses     []*attributeClause
+	weight      int // -1 when absent
+	rolloutKind string
+}
+
+type keysByKind map[string]map[string]struct{}
+
+type segment struct {
+	key      string
+	salt     string
+	included keysByKind
+	excluded keysByKind
+	rules    []segmentRule
+}
+
 type targetHit struct {
 	order     int
 	variation int
 }
 
-// flag is a flag whose header and body are both valid.
-type flag struct {
-	key           string
-	salt          string
-	version       float64
-	variations    []jsonvalue.Value
-	targets       map[string]map[string]targetHit // by kind, then by key
-	prerequisites []prerequisite
-	rules         []rule
-	defaultServe  serve
-}
+// targetIndex is the targets by kind, then by key; the first target in array order holds each key.
+type targetIndex map[string]map[string]targetHit
 
-type entryStatus uint8
+type entryStatus int
 
 const (
-	statusMalformed entryStatus = iota
-	statusBroken
-	statusReady
+	entryMalformed entryStatus = iota
+	entryBroken
+	entryReady
 )
 
-// flagEntry is a flag by its validity. A broken flag has a valid header, so it can still be off.
 type flagEntry struct {
-	status     entryStatus
-	on         bool
-	variations []jsonvalue.Value
-	off        int // the off variation, or -1
-	code       string
-	flag       *flag
+	status entryStatus
+	header flagHeader
+	code   string // for a broken entry
+	flag   *flag
 }
 
-type keysByKind map[string]map[string]struct{}
-
-type segmentRule struct {
-	clauses []clause
-	weight  int // -1 when the rule has no rollout
-	kind    string
-}
-
+// segmentEntry is a compiled segment, or malformed when seg is nil.
 type segmentEntry struct {
-	malformed bool
-	key, salt string
-	included  keysByKind
-	excluded  keysByKind
-	rules     []segmentRule
+	seg *segment
 }
 
-// Ruleset is a validated, indexed ruleset. It is immutable, so any number of goroutines may evaluate it.
+// Ruleset is a validated and indexed ruleset. It is immutable, so any number of goroutines may evaluate on it.
 type Ruleset struct {
 	flags    map[string]*flagEntry
-	segments map[string]*segmentEntry
+	segments map[string]segmentEntry
 }
 
-func isKey(v jsonvalue.Value) (string, bool) {
-	s, ok := v.Text()
-	return s, ok && s != ""
-}
-
-func isOptionalKind(v jsonvalue.Value) (string, bool) {
-	if v.IsNull() {
-		return defaultKind, true
-	}
-	s, ok := v.Text()
-	return s, ok && isKind(s)
-}
-
-func variationIndex(v jsonvalue.Value, count int) (int, bool) {
-	n, _ := v.Number()
-	if !v.IsCount() || n >= float64(count) {
+func isCount(v jsonvalue.Value) (float64, bool) {
+	f, ok := v.AsNumber()
+	if !ok || math.IsInf(f, 0) || math.IsNaN(f) || f < 0 || f != math.Trunc(f) {
 		return 0, false
-	}
-	return int(n), true
-}
-
-func optionalBool(v jsonvalue.Value) (bool, bool) {
-	if v.IsNull() {
-		return false, true
-	}
-	return v.Bool()
-}
-
-func stringArray(v jsonvalue.Value) ([]string, bool) {
-	items, ok := v.Items()
-	if !ok {
-		return nil, false
-	}
-	out := make([]string, len(items))
-	for i, item := range items {
-		if out[i], ok = item.Text(); !ok {
-			return nil, false
-		}
-	}
-	return out, true
-}
-
-// parseReference reads an attribute reference, to "Reading the attribute" in docs/evaluation.md: a name that
-// starts with "/". The components are what is left after dropping the leading "/", splitting on "/" and
-// decoding "~1" as "/" and "~0" as "~" in one left-to-right pass. It is false when a component is empty or
-// a "~" is followed by anything but 0 or 1, or ends the component.
-func parseReference(text string) ([]string, bool) {
-	var components []string
-	for _, part := range strings.Split(text[1:], "/") {
-		if part == "" {
-			return nil, false
-		}
-		var decoded strings.Builder
-		for i := 0; i < len(part); i++ {
-			if part[i] != '~' {
-				decoded.WriteByte(part[i])
-				continue
-			}
-			switch {
-			case i+1 < len(part) && part[i+1] == '0':
-				decoded.WriteByte('~')
-			case i+1 < len(part) && part[i+1] == '1':
-				decoded.WriteByte('/')
-			default:
-				return nil, false
-			}
-			i++
-		}
-		components = append(components, decoded.String())
-	}
-	return components, true
-}
-
-func attributeComponents(v jsonvalue.Value) ([]string, bool) {
-	name, ok := isKey(v)
-	if !ok {
-		return nil, false
-	}
-	if !strings.HasPrefix(name, "/") {
-		return []string{name}, true
-	}
-	return parseReference(name)
-}
-
-func isClauseValue(v jsonvalue.Value) bool {
-	if n, ok := v.Number(); ok {
-		return n-n == 0 // finite
-	}
-	return v.Kind() == jsonvalue.KindString || v.Kind() == jsonvalue.KindBool
-}
-
-func parseAttributeClause(v jsonvalue.Value) (clause, bool) {
-	if !v.IsObject() {
-		return clause{}, false
-	}
-	opName, _ := v.Field("op").Text()
-	op, known := attributeOps[opName]
-	if !known {
-		return clause{}, false
-	}
-	components, ok := attributeComponents(v.Field("attribute"))
-	if !ok {
-		return clause{}, false
-	}
-	negate, ok := optionalBool(v.Field("negate"))
-	if !ok {
-		return clause{}, false
-	}
-	kind, ok := isOptionalKind(v.Field("contextKind"))
-	if !ok {
-		return clause{}, false
-	}
-	values, ok := v.Field("values").Items()
-	if !ok {
-		return clause{}, false
-	}
-	for _, value := range values {
-		if !isClauseValue(value) {
-			return clause{}, false
-		}
-	}
-	return clause{op: op, negate: negate, kind: kind, components: components, values: values}, true
-}
-
-func parseSegmentClause(v jsonvalue.Value) (clause, bool) {
-	if !v.IsObject() {
-		return clause{}, false
-	}
-	if op, _ := v.Field("op").Text(); op != "segmentMatch" {
-		return clause{}, false
-	}
-	negate, ok := optionalBool(v.Field("negate"))
-	if !ok {
-		return clause{}, false
-	}
-	keys, ok := stringArray(v.Field("values"))
-	if !ok {
-		return clause{}, false
-	}
-	return clause{op: opSegmentMatch, negate: negate, segmentKeys: keys}, true
-}
-
-func parseRollout(v jsonvalue.Value, count int) (*rollout, bool) {
-	if !v.IsObject() {
-		return nil, false
-	}
-	kind, ok := isOptionalKind(v.Field("contextKind"))
-	if !ok {
-		return nil, false
-	}
-	items, ok := v.Field("variations").Items()
-	if !ok || len(items) == 0 {
-		return nil, false
-	}
-	out := &rollout{kind: kind, variations: make([]weighted, len(items))}
-	total := 0
-	for i, item := range items {
-		if !item.IsObject() {
-			return nil, false
-		}
-		index, ok := variationIndex(item.Field("variation"), count)
-		weight := item.Field("weight")
-		w, _ := weight.Number()
-		if !ok || !weight.IsCount() || w > bucketCount {
-			return nil, false
-		}
-		out.variations[i] = weighted{variation: index, weight: int(w)}
-		total += int(w)
-	}
-	return out, total == bucketCount
-}
-
-func parseServe(v jsonvalue.Value, count int) (serve, bool) {
-	if !v.IsObject() {
-		return serve{}, false
-	}
-	variation, rolloutValue := v.Field("variation"), v.Field("rollout")
-	if rolloutValue.IsNull() {
-		index, ok := variationIndex(variation, count)
-		return serve{variation: index}, ok
-	}
-	if !variation.IsNull() {
-		return serve{}, false
-	}
-	r, ok := parseRollout(rolloutValue, count)
-	return serve{rollout: r}, ok
-}
-
-func parseRule(v jsonvalue.Value, count int) (rule, bool) {
-	if !v.IsObject() {
-		return rule{}, false
-	}
-	items, ok := v.Field("clauses").Items()
-	if !ok {
-		return rule{}, false
-	}
-	clauses := make([]clause, len(items))
-	for i, item := range items {
-		c, ok := parseAttributeClause(item)
-		if !ok {
-			c, ok = parseSegmentClause(item)
-		}
-		if !ok {
-			return rule{}, false
-		}
-		clauses[i] = c
-	}
-	s, ok := parseServe(v, count)
-	return rule{clauses: clauses, serve: s}, ok
-}
-
-// flagHeader is what serving the off variation needs. It is checked apart so "on": false survives a bad rule.
-func flagHeader(v jsonvalue.Value) (*flagEntry, bool) {
-	if !v.IsObject() {
-		return nil, false
-	}
-	on, ok := v.Field("on").Bool()
-	variations, hasVariations := v.Field("variations").Items()
-	if _, hasKey := isKey(v.Field("key")); !ok || !hasKey || !hasVariations || len(variations) == 0 {
-		return nil, false
-	}
-	off := -1
-	if offValue := v.Field("offVariation"); !offValue.IsNull() {
-		if off, ok = variationIndex(offValue, len(variations)); !ok {
-			return nil, false
-		}
-	}
-	return &flagEntry{on: on, variations: variations, off: off}, true
-}
-
-func parseTarget(v jsonvalue.Value, count int) (kind string, variation int, keys []string, ok bool) {
-	if !v.IsObject() {
-		return
-	}
-	if variation, ok = variationIndex(v.Field("variation"), count); !ok {
-		return
-	}
-	if keys, ok = stringArray(v.Field("contextKeys")); !ok {
-		return
-	}
-	kind, ok = isOptionalKind(v.Field("contextKind"))
-	return
-}
-
-func parsePrerequisite(v jsonvalue.Value) (prerequisite, bool) {
-	if !v.IsObject() {
-		return prerequisite{}, false
-	}
-	key, ok := isKey(v.Field("flagKey"))
-	n, _ := v.Field("variation").Number()
-	return prerequisite{flagKey: key, variation: n}, ok && v.Field("variation").IsCount()
-}
-
-// parseFlagBody checks the body of a flag whose header was valid.
-func parseFlagBody(v jsonvalue.Value, header *flagEntry) (*flag, bool) {
-	count := len(header.variations)
-	salt, ok := v.Field("salt").Text()
-	version, _ := v.Field("version").Number()
-	if !ok || !v.Field("version").IsCount() {
-		return nil, false
-	}
-	f := &flag{salt: salt, version: version, variations: header.variations, targets: map[string]map[string]targetHit{}}
-	f.key, _ = v.Field("key").Text()
-
-	targets, ok := v.Field("targets").Items()
-	if !ok {
-		return nil, false
-	}
-	for order, t := range targets {
-		kind, variation, keys, ok := parseTarget(t, count)
-		if !ok {
-			return nil, false
-		}
-		byKey := f.targets[kind]
-		if byKey == nil {
-			byKey = map[string]targetHit{}
-			f.targets[kind] = byKey
-		}
-		for _, key := range keys {
-			if _, held := byKey[key]; !held {
-				byKey[key] = targetHit{order: order, variation: variation}
-			}
-		}
-	}
-
-	prerequisites, ok := v.Field("prerequisites").Items()
-	if !ok {
-		return nil, false
-	}
-	for _, p := range prerequisites {
-		parsed, ok := parsePrerequisite(p)
-		if !ok {
-			return nil, false
-		}
-		f.prerequisites = append(f.prerequisites, parsed)
-	}
-
-	rules, ok := v.Field("rules").Items()
-	if !ok {
-		return nil, false
-	}
-	for _, r := range rules {
-		parsed, ok := parseRule(r, count)
-		if !ok {
-			return nil, false
-		}
-		f.rules = append(f.rules, parsed)
-	}
-
-	if f.defaultServe, ok = parseServe(v.Field("fallthrough"), count); !ok {
-		return nil, false
 	}
 	return f, true
 }
 
-func contextLists(v jsonvalue.Value, into keysByKind) bool {
-	if v.IsNull() {
+func isAbsent(v jsonvalue.Value) bool { return v.IsNull() }
+
+func isObject(v jsonvalue.Value) bool { return v.Kind() == jsonvalue.Object }
+
+// optionalKind reads a kind that may be absent: "" for absent, ok false for an invalid kind.
+func optionalKind(v jsonvalue.Value) (string, bool) {
+	if isAbsent(v) {
+		return "", true
+	}
+	s, ok := v.AsString()
+	if !ok || !isKind(s) {
+		return "", false
+	}
+	return s, true
+}
+
+func variationIndex(v jsonvalue.Value, count int) (int, bool) {
+	f, ok := isCount(v)
+	if !ok || f >= float64(count) {
+		return 0, false
+	}
+	return int(f), true
+}
+
+func stringArray(v jsonvalue.Value) ([]string, bool) {
+	arr, ok := v.AsArray()
+	if !ok {
+		return nil, false
+	}
+	out := make([]string, len(arr))
+	for i, e := range arr {
+		s, ok := e.AsString()
+		if !ok {
+			return nil, false
+		}
+		out[i] = s
+	}
+	return out, true
+}
+
+func negateOf(v jsonvalue.Value) (bool, bool) {
+	if isAbsent(v) {
+		return false, true
+	}
+	return v.AsBool()
+}
+
+func isClauseValue(v jsonvalue.Value) bool {
+	switch v.Kind() {
+	case jsonvalue.Number:
+		f, _ := v.AsNumber()
+		return !math.IsInf(f, 0) && !math.IsNaN(f)
+	case jsonvalue.String, jsonvalue.Bool:
 		return true
 	}
-	items, ok := v.Items()
+	return false
+}
+
+var attributeOps = map[string]bool{
+	"in": true, "contains": true, "startsWith": true, "endsWith": true,
+	"lt": true, "lte": true, "gt": true, "gte": true,
+	"semverEq": true, "semverLt": true, "semverLte": true, "semverGt": true, "semverGte": true,
+	"before": true, "after": true, "matches": true,
+}
+
+func readAttributeClause(v jsonvalue.Value) (*attributeClause, bool) {
+	if !isObject(v) {
+		return nil, false
+	}
+	op, ok := field(v, "op").AsString()
+	if !ok || !attributeOps[op] {
+		return nil, false
+	}
+	name, ok := field(v, "attribute").AsString()
+	if !ok || name == "" {
+		return nil, false
+	}
+	c := &attributeClause{op: op, attribute: name}
+	if name[0] == '/' {
+		ref, ok := parseReference(name)
+		if !ok {
+			return nil, false
+		}
+		c.reference = ref
+	}
+	if c.negate, ok = negateOf(field(v, "negate")); !ok {
+		return nil, false
+	}
+	if c.kind, ok = optionalKind(field(v, "contextKind")); !ok {
+		return nil, false
+	}
+	values, ok := field(v, "values").AsArray()
+	if !ok {
+		return nil, false
+	}
+	for _, value := range values {
+		if !isClauseValue(value) {
+			return nil, false
+		}
+	}
+	c.values = values
+	if op == "matches" {
+		c.patterns = make([]pattern, len(values))
+		for i, value := range values {
+			if s, ok := value.AsString(); ok {
+				c.patterns[i] = compilePattern(s)
+			}
+		}
+	}
+	return c, true
+}
+
+func readSegmentClause(v jsonvalue.Value) (clause, bool) {
+	if !isObject(v) {
+		return clause{}, false
+	}
+	if op, ok := field(v, "op").AsString(); !ok || op != "segmentMatch" {
+		return clause{}, false
+	}
+	negate, ok := negateOf(field(v, "negate"))
+	if !ok {
+		return clause{}, false
+	}
+	keys, ok := stringArray(field(v, "values"))
+	if !ok {
+		return clause{}, false
+	}
+	return clause{segment: true, segmentKeys: keys, negate: negate}, true
+}
+
+func readWeighted(v jsonvalue.Value, count int) (weighted, bool) {
+	if !isObject(v) {
+		return weighted{}, false
+	}
+	idx, ok := variationIndex(field(v, "variation"), count)
+	w, ok2 := isCount(field(v, "weight"))
+	if !ok || !ok2 || w > BucketCount {
+		return weighted{}, false
+	}
+	return weighted{variation: idx, weight: int(w)}, true
+}
+
+func readRollout(v jsonvalue.Value, count int) (*rollout, bool) {
+	if !isObject(v) {
+		return nil, false
+	}
+	kind, ok := optionalKind(field(v, "contextKind"))
+	if !ok {
+		return nil, false
+	}
+	arr, ok := field(v, "variations").AsArray()
+	if !ok || len(arr) == 0 {
+		return nil, false
+	}
+	r := &rollout{kind: kind, variations: make([]weighted, len(arr))}
+	total := 0
+	for i, e := range arr {
+		w, ok := readWeighted(e, count)
+		if !ok {
+			return nil, false
+		}
+		r.variations[i] = w
+		total += w.weight
+	}
+	return r, total == BucketCount
+}
+
+func readServe(v jsonvalue.Value, count int) (serve, bool) {
+	if !isObject(v) {
+		return serve{}, false
+	}
+	variation, rolloutValue := field(v, "variation"), field(v, "rollout")
+	if isAbsent(rolloutValue) {
+		idx, ok := variationIndex(variation, count)
+		return serve{variation: idx}, ok
+	}
+	if !isAbsent(variation) {
+		return serve{}, false
+	}
+	r, ok := readRollout(rolloutValue, count)
+	return serve{rollout: r}, ok
+}
+
+func readRule(v jsonvalue.Value, count int) (rule, bool) {
+	if !isObject(v) {
+		return rule{}, false
+	}
+	list, ok := field(v, "clauses").AsArray()
+	if !ok {
+		return rule{}, false
+	}
+	r := rule{clauses: make([]clause, len(list))}
+	for i, e := range list {
+		if attr, ok := readAttributeClause(e); ok {
+			r.clauses[i] = clause{attr: attr}
+		} else if seg, ok := readSegmentClause(e); ok {
+			r.clauses[i] = seg
+		} else {
+			return rule{}, false
+		}
+	}
+	r.serve, ok = readServe(v, count)
+	return r, ok
+}
+
+func readTarget(v jsonvalue.Value, count int) (target, bool) {
+	if !isObject(v) {
+		return target{}, false
+	}
+	idx, ok := variationIndex(field(v, "variation"), count)
+	keys, ok2 := stringArray(field(v, "contextKeys"))
+	kind, ok3 := optionalKind(field(v, "contextKind"))
+	return target{variation: idx, keys: keys, kind: kind}, ok && ok2 && ok3
+}
+
+func readPrerequisite(v jsonvalue.Value) (prerequisite, bool) {
+	if !isObject(v) {
+		return prerequisite{}, false
+	}
+	key, ok := field(v, "flagKey").AsString()
+	variation, ok2 := isCount(field(v, "variation"))
+	return prerequisite{flagKey: key, variation: variation}, ok && key != "" && ok2
+}
+
+// readHeader is what serving the off variation needs. It is checked apart so `on: false` survives a bad rule.
+func readHeader(v jsonvalue.Value) (flagHeader, bool) {
+	if !isObject(v) {
+		return flagHeader{}, false
+	}
+	on, ok := field(v, "on").AsBool()
+	key, ok2 := field(v, "key").AsString()
+	variations, ok3 := field(v, "variations").AsArray()
+	if !ok || !ok2 || key == "" || !ok3 || len(variations) == 0 {
+		return flagHeader{}, false
+	}
+	h := flagHeader{key: key, on: on, variations: variations, offVariation: -1}
+	if off := field(v, "offVariation"); !isAbsent(off) {
+		idx, ok := variationIndex(off, len(variations))
+		if !ok {
+			return flagHeader{}, false
+		}
+		h.offVariation = idx
+	}
+	return h, true
+}
+
+func readList[T any](v jsonvalue.Value, read func(jsonvalue.Value) (T, bool)) ([]T, bool) {
+	arr, ok := v.AsArray()
+	if !ok {
+		return nil, false
+	}
+	out := make([]T, len(arr))
+	for i, e := range arr {
+		item, ok := read(e)
+		if !ok {
+			return nil, false
+		}
+		out[i] = item
+	}
+	return out, true
+}
+
+// readBody reads everything past the header. It reports false for a flag that is malformed in its body.
+func readBody(v jsonvalue.Value, h flagHeader) (*flag, bool) {
+	count := len(h.variations)
+	salt, ok := field(v, "salt").AsString()
+	if !ok {
+		return nil, false
+	}
+	version, ok := isCount(field(v, "version"))
+	if !ok {
+		return nil, false
+	}
+	targets, ok := readList(field(v, "targets"), func(e jsonvalue.Value) (target, bool) { return readTarget(e, count) })
+	if !ok {
+		return nil, false
+	}
+	prerequisites, ok := readList(field(v, "prerequisites"), readPrerequisite)
+	if !ok {
+		return nil, false
+	}
+	rules, ok := readList(field(v, "rules"), func(e jsonvalue.Value) (rule, bool) { return readRule(e, count) })
+	if !ok {
+		return nil, false
+	}
+	fall, ok := readServe(field(v, "fallthrough"), count)
+	if !ok {
+		return nil, false
+	}
+	return &flag{
+		flagHeader: h, salt: salt, version: version, prerequisites: prerequisites, rules: rules,
+		fallthroughServe: fall, targets: indexTargets(targets),
+	}, true
+}
+
+func indexTargets(targets []target) targetIndex {
+	index := targetIndex{}
+	for order, t := range targets {
+		kind := t.kind
+		if kind == "" {
+			kind = DefaultKind
+		}
+		keys := index[kind]
+		if keys == nil {
+			keys = map[string]targetHit{}
+			index[kind] = keys
+		}
+		for _, k := range t.keys {
+			if _, taken := keys[k]; !taken {
+				keys[k] = targetHit{order: order, variation: t.variation}
+			}
+		}
+	}
+	return index
+}
+
+func readSegmentRule(v jsonvalue.Value) (segmentRule, bool) {
+	if !isObject(v) {
+		return segmentRule{}, false
+	}
+	r := segmentRule{weight: -1}
+	if w := field(v, "weight"); !isAbsent(w) {
+		n, ok := isCount(w)
+		if !ok || n > BucketCount {
+			return segmentRule{}, false
+		}
+		r.weight = int(n)
+	}
+	kind, ok := optionalKind(field(v, "rolloutContextKind"))
+	if !ok {
+		return segmentRule{}, false
+	}
+	r.rolloutKind = kind
+	clauses, ok := readList(field(v, "clauses"), readAttributeClause)
+	r.clauses = clauses
+	return r, ok
+}
+
+// addContextLists reads an optional list of {contextKind, values} into index.
+func addContextLists(v jsonvalue.Value, index keysByKind) bool {
+	if isAbsent(v) {
+		return true
+	}
+	arr, ok := v.AsArray()
 	if !ok {
 		return false
 	}
-	for _, item := range items {
-		kindText, hasKind := item.Field("contextKind").Text()
-		values, valid := stringArray(item.Field("values"))
-		if !item.IsObject() || !hasKind || !isKind(kindText) || !valid {
+	for _, e := range arr {
+		if !isObject(e) {
 			return false
 		}
-		addKeys(into, kindText, values)
+		kind, ok := field(e, "contextKind").AsString()
+		values, ok2 := stringArray(field(e, "values"))
+		if !ok || !isKind(kind) || !ok2 {
+			return false
+		}
+		addKeys(index, kind, values)
 	}
 	return true
 }
 
-func addKeys(into keysByKind, kind string, keys []string) {
-	set := into[kind]
+func addKeys(index keysByKind, kind string, keys []string) {
+	set := index[kind]
 	if set == nil {
 		set = map[string]struct{}{}
-		into[kind] = set
+		index[kind] = set
 	}
-	for _, key := range keys {
-		set[key] = struct{}{}
+	for _, k := range keys {
+		set[k] = struct{}{}
 	}
 }
 
-func parseSegmentRule(v jsonvalue.Value) (segmentRule, bool) {
-	if !v.IsObject() {
-		return segmentRule{}, false
+func readSegment(v jsonvalue.Value) segmentEntry {
+	if !isObject(v) {
+		return segmentEntry{}
 	}
-	weight := -1
-	if w := v.Field("weight"); !w.IsNull() {
-		n, _ := w.Number()
-		if !w.IsCount() || n > bucketCount {
-			return segmentRule{}, false
-		}
-		weight = int(n)
+	key, ok := field(v, "key").AsString()
+	salt, ok2 := field(v, "salt").AsString()
+	included, ok3 := stringArray(field(v, "included"))
+	excluded, ok4 := stringArray(field(v, "excluded"))
+	if !ok || key == "" || !ok2 || !ok3 || !ok4 {
+		return segmentEntry{}
 	}
-	kind, ok := isOptionalKind(v.Field("rolloutContextKind"))
-	items, hasClauses := v.Field("clauses").Items()
-	if !ok || !hasClauses {
-		return segmentRule{}, false
+	seg := &segment{key: key, salt: salt, included: keysByKind{}, excluded: keysByKind{}}
+	addKeys(seg.included, DefaultKind, included)
+	addKeys(seg.excluded, DefaultKind, excluded)
+	if !addContextLists(field(v, "includedContexts"), seg.included) ||
+		!addContextLists(field(v, "excludedContexts"), seg.excluded) {
+		return segmentEntry{}
 	}
-	clauses := make([]clause, len(items))
-	for i, item := range items {
-		if clauses[i], ok = parseAttributeClause(item); !ok {
-			return segmentRule{}, false
-		}
+	rules, ok := readList(field(v, "rules"), readSegmentRule)
+	if !ok {
+		return segmentEntry{}
 	}
-	return segmentRule{clauses: clauses, weight: weight, kind: kind}, true
-}
-
-func compileSegment(v jsonvalue.Value) *segmentEntry {
-	bad := &segmentEntry{malformed: true}
-	if !v.IsObject() {
-		return bad
-	}
-	key, hasKey := isKey(v.Field("key"))
-	salt, hasSalt := v.Field("salt").Text()
-	included, ok1 := stringArray(v.Field("included"))
-	excluded, ok2 := stringArray(v.Field("excluded"))
-	rules, ok3 := v.Field("rules").Items()
-	if !hasKey || !hasSalt || !ok1 || !ok2 || !ok3 {
-		return bad
-	}
-	seg := &segmentEntry{key: key, salt: salt, included: keysByKind{}, excluded: keysByKind{}}
-	addKeys(seg.included, defaultKind, included)
-	addKeys(seg.excluded, defaultKind, excluded)
-	if !contextLists(v.Field("includedContexts"), seg.included) || !contextLists(v.Field("excludedContexts"), seg.excluded) {
-		return bad
-	}
-	for _, r := range rules {
-		parsed, ok := parseSegmentRule(r)
-		if !ok {
-			return bad
-		}
-		seg.rules = append(seg.rules, parsed)
-	}
-	return seg
+	seg.rules = rules
+	return segmentEntry{seg: seg}
 }
 
 // segmentProblem is the first reference to a segment that is missing or malformed, in rule, clause, value order.
-func segmentProblem(f *flag, segments map[string]*segmentEntry) string {
-	for _, r := range f.rules {
-		for _, c := range r.clauses {
+func (r *Ruleset) segmentProblem(f *flag) string {
+	for _, rl := range f.rules {
+		for _, c := range rl.clauses {
+			if !c.segment {
+				continue
+			}
 			for _, key := range c.segmentKeys {
-				seg, found := segments[key]
+				entry, found := r.segments[key]
 				if !found {
-					return "SEGMENT_NOT_FOUND"
+					return CodeSegmentNotFound
 				}
-				if seg.malformed {
-					return "MALFORMED_SEGMENT"
+				if entry.seg == nil {
+					return CodeMalformedSegment
 				}
 			}
 		}
@@ -550,54 +551,55 @@ func segmentProblem(f *flag, segments map[string]*segmentEntry) string {
 	return ""
 }
 
-func compileFlag(v jsonvalue.Value, segments map[string]*segmentEntry) *flagEntry {
-	entry, ok := flagHeader(v)
-	if !ok {
-		return &flagEntry{status: statusMalformed}
-	}
-	body, ok := parseFlagBody(v, entry)
-	if !ok {
-		entry.status, entry.code = statusBroken, "MALFORMED_FLAG"
-		return entry
-	}
-	if code := segmentProblem(body, segments); code != "" {
-		entry.status, entry.code = statusBroken, code
-		return entry
-	}
-	entry.status, entry.flag = statusReady, body
-	return entry
-}
-
-// indexByKey compiles each record of an array under its string key; the first of a repeated key wins.
+// indexByKey calls compile for the first item of each string key; an item with no string key is dropped.
 func indexByKey[T any](items jsonvalue.Value, compile func(jsonvalue.Value) T) map[string]T {
 	index := map[string]T{}
-	list, _ := items.Items()
-	for _, item := range list {
-		key, ok := item.Field("key").Text()
-		if !ok || !item.IsObject() {
+	arr, _ := items.AsArray()
+	for _, item := range arr {
+		if !isObject(item) {
 			continue
 		}
-		if _, held := index[key]; !held {
+		key, ok := field(item, "key").AsString()
+		if !ok {
+			continue
+		}
+		if _, taken := index[key]; !taken {
 			index[key] = compile(item)
 		}
 	}
 	return index
 }
 
-// Compile validates and indexes a ruleset ({"flags": [...], "segments": [...]}, as JSON hands it over) once,
-// so each Evaluate skips that work. It never fails: a bad flag becomes an ERROR result when it is evaluated,
-// and anything that is not an array of flags or of segments counts as empty.
-func Compile(input jsonvalue.Value) *Ruleset {
-	segments := indexByKey(input.Field("segments"), compileSegment)
-	flags := indexByKey(input.Field("flags"), func(v jsonvalue.Value) *flagEntry { return compileFlag(v, segments) })
-	return &Ruleset{flags: flags, segments: segments}
+func (r *Ruleset) compileFlag(v jsonvalue.Value) *flagEntry {
+	header, ok := readHeader(v)
+	if !ok {
+		return &flagEntry{status: entryMalformed}
+	}
+	f, ok := readBody(v, header)
+	if !ok {
+		return &flagEntry{status: entryBroken, header: header, code: CodeMalformedFlag}
+	}
+	if code := r.segmentProblem(f); code != "" {
+		return &flagEntry{status: entryBroken, header: header, code: code}
+	}
+	return &flagEntry{status: entryReady, header: header, flag: f}
 }
 
-// FlagVersion is the version of a flag that is fully valid; it is false for a missing or malformed flag.
+// NewRuleset validates and indexes a ruleset ({flags, segments}, as JSON hands it over) once, so each
+// Evaluate skips that work. It never fails: a bad flag becomes an ERROR result when it is evaluated, and a
+// root that is not an object, or a flags or segments that is not an array, is empty.
+func NewRuleset(root jsonvalue.Value) *Ruleset {
+	r := &Ruleset{}
+	r.segments = indexByKey(field(root, "segments"), readSegment)
+	r.flags = indexByKey(field(root, "flags"), r.compileFlag)
+	return r
+}
+
+// FlagVersion is the version of a flag that is ready to evaluate.
 func (r *Ruleset) FlagVersion(key string) (float64, bool) {
-	entry, found := r.flags[key]
-	if !found || entry.status != statusReady {
+	e := r.flags[key]
+	if e == nil || e.status != entryReady {
 		return 0, false
 	}
-	return entry.flag.version, true
+	return e.flag.version, true
 }

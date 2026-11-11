@@ -1,15 +1,15 @@
 #!/bin/sh
-# Start the conformance test service. It runs the binary bin/test built and rebuilds only when that is
-# missing, because the harness waits 30 s for the "listening" line and a cold build must not eat it.
+# Starts the conformance test service: `bun run conformance -- --service sdks/go/bin/test-service`. It runs the
+# binary bin/test builds, and builds it first only if it is missing, so the harness never waits on a compile
+# that bin/test already did.
 set -eu
 cd "$(dirname "$0")/.."
-if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
-  run() { mise exec -- "$@"; }
-else
-  run() { "$@"; }
-fi
+
 if [ ! -x .build/test-service ]; then
-  mkdir -p .build
-  run go build -o .build/test-service ./test-service
+	if command -v mise >/dev/null 2>&1; then
+		mise exec -- go build -o .build/test-service ./test-service >&2
+	else
+		go build -o .build/test-service ./test-service >&2
+	fi
 fi
 exec .build/test-service

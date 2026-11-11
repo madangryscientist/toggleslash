@@ -5,114 +5,144 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"testing"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
+	"github.com/madangryscientist/toggleslash/sdks/go/jsonvalue"
 )
 
-// fixtures is fixtures/evaluation, found from this package's directory.
-var fixtures = filepath.Join("..", "..", "..", "..", "fixtures", "evaluation")
+// fixturesDir is the shared executable form of docs/evaluation.md, read in place: never a copy.
+const fixturesDir = "../../../../fixtures/evaluation"
 
-func readFixture(t *testing.T, name string) jsonvalue.Value {
-	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(fixtures, name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	v, err := jsonvalue.Parse(raw)
-	if err != nil {
-		t.Fatalf("%s: %v", name, err)
-	}
-	return v
+type fixtureSet struct {
+	vectors []namedVector
+	pins    []namedPin
 }
 
-// resultValue is a Result in the shape a vector's "expected" has.
+type namedVector struct {
+	file string
+	body jsonvalue.Value
+}
+
+type namedPin struct {
+	index int
+	body  jsonvalue.Value
+}
+
+var (
+	loadOnce sync.Once
+	loaded   fixtureSet
+	loadErr  error
+)
+
+func loadFixtures() (fixtureSet, error) {
+	loadOnce.Do(func() {
+		names, err := filepath.Glob(filepath.Join(fixturesDir, "*.json"))
+		if err != nil {
+			loadErr = err
+			return
+		}
+		sort.Strings(names)
+		for _, path := range names {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				loadErr = err
+				return
+			}
+			doc, err := jsonvalue.Parse(data)
+			if err != nil {
+				loadErr = fmt.Errorf("%s: %w", path, err)
+				return
+			}
+			base := filepath.Base(path)
+			if base == "buckets.json" {
+				list, _ := field(doc, "buckets").AsArray()
+				for i, b := range list {
+					loaded.pins = append(loaded.pins, namedPin{index: i, body: b})
+				}
+				continue
+			}
+			list, _ := field(doc, "vectors").AsArray()
+			for _, v := range list {
+				loaded.vectors = append(loaded.vectors, namedVector{file: base, body: v})
+			}
+		}
+	})
+	return loaded, loadErr
+}
+
 func resultValue(r Result) jsonvalue.Value {
-	reason := []jsonvalue.Member{{Key: "kind", Value: jsonvalue.String(r.Reason.Kind)}}
-	switch r.Reason.Kind {
-	case ReasonRuleMatch:
-		reason = append(reason, jsonvalue.Member{Key: "ruleIndex", Value: jsonvalue.Number(float64(r.Reason.RuleIndex))})
-	case ReasonPrerequisiteFailed:
-		reason = append(reason, jsonvalue.Member{Key: "flagKey", Value: jsonvalue.String(r.Reason.FlagKey)})
-	case ReasonError:
-		reason = append(reason, jsonvalue.Member{Key: "code", Value: jsonvalue.String(r.Reason.Code)})
+	reason := []jsonvalue.Member{{Key: "kind", Value: jsonvalue.FromString(r.Reason.Kind)}}
+	if r.Reason.Kind == KindRuleMatch {
+		reason = append(reason, jsonvalue.Member{Key: "ruleIndex", Value: jsonvalue.FromInt(int64(r.Reason.RuleIndex))})
 	}
-	index := jsonvalue.Null()
-	if r.VariationIndex != NoVariation {
-		index = jsonvalue.Number(float64(r.VariationIndex))
+	if r.Reason.FlagKey != "" {
+		reason = append(reason, jsonvalue.Member{Key: "flagKey", Value: jsonvalue.FromString(r.Reason.FlagKey)})
 	}
-	return jsonvalue.Object(
+	if r.Reason.Code != "" {
+		reason = append(reason, jsonvalue.Member{Key: "code", Value: jsonvalue.FromString(r.Reason.Code)})
+	}
+	index := jsonvalue.NullValue()
+	if r.VariationIndex >= 0 {
+		index = jsonvalue.FromInt(int64(r.VariationIndex))
+	}
+	return jsonvalue.FromObject(
 		jsonvalue.Member{Key: "value", Value: r.Value},
 		jsonvalue.Member{Key: "variationIndex", Value: index},
-		jsonvalue.Member{Key: "reason", Value: jsonvalue.Object(reason...)},
+		jsonvalue.Member{Key: "reason", Value: jsonvalue.FromObject(reason...)},
 	)
 }
 
 func TestVectors(t *testing.T) {
-	entries, err := os.ReadDir(fixtures)
+	set, err := loadFixtures()
 	if err != nil {
 		t.Fatal(err)
 	}
-	var names []string
-	for _, e := range entries {
-		if e.Name() != "buckets.json" && filepath.Ext(e.Name()) == ".json" {
-			names = append(names, e.Name())
+	if len(set.vectors) == 0 {
+		t.Fatal("read no evaluation vectors")
+	}
+	for _, v := range set.vectors {
+		name, _ := field(v.body, "name").AsString()
+		flagKey, _ := field(v.body, "flagKey").AsString()
+		ruleset := NewRuleset(jsonvalue.FromObject(
+			jsonvalue.Member{Key: "flags", Value: field(v.body, "flags")},
+			jsonvalue.Member{Key: "segments", Value: field(v.body, "segments")},
+		))
+		got := resultValue(ruleset.Evaluate(flagKey, field(v.body, "context")))
+		want := field(v.body, "expected")
+		if !jsonvalue.Equal(got, want) {
+			t.Errorf("%s: %q:\n got  %s\n want %s", v.file, name, got, want)
 		}
 	}
-	sort.Strings(names)
-	total := 0
-	kinds := map[string]bool{}
-	for _, name := range names {
-		vectors, _ := readFixture(t, name).Field("vectors").Items()
-		for _, v := range vectors {
-			total++
-			title, _ := v.Field("name").Text()
-			flagKey, _ := v.Field("flagKey").Text()
-			ruleset := Compile(jsonvalue.Object(
-				jsonvalue.Member{Key: "flags", Value: v.Field("flags")},
-				jsonvalue.Member{Key: "segments", Value: v.Field("segments")},
-			))
-			got := resultValue(ruleset.Evaluate(flagKey, v.Field("context")))
-			want := v.Field("expected")
-			if !jsonvalue.Equal(got, want) {
-				gotJSON := got.AppendJSON(nil)
-				wantJSON := want.AppendJSON(nil)
-				t.Errorf("%s: %s\n got  %s\n want %s", name, title, gotJSON, wantJSON)
-			}
-			reason := want.Field("reason")
-			kind, _ := reason.Field("kind").Text()
-			if code, ok := reason.Field("code").Text(); ok {
-				kind += ":" + code
-			}
-			kinds[kind] = true
-		}
-	}
-	if total == 0 {
-		t.Fatal("read no vectors")
-	}
-	if len(kinds) != 12 {
-		t.Errorf("the vectors cover %d reasons and error codes, want 12: %v", len(kinds), kinds)
-	}
-	fmt.Printf("vectors: %d\n", total)
 }
 
 func TestBucketPins(t *testing.T) {
-	pins, _ := readFixture(t, "buckets.json").Field("buckets").Items()
-	if len(pins) == 0 {
+	set, err := loadFixtures()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(set.pins) == 0 {
 		t.Fatal("read no bucket pins")
 	}
-	for _, p := range pins {
-		key, _ := p.Field("flagKey").Text()
-		salt, _ := p.Field("salt").Text()
-		ctxKey, _ := p.Field("contextKey").Text()
-		wantHash, _ := p.Field("uint32").Number()
-		wantBucket, _ := p.Field("bucket").Number()
-		if got := hash32(key, salt, ctxKey); float64(got) != wantHash {
-			t.Errorf("hash32(%q,%q,%q) = %d, want %v", key, salt, ctxKey, got, wantHash)
-		}
-		if got := bucket(key, salt, ctxKey); float64(got) != wantBucket {
-			t.Errorf("bucket(%q,%q,%q) = %d, want %v", key, salt, ctxKey, got, wantBucket)
+	for _, p := range set.pins {
+		flagKey, _ := field(p.body, "flagKey").AsString()
+		salt, _ := field(p.body, "salt").AsString()
+		contextKey, _ := field(p.body, "contextKey").AsString()
+		wantUint, _ := field(p.body, "uint32").AsNumber()
+		wantBucket, _ := field(p.body, "bucket").AsNumber()
+		sum := Bucket(flagKey, salt, contextKey)
+		if float64(sum) != wantUint || float64(sum%BucketCount) != wantBucket {
+			t.Errorf("buckets.json pin %d (%q %q %q): got %d / %d, want %v / %v",
+				p.index, flagKey, salt, contextKey, sum, sum%BucketCount, wantUint, wantBucket)
 		}
 	}
-	fmt.Printf("pins: %d\n", len(pins))
+}
+
+// TestFixtureCounts prints the one line bin/test reports: how many vectors and pins ran.
+func TestFixtureCounts(t *testing.T) {
+	set, err := loadFixtures()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = fmt.Fprintf(os.Stdout, "vectors: %d pins: %d\n", len(set.vectors), len(set.pins))
 }

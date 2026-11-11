@@ -1,160 +1,115 @@
 package toggleslash
 
 import (
-	"time"
+	"fmt"
 
 	"github.com/madangryscientist/toggleslash/sdks/go/internal/eval"
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
+	"github.com/madangryscientist/toggleslash/sdks/go/jsonvalue"
 )
 
-// Value is a JSON value: what a flag serves and what a JSON fallback holds. It is not encoding/json's
-// `any`, because that type cannot hold 1e999 or a lone surrogate, which docs/evaluation.md keeps. Build one
-// with Null, Bool, Number, String, Array and Object, or read one with ParseJSON.
-type Value = jsonvalue.Value
+// Reason says why a flag evaluated as it did. Kind is one of the Reason* constants. Code is set only when Kind is
+// ReasonError, and is one of the Error* constants. RuleIndex is the matching rule for ReasonRuleMatch and -1
+// otherwise. FlagKey is the failed prerequisite for ReasonPrerequisiteFailed and empty otherwise.
+type Reason = eval.Reason
 
-// Member is one key and value of an object Value.
-type Member = jsonvalue.Member
-
-// The constructors of a Value.
-var (
-	// Null is the JSON null. The zero Value is null too.
-	Null = jsonvalue.Null
-	// Bool is a JSON boolean.
-	Bool = jsonvalue.Bool
-	// Number is a JSON number (a float64, as the spec reads every number).
-	Number = jsonvalue.Number
-	// String is a JSON string.
-	String = jsonvalue.String
-	// Array is a JSON array.
-	Array = jsonvalue.Array
-	// Object is a JSON object.
-	Object = jsonvalue.Object
-)
-
-// ParseJSON reads JSON text into a Value with the reader the SDK uses for rulesets: 1e999 is +Inf, a lone
-// surrogate escape is kept, a number is a float64.
-func ParseJSON(text []byte) (Value, error) { return jsonvalue.Parse(text) }
-
-// NoVariation is the VariationIndex of a result that serves no variation: the fallback was returned, or
-// the flag serves nothing.
-const NoVariation = eval.NoVariation
-
-// ReasonKind says why a result is what it is.
-type ReasonKind string
-
-// The reasons of docs/evaluation.md.
+// Reason kinds, spelled as docs/evaluation.md spells them.
 const (
-	ReasonOff                = ReasonKind(eval.ReasonOff)
-	ReasonPrerequisiteFailed = ReasonKind(eval.ReasonPrerequisiteFailed)
-	ReasonTargetMatch        = ReasonKind(eval.ReasonTargetMatch)
-	ReasonRuleMatch          = ReasonKind(eval.ReasonRuleMatch)
-	ReasonFallthrough        = ReasonKind(eval.ReasonFallthrough)
-	ReasonError              = ReasonKind(eval.ReasonError)
+	ReasonOff                = eval.KindOff
+	ReasonTargetMatch        = eval.KindTargetMatch
+	ReasonRuleMatch          = eval.KindRuleMatch
+	ReasonFallthrough        = eval.KindFallthrough
+	ReasonPrerequisiteFailed = eval.KindPrerequisiteFailed
+	ReasonError              = eval.KindError
 )
 
-// ErrorCode is the Code of an ERROR reason: the evaluator's, and three of the SDK's own.
-type ErrorCode string
-
-// The error codes.
+// Error codes of a Reason whose Kind is ReasonError: the evaluator's, then the three the SDK adds.
 const (
-	ErrorInvalidContext    ErrorCode = "INVALID_CONTEXT"
-	ErrorFlagNotFound      ErrorCode = "FLAG_NOT_FOUND"
-	ErrorMalformedFlag     ErrorCode = "MALFORMED_FLAG"
-	ErrorMalformedSegment  ErrorCode = "MALFORMED_SEGMENT"
-	ErrorSegmentNotFound   ErrorCode = "SEGMENT_NOT_FOUND"
-	ErrorPrerequisiteCycle ErrorCode = "PREREQUISITE_CYCLE"
-	ErrorPrerequisiteDepth ErrorCode = "PREREQUISITE_DEPTH_EXCEEDED"
-	ErrorNotReady          ErrorCode = "NOT_READY"
-	ErrorTypeMismatch      ErrorCode = "TYPE_MISMATCH"
-	ErrorEvaluationFailed  ErrorCode = "EVALUATION_FAILED"
+	ErrorInvalidContext            = eval.CodeInvalidContext
+	ErrorFlagNotFound              = eval.CodeFlagNotFound
+	ErrorSegmentNotFound           = eval.CodeSegmentNotFound
+	ErrorMalformedFlag             = eval.CodeMalformedFlag
+	ErrorMalformedSegment          = eval.CodeMalformedSegment
+	ErrorPrerequisiteCycle         = eval.CodePrerequisiteCycle
+	ErrorPrerequisiteDepthExceeded = eval.CodePrerequisiteDepthExceeds
+	// ErrorNotReady: the first ruleset has not loaded, so the caller got its fallback.
+	ErrorNotReady = "NOT_READY"
+	// ErrorTypeMismatch: the flag served a value of another JSON kind than the fallback's.
+	ErrorTypeMismatch = "TYPE_MISMATCH"
+	// ErrorEvaluationFailed: the evaluator itself failed; the caller got its fallback.
+	ErrorEvaluationFailed = "EVALUATION_FAILED"
 )
 
-// Reason says why a result is what it is. RuleIndex means something for ReasonRuleMatch only, FlagKey for
-// ReasonPrerequisiteFailed only (the direct prerequisite) and Code for ReasonError only.
-type Reason struct {
-	Kind      ReasonKind
-	RuleIndex int
-	FlagKey   string
-	Code      ErrorCode
-}
+// Stream states of a Status.
+const (
+	StreamOff          = "off"
+	StreamConnecting   = "connecting"
+	StreamConnected    = "connected"
+	StreamDisconnected = "disconnected"
+	StreamClosed       = "closed"
+)
 
-func reasonOf(r eval.Reason) Reason {
-	return Reason{Kind: ReasonKind(r.Kind), RuleIndex: r.RuleIndex, FlagKey: r.FlagKey, Code: ErrorCode(r.Code)}
-}
+// Codes of a Status.LastError (the other is "http_<status>", for example "http_503").
+const (
+	SyncTimeout    = "timeout"
+	SyncBadRuleset = "bad_ruleset"
+	SyncNetwork    = "network"
+)
 
-func errorReason(code ErrorCode) Reason { return Reason{Kind: ReasonError, Code: code} }
-
-// Detail is the answer of a ...VariationDetail method: the value (the fallback when nothing usable was
-// served), the variation served (NoVariation when Value is the fallback) and why.
+// Detail is an evaluation with its reason. Value is the served value, or the fallback when nothing usable was
+// served. VariationIndex is the variation served, or -1 when Value is the fallback or the flag serves nothing.
 type Detail[T any] struct {
 	Value          T
 	VariationIndex int
 	Reason         Reason
 }
 
-// StreamState is where the stream stands.
-type StreamState string
-
-// The stream states. Off is stream disabled; Connecting is opening it (and the first load);
-// Connected is after the server's connected event; Disconnected is down, waiting to retry; Closed is after Close.
-const (
-	StreamOff          StreamState = "off"
-	StreamConnecting   StreamState = "connecting"
-	StreamConnected    StreamState = "connected"
-	StreamDisconnected StreamState = "disconnected"
-	StreamClosed       StreamState = "closed"
-)
-
-// SyncErrorCode is why the last ruleset or stream attempt failed: "http_<status>", "timeout",
-// "bad_ruleset" or "network". The empty string means it did not.
-type SyncErrorCode string
-
-// The three fixed codes; the fourth kind is "http_" followed by a status.
-const (
-	SyncTimeout    SyncErrorCode = "timeout"
-	SyncBadRuleset SyncErrorCode = "bad_ruleset"
-	SyncNetwork    SyncErrorCode = "network"
-)
-
-// Status is what this client has loaded and how its stream is doing. It is local state, read from memory,
-// and holds no URL, header, key, message, context, flag key or count.
+// Status is what the client has loaded and how its stream is doing, as one consistent snapshot. It is read from
+// memory and the server never sees it.
 type Status struct {
-	// ETag of the ruleset held, as the server sent it; nil before the first load.
-	ETag *string
-	// LastSyncAt is when the client last confirmed its ruleset matches the server; the zero time if never.
-	LastSyncAt time.Time
-	Stream     StreamState
-	// LastError is why the most recent ruleset or stream attempt failed; empty if it did not.
-	LastError SyncErrorCode
+	// ETag of the ruleset held, as the server sent it; "" before the first load.
+	ETag string
+	// LastSyncAt is when the client last confirmed its ruleset matches the server, as whole epoch milliseconds;
+	// -1 if never.
+	LastSyncAt int64
+	// Stream is one of the Stream* constants.
+	Stream string
+	// LastError is why the most recent ruleset or stream attempt failed ("http_<status>", SyncTimeout,
+	// SyncBadRuleset or SyncNetwork); "" if it did not.
+	LastError string
 }
 
-// EvaluationEvent is what one evaluation did, handed to the afterEvaluation hook. It carries the context
-// the caller passed, so a hook that sends it anywhere is the caller's decision; the SDK sends none of it.
+// EvaluationEvent is what one evaluation did, handed to the function WithAfterEvaluation sets. It carries the
+// context the caller passed, so a hook that sends it anywhere is the caller's decision: the SDK sends none of it.
 type EvaluationEvent struct {
 	FlagKey string
-	Context Context
+	Context jsonvalue.Value
 	// Value is what the caller got: the served value, or its fallback.
-	Value          Value
+	Value jsonvalue.Value
+	// VariationIndex is the variation served, or -1 when Value is the fallback or the flag serves nothing.
 	VariationIndex int
 	Reason         Reason
-	// ETag of the ruleset the evaluation used, as the server sent it; nil before the first load.
-	ETag *string
-	// FlagVersion is the flag's version in that ruleset; nil when the flag is not in it or is malformed.
-	FlagVersion *float64
+	// ETag of the ruleset this evaluation used, as Status().ETag spells it; "" before the first load.
+	ETag string
+	// FlagVersion is the flag's version in that ruleset; -1 when the flag is not in it or is malformed. A version
+	// is a non-negative integer that may exceed int64, so it is a float64, as in the ruleset.
+	FlagVersion float64
 }
 
-// Error is what the SDK reports to OnError. Op is the operation ("sync", "stream", "usage", "hook",
-// "evaluate" or "close"), Code a short stable word, and the message is built by the SDK without a context, a
-// key or an attribute.
+// Error is every error the SDK hands to the function WithOnError sets. Its text is fixed per Op and Code, and
+// carries no URL, key or context, so it is safe to log.
 type Error struct {
-	Op      string
-	Code    string
-	Message string
-	// Err is what the SDK recovered from, for a callback that panicked; nil otherwise.
-	Err error
+	// Op is "ruleset", "stream", "usage", "hook", "evaluate" or "close".
+	Op string
+	// Code is "http_<status>", "timeout", "bad_ruleset", "network", "panic", "failed" or "unsent".
+	Code string
+	// Count is the number of usage entries lost, for Op "close".
+	Count int
 }
 
-func (e *Error) Error() string { return "toggleslash: " + e.Op + ": " + e.Message }
-
-// Unwrap returns the recovered cause, if any.
-func (e *Error) Unwrap() error { return e.Err }
+// Error implements error.
+func (e *Error) Error() string {
+	if e.Op == "close" {
+		return fmt.Sprintf("closed with %d usage counts unsent: the server asked to wait", e.Count)
+	}
+	return "toggleslash: " + e.Op + ": " + e.Code
+}

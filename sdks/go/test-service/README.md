@@ -1,32 +1,47 @@
-# The Go SDK's test service
+# The Go SDK's conformance test service
 
-`main.go` wraps the SDK in the protocol of [`docs/sdk-test-service.md`](../../../docs/sdk-test-service.md),
-so the conformance harness can drive the SDK from outside:
+`main.go` wraps `toggleslash.New` in the HTTP protocol of
+[`docs/sdk-test-service.md`](../../../docs/sdk-test-service.md) so the harness in `packages/sdk-conformance`
+can drive the SDK. It uses `net/http` for the server and the SDK's own `jsonvalue` package for every body it
+reads and writes, so a number such as `1e999`, a lone surrogate or a duplicate key reaches the SDK as the vectors
+give it. It serves each request on its own goroutine and keeps a client answerable after `close`. A request it
+cannot read answers 400, a call that panics answers 500 with the panic text, and the harness fails the scenario.
 
-```bash
-sdks/go/bin/test    # builds .build/test-service as its last step
-bun run conformance -- --service "sdks/go/bin/test-service"
+Run it from the repository root:
+
+```sh
+bun run conformance -- --service sdks/go/bin/test-service
 ```
 
-It advertises `integer-accessor`: Go has `int64` next to `float64`, so the `int` accessor is real.
+`bin/test-service` runs `.build/test-service`, which `bin/test` builds (the directory is ignored by git); if the
+binary is missing it builds it first. It prints `listening http://127.0.0.1:<port>`.
 
-| Protocol | Go SDK |
-| --- | --- |
-| `POST /clients` | `toggleslash.New(url, sdkKey, options...)`; `stream`, `pollIntervalMs`, `flushIntervalMs` and `requestTimeoutMs` become `WithStream`, `WithPollInterval`, `WithFlushInterval` and `WithRequestTimeout`; `onError` always records, and panics after recording when `onErrorThrows` is set |
-| `ready` | `client.Ready()` |
-| `evaluate`, accessor `bool` | `client.BoolVariationDetail(key, ctx, fallback)` |
-| `evaluate`, accessor `string` | `client.StringVariationDetail(key, ctx, fallback)` |
-| `evaluate`, accessor `number` | `client.Float64VariationDetail(key, ctx, fallback)` |
-| `evaluate`, accessor `int` | `client.IntVariationDetail(key, ctx, fallback)` |
-| `evaluate`, accessors `json` and `any` | `client.JSONVariationDetail(key, ctx, fallback)`, the fallback passed as a JSON value |
-| `status` | `client.Status()`, written as the four keys of the protocol |
-| `hook-events` | the events `WithAfterEvaluation` received (installed when `hook` or `hookThrows` is set; `hookThrows` panics after recording) |
-| `errors` | what `WithOnError` received, each as its message |
-| `close` | `client.Close()` |
+## Capabilities
 
-The context goes in as raw JSON (`ContextFromValue`), valid or not: an invalid one is a case the SDK
-answers with `ERROR INVALID_CONTEXT`. A call that fails or panics answers 500 with its text, and the harness
-fails the scenario. The service serves concurrently and keeps a client answerable after `close`.
+`integer-accessor`: the SDK has `IntVariation` and `IntVariationDetail`.
 
-`bin/test-service` starts the built binary and builds it only if it is missing, because the harness waits 30 s
-for the `listening` line.
+## Accessor mapping
+
+| Harness accessor | SDK call | Fallback it must carry |
+| --- | --- | --- |
+| `bool` | `BoolVariationDetail(flag, ctx, bool)` | a boolean |
+| `string` | `StringVariationDetail(flag, ctx, string)` | a string |
+| `number` | `FloatVariationDetail(flag, ctx, float64)` | a number |
+| `int` | `IntVariationDetail(flag, ctx, int64)` | an integer |
+| `json` | `JSONVariationDetail(flag, ctx, jsonvalue.Value)` | anything; only its kind counts |
+| `any` | `VariationDetail(flag, ctx, jsonvalue.Value)` | anything; `null` accepts any kind |
+
+A fallback of the wrong JSON kind for a typed accessor is the service's own error (400), because a Go caller cannot
+write it.
+
+## Answers
+
+- `value` is written with the SDK's JSON writer, so a number that is not finite is `null`; an `int` answer is
+  written as an exact integer.
+- `variationIndex` is `null` when the SDK reports `-1`.
+- `reason` has `kind`, then `ruleIndex` for `RULE_MATCH`, `flagKey` and `code` when they are set.
+- `status` is the SDK's `Status`, with `lastSyncAt` as whole epoch milliseconds (`null` for `-1`), and `etag` and
+  `lastError` as `null` when empty.
+- Hook events carry `flagKey`, `context`, `value`, `variationIndex`, `reason`, `etag` (`null` before a load) and
+  `flagVersion` (`null` when the flag is not in the ruleset).
+- `hookThrows` and `onErrorThrows` make the installed function panic after it records; the SDK recovers.
