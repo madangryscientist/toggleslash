@@ -20,7 +20,7 @@ check and the planner read them. A section with nothing in it says "None." rathe
 - Vectors: <n> passed of <n>; bucket pins: <n> passed of <n> (`bin/test`)
 - Conformance: <the harness's summary line, verbatim>
 - Capabilities advertised: <none, or the list>
-- Native tests: <n> passed of <n> (top-level tests; give the subtest or table-case count beside it)
+- Native tests: <n> passed of <n> (top-level tests in every package of the SDK, its test service included; give the subtest or table-case count beside it)
 
 ## Decisions
 

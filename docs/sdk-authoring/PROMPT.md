@@ -287,7 +287,7 @@ server recorded; read those before you change code.
 1. `$L/.gitignore`: the language's build and cache output (phase 6's scope check stages with `git add -A`).
 2. `$L/README.md`: a quickstart (install from a checkout of this repository, with no tag, create, `variation`, `close`), the
    mapping table or a link to it in `DESIGN.md`, the guarantees as a short list (contract section 5), and
-   how to run `bin/lint`, `bin/test` and the harness. It names no registry and no published package.
+   how to run `bin/lint`, `bin/test` and the harness (the toolchain install is `(cd sdks/<lang> && mise trust && mise install)`, as `sdks/README.md` gives it, and no more). It names no registry and no published package.
 3. `$L/bin/lint`: the native lint and format check, with no warnings allowed. The repository's own
    formatter, `oxfmt`, checks every TOML, YAML and JSON file, `$L/mise.toml` included, through `bun run
    format:check` (not `bin/lint`): format those with `bunx oxfmt <file>`. If a native tool and `oxfmt` disagree about one file, that is a stuck point.
