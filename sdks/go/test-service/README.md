@@ -1,32 +1,35 @@
-# The Go SDK's test service
+# Go SDK conformance test service
 
-`main.go` wraps the SDK in the protocol of [`docs/sdk-test-service.md`](../../../docs/sdk-test-service.md),
-so the conformance harness can drive the SDK from outside:
+`main.go` wraps `toggleslash.New` in the HTTP protocol of [`docs/sdk-test-service.md`](../../../docs/sdk-test-service.md),
+so `packages/sdk-conformance` can drive the SDK from outside. From the root of the repository:
 
-```bash
-sdks/go/bin/test    # builds .build/test-service as its last step
-bun run conformance -- --service "sdks/go/bin/test-service"
+```sh
+bun run conformance -- --service sdks/go/bin/test-service
 ```
 
-It advertises `integer-accessor`: Go has `int64` next to `float64`, so the `int` accessor is real.
+`bin/test-service` runs `.build/test-service` (built by `bin/test`, or on first use) and the service prints
+`listening http://127.0.0.1:<port>` once it listens. It binds loopback only and sets no timeout, so `ready` and
+`close` wait as long as the SDK takes.
 
-| Protocol | Go SDK |
-| --- | --- |
-| `POST /clients` | `toggleslash.New(url, sdkKey, options...)`; `stream`, `pollIntervalMs`, `flushIntervalMs` and `requestTimeoutMs` become `WithStream`, `WithPollInterval`, `WithFlushInterval` and `WithRequestTimeout`; `onError` always records, and panics after recording when `onErrorThrows` is set |
-| `ready` | `client.Ready()` |
-| `evaluate`, accessor `bool` | `client.BoolVariationDetail(key, ctx, fallback)` |
-| `evaluate`, accessor `string` | `client.StringVariationDetail(key, ctx, fallback)` |
-| `evaluate`, accessor `number` | `client.Float64VariationDetail(key, ctx, fallback)` |
-| `evaluate`, accessor `int` | `client.IntVariationDetail(key, ctx, fallback)` |
-| `evaluate`, accessors `json` and `any` | `client.JSONVariationDetail(key, ctx, fallback)`, the fallback passed as a JSON value |
-| `status` | `client.Status()`, written as the four keys of the protocol |
-| `hook-events` | the events `WithAfterEvaluation` received (installed when `hook` or `hookThrows` is set; `hookThrows` panics after recording) |
-| `errors` | what `WithOnError` received, each as its message |
-| `close` | `client.Close()` |
+It advertises one capability, `integer-accessor`.
 
-The context goes in as raw JSON (`ContextFromValue`), valid or not: an invalid one is a case the SDK
-answers with `ERROR INVALID_CONTEXT`. A call that fails or panics answers 500 with its text, and the harness
-fails the scenario. The service serves concurrently and keeps a client answerable after `close`.
+## Accessor mapping
 
-`bin/test-service` starts the built binary and builds it only if it is missing, because the harness waits 30 s
-for the `listening` line.
+| `accessor` | SDK call | Fallback it needs |
+| --- | --- | --- |
+| `bool` | `BoolVariationDetail` | a boolean |
+| `string` | `StringVariationDetail` | a string |
+| `number` | `FloatVariationDetail` | a number |
+| `int` | `IntVariationDetail` (int64) | a number with no fraction |
+| `json` | `JSONVariationDetail` | any JSON value, null included |
+| `any` (the default) | `JSONVariationDetail` | any JSON value, null included |
+
+A typed accessor given a fallback of another kind answers 400, which the protocol allows. The context goes to
+the SDK as the parsed JSON value, valid or not, so an invalid context reaches the SDK and must come back as
+`ERROR INVALID_CONTEXT`. A served number that is not finite (`1e999`) is written back as `null`.
+
+## Hooks and errors
+
+`hook` installs an `afterEvaluation` hook that records each event; `hookThrows` records it and then panics;
+`onErrorThrows` makes the recording `onError` panic after it records. The SDK recovers each panic. Anything else
+the SDK raises is not absorbed: the handler answers 500 with the panic text. An unknown client or route answers 404.

@@ -1,22 +1,28 @@
 #!/bin/sh
-# Run every test under the race detector, print the evaluation vector and bucket-pin counts the phase 2
-# check compares with the fixtures, then build the conformance test service into .build/ (gitignored) so
-# bin/test-service can run it without building anything.
+# Builds, runs every Go test under the race detector, prints the evaluation vector and pin counts, and builds
+# the test-service binary last (bin/test-service runs it).
 set -eu
+self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 cd "$(dirname "$0")/.."
-if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
-  run() { mise exec -- "$@"; }
-else
-  run() { "$@"; }
+
+if [ -z "${TOGGLESLASH_SDK_GO_MISE:-}" ] && command -v mise >/dev/null 2>&1; then
+	TOGGLESLASH_SDK_GO_MISE=1 exec mise exec -- "$self" "$@"
 fi
-run go version
-run go vet ./...
-out=$(run go test -race -count=1 -v ./... 2>&1) || { printf '%s\n' "$out"; exit 1; }
-printf '%s\n' "$out" | grep -E '^(ok|FAIL|---  FAIL|\?)' || true
-vectors=$(printf '%s\n' "$out" | sed -n 's/^vectors: //p')
-pins=$(printf '%s\n' "$out" | sed -n 's/^pins: //p')
+
+# The race detector needs a C compiler; zig is the one mise.toml pins.
+if command -v zig >/dev/null 2>&1; then
+	CC="zig cc"
+	export CC
+fi
+CGO_ENABLED=1
+export CGO_ENABLED
+
+go build ./...
+go test -race -count=1 ./...
+
+counts="$(go test -count=1 -v -run '^(TestVectors|TestBucketPins)$' ./internal/evaluator | grep '^COUNT ')"
+vectors="$(printf '%s\n' "$counts" | awk '$2 == "vectors" { print $3 }')"
+pins="$(printf '%s\n' "$counts" | awk '$2 == "pins" { print $3 }')"
 echo "vectors: ${vectors:-0} pins: ${pins:-0}"
-if [ -f test-service/main.go ]; then
-  mkdir -p .build
-  run go build -o .build/test-service ./test-service
-fi
+
+go build -o .build/test-service ./test-service

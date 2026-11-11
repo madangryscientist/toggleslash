@@ -1,14 +1,54 @@
+# The Go SDK's lint rules. golangci-lint's default set (errcheck, govet, ineffassign, staticcheck, unused) plus the
+# checks below, which catch what an SDK that talks HTTP and runs goroutines gets wrong. `bin/lint` runs it with
+# no warnings allowed; fix the code rather than add an ignore, and give any ignore a comment saying why.
 version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
 linters:
   default: standard
   enable:
-    - errorlint
-    - bodyclose
+    - bodyclose # every response body is closed
+    - copyloopvar
+    - durationcheck # no duration multiplied by a duration
+    - errorlint # errors.Is and errors.As, %w
+    - gosec
+    - intrange
     - misspell
+    - nilerr
+    - noctx # every request carries a context
     - unconvert
+  settings:
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment # struct size is not a goal here
+        - shadow # `err` shadowing in short scopes is idiomatic
+  exclusions:
+    presets: []
+    rules:
+      # The test service and the tests listen on loopback and read their own fixtures: gosec's file and network
+      # warnings do not apply to code that never ships.
+      - path: (_test\.go|test-service/)
+        linters:
+          - gosec
+      # internal/jsonv narrows runes and ints into bytes and uint16 after masking or range-checking each one
+      # (UTF-8 and UTF-16 encoding), which is what G115 cannot see.
+      - path: internal/jsonv/
+        text: "G115"
+        linters:
+          - gosec
+      # These two return nil on purpose: a failure caused by Close is not an error to report (contract 5.2).
+      - path: (http|sync)\.go
+        linters:
+          - nilerr
+
 formatters:
   enable:
     - gofmt
+
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

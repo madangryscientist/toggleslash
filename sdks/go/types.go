@@ -1,102 +1,85 @@
 package toggleslash
 
 import (
+	"fmt"
 	"time"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/eval"
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
+	"github.com/madangryscientist/toggleslash/sdks/go/internal/evaluator"
+	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonv"
 )
 
-// Value is a JSON value: what a flag serves and what a JSON fallback holds. It is not encoding/json's
-// `any`, because that type cannot hold 1e999 or a lone surrogate, which docs/evaluation.md keeps. Build one
-// with Null, Bool, Number, String, Array and Object, or read one with ParseJSON.
-type Value = jsonvalue.Value
+// Value is one JSON value. It keeps what encoding/json cannot: a number such as 1e999 (positive infinity) and a
+// string holding a lone surrogate. Build one with ParseJSON, or pass a map[string]any as a context.
+type Value = jsonv.Value
 
-// Member is one key and value of an object Value.
-type Member = jsonvalue.Member
+// ParseJSON reads JSON text into a Value. Duplicate object names keep the last value.
+func ParseJSON(data []byte) (Value, error) { return jsonv.Parse(data) }
 
-// The constructors of a Value.
-var (
-	// Null is the JSON null. The zero Value is null too.
-	Null = jsonvalue.Null
-	// Bool is a JSON boolean.
-	Bool = jsonvalue.Bool
-	// Number is a JSON number (a float64, as the spec reads every number).
-	Number = jsonvalue.Number
-	// String is a JSON string.
-	String = jsonvalue.String
-	// Array is a JSON array.
-	Array = jsonvalue.Array
-	// Object is a JSON object.
-	Object = jsonvalue.Object
-)
+// ReasonKind is the kind of a Reason, spelled as in docs/evaluation.md.
+type ReasonKind = evaluator.ReasonKind
 
-// ParseJSON reads JSON text into a Value with the reader the SDK uses for rulesets: 1e999 is +Inf, a lone
-// surrogate escape is kept, a number is a float64.
-func ParseJSON(text []byte) (Value, error) { return jsonvalue.Parse(text) }
-
-// NoVariation is the VariationIndex of a result that serves no variation: the fallback was returned, or
-// the flag serves nothing.
-const NoVariation = eval.NoVariation
-
-// ReasonKind says why a result is what it is.
-type ReasonKind string
-
-// The reasons of docs/evaluation.md.
+// The reason kinds.
 const (
-	ReasonOff                = ReasonKind(eval.ReasonOff)
-	ReasonPrerequisiteFailed = ReasonKind(eval.ReasonPrerequisiteFailed)
-	ReasonTargetMatch        = ReasonKind(eval.ReasonTargetMatch)
-	ReasonRuleMatch          = ReasonKind(eval.ReasonRuleMatch)
-	ReasonFallthrough        = ReasonKind(eval.ReasonFallthrough)
-	ReasonError              = ReasonKind(eval.ReasonError)
+	ReasonOff                = evaluator.ReasonOff
+	ReasonPrerequisiteFailed = evaluator.ReasonPrerequisiteFailed
+	ReasonTargetMatch        = evaluator.ReasonTargetMatch
+	ReasonRuleMatch          = evaluator.ReasonRuleMatch
+	ReasonFallthrough        = evaluator.ReasonFallthrough
+	ReasonError              = evaluator.ReasonError
 )
 
-// ErrorCode is the Code of an ERROR reason: the evaluator's, and three of the SDK's own.
-type ErrorCode string
+// ErrorCode is the code of an ERROR reason.
+type ErrorCode = evaluator.ErrorCode
 
-// The error codes.
+// The evaluator's error codes, and the three the SDK adds.
 const (
-	ErrorInvalidContext    ErrorCode = "INVALID_CONTEXT"
-	ErrorFlagNotFound      ErrorCode = "FLAG_NOT_FOUND"
-	ErrorMalformedFlag     ErrorCode = "MALFORMED_FLAG"
-	ErrorMalformedSegment  ErrorCode = "MALFORMED_SEGMENT"
-	ErrorSegmentNotFound   ErrorCode = "SEGMENT_NOT_FOUND"
-	ErrorPrerequisiteCycle ErrorCode = "PREREQUISITE_CYCLE"
-	ErrorPrerequisiteDepth ErrorCode = "PREREQUISITE_DEPTH_EXCEEDED"
-	ErrorNotReady          ErrorCode = "NOT_READY"
-	ErrorTypeMismatch      ErrorCode = "TYPE_MISMATCH"
-	ErrorEvaluationFailed  ErrorCode = "EVALUATION_FAILED"
+	ErrInvalidContext           = evaluator.ErrInvalidContext
+	ErrFlagNotFound             = evaluator.ErrFlagNotFound
+	ErrSegmentNotFound          = evaluator.ErrSegmentNotFound
+	ErrMalformedFlag            = evaluator.ErrMalformedFlag
+	ErrMalformedSegment         = evaluator.ErrMalformedSegment
+	ErrPrerequisiteCycle        = evaluator.ErrPrerequisiteCycle
+	ErrPrerequisiteDepthExceeds = evaluator.ErrPrerequisiteDepthExceeds
+
+	// ErrNotReady: no ruleset has been loaded yet.
+	ErrNotReady ErrorCode = "NOT_READY"
+	// ErrTypeMismatch: the served value is not of the kind the caller asked for.
+	ErrTypeMismatch ErrorCode = "TYPE_MISMATCH"
+	// ErrEvaluationFailed: the evaluation, the context or a callback raised.
+	ErrEvaluationFailed ErrorCode = "EVALUATION_FAILED"
 )
 
-// Reason says why a result is what it is. RuleIndex means something for ReasonRuleMatch only, FlagKey for
-// ReasonPrerequisiteFailed only (the direct prerequisite) and Code for ReasonError only.
-type Reason struct {
-	Kind      ReasonKind
-	RuleIndex int
-	FlagKey   string
-	Code      ErrorCode
-}
+// Reason says why a flag evaluated as it did. Kind is always set; RuleIndex is meaningful for ReasonRuleMatch,
+// FlagKey for ReasonPrerequisiteFailed and Code for ReasonError.
+type Reason = evaluator.Reason
 
-func reasonOf(r eval.Reason) Reason {
-	return Reason{Kind: ReasonKind(r.Kind), RuleIndex: r.RuleIndex, FlagKey: r.FlagKey, Code: ErrorCode(r.Code)}
-}
-
-func errorReason(code ErrorCode) Reason { return Reason{Kind: ReasonError, Code: code} }
-
-// Detail is the answer of a ...VariationDetail method: the value (the fallback when nothing usable was
-// served), the variation served (NoVariation when Value is the fallback) and why.
+// Detail is the answer of a ...VariationDetail method: the served value or the fallback, the variation index
+// that was served (nil when the value is the fallback) and the reason.
 type Detail[T any] struct {
 	Value          T
-	VariationIndex int
+	VariationIndex *int
 	Reason         Reason
 }
 
-// StreamState is where the stream stands.
+// Event is what the afterEvaluation hook receives, once per evaluation. Value is the Go value the caller got
+// (bool, string, int64, float64 or Value). The hook runs on the caller's goroutine, after the answer is known.
+type Event struct {
+	FlagKey        string
+	Context        any
+	Value          any
+	VariationIndex *int
+	Reason         Reason
+	// ETag names the ruleset the evaluation used; it is "" when none was held.
+	ETag string
+	// FlagVersion is the flag's version in that ruleset, nil when the ruleset has no such flag or the flag is
+	// malformed.
+	FlagVersion *int64
+}
+
+// StreamState is where the stream is.
 type StreamState string
 
-// The stream states. Off is stream disabled; Connecting is opening it (and the first load);
-// Connected is after the server's connected event; Disconnected is down, waiting to retry; Closed is after Close.
+// The stream states.
 const (
 	StreamOff          StreamState = "off"
 	StreamConnecting   StreamState = "connecting"
@@ -105,56 +88,48 @@ const (
 	StreamClosed       StreamState = "closed"
 )
 
-// SyncErrorCode is why the last ruleset or stream attempt failed: "http_<status>", "timeout",
-// "bad_ruleset" or "network". The empty string means it did not.
-type SyncErrorCode string
-
-// The three fixed codes; the fourth kind is "http_" followed by a status.
+// The fixed LastError codes. The others are "http_<status>".
 const (
-	SyncTimeout    SyncErrorCode = "timeout"
-	SyncBadRuleset SyncErrorCode = "bad_ruleset"
-	SyncNetwork    SyncErrorCode = "network"
+	LastErrorTimeout    = "timeout"
+	LastErrorBadRuleset = "bad_ruleset"
+	LastErrorNetwork    = "network"
 )
 
-// Status is what this client has loaded and how its stream is doing. It is local state, read from memory,
-// and holds no URL, header, key, message, context, flag key or count.
+// Status is what this SDK has loaded and how its stream is doing, as one consistent snapshot. It holds no URL,
+// key, message, context or count.
 type Status struct {
-	// ETag of the ruleset held, as the server sent it; nil before the first load.
-	ETag *string
-	// LastSyncAt is when the client last confirmed its ruleset matches the server; the zero time if never.
+	// ETag of the ruleset held; "" when there is none.
+	ETag string
+	// LastSyncAt is when the SDK last confirmed its ruleset matches the server; the zero time when never.
 	LastSyncAt time.Time
 	Stream     StreamState
-	// LastError is why the most recent ruleset or stream attempt failed; empty if it did not.
-	LastError SyncErrorCode
+	// LastError is why the most recent ruleset or stream attempt failed; "" when it did not.
+	LastError string
 }
 
-// EvaluationEvent is what one evaluation did, handed to the afterEvaluation hook. It carries the context
-// the caller passed, so a hook that sends it anywhere is the caller's decision; the SDK sends none of it.
-type EvaluationEvent struct {
-	FlagKey string
-	Context Context
-	// Value is what the caller got: the served value, or its fallback.
-	Value          Value
-	VariationIndex int
-	Reason         Reason
-	// ETag of the ruleset the evaluation used, as the server sent it; nil before the first load.
-	ETag *string
-	// FlagVersion is the flag's version in that ruleset; nil when the flag is not in it or is malformed.
-	FlagVersion *float64
+// PanicError is passed to the onError callback when a hook, or the evaluation itself, panicked. The SDK
+// recovers the panic; the caller gets the fallback.
+type PanicError struct {
+	// Value is what was passed to panic. It is empty for a panic inside the SDK's own evaluation, which could
+	// otherwise carry the context.
+	Value any
+	where string
 }
 
-// Error is what the SDK reports to OnError. Op is the operation ("sync", "stream", "usage", "hook",
-// "evaluate" or "close"), Code a short stable word, and the message is built by the SDK without a context, a
-// key or an attribute.
-type Error struct {
-	Op      string
-	Code    string
-	Message string
-	// Err is what the SDK recovered from, for a callback that panicked; nil otherwise.
-	Err error
+func (e *PanicError) Error() string {
+	if e.Value == nil {
+		return "toggleslash: " + e.where + " panicked"
+	}
+	return fmt.Sprintf("toggleslash: %s panicked: %v", e.where, e.Value)
 }
 
-func (e *Error) Error() string { return "toggleslash: " + e.Op + ": " + e.Message }
+// syncError is a failure of a ruleset, stream or events request. Its text is fixed: it never carries a URL, a
+// key or a message from the network stack, all of which can name the host or the key.
+type syncError struct {
+	code string
+	what string
+}
 
-// Unwrap returns the recovered cause, if any.
-func (e *Error) Unwrap() error { return e.Err }
+func (e *syncError) Error() string { return "toggleslash: " + e.what + ": " + e.code }
+
+func newSyncError(what, code string) *syncError { return &syncError{code: code, what: what} }

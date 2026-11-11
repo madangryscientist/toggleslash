@@ -1,87 +1,124 @@
 package toggleslash
 
-import "github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
+import (
+	"encoding/json"
+	"math"
+	"unicode/utf8"
 
-// Context describes who a flag is evaluated for. It wraps a JSON Value in the shape docs/evaluation.md
-// defines: a single kind is {"key": ..., "kind": ..., "attributes": {...}}, and several kinds are
-// {"kind": "multi", "contexts": {"<kind>": {"key": ..., "attributes": ...}}}. The zero Context is invalid, so
-// evaluating it gives ERROR INVALID_CONTEXT and the fallback.
-type Context struct {
-	v Value
-}
+	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonv"
+)
 
-// UserContext is a context of the default kind, "user", with a key.
-func UserContext(key string) Context {
-	return Context{v: jsonvalue.Object(jsonvalue.Member{Key: "key", Value: jsonvalue.String(key)})}
-}
+// maxContextDepth bounds the conversion of a Go value, so a cyclic map is an invalid context rather than a
+// stack overflow.
+const maxContextDepth = 10000
 
-// NewContext is a context of one kind with a key.
-func NewContext(kind, key string) Context {
-	return Context{v: jsonvalue.Object(
-		jsonvalue.Member{Key: "kind", Value: jsonvalue.String(kind)},
-		jsonvalue.Member{Key: "key", Value: jsonvalue.String(key)},
-	)}
-}
-
-// MultiContext combines contexts of different kinds into one. A context that is itself multi, or has
-// no kind-specific key, makes the result invalid, which the evaluator answers with INVALID_CONTEXT.
-func MultiContext(parts ...Context) Context {
-	members := make([]jsonvalue.Member, 0, len(parts))
-	for _, part := range parts {
-		kind := "user"
-		if k, ok := part.v.Field("kind").Text(); ok {
-			kind = k
-		}
-		entry := []jsonvalue.Member{{Key: "key", Value: part.v.Field("key")}}
-		if attrs := part.v.Field("attributes"); !attrs.IsNull() {
-			entry = append(entry, jsonvalue.Member{Key: "attributes", Value: attrs})
-		}
-		members = append(members, jsonvalue.Member{Key: kind, Value: jsonvalue.Object(entry...)})
+// toContext turns what the caller passed as a context into a Value. It reports false for a context that
+// cannot be one (the caller then gets INVALID_CONTEXT). It may panic when a type the caller owns does (a
+// MarshalJSON method), which variation recovers.
+//
+// Accepted: a Value; nil (JSON null); []byte or json.RawMessage holding JSON text; a map[string]any, []any,
+// string, bool, number or json.Number tree; and any other value json.Marshal can write.
+func toContext(ctx any) (jsonv.Value, bool) {
+	switch v := ctx.(type) {
+	case jsonv.Value:
+		return v, true
+	case []byte:
+		return parseText(v)
+	case json.RawMessage:
+		return parseText(v)
 	}
-	return Context{v: jsonvalue.Object(
-		jsonvalue.Member{Key: "kind", Value: jsonvalue.String("multi")},
-		jsonvalue.Member{Key: "contexts", Value: jsonvalue.Object(members...)},
-	)}
+	return convert(ctx, 0)
 }
 
-// WithAttribute returns a copy of a single-kind context with an attribute set. On a context that is not a
-// single-kind object it returns the context unchanged.
-func (c Context) WithAttribute(name string, value Value) Context {
-	if !c.v.IsObject() {
-		return c
-	}
-	var attrs []jsonvalue.Member
-	if existing := c.v.Field("attributes"); existing.IsObject() {
-		for _, key := range existing.Keys() {
-			attrs = append(attrs, jsonvalue.Member{Key: key, Value: existing.Field(key)})
-		}
-	}
-	attrs = append(attrs, jsonvalue.Member{Key: name, Value: value})
-	var members []jsonvalue.Member
-	for _, key := range c.v.Keys() {
-		if key != "attributes" {
-			members = append(members, jsonvalue.Member{Key: key, Value: c.v.Field(key)})
-		}
-	}
-	members = append(members, jsonvalue.Member{Key: "attributes", Value: jsonvalue.Object(attrs...)})
-	return Context{v: jsonvalue.Object(members...)}
-}
-
-// ContextFromJSON reads a context from JSON text. It never fails: text that is not JSON gives a context the
-// evaluator answers with INVALID_CONTEXT, like any other invalid one.
-func ContextFromJSON(text []byte) Context {
-	v, err := jsonvalue.Parse(text)
+func parseText(text []byte) (jsonv.Value, bool) {
+	parsed, err := jsonv.Parse(jsonv.StripBOM(jsonv.DecodeUTF8(text)))
 	if err != nil {
-		return Context{}
+		return jsonv.Null(), false
 	}
-	return Context{v: v}
+	return parsed, true
 }
 
-// ContextFromValue wraps a Value as a context; the evaluator checks its shape.
-func ContextFromValue(v Value) Context { return Context{v: v} }
+func goString(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+	return string(jsonv.DecodeUTF8([]byte(s)))
+}
 
-// Value is the context as JSON.
-func (c Context) Value() Value { return c.v }
+func convert(x any, depth int) (jsonv.Value, bool) {
+	if depth > maxContextDepth {
+		return jsonv.Null(), false
+	}
+	switch v := x.(type) {
+	case nil:
+		return jsonv.Null(), true
+	case jsonv.Value:
+		return v, true
+	case bool:
+		return jsonv.Bool(v), true
+	case string:
+		return jsonv.String(goString(v)), true
+	case float64:
+		return numberUnlessNaN(v)
+	case float32:
+		return numberUnlessNaN(float64(v))
+	case int:
+		return jsonv.Number(float64(v)), true
+	case int8:
+		return jsonv.Number(float64(v)), true
+	case int16:
+		return jsonv.Number(float64(v)), true
+	case int32:
+		return jsonv.Number(float64(v)), true
+	case int64:
+		return jsonv.Number(float64(v)), true
+	case uint:
+		return jsonv.Number(float64(v)), true
+	case uint8:
+		return jsonv.Number(float64(v)), true
+	case uint16:
+		return jsonv.Number(float64(v)), true
+	case uint32:
+		return jsonv.Number(float64(v)), true
+	case uint64:
+		return jsonv.Number(float64(v)), true
+	case json.Number:
+		return parseText([]byte(v))
+	case []byte:
+		return parseText(v)
+	case json.RawMessage:
+		return parseText(v)
+	case map[string]any:
+		object := jsonv.NewObject()
+		for name, item := range v {
+			value, ok := convert(item, depth+1)
+			if !ok {
+				return jsonv.Null(), false
+			}
+			object.Set(goString(name), value)
+		}
+		return jsonv.ObjectValue(object), true
+	case []any:
+		items := make([]jsonv.Value, len(v))
+		for i, item := range v {
+			value, ok := convert(item, depth+1)
+			if !ok {
+				return jsonv.Null(), false
+			}
+			items[i] = value
+		}
+		return jsonv.Array(items), true
+	}
+	text, err := json.Marshal(x)
+	if err != nil {
+		return jsonv.Null(), false
+	}
+	return parseText(text)
+}
 
-// MarshalJSON writes the context as JSON.
-func (c Context) MarshalJSON() ([]byte, error) { return c.v.MarshalJSON() }
+func numberUnlessNaN(f float64) (jsonv.Value, bool) {
+	if math.IsNaN(f) {
+		return jsonv.Null(), false
+	}
+	return jsonv.Number(f), true
+}

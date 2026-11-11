@@ -1,28 +1,20 @@
-package eval
+package evaluator
 
-import (
-	"math"
+import "github.com/madangryscientist/toggleslash/sdks/go/internal/jsonv"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
-)
-
-// Instants, to the "Dates" section of docs/evaluation.md. A hand-written walk over the string: no regular
-// expression and no time.Parse. The result is Unix milliseconds as a float64, or false when the text is
-// not an instant.
-
-// digits reads length ASCII digits at start as a number; false when any is not a digit.
-func digits(s string, start, length int) (int, bool) {
-	if start+length > len(s) {
+// digits reads count ASCII digits at start; ok is false when any is not one or the text is too short.
+func digits(s string, start, count int) (int, bool) {
+	if start+count > len(s) {
 		return 0, false
 	}
-	value := 0
-	for i := start; i < start+length; i++ {
+	v := 0
+	for i := start; i < start+count; i++ {
 		if !isDigit(s[i]) {
 			return 0, false
 		}
-		value = value*10 + int(s[i]-'0')
+		v = v*10 + int(s[i]-'0')
 	}
-	return value, true
+	return v, true
 }
 
 func isLeapYear(year int) bool { return year%4 == 0 && (year%100 != 0 || year%400 == 0) }
@@ -40,8 +32,8 @@ func daysInMonth(year, month int) int {
 	return 31
 }
 
-// daysFromCivil is the days since 1970-01-01 in the proleptic Gregorian calendar. For years 1 to 9999
-// every value before the last subtraction is non-negative, so floor and truncating division agree.
+// daysFromCivil is the days since 1970-01-01 in the proleptic Gregorian calendar. For years 1 to 9999 every
+// value before the last subtraction is non-negative, so truncating division is floor division.
 func daysFromCivil(year, month, day int) int {
 	y := year
 	if month <= 2 {
@@ -58,21 +50,16 @@ func daysFromCivil(year, month, day int) int {
 	return era*146097 + dayOfEra - 719468
 }
 
-// parseDate reads the date YYYY-MM-DD at the start of s as days since 1970-01-01.
 func parseDate(s string) (int, bool) {
 	year, ok1 := digits(s, 0, 4)
 	month, ok2 := digits(s, 5, 2)
 	day, ok3 := digits(s, 8, 2)
-	if !ok1 || !ok2 || !ok3 || year < 1 || month < 1 || month > 12 {
-		return 0, false
-	}
-	if day < 1 || day > daysInMonth(year, month) {
+	if !ok1 || !ok2 || !ok3 || year < 1 || month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month) {
 		return 0, false
 	}
 	return daysFromCivil(year, month, day), true
 }
 
-// parseTime reads HH:MM:SS at the start of s as seconds since midnight.
 func parseTime(s string) (int, bool) {
 	hour, ok1 := digits(s, 0, 2)
 	minute, ok2 := digits(s, 3, 2)
@@ -83,7 +70,7 @@ func parseTime(s string) (int, bool) {
 	return (hour*60+minute)*60 + second, true
 }
 
-// parseFraction reads the fraction that starts at start (a ".") as milliseconds, and where it ends.
+// parseFraction reads the fraction that starts at start (a "."): its milliseconds and where it ends.
 func parseFraction(s string, start int) (ms, end int, ok bool) {
 	end = start + 1
 	for end < len(s) && isDigit(s[end]) {
@@ -92,19 +79,21 @@ func parseFraction(s string, start int) (ms, end int, ok bool) {
 	if end == start+1 {
 		return 0, 0, false
 	}
-	// The first three digits are the milliseconds; a shorter fraction is padded on the right.
-	kept := min(end-start-1, 3)
-	scale := [4]int{1, 100, 10, 1}[kept]
-	value, _ := digits(s, start+1, kept)
-	return value * scale, end, true
+	kept := end - start - 1
+	if kept > 3 {
+		kept = 3
+	}
+	v, _ := digits(s, start+1, kept)
+	scale := [...]int{1, 100, 10, 1}[kept]
+	return v * scale, end, true
 }
 
-// parseOffset reads the offset Z, +HH:MM or -HH:MM that is all of s, in minutes east of UTC.
+// parseOffset reads an offset that is all of s: Z, +HH:MM or -HH:MM, as minutes east of UTC.
 func parseOffset(s string) (int, bool) {
 	if s == "Z" {
 		return 0, true
 	}
-	if len(s) != 6 || s[3] != ':' || s[0] != '+' && s[0] != '-' {
+	if len(s) != 6 || (s[0] != '+' && s[0] != '-') || s[3] != ':' {
 		return 0, false
 	}
 	hour, ok1 := digits(s, 1, 2)
@@ -118,7 +107,6 @@ func parseOffset(s string) (int, bool) {
 	return hour*60 + minute, true
 }
 
-// hasShape checks the separators; the shortest form is "0001-01-01T00:00:00Z".
 func hasShape(s string) bool {
 	return len(s) >= 20 && s[4] == '-' && s[7] == '-' && s[10] == 'T' && s[13] == ':' && s[16] == ':'
 }
@@ -133,10 +121,10 @@ func parseInstant(s string) (float64, bool) {
 	if !ok1 || !ok2 {
 		return 0, false
 	}
-	ms, end := 0, 19
+	fractionMs, end := 0, 19
 	if s[19] == '.' {
 		var ok bool
-		if ms, end, ok = parseFraction(s, 19); !ok {
+		if fractionMs, end, ok = parseFraction(s, 19); !ok {
 			return 0, false
 		}
 	}
@@ -144,15 +132,16 @@ func parseInstant(s string) (float64, bool) {
 	if !ok {
 		return 0, false
 	}
-	return float64(int64(days)*86_400_000 + int64(seconds)*1000 + int64(ms) - int64(offset)*60_000), true
+	ms := int64(days)*86400000 + int64(seconds)*1000 + int64(fractionMs) - int64(offset)*60000
+	return float64(ms), true
 }
 
-// toInstant: a finite number is Unix milliseconds, a string is parsed, anything else is not an instant.
-func toInstant(v jsonvalue.Value) (float64, bool) {
-	if n, ok := v.Number(); ok {
-		return n, !math.IsInf(n, 0) && !math.IsNaN(n)
+// toInstant reads a finite number as Unix milliseconds and a string in the strict form as the instant it spells.
+func toInstant(v jsonv.Value) (float64, bool) {
+	if n, ok := v.AsNumber(); ok {
+		return n, jsonv.IsFinite(n)
 	}
-	if s, ok := v.Text(); ok {
+	if s, ok := v.AsString(); ok {
 		return parseInstant(s)
 	}
 	return 0, false
