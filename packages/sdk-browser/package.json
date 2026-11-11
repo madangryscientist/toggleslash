@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "The ToggleSlash browser SDK: the server evaluates, the browser caches the answer and follows the change signal.",
-  "license": "MIT",
+  "license": "Elastic-2.0",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"

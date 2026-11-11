@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "An evaluation hook for the ToggleSlash TypeScript SDK that puts the flag result and the ruleset hash on the active OpenTelemetry span.",
-  "license": "MIT",
+  "license": "Elastic-2.0",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"

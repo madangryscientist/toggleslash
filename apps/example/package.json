@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "A fictional shop checkout that uses ToggleSlash through the TypeScript SDK: the example client app.",
-  "license": "MIT",
+  "license": "Elastic-2.0",
   "type": "module",
   "dependencies": {
     "@hackcove/toggleslash-sdk": "workspace:*",

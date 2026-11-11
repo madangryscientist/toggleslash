@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "The ToggleSlash server-side SDK for TypeScript: local evaluation that never throws and never blocks.",
-  "license": "MIT",
+  "license": "Elastic-2.0",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",

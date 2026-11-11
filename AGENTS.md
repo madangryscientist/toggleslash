@@ -1,6 +1,6 @@
 # ToggleSlash: repo conventions
 
-ToggleSlash is an open source feature flag service, a LaunchDarkly competitor: evaluate flags in an
+ToggleSlash is a source-available feature flag service, a LaunchDarkly competitor: evaluate flags in an
 engine, manage them from a CLI and a dashboard. The product has no domain yet, so nothing
 is routed anywhere.
 

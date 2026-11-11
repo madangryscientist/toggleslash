@@ -1278,8 +1278,9 @@
       "name": "Open source",
       "description": "The product's source is available under an open-source licence.",
       "toggleslash": {
-        "status": "yes",
-        "evidence": ["path:LICENSE"]
+        "status": "partial",
+        "evidence": ["path:LICENSE"],
+        "note": "Source available under the Elastic License 2.0, which is not an OSI open-source licence: no hosted or managed service for third parties."
       },
       "competitors": {
         "unleash": "yes",
