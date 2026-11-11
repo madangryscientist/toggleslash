@@ -236,7 +236,7 @@ ends is discarded. The SDK acts on `connected` and `changed` and ignores any oth
 **On `connected` or `changed`**, with `tag` the data:
 
 1. `connected` sets the stream state to `connected` and clears `lastError`.
-2. If a ruleset is held and `tag` equals the ETag held (an exact string comparison), it is a **sync**
+2. If a ruleset and a non-empty ETag are held and `tag` equals that ETag (an exact string comparison), it is a **sync**
    and nothing is fetched.
 3. Otherwise the SDK does the ruleset request of [7.1](#71-the-ruleset). If that request fails, the SDK
    ends this stream at once and treats it as **not connected** for the backoff below: a stream that stays
@@ -407,7 +407,7 @@ per call, **on the caller's thread, synchronously, before the call returns**, wi
 | `variationIndex` | as `variationDetail`; none for a fallback. |
 | `reason` | as `variationDetail`. |
 | `etag` | the ETag of the ruleset held at this evaluation, as received (the same value as `status`'s `etag` then); none before the first load. |
-| `flagVersion` | the flag's `version` in that ruleset, or none when the ruleset has no such flag or the flag is malformed. |
+| `flagVersion` | the flag's `version` in that ruleset, or none when the ruleset has no such flag or the flag is malformed. The server's versions are signed 64-bit integers, so an SDK that carries `flagVersion` as a signed 64-bit integer MAY report a version above 2^63 minus 1 as none. |
 
 The hook's return value is ignored. A hook that is not callable is ignored. **A hook never reaches the
 caller**: an error it raises (or, in a runtime with futures, a future it later fails) goes to `onError`,

@@ -2,7 +2,7 @@
 
 What the Go runs learned. Each fact cites its run: prompt `8a59987`, FS-96, 2026-11-10, unless it is marked
 (FS-115), the run at prompt `180a02d` on 2026-11-11, (FS-124), the run at prompt `8527564` on 2026-11-11, or
-(FS-126), the run at prompt `26834d8` on 2026-11-11, or (FS-131), the run at prompt `6125364` on 2026-11-11, or (FS-133), the run at prompt `2a00dd1` on 2026-11-11, or (FS-135), the run at prompt `9fc2851` on 2026-11-11.
+(FS-126), the run at prompt `26834d8` on 2026-11-11, or (FS-131), the run at prompt `6125364` on 2026-11-11, or (FS-133), the run at prompt `2a00dd1` on 2026-11-11, or (FS-135), the run at prompt `9fc2851` on 2026-11-11, or (FS-137), the run at prompt `8e82c40` on 2026-11-11.
 
 - **`encoding/json`.** It errors on `1e999` and replaces a lone surrogate with U+FFFD, which the spec
   forbids for both. Write the JSON reader, and hold strings as WTF-8 so a lone surrogate survives.
@@ -33,6 +33,7 @@ What the Go runs learned. Each fact cites its run: prompt `8a59987`, FS-96, 2026
   `atomic.Pointer`, not a plain variable (FS-131).
 - **The SDK's own goroutine (contract 6.4).** Go has no goroutine identity; do not parse ids out of `runtime.Stack`. Each goroutine the
   SDK starts marks itself (an atomic counter) while it runs an application callback, and `Close` does not wait for a goroutine so
-  marked, since it is doing nothing more until the callback returns (FS-135).
+  marked, since it is doing nothing more until the callback returns; a goroutine the callback starts is the application's, and a `Ready` or `Close` there waits like any other caller's (FS-135, FS-137).
 - **A recovered panic is a raised error.** A panic recovered from a hook or the evaluator is passed to `onError` as an error that carries
   the panic's value: contract section 12's "An error a hook or the evaluator raised is passed to `onError` as raised" covers it (FS-135).
+- **The test fake's stream.** It sends a `changed` event only when the test pushes one, so a test that expects a swap with the stream on pushes the event, or turns the stream off and polls (FS-137).
