@@ -16,7 +16,9 @@ what it cannot see.
   repository at test time, and every pin in `buckets.json` (`uint32` and `bucket`), and all pass; its count
   equals the phase 2 count command's (evaluation.md, "The vectors").
 - [ ] `$L/bin/test` passes 10 times in a row, and once more with the CPU loaded (one busy loop per core),
-  with the counts in `RUN.md`: a timer test that races the SDK's loops fails only under load.
+  with the counts in `RUN.md`: a timer test that races the SDK's loops fails only under load. Such a failure is a
+  bug in the test (it asserts something it did not control): fix the test, and record it in `RUN.md` as a decision,
+  not a guess.
 - [ ] The harness exits 0, with the only skips the 2 named vectors and, without `integer-accessor`, the 2
   scenarios that require it (sdk-test-service.md, "Running it").
 
