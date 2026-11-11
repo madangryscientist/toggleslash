@@ -77,7 +77,7 @@ Each starts with `#!/bin/sh` and `set -eu`, does `cd "$(dirname "$0")/.."` befor
 each tool through `mise exec -- <tool>` when `mise` is on `PATH` (a mise shim fails in a directory where
 its tool is not active, and the root `.tool-versions` is a different set) and plainly otherwise (in CI a
 setup step puts the tools on `PATH`), and needs nothing beyond what `$L/mise.toml` pins and `sh` (the CI runner
-is not assumed to have a C compiler: if a race detector needs one, the README says so and the workflow provides it). Build output goes in a directory `$L/.gitignore` ignores.
+is not assumed to have a C compiler: if a race detector needs one, `$L/mise.toml` may pin it, `bin/test` calls it by path, the README says so, and the workflow installs it). Build output goes in a directory `$L/.gitignore` ignores.
 `bin/test` builds every time (the test service included; in an interpreted language that is a byte-compile or
 syntax check of every source, test and test-service file, so a syntax error in a file no test imports still fails), never reports a cached result, runs under the
 language's race detector where it has one, and prints `vectors: <n> pins: <n>` even when all pass. `bin/lint`

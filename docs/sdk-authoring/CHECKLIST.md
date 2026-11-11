@@ -15,10 +15,11 @@ what it cannot see.
 - [ ] `$L/bin/test` runs every vector in `fixtures/evaluation/*.json` but `buckets.json`, read from the
   repository at test time, and every pin in `buckets.json` (`uint32` and `bucket`), and all pass; its count
   equals the phase 2 count command's (evaluation.md, "The vectors").
-- [ ] `$L/bin/test` passes 10 times in a row, and once more with the CPU loaded (one busy loop per core),
+- [ ] `$L/bin/test` passes 10 times in a row, and once more with the CPU loaded (one busy shell loop per logical CPU, so `nproc` of them, at normal priority),
   with the counts in `RUN.md`: a timer test that races the SDK's loops fails only under load. Such a failure is a
   bug in the test (it asserts something it did not control): fix the test, and record it in `RUN.md` as a decision,
-  not a guess.
+  not a guess. A test that races a fixed number of rounds against background workers waits until each worker has
+  made progress, not only until the rounds are done.
 - [ ] The harness exits 0, with the only skips the 2 named vectors and, without `integer-accessor`, the 2
   scenarios that require it (sdk-test-service.md, "Running it").
 
@@ -110,7 +111,7 @@ Each line is a native test in `$L`, named in `RUN.md`.
   source for request headers finds only `Authorization`, `Accept`, `If-None-Match` and `Content-Type`.
   Headers the HTTP client adds on its own (`User-Agent`, `Accept-Encoding`, `Host`, `Content-Length`,
   `Connection`) are allowed when `RUN.md` lists each with why it does not identify a user or a machine
-  (capture one request of each route on a loopback listener and list what the client added, route by route, in a
+  (capture one request of each route on a loopback listener, the conditional ruleset request with `If-None-Match` counting as its own route, and list what the client added, route by route, in a
   table in `RUN.md`);
   a `User-Agent` that names the host or user, not just the library and version, is not (contract 12).
 - [ ] Every extra beyond the contract is one contract 13 allows, and none weakens contract 5 or sends
