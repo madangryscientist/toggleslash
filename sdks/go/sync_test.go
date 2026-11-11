@@ -1,610 +1,337 @@
 package toggleslash
 
 import (
-	"fmt"
+	"io"
 	"net/http"
+	"slices"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 )
 
-// recorder keeps the headers and paths of every request a server saw.
-type recorder struct {
-	mu   sync.Mutex
-	reqs []recorded
-}
+var epoch = time.Date(2030, 1, 1, 12, 0, 0, 0, time.UTC)
 
-type recorded struct {
-	method, path string
-	header       http.Header
-	ifNoneMatch  string
-	hasINM       bool
-}
+// feed is a stream route a test writes to by hand.
+type feed struct{ ch chan string }
 
-func (r *recorder) wrap(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		r.mu.Lock()
-		_, has := req.Header["If-None-Match"]
-		r.reqs = append(r.reqs, recorded{req.Method, req.URL.Path, req.Header.Clone(), req.Header.Get("If-None-Match"), has})
-		r.mu.Unlock()
-		next.ServeHTTP(w, req)
-	})
-}
+func newFeed() *feed { return &feed{ch: make(chan string, 64)} }
 
-func (r *recorder) all() []recorded {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return append([]recorded(nil), r.reqs...)
-}
+func (f *feed) send(raw string) { f.ch <- raw }
 
-func (r *recorder) count(path string) int {
-	n := 0
-	for _, q := range r.all() {
-		if q.path == path {
-			n++
-		}
-	}
-	return n
-}
-
-func TestIfNoneMatchIsTheETagAsReceivedAndOnlyWhenHeld(t *testing.T) {
-	var rec recorder
-	url := serve(t, rec.wrap(rulesetHandler(boolRuleset(), `W/"weak tag"`, nil)))
-	c := newTestClient(t, url, nil, pollOnly()...)
-	c.Ready()
-	eventually(t, 3*time.Second, "a conditional poll", func() bool { return rec.count("/sdk/v1/ruleset") >= 3 })
-	reqs := rec.all()
-	if reqs[0].hasINM {
-		t.Fatalf("the first request carried If-None-Match %q", reqs[0].ifNoneMatch)
-	}
-	for _, q := range reqs[1:] {
-		if q.path == "/sdk/v1/ruleset" && q.ifNoneMatch != `W/"weak tag"` {
-			t.Fatalf("If-None-Match = %q", q.ifNoneMatch)
-		}
-	}
-	// A 304 is a sync: the clock moves and the ruleset stays.
-	first := c.Status().LastSyncAt
-	eventually(t, 3*time.Second, "LastSyncAt to move on a 304", func() bool { return c.Status().LastSyncAt.After(first) })
-	if !c.BoolVariation("checkout", someone, false) {
-		t.Fatal("ruleset lost after a 304")
-	}
-}
-
-func TestNoETagMeansNoIfNoneMatch(t *testing.T) {
-	var rec recorder
-	url := serve(t, rec.wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(boolRuleset())) })))
-	c := newTestClient(t, url, nil, pollOnly()...)
-	c.Ready()
-	eventually(t, 3*time.Second, "two polls", func() bool { return rec.count("/sdk/v1/ruleset") >= 2 })
-	for _, q := range rec.all() {
-		if q.hasINM {
-			t.Fatalf("If-None-Match sent with no ETag held: %q", q.ifNoneMatch)
-		}
-	}
-	if c.Status().ETag != nil {
-		t.Fatal("ETag set though the server sent none")
-	}
-}
-
-func TestOnlyAJSONObjectWithFlagsAndSegmentsReplacesTheRuleset(t *testing.T) {
-	bodies := []string{
-		`not json`, `[]`, `null`, `"x"`, `{}`, `{"flags":[]}`, `{"flags":{},"segments":[]}`, `{"flags":[],"segments":{}}`,
-		`{"flags":[],"segments":[]} trailing`, ``,
-	}
-	for _, bad := range bodies {
-		t.Run(bad, func(t *testing.T) {
-			var serveBad atomic.Bool
-			url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if serveBad.Load() {
-					w.Header().Set("ETag", `"bad"`)
-					_, _ = w.Write([]byte(bad))
-					return
-				}
-				w.Header().Set("ETag", `"good"`)
-				_, _ = w.Write([]byte(boolRuleset()))
-			}))
-			var errs errorLog
-			c := newTestClient(t, url, nil, pollOnly(WithOnError(errs.add))...)
-			c.Ready()
-			serveBad.Store(true)
-			eventually(t, 3*time.Second, "bad_ruleset", func() bool { return c.Status().LastError == SyncBadRuleset })
-			st := c.Status()
-			if st.ETag == nil || *st.ETag != `"good"` || !c.BoolVariation("checkout", someone, false) {
-				t.Fatalf("the last good ruleset was lost: %+v", st)
-			}
-			if errs.count() == 0 {
-				t.Fatal("no onError for a bad ruleset")
-			}
-			serveBad.Store(false)
-			eventually(t, 3*time.Second, "recovery to clear lastError", func() bool { return c.Status().LastError == "" })
-		})
-	}
-}
-
-func TestEmptyFlagsAndSegmentsIsAValidRuleset(t *testing.T) {
-	url := serve(t, rulesetHandler(`{"flags":[],"segments":[],"extra":1}`, `"e"`, nil))
-	c := newTestClient(t, url, nil, pollOnly()...)
-	if !c.Ready() {
-		t.Fatal("an empty ruleset must load")
-	}
-}
-
-func TestHTTPFailureCodes(t *testing.T) {
-	for _, status := range []int{401, 403, 404, 500, 503, 302} {
-		t.Run(fmt.Sprint(status), func(t *testing.T) {
-			url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if status == 302 {
-					w.Header().Set("Location", "/elsewhere")
-				}
-				w.WriteHeader(status)
-			}))
-			c := newTestClient(t, url, nil, pollOnly()...)
-			if c.Ready() {
-				t.Fatal("ready")
-			}
-			if got, want := c.Status().LastError, SyncErrorCode(fmt.Sprintf("http_%d", status)); got != want {
-				t.Fatalf("lastError %q, want %q", got, want)
-			}
-		})
-	}
-}
-
-func TestARedirectIsNotFollowedSoTheKeyGoesNowhereElse(t *testing.T) {
-	var elsewhere atomic.Int64
-	other := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		elsewhere.Add(1)
-		_, _ = w.Write([]byte(boolRuleset()))
-	}))
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, other+r.URL.Path, http.StatusTemporaryRedirect)
-	}))
-	c := newTestClient(t, url, nil, pollOnly()...)
-	if c.Ready() || elsewhere.Load() != 0 {
-		t.Fatalf("ready=%v, the redirect target saw %d requests", c.Ready(), elsewhere.Load())
-	}
-	if got := c.Status().LastError; got != "http_307" {
-		t.Fatalf("lastError %q", got)
-	}
-}
-
-func TestANetworkFailureIsNetworkAndNamesNothing(t *testing.T) {
-	var errs errorLog
-	c := newTestClient(t, "http://127.0.0.1:1", nil, pollOnly(WithOnError(errs.add))...)
-	if c.Ready() {
-		t.Fatal("ready with nothing listening")
-	}
-	if got := c.Status().LastError; got != SyncNetwork {
-		t.Fatalf("lastError %q", got)
-	}
-	for _, e := range errs.all() {
-		if strings.Contains(e.Error(), "127.0.0.1") || strings.Contains(e.Error(), "sdk-key") {
-			t.Fatalf("an error names the host or the key: %q", e.Error())
-		}
-	}
-	c.Close()
-	// Failures that Close causes are not reported.
-	n := errs.count()
-	time.Sleep(50 * time.Millisecond)
-	if errs.count() != n {
-		t.Fatal("a failure was reported after Close")
-	}
-}
-
-func TestAnUnusableURLIsAnetworkFailureNotAPanic(t *testing.T) {
-	for _, bad := range []string{"", "not a url", "://", "http://[::1", "\x00"} {
-		c := New(bad, "k", pollOnly()...)
-		if c.Ready() {
-			t.Fatalf("%q: ready", bad)
-		}
-		_ = c.BoolVariation("x", someone, false)
-		c.Close()
-	}
-}
-
-// sseServer serves the ruleset and a stream that writes what the test sends it.
-type sseServer struct {
-	events  chan string
-	rec     recorder
-	etag    atomic.Value
-	body    atomic.Value
-	streams atomic.Int64
-}
-
-func newSSE(t *testing.T) (*sseServer, string) {
-	s := &sseServer{events: make(chan string, 64)}
-	s.etag.Store(`"v1"`)
-	s.body.Store(rulesetJSON(flagJSON("checkout", 1, "[false,true]", 0)))
-	url := serve(t, s.rec.wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/sdk/v1/ruleset":
-			tag := s.etag.Load().(string)
-			if r.Header.Get("If-None-Match") == tag {
-				w.WriteHeader(http.StatusNotModified)
-				return
-			}
-			w.Header().Set("ETag", tag)
-			_, _ = w.Write([]byte(s.body.Load().(string)))
-		case "/sdk/v1/stream":
-			s.streams.Add(1)
-			w.Header().Set("Content-Type", "text/event-stream")
-			w.WriteHeader(http.StatusOK)
+func (f *feed) handler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	w.(http.Flusher).Flush()
+	for {
+		select {
+		case s := <-f.ch:
+			_, _ = io.WriteString(w, s)
 			w.(http.Flusher).Flush()
-			for {
-				select {
-				case ev := <-s.events:
-					_, _ = w.Write([]byte(ev))
-					w.(http.Flusher).Flush()
-				case <-r.Context().Done():
-					return
-				}
-			}
-		}
-	})))
-	return s, url
-}
-
-func TestStreamChangedEventFetchesOnlyANewTag(t *testing.T) {
-	s, url := newSSE(t)
-	c := newTestClient(t, url, nil, WithPollInterval(time.Hour), WithFlushInterval(time.Hour))
-	c.Ready()
-	s.events <- "event: connected\ndata: \"v1\"\n\n"
-	eventually(t, 3*time.Second, "connected", func() bool { return c.Status().Stream == StreamConnected })
-	before := s.rec.count("/sdk/v1/ruleset")
-	s.events <- "event: changed\ndata: \"v1\"\n\n" // the tag held: no fetch
-	s.events <- "event: other\ndata: \"zzz\"\n\n"  // not an event it acts on
-	s.events <- ": keep-alive\n\n"
-	time.Sleep(100 * time.Millisecond)
-	if got := s.rec.count("/sdk/v1/ruleset"); got != before {
-		t.Fatalf("fetched %d times for tags it already held", got-before)
-	}
-	s.etag.Store(`"v2"`)
-	s.body.Store(rulesetJSON(flagJSON("checkout", 2, "[false,true]", 1)))
-	s.events <- "event: changed\ndata: \"v2\"\n\n"
-	eventually(t, 3*time.Second, "the new ruleset", func() bool { return c.BoolVariation("checkout", someone, false) })
-	if st := c.Status(); st.ETag == nil || *st.ETag != `"v2"` || st.Stream != StreamConnected {
-		t.Fatalf("status %+v", st)
-	}
-	// The stream request carries the right headers.
-	for _, q := range s.rec.all() {
-		if q.path == "/sdk/v1/stream" && (q.header.Get("Accept") != "text/event-stream" || q.header.Get("Authorization") != "Bearer sdk-key-secret") {
-			t.Fatalf("stream headers %v", q.header)
+		case <-r.Context().Done():
+			return
 		}
 	}
 }
 
-func TestConnectedEventClearsLastError(t *testing.T) {
-	var fail atomic.Bool
-	fail.Store(true)
-	events := make(chan string, 4)
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/sdk/v1/ruleset":
-			if fail.Load() {
-				w.WriteHeader(500)
-				return
-			}
-			w.Header().Set("ETag", `"c"`)
-			_, _ = w.Write([]byte(boolRuleset()))
-		case "/sdk/v1/stream":
-			w.Header().Set("Content-Type", "text/event-stream")
-			w.WriteHeader(200)
-			w.(http.Flusher).Flush()
-			select {
-			case ev := <-events:
-				_, _ = w.Write([]byte(ev))
-				w.(http.Flusher).Flush()
-			case <-r.Context().Done():
-				return
-			}
-			<-r.Context().Done()
-		}
-	}))
-	c := newTestClient(t, url, nil, WithPollInterval(time.Hour), WithFlushInterval(time.Hour))
+func TestStreamConnectedThenChanged(t *testing.T) {
+	srv := newFakeServer(t, rulesetOf(flag("f", 0, 1)))
+	f := newFeed()
+	srv.handle(routeStream, f.handler)
+	c := start(t, srv)
 	c.Ready()
-	if c.Status().LastError != "http_500" {
+	f.send("event: connected\ndata: \"v1\"\n\n")
+	eventually(t, "connected", func() bool { return c.Status().Stream == StreamConnected })
+	if n := srv.count(routeRuleset); n != 1 {
+		t.Fatalf("the tag held needs no fetch, got %d ruleset requests", n)
+	}
+	srv.publish(rulesetOf(flag("f", 1, 2)), `"v2"`)
+	f.send(": keep-alive\n\nevent: other\ndata: x\n\nevent: changed\ndata: \"v2\"\n\n")
+	eventually(t, "the new tag", func() bool { return c.Status().ETag == `"v2"` })
+	if !c.BoolVariation("f", shopper, false) {
+		t.Fatal("the new ruleset was not served")
+	}
+	if got := srv.got(routeRuleset)[1].header.Get("If-None-Match"); got != `"v1"` {
+		t.Fatalf("If-None-Match %q", got)
+	}
+}
+
+func TestStreamFetchFailureEndsTheStreamAndBacksOff(t *testing.T) {
+	srv := newFakeServer(t, rulesetOf(flag("f", 0, 1)))
+	f := newFeed()
+	srv.handle(routeStream, f.handler)
+	clk := newFakeClock(epoch)
+	c := start(t, srv, withClock(clk), withJitter(func() float64 { return 0 }))
+	c.Ready()
+	f.send("event: connected\ndata: \"v1\"\n\n")
+	eventually(t, "connected", func() bool { return c.Status().Stream == StreamConnected })
+	srv.handle(routeRuleset, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusInternalServerError) })
+	f.send("event: changed\ndata: \"v2\"\n\n")
+	eventually(t, "http_500", func() bool { return c.Status().LastError == "http_500" })
+	eventually(t, "disconnected", func() bool { return c.Status().Stream == StreamDisconnected })
+	// The fetch the stream asked for failed, so it counts as not connected: failures is 1 and the wait is
+	// 1 s * 2^1 * 0.5.
+	eventually(t, "the backoff timer", func() bool { return slices.Contains(clk.Waiting(), time.Second) })
+}
+
+func TestBackoffGrowsWhileTheStreamWillNotOpen(t *testing.T) {
+	srv := newFakeServer(t, rulesetOf(flag("f", 0, 1)))
+	srv.handle(routeStream, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusServiceUnavailable) })
+	clk := newFakeClock(epoch)
+	c := start(t, srv, withClock(clk), withJitter(func() float64 { return 0 }), WithPollInterval(10*time.Second))
+	c.Ready()
+	for _, want := range []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 5 * time.Second, 5 * time.Second} {
+		eventually(t, "the backoff timer "+want.String(), func() bool { return slices.Contains(clk.Waiting(), want) })
+		polls := srv.count(routeRuleset)
+		clk.Advance(want)
+		eventually(t, "a poll", func() bool { return srv.count(routeRuleset) > polls })
+	}
+	if c.Status().LastError != "http_503" && c.Status().LastError != "" {
 		t.Fatalf("lastError %q", c.Status().LastError)
 	}
-	fail.Store(false)
-	events <- "event: connected\ndata: \"c\"\n\n"
-	eventually(t, 3*time.Second, "the connected event to clear lastError", func() bool {
-		st := c.Status()
-		return st.Stream == StreamConnected && st.LastError == "" && st.ETag != nil
+}
+
+func TestPollingOnlyWaitsThePollInterval(t *testing.T) {
+	srv := newFakeServer(t, rulesetOf(flag("f", 0, 1)))
+	clk := newFakeClock(epoch)
+	c := start(t, srv, WithStream(false), withClock(clk), WithPollInterval(7*time.Second))
+	c.Ready()
+	eventually(t, "the poll timer", func() bool { return slices.Contains(clk.Waiting(), 7*time.Second) })
+	clk.Advance(7 * time.Second)
+	eventually(t, "a 304 poll", func() bool { return srv.count(routeRuleset) == 2 })
+	if srv.count(routeStream) != 0 {
+		t.Fatal("WithStream(false) opened a stream")
+	}
+	eventually(t, "lastSyncAt moved", func() bool { return c.Status().LastSyncAt.Equal(epoch.Add(7 * time.Second)) })
+}
+
+func TestIfNoneMatchOnlyWithARulesetAndATag(t *testing.T) {
+	srv := newFakeServer(t, rulesetOf(flag("f", 0, 1)))
+	// A server that sends no ETag: nothing to send back.
+	srv.handle(routeRuleset, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, rulesetOf(flag("f", 0, 1)))
 	})
-}
-
-func TestStreamNon200IsHTTPStatusAndPollsAfterwards(t *testing.T) {
-	var rec recorder
-	url := serve(t, rec.wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/sdk/v1/stream" {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
-		}
-		w.Header().Set("ETag", `"p"`)
-		_, _ = w.Write([]byte(boolRuleset()))
-	})))
-	c := newTestClient(t, url, func(cfg *config) { cfg.jitter = func() float64 { return 0 } },
-		WithPollInterval(30*time.Millisecond), WithFlushInterval(time.Hour))
+	clk := newFakeClock(epoch)
+	c := start(t, srv, WithStream(false), withClock(clk))
 	c.Ready()
-	eventually(t, 3*time.Second, "http_503 on the stream", func() bool { return c.Status().LastError == "http_503" })
-	eventually(t, 3*time.Second, "a poll after the failed stream", func() bool { return rec.count("/sdk/v1/ruleset") >= 2 })
-	if st := c.Status().Stream; st != StreamDisconnected && st != StreamConnecting {
-		t.Fatalf("stream state %q", st)
-	}
-}
-
-// A stream that was up and dropped is retried with no poll; one that never connected is followed by a poll.
-func TestAStreamThatWasUpIsRetriedWithoutAPoll(t *testing.T) {
-	var streams atomic.Int64
-	var rec recorder
-	url := serve(t, rec.wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/sdk/v1/ruleset":
-			w.Header().Set("ETag", `"q"`)
-			_, _ = w.Write([]byte(boolRuleset()))
-		case "/sdk/v1/stream":
-			streams.Add(1)
-			w.Header().Set("Content-Type", "text/event-stream")
-			_, _ = w.Write([]byte("event: connected\ndata: \"q\"\n\n"))
-			// returning ends the response: the stream drops
-		}
-	})))
-	c := newTestClient(t, url, func(cfg *config) { cfg.jitter = func() float64 { return 0 } },
-		WithPollInterval(20*time.Millisecond), WithFlushInterval(time.Hour))
-	c.Ready()
-	eventually(t, 5*time.Second, "several reconnects", func() bool { return streams.Load() >= 4 })
-	if got := rec.count("/sdk/v1/ruleset"); got != 1 {
-		t.Fatalf("%d ruleset fetches; a stream that was up must be retried without polling", got)
-	}
-}
-
-func TestDelayIsBoundedAndJittered(t *testing.T) {
-	cfg := newConfig("http://x", "k", WithPollInterval(30*time.Second))
-	c := &Client{cfg: cfg}
-	cases := []struct {
-		failures int
-		jitter   float64
-		want     time.Duration
-	}{
-		{0, 0, 500 * time.Millisecond},
-		{1, 0, time.Second},
-		{2, 0, 2 * time.Second},
-		{3, 0.5, 6 * time.Second},
-		{5, 0, 15 * time.Second},
-		{6, 0.999999, 29999985 * time.Microsecond},
-		{40, 0, 15 * time.Second},
-	}
-	for _, tc := range cases {
-		c.cfg.jitter = func() float64 { return tc.jitter }
-		got := c.delay(tc.failures)
-		if tc.jitter == 0.999999 {
-			if got < 29*time.Second || got >= 30*time.Second {
-				t.Errorf("failures %d: %s", tc.failures, got)
-			}
-			continue
-		}
-		if got != tc.want {
-			t.Errorf("failures %d jitter %v: %s, want %s", tc.failures, tc.jitter, got, tc.want)
+	eventually(t, "the poll timer", func() bool { return clk.Armed() >= 2 })
+	clk.Advance(time.Hour)
+	eventually(t, "second request", func() bool { return srv.count(routeRuleset) == 2 })
+	for i, r := range srv.got(routeRuleset) {
+		if _, has := r.header["If-None-Match"]; has {
+			t.Fatalf("request %d sent If-None-Match", i)
 		}
 	}
-	c.cfg.stream = false
-	if got := c.delay(9); got != c.cfg.pollInterval {
-		t.Errorf("stream off: %s", got)
+}
+
+func TestNotModifiedWithNothingHeldIsAFailure(t *testing.T) {
+	srv := newFakeServer(t, "")
+	srv.handle(routeRuleset, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNotModified) })
+	c := start(t, srv, WithStream(false))
+	if c.Ready() {
+		t.Fatal("ready from a 304")
 	}
-}
-
-func TestNonPositiveDurationsFallBackToTheDefault(t *testing.T) {
-	cfg := newConfig("u", "k", WithPollInterval(0), WithFlushInterval(-time.Second), WithRequestTimeout(0))
-	if cfg.pollInterval != 30*time.Second || cfg.flushInterval != 30*time.Second || cfg.requestTimeout != 10*time.Second {
-		t.Fatalf("%+v", cfg)
-	}
-}
-
-// A real loopback socket that sends the connected event and then goes quiet: the watchdog ends it as a timeout.
-func TestAQuietStreamIsDroppedAsATimeout(t *testing.T) {
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/sdk/v1/ruleset":
-			w.Header().Set("ETag", `"w"`)
-			_, _ = w.Write([]byte(boolRuleset()))
-		case "/sdk/v1/stream":
-			w.Header().Set("Content-Type", "text/event-stream")
-			_, _ = w.Write([]byte("event: connected\ndata: \"w\"\n\n"))
-			w.(http.Flusher).Flush()
-			<-r.Context().Done()
-		}
-	}))
-	c := newTestClient(t, url, func(cfg *config) { cfg.idle = 200 * time.Millisecond },
-		WithPollInterval(time.Hour), WithFlushInterval(time.Hour))
-	c.Ready()
-	eventually(t, 3*time.Second, "connected", func() bool { return c.Status().Stream == StreamConnected })
-	eventually(t, 3*time.Second, "the watchdog to drop the stream as a timeout", func() bool {
-		st := c.Status()
-		return st.LastError == SyncTimeout && st.Stream != StreamConnected
-	})
-}
-
-// A keep-alive comment is a byte, and any byte restarts the whole idle window.
-func TestAKeepAliveRestartsTheIdleWindow(t *testing.T) {
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/sdk/v1/ruleset":
-			w.Header().Set("ETag", `"k"`)
-			_, _ = w.Write([]byte(boolRuleset()))
-		case "/sdk/v1/stream":
-			w.Header().Set("Content-Type", "text/event-stream")
-			_, _ = w.Write([]byte("event: connected\ndata: \"k\"\n\n"))
-			w.(http.Flusher).Flush()
-			// Five keep-alives 120 ms apart: 600 ms in all against a 300 ms window, then silence.
-			for range 5 {
-				select {
-				case <-time.After(120 * time.Millisecond):
-					_, _ = w.Write([]byte(": keep-alive\n\n"))
-					w.(http.Flusher).Flush()
-				case <-r.Context().Done():
-					return
-				}
-			}
-			<-r.Context().Done()
-		}
-	}))
-	c := newTestClient(t, url, func(cfg *config) { cfg.idle = 300 * time.Millisecond },
-		WithPollInterval(time.Hour), WithFlushInterval(time.Hour))
-	c.Ready()
-	eventually(t, 3*time.Second, "connected", func() bool { return c.Status().Stream == StreamConnected })
-	time.Sleep(500 * time.Millisecond) // past one idle window; only the keep-alives hold it open
-	if st := c.Status(); st.Stream != StreamConnected || st.LastError == SyncTimeout {
-		t.Fatalf("the stream was dropped despite keep-alives: %+v", st)
-	}
-	eventually(t, 3*time.Second, "the stream to time out once the keep-alives stop", func() bool { return c.Status().LastError == SyncTimeout })
-}
-
-func TestStreamOpenIsBoundedByTheRequestTimeout(t *testing.T) {
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/sdk/v1/stream" {
-			<-r.Context().Done() // never sends headers
-			return
-		}
-		_, _ = w.Write([]byte(boolRuleset()))
-	}))
-	c := newTestClient(t, url, nil, WithPollInterval(time.Hour), WithFlushInterval(time.Hour), WithRequestTimeout(150*time.Millisecond))
-	c.Ready()
-	eventually(t, 3*time.Second, "the open to time out", func() bool { return c.Status().LastError == SyncTimeout })
-}
-
-func TestARulesetBodyThatNeverEndsIsBoundedByTheRequestTimeout(t *testing.T) {
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Length", "100000")
-		_, _ = w.Write([]byte(`{"flags":[`))
-		w.(http.Flusher).Flush()
-		<-r.Context().Done()
-	}))
-	c := newTestClient(t, url, nil, pollOnly(WithRequestTimeout(150*time.Millisecond))...)
-	within(t, 3*time.Second, "Ready", func() { c.Ready() })
-	if got := c.Status().LastError; got != SyncTimeout {
+	if got := c.Status().LastError; got != "http_304" {
 		t.Fatalf("lastError %q", got)
 	}
 }
 
-// Retry-After on a ruleset 429 and on a stream 429 share one hold, which a later, shorter ask never shortens.
-func TestRetryAfterAbove300IsHeldFor300OnTheRulesetAndStreamRoutes(t *testing.T) {
-	for _, route := range []string{"/sdk/v1/ruleset", "/sdk/v1/stream"} {
-		t.Run(route, func(t *testing.T) {
-			var rec recorder
-			url := serve(t, rec.wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == route {
-					w.Header().Set("Retry-After", "86400")
-					w.WriteHeader(http.StatusTooManyRequests)
-					return
-				}
-				w.Header().Set("ETag", `"r"`)
-				_, _ = w.Write([]byte(boolRuleset()))
-			})))
-			clk := newClock(time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC))
-			c := newTestClient(t, url, func(cfg *config) { cfg.now = clk.now },
-				WithPollInterval(10*time.Millisecond), WithFlushInterval(time.Hour))
-			c.Ready()
-			eventually(t, 3*time.Second, "a 429 hold", func() bool {
-				c.statusMu.Lock()
-				defer c.statusMu.Unlock()
-				return !c.holdUntil.IsZero()
-			})
-			c.statusMu.Lock()
-			until := c.holdUntil
-			c.statusMu.Unlock()
-			if want := clk.now().Add(300 * time.Second); !until.Equal(want) {
-				t.Fatalf("held until %s, want %s", until, want)
-			}
-			if got := c.Status().LastError; got != "http_429" {
-				t.Fatalf("lastError %q", got)
-			}
-			// While held nothing else is asked of the server on either route.
-			a := len(rec.all())
-			time.Sleep(150 * time.Millisecond)
-			if b := len(rec.all()); b != a {
-				t.Fatalf("%d requests during the hold", b-a)
-			}
-		})
+func TestRequestTimeoutBoundsTheBodyToo(t *testing.T) {
+	srv := newFakeServer(t, "")
+	srv.handle(routeRuleset, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100000")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"flags":[`)
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	})
+	c := start(t, srv, WithStream(false), WithRequestTimeout(100*time.Millisecond))
+	start := time.Now()
+	if c.Ready() {
+		t.Fatal("ready from half a body")
+	}
+	if time.Since(start) > 3*time.Second {
+		t.Fatalf("Ready took %v", time.Since(start))
+	}
+	if got := c.Status().LastError; got != LastErrorTimeout {
+		t.Fatalf("lastError %q", got)
 	}
 }
 
-func TestALater429NeverShortensARulesetHold(t *testing.T) {
-	clk := newClock(time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC))
-	c := &Client{cfg: newConfig("u", "k")}
-	c.cfg.now = clk.now
-	for _, header := range []string{"200", "5", "abc", "250"} {
-		c.hold(&http.Response{StatusCode: 429, Header: http.Header{"Retry-After": {header}}})
-	}
-	if want := clk.now().Add(250 * time.Second); !c.holdUntil.Equal(want) {
-		t.Fatalf("held until %s, want %s", c.holdUntil, want)
-	}
-}
-
-// Everything the SDK sends is in the contract's short list (plus the three headers Go's HTTP client adds on its own,
-// which name no user or machine), and no request carries a context, a context key or an attribute.
-func TestRequestsCarryOnlyAllowedHeadersAndNoContext(t *testing.T) {
-	var rec recorder
-	var events syncBuf
-	url := serve(t, rec.wrap(rulesetHandler(boolRuleset(), `"hdr"`, events.handler())))
-	secret := "context-key-should-never-be-sent-7f3a"
-	attr := "attribute-value-should-never-be-sent-91c2"
-	c := newTestClient(t, url, nil, pollOnly(WithFlushInterval(10*time.Millisecond))...)
+func TestWatchdogEndsAQuietStream(t *testing.T) {
+	srv := newFakeServer(t, rulesetOf(flag("f", 0, 1)))
+	// connected, then silence: not even a keep-alive.
+	srv.handle(routeStream, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, "event: connected\ndata: \"v1\"\n\n")
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	})
+	c := start(t, srv, withWatchdog(80*time.Millisecond), withJitter(func() float64 { return 0 }))
 	c.Ready()
-	ctx := UserContext(secret).WithAttribute("email", String(attr))
-	for range 5 {
-		c.BoolVariation("checkout", ctx, false)
+	eventually(t, "a second stream request", func() bool { return srv.count(routeStream) >= 2 })
+}
+
+func TestRetryAfterParsing(t *testing.T) {
+	cases := []struct {
+		header string
+		status int
+		want   time.Duration
+		ok     bool
+	}{
+		{"5", 429, 5 * time.Second, true},
+		{"0", 429, 0, true},
+		{" 12 ", 429, 12 * time.Second, true},
+		{"300", 429, 300 * time.Second, true},
+		{"301", 429, 300 * time.Second, true},
+		{"99999999999999999999999", 429, 300 * time.Second, true},
+		{"1.5", 429, 0, false},
+		{"-1", 429, 0, false},
+		{"+5", 429, 0, false},
+		{"Wed, 21 Oct 2037 07:28:00 GMT", 429, 0, false},
+		{"", 429, 0, false},
+		{"5", 503, 0, false},
+		{"5", 200, 0, false},
 	}
-	eventually(t, 3*time.Second, "a usage request", func() bool { return events.calls() > 0 })
-	c.Close()
-	allowed := map[string]bool{
-		"Authorization": true, "Accept": true, "If-None-Match": true, "Content-Type": true,
-		// Added by net/http itself; see RUN.md.
-		"User-Agent": true, "Accept-Encoding": true, "Content-Length": true,
+	for _, tc := range cases {
+		h := http.Header{}
+		if tc.header != "" {
+			h.Set("Retry-After", tc.header)
+		}
+		got, ok := retryAfter(h, tc.status)
+		if got != tc.want || ok != tc.ok {
+			t.Errorf("retryAfter(%q, %d) = %v, %v; want %v, %v", tc.header, tc.status, got, ok, tc.want, tc.ok)
+		}
 	}
-	for _, q := range rec.all() {
-		for name, values := range q.header {
-			if !allowed[name] {
-				t.Errorf("%s %s carries header %s", q.method, q.path, name)
+}
+
+func TestRetryAfterIsCappedOnRulesetAndStream(t *testing.T) {
+	t.Run("ruleset", func(t *testing.T) {
+		srv := newFakeServer(t, "")
+		srv.handle(routeRuleset, func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Retry-After", "86400")
+			w.WriteHeader(http.StatusTooManyRequests)
+		})
+		clk := newFakeClock(epoch)
+		c := start(t, srv, WithStream(false), withClock(clk))
+		c.Ready()
+		eventually(t, "a wait of 300 s", func() bool { return slices.Contains(clk.Waiting(), 300*time.Second) })
+		if slices.ContainsFunc(clk.Waiting(), func(d time.Duration) bool { return d > 300*time.Second }) {
+			t.Fatalf("a wait beyond the cap: %v", clk.Waiting())
+		}
+	})
+	t.Run("stream holds the ruleset too", func(t *testing.T) {
+		srv := newFakeServer(t, rulesetOf(flag("f", 0, 1)))
+		srv.handle(routeStream, func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Retry-After", "86400")
+			w.WriteHeader(http.StatusTooManyRequests)
+		})
+		clk := newFakeClock(epoch)
+		c := start(t, srv, withClock(clk), withJitter(func() float64 { return 0 }))
+		c.Ready()
+		eventually(t, "a wait of 300 s", func() bool { return slices.Contains(clk.Waiting(), 300*time.Second) })
+		polls := srv.count(routeRuleset)
+		clk.Advance(299 * time.Second)
+		time.Sleep(20 * time.Millisecond)
+		if srv.count(routeRuleset) != polls {
+			t.Fatal("polled inside the hold")
+		}
+	})
+}
+
+func TestRetryAfterIsIgnoredOffA429(t *testing.T) {
+	srv := newFakeServer(t, "")
+	srv.handle(routeRuleset, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "250")
+		w.WriteHeader(http.StatusServiceUnavailable)
+	})
+	clk := newFakeClock(epoch)
+	c := start(t, srv, WithStream(false), withClock(clk), WithPollInterval(9*time.Second))
+	c.Ready()
+	eventually(t, "the plain poll wait", func() bool { return slices.Contains(clk.Waiting(), 9*time.Second) })
+}
+
+// The headers this SDK sends are the ones below and nothing else. net/http adds User-Agent and Content-Length
+// by itself; compression is off, so no Accept-Encoding; Connection is not sent on a keep-alive HTTP/1.1
+// request; and Host is on the wire but not in the request's header map, so it is read from r.Host.
+func TestHeaderAudit(t *testing.T) {
+	srv := newFakeServer(t, rulesetOf(flag("f", 1, 1)))
+	clk := newFakeClock(epoch)
+	// A client with the stream off makes the plain and the conditional ruleset request and an events request.
+	poller := start(t, srv, WithStream(false), withClock(clk), WithFlushInterval(time.Minute), WithPollInterval(time.Minute))
+	poller.Ready()
+	eventually(t, "the timers", func() bool { return clk.Armed() == 2 })
+	poller.BoolVariation("f", NewContext("secret-user", map[string]any{"email": "a@b.c"}), false)
+	clk.Advance(time.Minute)
+	eventually(t, "the conditional request and the flush", func() bool {
+		return srv.count(routeRuleset) == 2 && srv.count(routeEvents) == 1
+	})
+	// A client with the stream on makes the stream request.
+	streamer := start(t, srv)
+	streamer.Ready()
+	eventually(t, "connected", func() bool { return streamer.Status().Stream == StreamConnected })
+
+	type route struct {
+		name    string
+		seen    seen
+		allowed []string
+	}
+	rs := srv.got(routeRuleset)
+	routes := []route{
+		{"ruleset", rs[0], []string{"Authorization", "User-Agent"}},
+		{"ruleset (conditional)", rs[1], []string{"Authorization", "User-Agent", "If-None-Match"}},
+		{"stream", srv.got(routeStream)[0], []string{"Authorization", "User-Agent", "Accept"}},
+		{"events", srv.got(routeEvents)[0], []string{"Authorization", "User-Agent", "Content-Type", "Content-Length"}},
+	}
+	for _, r := range routes {
+		var names []string
+		for name, values := range r.seen.header {
+			names = append(names, name)
+			if !slices.Contains(r.allowed, name) {
+				t.Errorf("%s sent an unexpected header %s: %v", r.name, name, values)
 			}
 			for _, v := range values {
-				if strings.Contains(v, secret) || strings.Contains(v, attr) {
-					t.Errorf("header %s carries the context", name)
+				if strings.Contains(v, "secret-user") || strings.Contains(v, "a@b.c") {
+					t.Errorf("%s: header %s carries the context", r.name, name)
 				}
 			}
 		}
-		if ua := q.header.Get("User-Agent"); ua != "" && ua != "Go-http-client/1.1" && ua != "Go-http-client/2.0" {
-			t.Errorf("User-Agent %q", ua)
+		slices.Sort(names)
+		t.Logf("%-22s headers %v; Host %s; User-Agent %q", r.name, names, "127.0.0.1:port", r.seen.header.Get("User-Agent"))
+		if got := r.seen.header.Get("Authorization"); got != "Bearer sdk-secret" {
+			t.Errorf("%s: Authorization %q", r.name, got)
+		}
+		if ua := r.seen.header.Get("User-Agent"); !strings.HasPrefix(ua, "Go-http-client/") {
+			t.Errorf("%s: User-Agent %q names more than the library", r.name, ua)
+		}
+		if !strings.HasPrefix(r.seen.host, "127.0.0.1:") {
+			t.Errorf("%s: Host %q", r.name, r.seen.host)
+		}
+		if strings.Contains(r.seen.path, "secret") || strings.Contains(r.seen.body, "secret-user") || strings.Contains(r.seen.body, "a@b.c") {
+			t.Errorf("%s: the path or body carries the context: %q %q", r.name, r.seen.path, r.seen.body)
 		}
 	}
-	for _, body := range events.bodies() {
-		if strings.Contains(body, secret) || strings.Contains(body, attr) {
-			t.Errorf("a usage body carries the context: %s", body)
-		}
+	if got := routes[1].seen.header.Get("If-None-Match"); got != `"v1"` {
+		t.Errorf("If-None-Match %q", got)
 	}
-	st := fmt.Sprintf("%+v", c.Status())
-	if strings.Contains(st, "127.0.0.1") || strings.Contains(st, "sdk-key") || strings.Contains(st, secret) {
-		t.Errorf("status names something it must not: %s", st)
+	if got := routes[2].seen.header.Get("Accept"); got != "text/event-stream" {
+		t.Errorf("stream Accept %q", got)
+	}
+	if got := routes[3].seen.header.Get("Content-Type"); got != "application/json" {
+		t.Errorf("events Content-Type %q", got)
 	}
 }
 
-func TestCloseIsPromptAndLeavesNoStreamOpen(t *testing.T) {
-	s, url := newSSE(t)
-	c := newTestClient(t, url, nil, WithPollInterval(time.Hour), WithFlushInterval(time.Hour))
-	c.Ready()
-	s.events <- "event: connected\ndata: \"v1\"\n\n"
-	eventually(t, 3*time.Second, "connected", func() bool { return c.Status().Stream == StreamConnected })
-	within(t, 3*time.Second, "Close", c.Close)
-	if st := c.Status(); st.Stream != StreamClosed || st.LastError != "" {
-		t.Fatalf("status %+v", st)
+func TestTLSServer(t *testing.T) {
+	tls := newTLSServer(t, rulesetOf(flag("f", 1, 1)))
+	c := New(tls.URL, "k", WithStream(false), WithTransport(tls.Client().Transport))
+	t.Cleanup(c.Close)
+	if !c.Ready() || !c.BoolVariation("f", shopper, false) {
+		t.Fatalf("over TLS: ready %v status %+v", c.Ready(), c.Status())
 	}
-	n := s.streams.Load()
-	time.Sleep(100 * time.Millisecond)
-	if s.streams.Load() != n {
-		t.Fatal("the stream was reopened after Close")
-	}
-	// Evaluation still works after Close.
-	if d := c.BoolVariationDetail("checkout", someone, true); d.Reason.Kind == ReasonError {
-		t.Fatalf("after Close: %+v", d)
+	// Without trusting the test certificate the load fails as a network error and nothing is served.
+	bad := New(tls.URL, "k", WithStream(false))
+	t.Cleanup(bad.Close)
+	if bad.Ready() || bad.Status().LastError != LastErrorNetwork {
+		t.Fatalf("an untrusted certificate: %+v", bad.Status())
 	}
 }

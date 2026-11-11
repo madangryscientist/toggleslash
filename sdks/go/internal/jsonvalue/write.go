@@ -3,86 +3,125 @@ package jsonvalue
 import (
 	"math"
 	"strconv"
+	"unicode/utf8"
 )
 
 const hexDigits = "0123456789abcdef"
 
-// MarshalJSON writes v as JSON. It makes Value usable with encoding/json too.
-func (v Value) MarshalJSON() ([]byte, error) { return v.AppendJSON(nil), nil }
-
-// AppendJSON appends v as JSON. The infinities are written as 1e999 and -1e999 (so they read back as
-// themselves), negative zero as -0, and a lone surrogate as a \udXXX escape. A NaN, which parsing never
-// makes, is written as null.
-func (v Value) AppendJSON(dst []byte) []byte {
+// Append writes v as JSON. A lone surrogate is written as a \u escape, so the output is valid UTF-8;
+// a number that is not finite is written as null and a negative zero as 0, the way JSON.stringify does.
+func Append(dst []byte, v Value) []byte {
 	switch v.kind {
 	case KindBool:
-		return strconv.AppendBool(dst, v.b)
+		if v.b {
+			return append(dst, "true"...)
+		}
+		return append(dst, "false"...)
 	case KindNumber:
 		return appendNumber(dst, v.n)
 	case KindString:
 		return appendString(dst, v.s)
 	case KindArray:
 		dst = append(dst, '[')
-		for i, item := range v.arr {
+		for i, item := range v.a {
 			if i > 0 {
 				dst = append(dst, ',')
 			}
-			dst = item.AppendJSON(dst)
+			dst = Append(dst, item)
 		}
 		return append(dst, ']')
 	case KindObject:
 		dst = append(dst, '{')
-		for i, key := range v.obj.keys {
+		for i := 0; i < v.o.Len(); i++ {
 			if i > 0 {
 				dst = append(dst, ',')
 			}
-			dst = appendString(dst, key)
+			k, item := v.o.At(i)
+			dst = appendString(dst, k)
 			dst = append(dst, ':')
-			dst = v.obj.vals[key].AppendJSON(dst)
+			dst = Append(dst, item)
 		}
 		return append(dst, '}')
 	}
 	return append(dst, "null"...)
 }
 
-func appendNumber(dst []byte, f float64) []byte {
+// Marshal is Append to a new slice.
+func Marshal(v Value) []byte { return Append(nil, v) }
+
+// AppendString writes s, WTF-8, as a JSON string.
+func AppendString(dst []byte, s string) []byte { return appendString(dst, s) }
+
+func appendNumber(dst []byte, n float64) []byte {
 	switch {
-	case math.IsNaN(f):
+	case math.IsNaN(n) || math.IsInf(n, 0):
 		return append(dst, "null"...)
-	case math.IsInf(f, 1):
-		return append(dst, "1e999"...)
-	case math.IsInf(f, -1):
-		return append(dst, "-1e999"...)
-	case f == 0 && math.Signbit(f):
-		return append(dst, "-0"...)
+	case n == 0:
+		return append(dst, '0')
 	}
-	if abs := math.Abs(f); abs >= 1e-6 && abs < 1e21 {
-		return strconv.AppendFloat(dst, f, 'f', -1, 64)
+	abs := math.Abs(n)
+	if abs >= 1e-6 && abs < 1e21 {
+		return strconv.AppendFloat(dst, n, 'f', -1, 64)
 	}
-	return strconv.AppendFloat(dst, f, 'e', -1, 64)
+	// Go writes the exponent with at least two digits ("1e-07"); JSON allows that, but keep it short.
+	text := strconv.AppendFloat(nil, n, 'e', -1, 64)
+	for i, c := range text {
+		if c != 'e' {
+			continue
+		}
+		dst = append(dst, text[:i+2]...)
+		exp := text[i+2:]
+		for len(exp) > 1 && exp[0] == '0' {
+			exp = exp[1:]
+		}
+		return append(dst, exp...)
+	}
+	return append(dst, text...)
 }
 
 func appendString(dst []byte, s string) []byte {
 	dst = append(dst, '"')
-	for i := 0; i < len(s); i++ {
+	for i := 0; i < len(s); {
 		c := s[i]
 		switch {
-		case c == '"' || c == '\\':
-			dst = append(dst, '\\', c)
+		case c == '"':
+			dst = append(dst, '\\', '"')
+			i++
+		case c == '\\':
+			dst = append(dst, '\\', '\\')
+			i++
 		case c == '\n':
 			dst = append(dst, '\\', 'n')
+			i++
 		case c == '\r':
 			dst = append(dst, '\\', 'r')
+			i++
 		case c == '\t':
 			dst = append(dst, '\\', 't')
+			i++
+		case c == '\b':
+			dst = append(dst, '\\', 'b')
+			i++
+		case c == '\f':
+			dst = append(dst, '\\', 'f')
+			i++
 		case c < 0x20:
 			dst = append(dst, '\\', 'u', '0', '0', hexDigits[c>>4], hexDigits[c&0xF])
-		case c == 0xED && i+2 < len(s) && s[i+1] >= 0xA0 && s[i+1] <= 0xBF && s[i+2]&0xC0 == 0x80:
-			u := 0xD000 | int(s[i+1]&0x3F)<<6 | int(s[i+2]&0x3F)
-			dst = append(dst, '\\', 'u', hexDigits[u>>12], hexDigits[u>>8&0xF], hexDigits[u>>4&0xF], hexDigits[u&0xF])
-			i += 2
-		default:
+			i++
+		case c < 0x80:
 			dst = append(dst, c)
+			i++
+		default:
+			r, n := DecodeRune(s[i:])
+			switch {
+			case r >= 0xD800 && r <= 0xDFFF:
+				dst = append(dst, '\\', 'u', hexDigits[r>>12&0xF], hexDigits[r>>8&0xF], hexDigits[r>>4&0xF], hexDigits[r&0xF])
+			case r == utf8.RuneError && n == 1:
+				dst = append(dst, replacement...)
+			default:
+				dst = append(dst, s[i:i+n]...)
+			}
+			i += n
 		}
 	}
 	return append(dst, '"')

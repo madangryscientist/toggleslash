@@ -1,14 +1,41 @@
+# The rule set is named, not inherited: version 2 with the "standard" defaults switched off, and every linter
+# below switched on by name. `exhaustive` is not enabled: the evaluator switches over an operator or a reason
+# kind on purpose handle only the members that matter at that point, and name the rest in a comment.
+# `contextcheck` is not enabled either: a Client owns its lifecycle (New and Close, contract 2), so its requests
+# are bound to Close, and by design not to the context of whichever caller made it. A rule that is ignored carries its reason in a comment beside it.
 version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
 linters:
-  default: standard
+  default: none
   enable:
-    - errorlint
-    - bodyclose
-    - misspell
-    - unconvert
-formatters:
-  enable:
-    - gofmt
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0
+    - errcheck # an unchecked error is a swallowed failure; the few discards are explicit `_ =`
+    - govet # the compiler's own suspicious-construct checks
+    - ineffassign # an assignment nothing reads
+    - staticcheck # the standard bug and API-misuse checks
+    - unused # dead code
+    - bodyclose # an HTTP response body left open leaks a connection
+    - copyloopvar # redundant loop variable copies (Go 1.22 made them per iteration)
+    - errorlint # compare errors with errors.Is and errors.As
+    - gocritic # the broader style and performance checks
+    - misspell # typos in comments and strings
+    - nilerr # returning nil when an error is non-nil
+    - noctx # an HTTP request without a context
+    - perfsprint # fmt.Sprintf where a plain conversion is faster
+    - predeclared # shadowing a builtin
+    - unconvert # a conversion to the type it already has
+    - unparam # a parameter every caller passes the same value to
+    - usetesting # t.TempDir and t.Setenv instead of the os equivalents in tests
+    - wastedassign # an assignment that is overwritten before it is read
+  exclusions:
+    generated: lax
+    rules:
+      # A test may discard an error from a cleanup or a write to a recorder; the assertion is elsewhere.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - unparam
+          - perfsprint
