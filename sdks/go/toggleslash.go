@@ -1,112 +1,233 @@
-// Package toggleslash is the ToggleSlash server SDK for Go.
+// Package toggleslash is the Go server SDK for ToggleSlash. It keeps a copy of an environment's
+// ruleset current (over a live stream, with a polling fallback), evaluates flags against it locally
+// with no network round trip, and sends usage counts back in batches. It implements
+// docs/sdk-contract.md; docs/evaluation.md is the specification of the evaluator.
 //
-// A Client keeps one ruleset current by following the server's stream (polling when the stream is down) and
-// evaluates flags locally, so the typed methods (BoolVariation, StringVariation, IntVariation, Float64Variation
-// and JSONVariation, each with a ...Detail twin) do no I/O and never block. Usage counts, which hold no context
-// and nothing about an end user, are sent in batches. Nothing here panics at a caller and no method returns an
-// error: a failure becomes the fallback you passed, with a reason, and is told to the WithOnError callback.
-//
-//	client := toggleslash.New("https://flags.example.com", os.Getenv("TOGGLESLASH_SDK_KEY"))
+//	client := toggleslash.New("https://toggleslash.example", sdkKey)
 //	defer client.Close()
-//	client.Ready()
-//	on := client.BoolVariation("new-checkout", toggleslash.UserContext("user-1"), false)
+//	client.Ready(ctx) // optional: wait for the first load
+//	on := client.BoolVariation("new-checkout", toggleslash.NewUserContext("user-1"), false)
 //
-// The contract is docs/sdk-contract.md in the ToggleSlash repository, and sdks/go/DESIGN.md maps each of its
-// names to Go.
+// The SDK never panics at its caller and never returns an error from an evaluation: an evaluation
+// that cannot be answered gives the fallback you passed, and the ...Detail form says why. Everything
+// it absorbs goes to the function given to WithOnError. A Client is safe for use from many goroutines.
+// It sends no context, no flag value and nothing about an end user over the network.
 package toggleslash
 
 import (
+	"context"
+	"math/rand/v2"
 	"net/http"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
-
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/eval"
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
 )
 
-const (
-	defaultInterval = 30 * time.Second
-	defaultTimeout  = 10 * time.Second
-	// streamIdle is how long the stream may go without a byte (the server sends a keep-alive every 25 s).
-	streamIdle = 60 * time.Second
-	// maxRetryAfter is the longest wait a 429 can ask for.
-	maxRetryAfter = 300 * time.Second
-	backoffBase   = time.Second
-)
+// Client is a connection to a ToggleSlash server. Make one with New and Close it when done.
+type Client struct {
+	base string
+	key  string
+	opt  options
 
-// config holds the options after the defaults. The seams (the fields after onError) are for tests in this
-// package: they are not options a caller can pass.
-type config struct {
-	url             string
-	sdkKey          string
-	stream          bool
-	pollInterval    time.Duration
-	flushInterval   time.Duration
-	requestTimeout  time.Duration
-	afterEvaluation func(EvaluationEvent)
-	onError         func(error)
+	transport *http.Transport
+	http      *http.Client
 
-	httpClient *http.Client
-	now        func() time.Time
-	jitter     func() float64
-	idle       time.Duration
-	evaluate   func(*eval.Ruleset, string, jsonvalue.Value) eval.Result
+	// snap is the ruleset and its tag, swapped as one pointer.
+	snap atomic.Pointer[snapshot]
+
+	// statusMu guards the fields below it, which Status reads as one snapshot, and the two holds.
+	statusMu    sync.Mutex
+	lastSync    time.Time
+	lastErr     LastError
+	streamState StreamState
+	holdRuleset time.Time // a 429 on the ruleset or the stream asked for nothing before this
+	holdEvents  time.Time // a 429 on the events asked for nothing before this
+
+	readyCh   chan struct{}
+	readyOnce sync.Once
+	readyVal  bool
+
+	loopCtx   context.Context
+	stopLoops context.CancelFunc
+	wg        sync.WaitGroup
+	closing   atomic.Bool
+	closeOnce sync.Once
+
+	usageMu sync.Mutex
+	counts  map[usageKey]int64
+	flushMu sync.Mutex
+
+	// owned holds the ids of the goroutines the SDK runs its own code on.
+	owned sync.Map
 }
 
-// Option configures a Client.
-type Option func(*config)
+// New starts a client for the server at url, authenticating with the SDK key. It returns at once and
+// never fails: the first load happens in the background (Ready waits for it), and until a ruleset
+// is held every evaluation answers its fallback with the reason ErrNotReady.
+func New(url, sdkKey string, opts ...Option) *Client {
+	opt := defaultOptions()
+	for _, o := range opts {
+		o(&opt)
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if opt.transport != nil {
+		opt.transport(transport)
+	}
+	c := &Client{
+		base:      strings.TrimRight(url, "/"),
+		key:       sdkKey,
+		opt:       opt,
+		transport: transport,
+		http: &http.Client{
+			Transport: transport,
+			// A redirect is an answer like any other (http_3xx), never followed with the key.
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
+		readyCh: make(chan struct{}),
+		counts:  make(map[usageKey]int64),
+	}
+	if opt.stream {
+		c.streamState = StreamConnecting
+	} else {
+		c.streamState = StreamOff
+	}
+	c.loopCtx, c.stopLoops = context.WithCancel(context.Background())
+	c.wg.Add(2)
+	go c.syncLoop()
+	go c.flushLoop()
+	return c
+}
 
-// WithStream turns the stream on or off. It is on by default; off polls only.
-func WithStream(on bool) Option { return func(c *config) { c.stream = on } }
+func (c *Client) now() time.Time {
+	if c.opt.now != nil {
+		return c.opt.now()
+	}
+	return time.Now()
+}
 
-// WithPollInterval sets how often the ruleset is polled when the stream is down or off, and the longest
-// reconnect wait. The default is 30 seconds; zero or negative is the default.
-func WithPollInterval(d time.Duration) Option {
-	return func(c *config) {
-		if d > 0 {
-			c.pollInterval = d
-		}
+func (c *Client) jitter() float64 {
+	if c.opt.jitter != nil {
+		return c.opt.jitter()
+	}
+	return rand.Float64()
+}
+
+// settleReady fixes the answer of Ready; the first call wins.
+func (c *Client) settleReady(held bool) {
+	c.readyOnce.Do(func() {
+		c.readyVal = held
+		close(c.readyCh)
+	})
+}
+
+// Ready waits until the first load has finished and reports whether a ruleset is held. The first
+// load is bounded by the request timeout, so Ready needs no timeout of its own; if ctx is done first
+// it reports false and the answer stays open. Once settled the answer never changes, and after Close
+// an unsettled Ready is false. Called from inside an SDK callback (which runs on an SDK goroutine)
+// it does not wait and reports whether a ruleset is held.
+func (c *Client) Ready(ctx context.Context) bool {
+	select {
+	case <-c.readyCh:
+		return c.readyVal
+	default:
+	}
+	if c.onOwnGoroutine() {
+		return c.snap.Load() != nil
+	}
+	select {
+	case <-c.readyCh:
+		return c.readyVal
+	case <-ctx.Done():
+		return false
 	}
 }
 
-// WithFlushInterval sets how often usage counts are sent. The default is 30 seconds; zero or negative is
-// the default.
-func WithFlushInterval(d time.Duration) Option {
-	return func(c *config) {
-		if d > 0 {
-			c.flushInterval = d
-		}
+// Status returns what the client knows about its own sync, as one consistent snapshot. It does no I/O
+// and never waits on the network.
+func (c *Client) Status() Status {
+	c.statusMu.Lock()
+	defer c.statusMu.Unlock()
+	st := Status{LastSyncAt: c.lastSync, Stream: c.streamState, LastError: c.lastErr}
+	if s := c.snap.Load(); s != nil {
+		st.ETag, st.HasETag = s.etag, s.hasETag
 	}
+	if c.closing.Load() {
+		st.Stream = StreamClosed
+	}
+	return st
 }
 
-// WithRequestTimeout sets the longest any one request may take, and so the longest Ready waits. The
-// default is 10 seconds; zero or negative is the default.
-func WithRequestTimeout(d time.Duration) Option {
-	return func(c *config) {
-		if d > 0 {
-			c.requestTimeout = d
-		}
+// Close stops the client: it abandons the requests in flight, stops the loops, and sends the usage
+// counts it holds. It returns within about twice the request timeout, is safe to call twice or from
+// many goroutines at once (each returns when the shutdown is done), and evaluation keeps answering
+// from the ruleset held afterwards, without counting. A call from inside an SDK callback starts the
+// shutdown on another goroutine and returns at once.
+func (c *Client) Close() {
+	c.closing.Store(true)
+	if c.onOwnGoroutine() {
+		go c.shutdown()
+		return
 	}
+	c.shutdown()
 }
 
-// WithAfterEvaluation sets a function called synchronously, on the caller's goroutine, after every
-// variation method, a fallback included, with what the caller is about to get. A panic in it goes to the
-// OnError function and never reaches the caller, who gets the same answer and the same usage count with or
-// without it. A nil function is ignored.
-func WithAfterEvaluation(f func(EvaluationEvent)) Option {
-	return func(c *config) {
-		if f != nil {
-			c.afterEvaluation = f
-		}
-	}
+func (c *Client) shutdown() {
+	c.closeOnce.Do(func() {
+		c.stopLoops()
+		c.wg.Wait()
+		c.settleReady(false)
+		unregister := c.own()
+		c.finish()
+		unregister()
+		c.transport.CloseIdleConnections()
+	})
 }
 
-// WithOnError sets a function told about every failure the SDK absorbs (a failed sync, a failed usage
-// request, a hook that panicked). The value is an *Error. It is never needed for correctness; a panic in it is
-// ignored. A nil function is ignored.
-func WithOnError(f func(error)) Option {
-	return func(c *config) {
-		if f != nil {
-			c.onError = f
-		}
+// reportError passes an absorbed failure to onError, with no SDK lock held; a panic in it is ignored.
+func (c *Client) reportError(err error) {
+	if c.opt.onError == nil {
+		return
 	}
+	defer func() { _ = recover() }()
+	c.opt.onError(err)
+}
+
+// own marks the calling goroutine as one the SDK runs its own code on, and returns the function that
+// unmarks it.
+func (c *Client) own() func() {
+	id := goroutineID()
+	if id == 0 {
+		return func() {}
+	}
+	c.owned.Store(id, struct{}{})
+	return func() { c.owned.Delete(id) }
+}
+
+func (c *Client) onOwnGoroutine() bool {
+	id := goroutineID()
+	if id == 0 {
+		return false
+	}
+	_, ok := c.owned.Load(id)
+	return ok
+}
+
+// goroutineID reads the id from the first line of the stack trace ("goroutine 12 [running]:"). It
+// answers 0 if the text is not that, which makes the caller "not an SDK goroutine".
+func goroutineID() uint64 {
+	var buf [64]byte
+	n := runtime.Stack(buf[:], false)
+	s := strings.TrimPrefix(string(buf[:n]), "goroutine ")
+	end := strings.IndexByte(s, ' ')
+	if end <= 0 {
+		return 0
+	}
+	id, err := strconv.ParseUint(s[:end], 10, 64)
+	if err != nil {
+		return 0
+	}
+	return id
 }

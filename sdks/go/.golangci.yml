@@ -1,14 +1,21 @@
+# golangci-lint v2. The default set (errcheck, govet, ineffassign, staticcheck, unused) plus the linters named
+# below. Any finding fails bin/lint; there is no warning level.
 version: "2"
+
 linters:
   default: standard
   enable:
-    - errorlint
-    - bodyclose
+    - bodyclose # a response body left open leaks a connection
+    - errorlint # compare errors with errors.Is and errors.As
     - misspell
+    - nilerr
+    - noctx # every request carries a context, which is how Close and the timeouts reach it
     - unconvert
-formatters:
-  enable:
-    - gofmt
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0
+    - unparam
+    - usestdlibvars
+  exclusions:
+    rules:
+      # usestdlibvars wants http.StatusOK for every status literal in a table; in tests a literal is clearer.
+      - path: _test\.go
+        linters:
+          - usestdlibvars

@@ -1,5 +1,7 @@
-# Build output: bin/test builds the test service here, and bin/test-service runs it.
-.build/
-# A compiled test binary, a coverage profile.
+# Build output of bin/test and bin/test-service
+/test-service/test-service
+
+# Go test and coverage output
 *.test
 *.out
+*.prof

@@ -1,5 +1,8 @@
 #!/bin/sh
 # The native lint and format check. Any finding fails; there is no warning level. Nothing is rewritten.
+#   gofmt -l: layout, listing the files that differ
+#   go vet: the compiler's own checks
+#   golangci-lint: the rules in .golangci.yml
 set -eu
 cd "$(dirname "$0")/.."
 if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
@@ -7,7 +10,6 @@ if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
 else
   run() { "$@"; }
 fi
-run golangci-lint --version
 unformatted=$(run gofmt -l .)
 if [ -n "$unformatted" ]; then
   echo "gofmt would change:" >&2
