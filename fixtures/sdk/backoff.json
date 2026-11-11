@@ -28,6 +28,10 @@
           "requests": {
             "route": "stream",
             "count": 3
+          },
+          "status": {
+            "stream": "disconnected",
+            "lastError": "http_503"
           }
         },
         {
