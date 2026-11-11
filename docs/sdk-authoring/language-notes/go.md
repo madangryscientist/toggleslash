@@ -1,7 +1,8 @@
 # Go
 
 What the Go runs learned. Each fact cites its run: prompt `8a59987`, FS-96, 2026-11-10, unless it is marked
-(FS-115), the run at prompt `180a02d` on 2026-11-11, or (FS-124), the run at prompt `8527564` on 2026-11-11.
+(FS-115), the run at prompt `180a02d` on 2026-11-11, (FS-124), the run at prompt `8527564` on 2026-11-11, or
+(FS-126), the run at prompt `26834d8` on 2026-11-11.
 
 - **`encoding/json`.** It errors on `1e999` and replaces a lone surrogate with U+FFFD, which the spec
   forbids for both. Write the JSON reader, and hold strings as WTF-8 so a lone surrogate survives.
@@ -15,8 +16,8 @@ What the Go runs learned. Each fact cites its run: prompt `8a59987`, FS-96, 2026
 - **A hung test handler must drain the request body first.** `net/http` does not notice a client
   disconnect until the handler reads or writes, so a handler that only sleeps hangs the test.
 - **`-race` needs cgo.** A C compiler must exist, so `bin/test` needs one; the README says so and the workflow provides it (FS-115). `mise.toml` may pin `zig` as that
-  compiler (`CC="zig cc"`). Run the toolchain under `mise exec --`, because a `zig` elsewhere on PATH
-  (such as `~/.local/bin`) can shadow the pinned one (FS-124).
+  compiler. Name it by path, `CC="$(mise where zig)/zig cc"`: a `zig` elsewhere on PATH (such as
+  `~/.local/bin`) can shadow the pinned one, and `mise exec --` does not undo that (FS-126).
 - **`mise ls-remote go` can hide the newest releases.** Pin the newest version it lists and say so in
   `RUN.md` (FS-115).
 - **Lint.** The run used `go vet`, `golangci-lint` and `gofmt -l`. `usestdlibvars` is noisy in table tests
