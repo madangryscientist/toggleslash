@@ -152,6 +152,9 @@ export class RulesetSync {
         const response = await fetch(`${baseUrl}/sdk/v1/ruleset`, { headers, signal });
         if (response.status === 304) {
           await response.body?.cancel();
+          // A 304 answers If-None-Match, which is sent only with a ruleset held; with none it is unexpected.
+          if (this.ruleset === null)
+            throw new HttpStatusError(304, "GET /sdk/v1/ruleset answered 304 with no ruleset held");
           return;
         }
         if (response.status !== 200) {
@@ -166,7 +169,8 @@ export class RulesetSync {
         if (!hasRulesetShape(body))
           throw new BadRulesetError("GET /sdk/v1/ruleset sent no flags and segments");
         this.ruleset = createRuleset(body);
-        this.etag = response.headers.get("ETag");
+        // An empty ETag counts as none, so it is never sent back as If-None-Match.
+        this.etag = response.headers.get("ETag") || null;
       });
       this.synced();
       return true;
