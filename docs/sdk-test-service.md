@@ -32,7 +32,8 @@ A scenario's `dropStreams` step ends each open stream body cleanly (`dropStreams
 `down` step is separate: it drops the streams and stops the listener.
 
 It prints one line per scenario (`pass`, `skip` with the capability it needs, or `FAIL` with the reason,
-the steps up to the one that failed, and every request the fake server recorded), then any failed vector,
+the steps up to the one that failed, every request the fake server recorded, and the marks and `onError` counts
+the harness read, all with their times on the server's clock, so a failure on a window explains itself), then any failed vector,
 then a summary:
 
 ```

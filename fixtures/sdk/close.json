@@ -151,6 +151,9 @@
           "requests": {
             "route": "stream",
             "count": 1
+          },
+          "errors": {
+            "min": 1
           }
         },
         {
