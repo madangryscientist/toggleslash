@@ -24,16 +24,19 @@ check and the planner read them. A section with nothing in it says "None." rathe
 
 ## Decisions
 
-Choices the prompt left open on purpose. One line each: what was chosen, over what, and why.
+Choices the prompt left open on purpose, and points a document settles. One line each: what was chosen, over
+what, and why, or the point and the file and line that settles it.
 
 1. <Lint and format: X over Y, because ...>
 
 ## Guesses
 
 Points where the prompt or a document should have said and did not. Each: what was unclear, where
-(document and section), and what this run assumed.
+(document and section), the sentence closest to it in that section (quoted or named) and why it does not
+settle the point, and what this run assumed. A point a document settles is a Decision (with its file and line),
+not a guess.
 
-1. <What was unclear>. Where: <document, section>. Assumed: <what the run did>.
+1. <What was unclear>. Where: <document, section>. Closest sentence: <quote or name; why it does not settle it>. Assumed: <what the run did>.
 
 ## Stuck points
 

@@ -186,7 +186,8 @@ HTTP client needs them, and a URL it cannot use makes each request a `network` e
 ### 7.1 The ruleset
 
 `GET /sdk/v1/ruleset`. If the SDK holds a ruleset and an ETag it sends `If-None-Match: <the ETag, exactly
-as received, quotes included>`; it sends the header in no other case.
+as received, quotes included>`; it sends the header in no other case. The request needs no `Accept` header and
+MAY send `Accept: application/json`; the TypeScript SDK sends none.
 
 | Answer | What the SDK does |
 | --- | --- |
@@ -246,8 +247,9 @@ ends is discarded. The SDK acts on `connected` and `changed` and ignores any oth
   Past that: `timeout`.
 - Once open, a **watchdog of 60 s**: the SDK drops the stream if no bytes at all arrive for 60 s. Every
   read, a keep-alive comment included, restarts the 60 s. Dropped for it: `timeout`.
-- A status other than `200`, or an answer with no body, is `http_<status>` (and a `429` is read as in
-  [7.4](#74-429-and-retry-after)). A stream the server ends cleanly is not an error and leaves `lastError`
+- A status other than `200`, or an answer with no body object at all, is `http_<status>` (and a `429` is read
+  as in [7.4](#74-429-and-retry-after)). A `200` whose body ends with zero bytes read is not that case: it is a
+  stream the server ends cleanly, and a stream the server ends cleanly is not an error and leaves `lastError`
   alone.
 - Content types are not checked.
 - There is no cap on the length of a line or the size of an event; the watchdog and `requestTimeout` are the
