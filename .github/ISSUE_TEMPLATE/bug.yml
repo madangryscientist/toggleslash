@@ -1,0 +1,37 @@
+name: Bug report
+description: Something ToggleSlash does is wrong
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. A security problem does not go here: use
+        [private reporting](https://github.com/madangryscientist/toggleslash/security/advisories/new),
+        as SECURITY.md says.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `toggleslash --version` and the server's version (`version` in the `GET /health` answer), or the commit if you run from source.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What you ran
+      description: The exact command, request or SDK call, and which part you used (server, CLI, an SDK, the dashboard). Include the OS and the Bun or .NET version if it matters.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and what happened
+      description: The output, the status code or the exit code. For an evaluation problem, the flag's targeting and the context, with no real user data.
+    validations:
+      required: true
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: How you run the server (container or from source), and a minimal case that shows it.

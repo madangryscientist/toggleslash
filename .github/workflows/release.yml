@@ -16,11 +16,10 @@ permissions:
   contents: read
 
 jobs:
-  # A copy of ci.yml's `gate` job (keep the two in step), not a call to it: ci.yml has a `proxmox` job,
-  # so it allows only push and pull_request triggers and has no `workflow_call` (FS-116). It runs on
-  # GitHub's hosted runners, with no `proxmox` guard, because the self-hosted runner is for the owner's
-  # push and pull_request runs only, never a tag release. It leaves out ci.yml's `apps`, `e2e`, `stack`
-  # and `container` jobs on purpose: a tag is cut from `main`, where ci.yml already ran them.
+  # A copy of ci.yml's `gate` job (keep the two in step), not a call to it: ci.yml has no `workflow_call`
+  # trigger and runs on push and pull_request only. Both run on GitHub-hosted runners. It leaves out
+  # ci.yml's `apps`, `e2e`, `stack` and `container` jobs on purpose: a tag is cut from `main`, where
+  # ci.yml already ran them.
   gate:
     name: Gate (typecheck, lint, format, parity, test)
     runs-on: ubuntu-latest

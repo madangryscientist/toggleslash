@@ -77,7 +77,7 @@ Each starts with `#!/bin/sh` and `set -eu`, does `cd "$(dirname "$0")/.."` befor
 each tool through `mise exec -- <tool>` when `mise` is on `PATH` (a mise shim fails in a directory where
 its tool is not active, and the root `.tool-versions` is a different set) and plainly otherwise (in CI a
 setup step puts the tools on `PATH`), and needs nothing beyond what `$L/mise.toml` pins and `sh` (the CI runner
-has only Docker, Bun and Node, so no C compiler is assumed: if a race detector needs one, the README says so and the workflow provides it). Build output goes in a directory `$L/.gitignore` ignores.
+is not assumed to have a C compiler: if a race detector needs one, the README says so and the workflow provides it). Build output goes in a directory `$L/.gitignore` ignores.
 `bin/test` builds every time (the test service included; in an interpreted language that is a byte-compile or
 syntax check of every source, test and test-service file, so a syntax error in a file no test imports still fails), never reports a cached result, runs under the
 language's race detector where it has one, and prints `vectors: <n> pins: <n>` even when all pass. `bin/lint`
@@ -302,9 +302,9 @@ server recorded; read those before you change code.
    is a decision. For `jdx/mise-action` the inputs are `working_directory: sdks/<lang>` and `install_args` naming
    the tools, so a run need not read a sibling's workflow. Copy the checkout and Bun lines and `BUN_VERSION` from `ci.yml` as they are when you run.
 
-   The job runs on the self-hosted runner, which has only Docker, Bun and Node: it installs its own toolchain,
-   its `if:` is exactly the one below, and the triggers are `pull_request` and `push` only (never
-   `pull_request_target`, `workflow_run`, a comment trigger or `workflow_dispatch`).
+   The job runs on GitHub's `ubuntu-latest`: it installs its own toolchain, has no `if:` guard, and the
+   triggers are `pull_request` and `push` only (never `pull_request_target`, `workflow_run`, a comment
+   trigger or `workflow_dispatch`).
 
 ```yaml
 name: SDK (<Language>)
@@ -335,8 +335,7 @@ env:
 jobs:
   sdk:
     name: <Language> SDK (lint, test, conformance)
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: proxmox
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: <the actions/checkout line from ci.yml>

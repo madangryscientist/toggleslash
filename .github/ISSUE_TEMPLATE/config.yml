@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/madangryscientist/toggleslash/security/advisories/new
+    about: Private to the maintainers, as SECURITY.md says. Do not open a public issue for a vulnerability.
