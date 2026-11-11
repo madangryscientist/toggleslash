@@ -1,14 +1,42 @@
+# golangci-lint v2. The standard set (errcheck, govet, ineffassign, staticcheck, unused) plus the linters
+# below, which catch what this SDK is most likely to get wrong: unclosed bodies, requests with no context,
+# unwrapped error comparisons, and needless conversions. `usestdlibvars` is left out on purpose: it wants
+# http.StatusOK for every literal in a table test.
 version: "2"
+run:
+  tests: true
 linters:
   default: standard
   enable:
-    - errorlint
     - bodyclose
+    - errorlint
+    - gocritic
     - misspell
+    - noctx
     - unconvert
+    - unparam
+    - copyloopvar
+    - intrange
+    - nilerr
+    - predeclared
+    - revive
+  settings:
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: error-return
+        - name: error-naming
+        - name: if-return
+        - name: increment-decrement
+        - name: var-declaration
+        - name: indent-error-flow
+        - name: errorf
+        - name: blank-imports
+        - name: context-as-argument
+        - name: dot-imports
+        - name: unreachable-code
+        - name: redefines-builtin-id
 formatters:
   enable:
     - gofmt
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0

@@ -1,87 +1,92 @@
 package toggleslash
 
-import "github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
+import (
+	"github.com/madangryscientist/toggleslash/sdks/go/internal/evaluator"
+	"github.com/madangryscientist/toggleslash/sdks/go/jsonvalue"
+)
 
-// Context describes who a flag is evaluated for. It wraps a JSON Value in the shape docs/evaluation.md
-// defines: a single kind is {"key": ..., "kind": ..., "attributes": {...}}, and several kinds are
-// {"kind": "multi", "contexts": {"<kind>": {"key": ..., "attributes": ...}}}. The zero Context is invalid, so
-// evaluating it gives ERROR INVALID_CONTEXT and the fallback.
+// Context is an evaluation context. The zero Context is invalid: an evaluation with it answers the fallback
+// with ERROR INVALID_CONTEXT. A Context is immutable and safe to share.
 type Context struct {
-	v Value
+	value jsonvalue.Value
+	set   bool
+	// parsed is the evaluator's reading of value, nil when the value is not a valid context.
+	parsed *evaluator.Context
 }
 
-// UserContext is a context of the default kind, "user", with a key.
-func UserContext(key string) Context {
-	return Context{v: jsonvalue.Object(jsonvalue.Member{Key: "key", Value: jsonvalue.String(key)})}
+func newContext(v jsonvalue.Value) Context {
+	return Context{value: v, set: true, parsed: evaluator.NewContext(v)}
 }
 
-// NewContext is a context of one kind with a key.
-func NewContext(kind, key string) Context {
-	return Context{v: jsonvalue.Object(
-		jsonvalue.Member{Key: "kind", Value: jsonvalue.String(kind)},
-		jsonvalue.Member{Key: "key", Value: jsonvalue.String(key)},
-	)}
-}
+// ContextFromValue wraps a JSON value as a context. It is not checked here: an invalid one is reported by
+// the evaluation that uses it.
+func ContextFromValue(v jsonvalue.Value) Context { return newContext(v) }
 
-// MultiContext combines contexts of different kinds into one. A context that is itself multi, or has
-// no kind-specific key, makes the result invalid, which the evaluator answers with INVALID_CONTEXT.
-func MultiContext(parts ...Context) Context {
-	members := make([]jsonvalue.Member, 0, len(parts))
-	for _, part := range parts {
-		kind := "user"
-		if k, ok := part.v.Field("kind").Text(); ok {
-			kind = k
-		}
-		entry := []jsonvalue.Member{{Key: "key", Value: part.v.Field("key")}}
-		if attrs := part.v.Field("attributes"); !attrs.IsNull() {
-			entry = append(entry, jsonvalue.Member{Key: "attributes", Value: attrs})
-		}
-		members = append(members, jsonvalue.Member{Key: kind, Value: jsonvalue.Object(entry...)})
-	}
-	return Context{v: jsonvalue.Object(
-		jsonvalue.Member{Key: "kind", Value: jsonvalue.String("multi")},
-		jsonvalue.Member{Key: "contexts", Value: jsonvalue.Object(members...)},
-	)}
-}
-
-// WithAttribute returns a copy of a single-kind context with an attribute set. On a context that is not a
-// single-kind object it returns the context unchanged.
-func (c Context) WithAttribute(name string, value Value) Context {
-	if !c.v.IsObject() {
-		return c
-	}
-	var attrs []jsonvalue.Member
-	if existing := c.v.Field("attributes"); existing.IsObject() {
-		for _, key := range existing.Keys() {
-			attrs = append(attrs, jsonvalue.Member{Key: key, Value: existing.Field(key)})
-		}
-	}
-	attrs = append(attrs, jsonvalue.Member{Key: name, Value: value})
-	var members []jsonvalue.Member
-	for _, key := range c.v.Keys() {
-		if key != "attributes" {
-			members = append(members, jsonvalue.Member{Key: key, Value: c.v.Field(key)})
-		}
-	}
-	members = append(members, jsonvalue.Member{Key: "attributes", Value: jsonvalue.Object(attrs...)})
-	return Context{v: jsonvalue.Object(members...)}
-}
-
-// ContextFromJSON reads a context from JSON text. It never fails: text that is not JSON gives a context the
-// evaluator answers with INVALID_CONTEXT, like any other invalid one.
-func ContextFromJSON(text []byte) Context {
-	v, err := jsonvalue.Parse(text)
+// ContextFromJSON reads a context from JSON text. Text that is not JSON gives an invalid context.
+func ContextFromJSON(data []byte) Context {
+	v, err := jsonvalue.Parse(data)
 	if err != nil {
 		return Context{}
 	}
-	return Context{v: v}
+	return newContext(v)
 }
 
-// ContextFromValue wraps a Value as a context; the evaluator checks its shape.
-func ContextFromValue(v Value) Context { return Context{v: v} }
+// NewContext is a single context of the default kind "user" with the given key and attributes. The
+// attributes are Go values jsonvalue.From accepts (nil for none); one it does not accept makes the context
+// invalid.
+func NewContext(key string, attributes map[string]any) Context {
+	return NewKindContext("user", key, attributes)
+}
 
-// Value is the context as JSON.
-func (c Context) Value() Value { return c.v }
+// NewKindContext is a single context of the given kind.
+func NewKindContext(kind, key string, attributes map[string]any) Context {
+	members := []jsonvalue.Member{
+		{Key: "kind", Value: jsonvalue.FromString(kind)},
+		{Key: "key", Value: jsonvalue.FromString(key)},
+	}
+	if attributes != nil {
+		a, ok := jsonvalue.From(attributes)
+		if !ok {
+			return Context{}
+		}
+		members = append(members, jsonvalue.Member{Key: "attributes", Value: a})
+	}
+	return newContext(jsonvalue.FromObject(members...))
+}
 
-// MarshalJSON writes the context as JSON.
-func (c Context) MarshalJSON() ([]byte, error) { return c.v.MarshalJSON() }
+// NewMultiContext combines contexts of different kinds. A context that is itself multi, or invalid, or one
+// that repeats a kind, makes the result invalid.
+func NewMultiContext(contexts ...Context) Context {
+	members := make([]jsonvalue.Member, 0, len(contexts))
+	seen := map[string]bool{}
+	for _, c := range contexts {
+		if !c.set || c.parsed == nil {
+			return Context{}
+		}
+		kind := "user"
+		if k, ok := c.value.Get("kind"); ok {
+			kind, _ = k.AsString()
+		}
+		if kind == "multi" || seen[kind] {
+			return Context{}
+		}
+		seen[kind] = true
+		inner := make([]jsonvalue.Member, 0, 2)
+		for _, m := range c.value.Members() {
+			if m.Key == "key" || m.Key == "attributes" {
+				inner = append(inner, m)
+			}
+		}
+		members = append(members, jsonvalue.Member{Key: kind, Value: jsonvalue.FromObject(inner...)})
+	}
+	return newContext(jsonvalue.FromObject(
+		jsonvalue.Member{Key: "kind", Value: jsonvalue.FromString("multi")},
+		jsonvalue.Member{Key: "contexts", Value: jsonvalue.FromObject(members...)},
+	))
+}
+
+// Valid reports whether the context is a valid context under docs/evaluation.md.
+func (c Context) Valid() bool { return c.parsed != nil }
+
+// Value returns the context as JSON (null for the zero Context).
+func (c Context) Value() jsonvalue.Value { return c.value }

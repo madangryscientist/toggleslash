@@ -1,18 +1,24 @@
 #!/bin/sh
 # The native lint and format check. Any finding fails; there is no warning level. Nothing is rewritten.
+#   go vet:        the compiler's own suspicions
+#   golangci-lint: .golangci.yml (the standard set and the extras it names)
+#   gofmt -l:      any file gofmt would change is listed, and any listing fails
 set -eu
 cd "$(dirname "$0")/.."
-if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
-  run() { mise exec -- "$@"; }
-else
-  run() { "$@"; }
-fi
-run golangci-lint --version
-unformatted=$(run gofmt -l .)
+
+run() {
+  if command -v mise >/dev/null 2>&1; then
+    mise exec -- "$@"
+  else
+    "$@"
+  fi
+}
+
+run go vet ./...
+run golangci-lint run ./...
+unformatted="$(run gofmt -l .)"
 if [ -n "$unformatted" ]; then
   echo "gofmt would change:" >&2
   echo "$unformatted" >&2
   exit 1
 fi
-run go vet ./...
-run golangci-lint run ./...

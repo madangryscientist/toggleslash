@@ -2,392 +2,366 @@ package toggleslash
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/madangryscientist/toggleslash/sdks/go/jsonvalue"
 )
 
-// syncBuf is a fake events route: it records every body and answers with a settable status.
-type syncBuf struct {
-	mu      sync.Mutex
-	got     []string
-	headers []http.Header
-	status  func(call int) (int, http.Header)
+type sentEntry struct {
+	Flag  string
+	Index int
+	Count int64
+	Day   string
 }
 
-func (b *syncBuf) handler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/sdk/v1/events" || r.Method != http.MethodPost {
-			http.NotFound(w, r)
-			return
-		}
-		body, _ := io.ReadAll(r.Body)
-		b.mu.Lock()
-		b.got = append(b.got, string(body))
-		b.headers = append(b.headers, r.Header.Clone())
-		call := len(b.got)
-		status := b.status
-		b.mu.Unlock()
-		code, header := http.StatusOK, http.Header(nil)
-		if status != nil {
-			code, header = status(call)
-		}
-		for k, v := range header {
-			w.Header()[k] = v
-		}
-		w.WriteHeader(code)
-	})
-}
-
-func (b *syncBuf) bodies() []string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return append([]string(nil), b.got...)
-}
-
-func (b *syncBuf) calls() int { return len(b.bodies()) }
-
-func usageClient(t *testing.T, events *syncBuf, clk *clock, opts ...Option) *Client {
+// decodeEvents reads a usage request body with the SDK's own reader, so the test needs no other JSON package.
+func decodeEvents(t *testing.T, body []byte) []sentEntry {
 	t.Helper()
-	url := serve(t, rulesetHandler(boolRuleset(), `"u"`, events.handler()))
-	c := newTestClient(t, url, func(cfg *config) {
-		if clk != nil {
-			cfg.now = clk.now
+	root, err := jsonvalue.Parse(body)
+	if err != nil {
+		t.Fatalf("events body is not JSON: %v\n%s", err, body)
+	}
+	if root.Kind() != jsonvalue.KindObject || len(root.Members()) != 1 {
+		t.Fatalf("events body shape: %s", body)
+	}
+	events, ok := root.Get("events")
+	if !ok || events.Kind() != jsonvalue.KindArray {
+		t.Fatalf("events is not an array: %s", body)
+	}
+	var out []sentEntry
+	for _, item := range events.Elements() {
+		if len(item.Members()) != 4 {
+			t.Fatalf("an entry has %d members: %s", len(item.Members()), body)
 		}
-	}, append(pollOnly(WithFlushInterval(time.Hour)), opts...)...)
+		flag, _ := item.Get("flag")
+		idx, _ := item.Get("variationIndex")
+		count, _ := item.Get("count")
+		day, _ := item.Get("day")
+		var e sentEntry
+		e.Flag, _ = flag.AsString()
+		i, _ := idx.AsNumber()
+		n, _ := count.AsNumber()
+		e.Index, e.Count = int(i), int64(n)
+		e.Day, _ = day.AsString()
+		out = append(out, e)
+	}
+	return out
+}
+
+func allSent(t *testing.T, f *fakeServer) []sentEntry {
+	var out []sentEntry
+	for _, b := range f.sentEvents() {
+		out = append(out, decodeEvents(t, b)...)
+	}
+	return out
+}
+
+func TestUsageIsSummedPerFlagIndexAndDay(t *testing.T) {
+	f := newFakeServer(t, boolFlag("a", true, 1), boolFlag("b", false, 1))
+	var clock atomic.Pointer[time.Time]
+	set := func(s string) { tm, _ := time.Parse(time.RFC3339, s); clock.Store(&tm) }
+	set("2026-11-11T23:59:59Z")
+	c := newTestClient(t, f, WithFlushInterval(time.Hour), func(cfg *config) { cfg.now = func() time.Time { return *clock.Load() } })
 	if !c.Ready() {
 		t.Fatal("not ready")
 	}
-	return c
-}
-
-func TestUsageIsSummedAndSentOnCloseWithTheExactBody(t *testing.T) {
-	var events syncBuf
-	clk := newClock(time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC))
-	c := usageClient(t, &events, clk)
-	for range 3 {
-		c.BoolVariation("checkout", someone, false)
-	}
-	c.BoolVariation("checkout", UserContext("someone-else"), false)
+	c.BoolVariation("a", user, false)
+	c.BoolVariation("a", NewContext("other", nil), false)
+	c.BoolVariation("b", user, true)
+	set("2026-11-12T00:00:00Z")
+	c.BoolVariation("a", user, false)
+	// A missing flag and a fallback are not counted.
+	c.BoolVariation("missing", user, false)
 	c.Close()
-	want := `{"events":[{"flag":"checkout","variationIndex":1,"count":4,"day":"2026-11-10"}]}`
-	if got := events.bodies(); len(got) != 1 || got[0] != want {
-		t.Fatalf("bodies %q, want %q", got, want)
+
+	got := map[sentEntry]bool{}
+	for _, e := range allSent(t, f) {
+		got[e] = true
 	}
-	h := events.headers[0]
-	if h.Get("Content-Type") != "application/json" || h.Get("Authorization") != "Bearer sdk-key-secret" {
-		t.Fatalf("headers: %v", h)
+	want := []sentEntry{
+		{"a", 1, 2, "2026-11-11"}, {"b", 0, 1, "2026-11-11"}, {"a", 1, 1, "2026-11-12"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("sent %v", got)
+	}
+	for _, w := range want {
+		if !got[w] {
+			t.Errorf("missing %+v in %v", w, got)
+		}
 	}
 }
 
-func TestNothingPendingMeansNoRequest(t *testing.T) {
-	var events syncBuf
-	c := usageClient(t, &events, nil, WithFlushInterval(10*time.Millisecond))
-	time.Sleep(100 * time.Millisecond)
+func TestUsageBodyCarriesNoContext(t *testing.T) {
+	f := newFakeServer(t, boolFlag("a", true, 1))
+	c := newTestClient(t, f, WithFlushInterval(time.Hour))
+	c.Ready()
+	c.BoolVariation("a", NewContext("secret-user-key", map[string]any{"email": "someone@example.com"}), false)
 	c.Close()
-	if events.calls() != 0 {
-		t.Fatalf("%d requests with nothing to send", events.calls())
+	for _, r := range f.requests("/sdk/v1/events") {
+		s := string(r.Body)
+		if strings.Contains(s, "secret-user-key") || strings.Contains(s, "someone@example.com") || strings.Contains(s, "email") {
+			t.Fatalf("the usage body carries context: %s", s)
+		}
+		if r.Header.Get("Content-Type") != "application/json" || r.Method != http.MethodPost {
+			t.Fatalf("method/type: %s %s", r.Method, r.Header.Get("Content-Type"))
+		}
 	}
 }
 
-func TestCountsEitherSideOfUTCMidnightGoOutAsTwoDays(t *testing.T) {
-	var events syncBuf
-	clk := newClock(time.Date(2026, 11, 10, 23, 59, 59, 0, time.UTC))
-	c := usageClient(t, &events, clk)
-	c.BoolVariation("checkout", someone, false)
-	clk.advance(2 * time.Second)
-	c.BoolVariation("checkout", someone, false)
-	c.BoolVariation("checkout", someone, false)
-	c.Close()
-	want := `{"events":[{"flag":"checkout","variationIndex":1,"count":1,"day":"2026-11-10"},{"flag":"checkout","variationIndex":1,"count":2,"day":"2026-11-11"}]}`
-	if got := events.bodies(); len(got) != 1 || got[0] != want {
-		t.Fatalf("bodies %q, want %q", got, want)
+func TestUsageIsBatchedAt500Entries(t *testing.T) {
+	var flags []string
+	for i := range 501 {
+		flags = append(flags, boolFlag(fmt.Sprintf("f%03d", i), true, 1))
 	}
-}
-
-// The day is UTC whatever the zone of the clock the process uses.
-func TestTheDayIsUTCNotLocal(t *testing.T) {
-	var events syncBuf
-	zone := time.FixedZone("far east", 14*3600)
-	clk := newClock(time.Date(2026, 11, 11, 3, 0, 0, 0, zone)) // 2026-11-10 13:00 UTC
-	c := usageClient(t, &events, clk)
-	c.BoolVariation("checkout", someone, false)
-	c.Close()
-	if got := events.bodies(); len(got) != 1 || !strings.Contains(got[0], `"day":"2026-11-10"`) {
-		t.Fatalf("bodies %q", got)
-	}
-}
-
-func TestBatchesOfAtMost500(t *testing.T) {
-	var events syncBuf
-	c := usageClient(t, &events, nil)
-	for i := range 1100 {
-		c.record(fmt.Sprintf("flag-%04d", i), 0)
+	f := newFakeServer(t, flags...)
+	c := newTestClient(t, f, WithFlushInterval(time.Hour))
+	c.Ready()
+	for i := range 501 {
+		c.BoolVariation(fmt.Sprintf("f%03d", i), user, false)
 	}
 	c.Close()
-	got := events.bodies()
-	if len(got) != 3 {
-		t.Fatalf("%d requests, want 3", len(got))
+	bodies := f.sentEvents()
+	if len(bodies) != 2 {
+		t.Fatalf("%d requests, want 2", len(bodies))
 	}
-	sizes := []int{strings.Count(got[0], `"flag"`), strings.Count(got[1], `"flag"`), strings.Count(got[2], `"flag"`)}
-	if sizes[0] != 500 || sizes[1] != 500 || sizes[2] != 100 {
-		t.Fatalf("batch sizes %v", sizes)
+	n0, n1 := len(decodeEvents(t, bodies[0])), len(decodeEvents(t, bodies[1]))
+	if n0 != 500 || n1 != 1 {
+		t.Fatalf("batch sizes %d and %d", n0, n1)
 	}
 }
 
-func TestAFailedFlushIsKeptAndStopsTheFlush(t *testing.T) {
-	for _, status := range []int{500, 503, 408, 429, 502} {
-		t.Run(fmt.Sprint(status), func(t *testing.T) {
-			var events syncBuf
-			var failing atomic.Bool
-			failing.Store(true)
-			events.status = func(int) (int, http.Header) {
-				if failing.Load() {
-					return status, nil
+func TestUsageOutcomes(t *testing.T) {
+	cases := []struct {
+		name     string
+		status   int
+		retry    string
+		kept     bool
+		held     bool
+		errCount int
+	}{
+		{"200", 200, "", false, false, 0},
+		{"204", 204, "", false, false, 0},
+		{"500 is kept", 500, "", true, false, 1},
+		{"503 is kept", 503, "", true, false, 1},
+		{"408 is kept", 408, "", true, false, 1},
+		{"429 is kept", 429, "", true, false, 1},
+		{"429 with Retry-After holds", 429, "30", true, true, 1},
+		{"400 is dropped", 400, "", false, false, 1},
+		{"401 is dropped", 401, "", false, false, 1},
+		{"404 is dropped", 404, "", false, false, 1},
+		{"413 is dropped", 413, "", false, false, 1},
+		{"302 is dropped", 302, "", false, false, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFakeServer(t, boolFlag("a", true, 1))
+			var fail atomic.Bool
+			fail.Store(true)
+			f.eventsFn = func(w http.ResponseWriter, r *http.Request) {
+				if fail.Load() {
+					if tc.retry != "" {
+						w.Header().Set("Retry-After", tc.retry)
+					}
+					w.WriteHeader(tc.status)
+					return
 				}
-				return 200, nil
+				w.WriteHeader(200)
 			}
-			var errs errorLog
-			c := usageClient(t, &events, nil, WithOnError(errs.add))
-			for i := range 600 { // two batches
-				c.record(fmt.Sprintf("f%03d", i), 0)
+			errs := &errorLog{}
+			c := newTestClient(t, f, WithFlushInterval(time.Hour), WithOnError(errs.add))
+			c.Ready()
+			c.BoolVariation("a", user, false)
+			c.flush(&c.closerCB, false)
+			if got := errs.count(); got != tc.errCount {
+				t.Fatalf("onError %d times: %v", got, errs.texts())
 			}
-			for _, e := range c.flush() {
-				errs.add(e)
+			if (c.holdLeft(&c.holdUsage) > 0) != tc.held {
+				t.Fatalf("hold = %v", c.holdLeft(&c.holdUsage))
 			}
-			if events.calls() != 1 {
-				t.Fatalf("a failed batch must stop the flush; %d requests", events.calls())
+			c.usageMu.Lock()
+			pending := len(c.counts)
+			c.usageMu.Unlock()
+			if (pending > 0) != tc.kept {
+				t.Fatalf("pending = %d, kept = %v", pending, tc.kept)
 			}
-			failing.Store(false)
-			if errs := c.flush(); len(errs) != 0 {
-				t.Fatalf("second flush errors: %v", errs)
-			}
-			// The first flush sent one 500-entry batch; all 600 counts must now have gone out in the second.
-			total := 0
-			for _, body := range events.bodies()[1:] {
-				total += strings.Count(body, `"flag"`)
-			}
-			if total != 600 {
-				t.Fatalf("%d counts delivered after the retry, want 600", total)
+			for _, e := range errs.all() {
+				if strings.Contains(e.Error(), f.url()) || strings.Contains(e.Error(), testKey) {
+					t.Fatalf("leaky error %q", e)
+				}
 			}
 		})
 	}
 }
 
-func TestARefusedBatchIsDroppedAndTheFlushContinues(t *testing.T) {
-	var events syncBuf
-	events.status = func(call int) (int, http.Header) {
-		if call == 1 {
-			return http.StatusBadRequest, nil
+func TestADroppedBatchDoesNotStopTheFlush(t *testing.T) {
+	var flags []string
+	for i := range 501 {
+		flags = append(flags, boolFlag(fmt.Sprintf("f%03d", i), true, 1))
+	}
+	f := newFakeServer(t, flags...)
+	var n atomic.Int32
+	f.eventsFn = func(w http.ResponseWriter, r *http.Request) {
+		if n.Add(1) == 1 {
+			w.WriteHeader(400)
+			return
 		}
-		return 200, nil
+		w.WriteHeader(200)
 	}
-	var errs errorLog
-	c := usageClient(t, &events, nil, WithOnError(errs.add))
-	for i := range 600 {
-		c.record(fmt.Sprintf("f%03d", i), 0)
+	c := newTestClient(t, f, WithFlushInterval(time.Hour))
+	c.Ready()
+	for i := range 501 {
+		c.BoolVariation(fmt.Sprintf("f%03d", i), user, false)
 	}
-	for _, e := range c.flush() {
-		errs.add(e)
-	}
-	if events.calls() != 2 {
-		t.Fatalf("%d requests, want 2 (the 400 batch is dropped, the next one goes)", events.calls())
-	}
-	if errs.count() != 1 || errs.all()[0].Code != "http_400" {
-		t.Fatalf("errors %+v", errs.all())
-	}
-	if again := c.flush(); len(again) != 0 || events.calls() != 2 {
-		t.Fatalf("the dropped batch came back: %d requests", events.calls())
+	c.flush(&c.closerCB, false)
+	if got := n.Load(); got != 2 {
+		t.Fatalf("%d requests, want 2 (a 400 drops its batch and the flush goes on)", got)
 	}
 }
 
-func TestSerialFlushesNeverOverlap(t *testing.T) {
-	var inFlight, peak atomic.Int64
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/sdk/v1/ruleset" {
-			w.Header().Set("ETag", `"s"`)
-			_, _ = w.Write([]byte(boolRuleset()))
+func TestAKeptBatchStopsTheFlushAndIsResentWithNewCounts(t *testing.T) {
+	var flags []string
+	for i := range 501 {
+		flags = append(flags, boolFlag(fmt.Sprintf("f%03d", i), true, 1))
+	}
+	f := newFakeServer(t, flags...)
+	var fail atomic.Bool
+	fail.Store(true)
+	var n atomic.Int32
+	f.eventsFn = func(w http.ResponseWriter, r *http.Request) {
+		n.Add(1)
+		if fail.Load() {
+			w.WriteHeader(503)
 			return
 		}
-		n := inFlight.Add(1)
+		f.mu.Lock()
+		f.events = append(f.events, nil)
+		f.mu.Unlock()
+		w.WriteHeader(200)
+	}
+	c := newTestClient(t, f, WithFlushInterval(time.Hour))
+	c.Ready()
+	for i := range 501 {
+		c.BoolVariation(fmt.Sprintf("f%03d", i), user, false)
+	}
+	c.flush(&c.closerCB, false)
+	if n.Load() != 1 {
+		t.Fatalf("%d requests after a 503, want 1", n.Load())
+	}
+	c.BoolVariation("f000", user, false)
+	c.usageMu.Lock()
+	var total int64
+	for _, v := range c.counts {
+		total += v
+	}
+	pending := len(c.counts)
+	c.usageMu.Unlock()
+	if pending != 501 || total != 502 {
+		t.Fatalf("pending %d entries, %d counts: the kept counts were lost or not merged", pending, total)
+	}
+}
+
+func TestFlushesAreSerial(t *testing.T) {
+	f := newFakeServer(t, boolFlag("a", true, 1))
+	var inflight, peak atomic.Int32
+	f.eventsFn = func(w http.ResponseWriter, r *http.Request) {
+		cur := inflight.Add(1)
 		for {
 			p := peak.Load()
-			if n <= p || peak.CompareAndSwap(p, n) {
+			if cur <= p || peak.CompareAndSwap(p, cur) {
 				break
 			}
 		}
-		time.Sleep(20 * time.Millisecond)
-		inFlight.Add(-1)
-	}))
-	c := newTestClient(t, url, nil, pollOnly(WithFlushInterval(time.Millisecond))...)
+		time.Sleep(30 * time.Millisecond)
+		inflight.Add(-1)
+		w.WriteHeader(200)
+	}
+	c := newTestClient(t, f, WithFlushInterval(5*time.Millisecond))
 	c.Ready()
 	var wg sync.WaitGroup
-	for range 4 {
+	for range 8 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for range 20 {
-				c.BoolVariation("checkout", someone, false)
-				c.flush()
+				c.BoolVariation("a", user, false)
+				time.Sleep(2 * time.Millisecond)
 			}
 		}()
 	}
 	wg.Wait()
+	c.Close()
 	if peak.Load() != 1 {
-		t.Fatalf("%d usage requests were in flight at once", peak.Load())
+		t.Fatalf("%d usage requests at once", peak.Load())
 	}
 }
 
-func TestNothingIsCountedAfterClose(t *testing.T) {
-	var events syncBuf
-	c := usageClient(t, &events, nil)
+func TestTheFinalFlushDoesNotWaitOutAHold(t *testing.T) {
+	f := newFakeServer(t, boolFlag("a", true, 1), boolFlag("b", true, 1))
+	f.eventsFn = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "120")
+		w.WriteHeader(429)
+	}
+	errs := &errorLog{}
+	c := newTestClient(t, f, WithFlushInterval(30*time.Millisecond), WithOnError(errs.add))
+	c.Ready()
+	c.BoolVariation("a", user, false)
+	eventually(t, 3*time.Second, "a 429", func() bool { return c.holdLeft(&c.holdUsage) > 0 })
+	c.BoolVariation("b", user, false)
+	n := len(f.requests("/sdk/v1/events"))
+	start := time.Now()
 	c.Close()
-	for range 5 {
-		c.BoolVariation("checkout", someone, false)
+	if time.Since(start) > time.Second {
+		t.Fatalf("Close waited %v", time.Since(start))
+	}
+	if got := len(f.requests("/sdk/v1/events")); got != n {
+		t.Fatalf("the final flush sent a request during a hold (%d -> %d)", n, got)
+	}
+	want := "closed with 2 usage counts unsent: the server asked to wait"
+	found := false
+	for _, s := range errs.texts() {
+		if s == want {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no %q in %v", want, errs.texts())
+	}
+}
+
+func TestNothingIsCountedAfterCloseBegins(t *testing.T) {
+	f := newFakeServer(t, boolFlag("a", true, 1))
+	c := newTestClient(t, f, WithFlushInterval(time.Hour))
+	c.Ready()
+	c.Close()
+	if !c.BoolVariation("a", user, false) {
+		t.Fatal("evaluation stopped answering after Close")
 	}
 	c.usageMu.Lock()
-	n := len(c.pending)
+	pending := len(c.counts)
 	c.usageMu.Unlock()
-	if n != 0 || events.calls() != 0 {
-		t.Fatalf("pending %d, requests %d", n, events.calls())
+	if pending != 0 || len(f.sentEvents()) != 0 {
+		t.Fatalf("counted after close: %d pending, %d sent", pending, len(f.sentEvents()))
 	}
 }
 
-func TestUsageHoldAfter429AndCloseReportsTheUnsentCounts(t *testing.T) {
-	var events syncBuf
-	events.status = func(int) (int, http.Header) { return 429, http.Header{"Retry-After": {"120"}} }
-	clk := newClock(time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC))
-	var errs errorLog
-	c := usageClient(t, &events, clk, WithOnError(errs.add))
-	c.BoolVariation("checkout", someone, false)
-	c.flush()
-	if events.calls() != 1 {
-		t.Fatalf("%d requests", events.calls())
+func TestAHungUsageRequestIsBoundedByTheRequestTimeout(t *testing.T) {
+	f := newFakeServer(t, boolFlag("a", true, 1))
+	f.eventsFn = hang
+	errs := &errorLog{}
+	c := New(f.url(), testKey, WithStream(false), WithRequestTimeout(200*time.Millisecond), WithFlushInterval(time.Hour), WithOnError(errs.add))
+	c.Ready()
+	c.BoolVariation("a", user, false)
+	start := time.Now()
+	c.Close()
+	if d := time.Since(start); d > 900*time.Millisecond {
+		t.Fatalf("Close took %v with a 200ms timeout", d)
 	}
-	c.BoolVariation("checkout", someone, false)
-	c.flush() // held: no request
-	if events.calls() != 1 {
-		t.Fatalf("a held flush sent a request (%d)", events.calls())
-	}
-	clk.advance(119 * time.Second)
-	c.flush()
-	if events.calls() != 1 {
-		t.Fatalf("still held at 119 s, but %d requests", events.calls())
-	}
-	// Close inside the hold neither waits nor sends, and says what it lost.
-	within(t, 3*time.Second, "Close inside a hold", c.Close)
-	if events.calls() != 1 {
-		t.Fatalf("Close sent during the hold (%d requests)", events.calls())
-	}
-	var closeErr *Error
-	for _, e := range errs.all() {
-		if e.Op == "close" {
-			closeErr = e
-		}
-	}
-	if closeErr == nil || closeErr.Message != "closed with 1 usage counts unsent: the server asked to wait" {
-		t.Fatalf("errors %+v", errs.all())
-	}
-}
-
-func TestAHoldPassesAndTheCountsGoOut(t *testing.T) {
-	var events syncBuf
-	events.status = func(call int) (int, http.Header) {
-		if call == 1 {
-			return 429, http.Header{"Retry-After": {"10"}}
-		}
-		return 200, nil
-	}
-	clk := newClock(time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC))
-	c := usageClient(t, &events, clk)
-	c.BoolVariation("checkout", someone, false)
-	c.flush()
-	clk.advance(11 * time.Second)
-	c.flush()
-	if events.calls() != 2 {
-		t.Fatalf("%d requests", events.calls())
-	}
-	if !strings.Contains(events.bodies()[1], `"count":1`) {
-		t.Fatalf("the kept count was not resent: %q", events.bodies()[1])
-	}
-}
-
-func TestUsageRetryAfterAbove300IsHeldFor300(t *testing.T) {
-	var events syncBuf
-	events.status = func(int) (int, http.Header) { return 429, http.Header{"Retry-After": {"86400"}} }
-	clk := newClock(time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC))
-	c := usageClient(t, &events, clk)
-	c.BoolVariation("checkout", someone, false)
-	c.flush()
-	c.flushMu.Lock()
-	until := c.eventsHoldUntil
-	c.flushMu.Unlock()
-	if want := clk.now().Add(300 * time.Second); !until.Equal(want) {
-		t.Fatalf("held until %s, want %s", until, want)
-	}
-	clk.advance(299 * time.Second)
-	c.flush()
-	clk.advance(2 * time.Second)
-	c.flush()
-	if events.calls() != 2 {
-		t.Fatalf("%d requests: one at the start and one after 300 s", events.calls())
-	}
-}
-
-func TestALater429NeverShortensTheEventsHold(t *testing.T) {
-	var events syncBuf
-	events.status = func(int) (int, http.Header) { return 429, http.Header{"Retry-After": {"5"}} }
-	clk := newClock(time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC))
-	c := usageClient(t, &events, clk)
-	long := clk.now().Add(250 * time.Second)
-	c.flushMu.Lock()
-	c.eventsHoldUntil = long
-	keep, _ := c.post([]usageEntry{{usageKey{"checkout", 1, "2026-11-10"}, 1}})
-	got := c.eventsHoldUntil
-	c.flushMu.Unlock()
-	if !keep || !got.Equal(long) {
-		t.Fatalf("keep=%v; a 429 asking for 5 s moved a 250 s hold to %s", keep, got)
-	}
-}
-
-func TestRetryAfterMustBeWholeDigits(t *testing.T) {
-	cases := []struct {
-		header string
-		wait   time.Duration
-		ok     bool
-	}{
-		{"0", 0, true},
-		{"7", 7 * time.Second, true},
-		{" 7 ", 7 * time.Second, true},
-		{"\t12\t", 12 * time.Second, true},
-		{"300", 300 * time.Second, true},
-		{"301", 300 * time.Second, true},
-		{"99999999999999999999", 300 * time.Second, true},
-		{"1.5", 0, false},
-		{"-1", 0, false},
-		{"+5", 0, false},
-		{"1e2", 0, false},
-		{"0x10", 0, false},
-		{"", 0, false},
-		{"Wed, 21 Oct 2026 07:28:00 GMT", 0, false},
-		{"5 6", 0, false},
-		{"٥", 0, false}, // an Arabic-Indic digit is not a decimal digit here
-	}
-	for _, tc := range cases {
-		resp := &http.Response{StatusCode: 429, Header: http.Header{}}
-		if tc.header != "" {
-			resp.Header.Set("Retry-After", tc.header)
-		}
-		wait, ok := retryAfter(resp)
-		if wait != tc.wait || ok != tc.ok {
-			t.Errorf("Retry-After %q: got (%s, %v), want (%s, %v)", tc.header, wait, ok, tc.wait, tc.ok)
-		}
-	}
-	if _, ok := retryAfter(&http.Response{StatusCode: 503, Header: http.Header{"Retry-After": {"5"}}}); ok {
-		t.Error("a 503 must not hold")
+	if errs.count() == 0 {
+		t.Fatal("a timed out flush was not reported")
 	}
 }

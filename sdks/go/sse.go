@@ -1,95 +1,88 @@
 package toggleslash
 
-import "bytes"
-
-// sseEvent is one dispatched Server-Sent Event.
-type sseEvent struct {
-	name string
-	data string
-}
-
-// sseParser reads a Server-Sent Events byte stream to the WHATWG rules the contract names. It works on
-// bytes: a UTF-8 sequence never holds a CR or LF byte, so a character split across two reads is whole by the
-// time its line is complete. LF, CRLF and a lone CR end a line (a CR at the end of one read is remembered, so
-// the LF that starts the next read is not a second line end); a line that starts with ":" is a comment; a
-// field with no ":" has an empty value; one leading space of a value is dropped; a leading BOM is dropped;
-// several "data" lines join with LF; an event with no "data" line is dropped; the name is "message" when none
-// was given; an event still open when the stream ends is never delivered.
+// sseParser reads Server-Sent Events as the WHATWG standard does. It is fed whatever chunks the network
+// gives, and a chunk can end anywhere, inside a line, a code point or between a CR and its LF. It works on
+// bytes: the only fields it reads are ASCII, and the data is handed on as bytes for the JSON reader, so a
+// split UTF-8 sequence is never broken.
 type sseParser struct {
-	line      []byte
-	afterCR   bool
-	started   bool
-	name      string
-	data      []byte
-	hasData   bool
-	bomPrefix []byte
+	emit func(event string, data []byte)
+
+	line    []byte
+	sawCR   bool
+	started bool
+
+	name    []byte
+	data    []byte
+	hasData bool
 }
 
-var bom = []byte{0xEF, 0xBB, 0xBF}
-
-// feed adds bytes and returns the events they complete.
-func (p *sseParser) feed(chunk []byte) []sseEvent {
-	if !p.started {
-		// A BOM may arrive split; hold back a prefix of it until it is known to be one.
-		chunk = append(p.bomPrefix, chunk...)
-		p.bomPrefix = nil
-		if len(chunk) < len(bom) && bytes.HasPrefix(bom, chunk) {
-			p.bomPrefix = append([]byte(nil), chunk...)
-			return nil
-		}
-		p.started = true
-		chunk = bytes.TrimPrefix(chunk, bom)
-	}
-	var events []sseEvent
-	for _, b := range chunk {
-		switch {
-		case b == '\n' && p.afterCR:
-			p.afterCR = false
-		case b == '\n' || b == '\r':
-			p.afterCR = b == '\r'
-			if event, ok := p.endLine(); ok {
-				events = append(events, event)
+func (p *sseParser) feed(chunk []byte) {
+	for _, c := range chunk {
+		if p.sawCR {
+			p.sawCR = false
+			if c == '\n' {
+				continue
 			}
+		}
+		switch c {
+		case '\r':
+			p.sawCR = true
+			p.endLine()
+		case '\n':
+			p.endLine()
 		default:
-			p.afterCR = false
-			p.line = append(p.line, b)
+			p.line = append(p.line, c)
 		}
 	}
-	return events
 }
 
-func (p *sseParser) endLine() (sseEvent, bool) {
+func (p *sseParser) endLine() {
 	line := p.line
 	p.line = p.line[:0]
+	if !p.started {
+		p.started = true
+		if len(line) >= 3 && line[0] == 0xEF && line[1] == 0xBB && line[2] == 0xBF {
+			line = line[3:]
+		}
+	}
 	if len(line) == 0 {
-		return p.dispatch()
+		p.dispatch()
+		return
 	}
 	if line[0] == ':' {
-		return sseEvent{}, false
+		return
 	}
-	field, value, _ := bytes.Cut(line, []byte{':'})
-	value = bytes.TrimPrefix(value, []byte{' '})
+	field, value := line, []byte(nil)
+	for i, b := range line {
+		if b == ':' {
+			field, value = line[:i], line[i+1:]
+			if len(value) > 0 && value[0] == ' ' {
+				value = value[1:]
+			}
+			break
+		}
+	}
 	switch string(field) {
 	case "event":
-		p.name = string(value)
+		p.name = append(p.name[:0], value...)
 	case "data":
-		if p.hasData {
-			p.data = append(p.data, '\n')
-		}
 		p.data = append(p.data, value...)
+		p.data = append(p.data, '\n')
 		p.hasData = true
 	}
-	return sseEvent{}, false
 }
 
-func (p *sseParser) dispatch() (sseEvent, bool) {
-	name, data, hasData := p.name, p.data, p.hasData
-	p.name, p.data, p.hasData = "", nil, false
-	if !hasData {
-		return sseEvent{}, false
+func (p *sseParser) dispatch() {
+	name, data, has := string(p.name), p.data, p.hasData
+	if has && len(data) > 0 {
+		data = data[:len(data)-1]
+	}
+	p.name, p.data, p.hasData = p.name[:0], p.data[:0], false
+	if !has {
+		return
 	}
 	if name == "" {
 		name = "message"
 	}
-	return sseEvent{name: name, data: string(data)}, true
+	p.emit(name, data)
 }
