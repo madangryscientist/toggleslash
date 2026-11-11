@@ -3,13 +3,10 @@ name: CI
 # The gate from AGENTS.md. No secrets are read, and the trigger is `pull_request` (never
 # `pull_request_target`). Actions are pinned to a commit; the tag is in the comment.
 #
-# Runs on the self-hosted `proxmox` runner (FS-116), set up by omnibus (ops/proxmox/gh-runner/). The
-# runner is for the owner's own commits only: every job's `if:` lets a push through, or a pull request
-# whose head branch lives in this repo. A fork's pull request carries its own copy of this file, so
-# the `if:` alone cannot stop a fork: the barrier is the repo setting register.sh applies. Never add
-# `pull_request_target`, `workflow_run`, `workflow_dispatch`, `workflow_call` or a comment trigger
-# here; scripts/check-workflows.ts, run by `gate`, refuses them. release.yml keeps its own copy of the
-# `gate` job on a hosted runner.
+# Runs on GitHub-hosted `ubuntu-latest`. A pull request from a fork runs with a read-only token.
+# Never add `pull_request_target`, `workflow_run` or a comment trigger here; scripts/check-workflows.ts,
+# run by `gate`, refuses them, and any runner of our own. release.yml keeps its own copy of the
+# `gate` job.
 
 on:
   pull_request:
@@ -30,8 +27,7 @@ env:
 jobs:
   gate:
     name: Gate (typecheck, lint, format, parity, test)
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: proxmox
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,12 +39,9 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
       # global.json pins the SDK; apps/server is part of the gate. The @nx/dotnet plugin needs it for every nx command.
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        env:
-          # The default, /usr/share/dotnet, is not writable by the runner user.
-          DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/dotnet
         with:
           global-json-file: global.json
-      # Every workflow that can reach the runner keeps the same-repo guard and the allowed triggers.
+      # No workflow names a runner of our own or a trigger a fork can drive.
       - run: bun scripts/check-workflows.ts .github/workflows/*.yml
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
@@ -62,8 +55,7 @@ jobs:
 
   changes:
     name: Did an app change?
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: proxmox
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       apps: ${{ steps.diff.outputs.apps }}
@@ -92,8 +84,8 @@ jobs:
   apps:
     name: Apps gate (build, e2e, deploy dry run)
     needs: changes
-    if: (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && needs.changes.outputs.apps == 'true'
-    runs-on: proxmox
+    if: needs.changes.outputs.apps == 'true'
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       # The web and site checks do not touch apps/server (the gate job covers it), so no SDK here.
@@ -105,7 +97,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      # wrangler (the web server of the e2e run, and the dry runs) needs Node 22; the runner has 20.
+      # wrangler (the web server of the e2e run, and the dry runs) needs Node 22.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
@@ -128,8 +120,7 @@ jobs:
   # .NET SDK fails the job instead of skipping it.
   e2e:
     name: End to end (server, CLI, SDK)
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: proxmox
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -139,9 +130,6 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        env:
-          # The default, /usr/share/dotnet, is not writable by the runner user.
-          DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/dotnet
         with:
           global-json-file: global.json
       - run: bun install --frozen-lockfile
@@ -153,8 +141,7 @@ jobs:
   # report or a trace could hold the sign-in password, the admin token or a scoped token.
   stack:
     name: Browser journey (dashboard, server, CLI, example)
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: proxmox
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -164,12 +151,9 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        env:
-          # The default, /usr/share/dotnet, is not writable by the runner user.
-          DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/dotnet
         with:
           global-json-file: global.json
-      # The stack serves the dashboard through vite and wrangler, which need Node 22; the runner has 20.
+      # The stack serves the dashboard through vite and wrangler, which need Node 22.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
@@ -184,8 +168,7 @@ jobs:
   # container, not a repository secret.
   container:
     name: Container (docker build, compose up, /health)
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: proxmox
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       TOGGLESLASH_ADMIN_TOKEN: ci-throwaway-token-not-a-secret

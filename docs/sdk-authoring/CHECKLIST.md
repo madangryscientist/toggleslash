@@ -134,7 +134,7 @@ Each line is a native test in `$L`, named in `RUN.md`.
 - [ ] No package was published and no name reserved (PROMPT.md, rule 3).
 - [ ] Commit subjects are Conventional Commits, none `feat`, with no `Co-Authored-By` or AI attribution
   (PROMPT.md, rules 5 and 6).
-- [ ] The workflow's job is `runs-on: proxmox` with exactly the same-repo `if:`, triggers only `pull_request` and
+- [ ] The workflow's job is `runs-on: ubuntu-latest` with no `if:` guard, triggers only `pull_request` and
   `push`, installs its own toolchain, and `bun scripts/check-workflows.ts .github/workflows/*.yml` passes
   (PROMPT.md, phase 5).
 - [ ] `RUN.md` follows `RUN-TEMPLATE.md`, with evidence for every line of this list (PROMPT.md, phase 6).

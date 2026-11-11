@@ -1,0 +1,23 @@
+name: Feature request
+description: Something ToggleSlash should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do, and what stops you today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: The behaviour you expect, for example a CLI command, an API field or a dashboard page. `docs/evaluation.md` is the contract for evaluation.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you tried
+      description: Other tools, or a workaround you use now.

@@ -4,9 +4,14 @@
   "sourceRoot": "scripts",
   "projectType": "library",
   "targets": {
-    "typecheck": { "command": "tsc -p scripts/tsconfig.json" },
+    "typecheck": {
+      "command": "tsc -p scripts/tsconfig.json"
+    },
     "lint": {
       "command": "oxlint --type-aware --deny-warnings scripts && bun scripts/check-slop.ts scripts"
+    },
+    "test": {
+      "command": "bun test scripts/check-workflows.test.ts"
     }
   }
 }
