@@ -1,87 +1,212 @@
 package toggleslash
 
-import "github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
+import (
+	"reflect"
+	"sort"
 
-// Context describes who a flag is evaluated for. It wraps a JSON Value in the shape docs/evaluation.md
-// defines: a single kind is {"key": ..., "kind": ..., "attributes": {...}}, and several kinds are
-// {"kind": "multi", "contexts": {"<kind>": {"key": ..., "attributes": ...}}}. The zero Context is invalid, so
-// evaluating it gives ERROR INVALID_CONTEXT and the fallback.
+	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
+	"github.com/madangryscientist/toggleslash/sdks/go/internal/wtf8"
+)
+
+// Value is one JSON value as the SDK reads it: null, a boolean, a number (binary64), a string, an array or
+// an object. Flag values, fallbacks of JSONVariation, context attributes and hook events use it. It is
+// immutable; share it freely. Its accessors are AsBool, AsNumber, AsString, AsArray, AsObject, IsNull and
+// Field.
+type Value = jsonvalue.Value
+
+// ParseValue reads one JSON value. It keeps what encoding/json cannot: 1e999 is +Inf and a lone surrogate
+// escape stays. The only error is a syntax error, and it carries no text of the input.
+func ParseValue(data []byte) (Value, error) { return jsonvalue.Parse(data) }
+
+// Null is the JSON null.
+func Null() Value { return jsonvalue.Null() }
+
+// Bool makes a JSON boolean.
+func Bool(b bool) Value { return jsonvalue.Bool(b) }
+
+// Number makes a JSON number.
+func Number(n float64) Value { return jsonvalue.Number(n) }
+
+// String makes a JSON string. Bytes of s that are not valid UTF-8 become U+FFFD.
+func String(s string) Value { return jsonvalue.String(wtf8.FromGo(s)) }
+
+// Array makes a JSON array.
+func Array(items ...Value) Value { return jsonvalue.Array(append([]Value(nil), items...)) }
+
+// Object makes a JSON object. Its keys are in sorted order.
+func Object(members map[string]Value) Value {
+	obj := jsonvalue.NewObject()
+	for _, key := range sortedKeys(members) {
+		obj.Set(wtf8.FromGo(key), members[key])
+	}
+	return jsonvalue.ObjectValue(obj)
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// Context is who a flag is evaluated for: a single context (a kind, a key and attributes) or a multi
+// context. It holds a Value and is checked when it is evaluated: a context that is not valid does not
+// fail here, it gives the fallback with ReasonError and ErrInvalidContext. The zero Context is not valid.
 type Context struct {
 	v Value
 }
 
-// UserContext is a context of the default kind, "user", with a key.
-func UserContext(key string) Context {
-	return Context{v: jsonvalue.Object(jsonvalue.Member{Key: "key", Value: jsonvalue.String(key)})}
+// Value returns the context as the JSON value the evaluator reads.
+func (c Context) Value() Value { return c.v }
+
+// ContextOf makes a Context from a Value that is already in the shape of docs/evaluation.md.
+func ContextOf(v Value) Context { return Context{v: v} }
+
+// UserContext makes a context of kind "user" (the default kind) with the key and attributes.
+func UserContext(key string, attributes map[string]Value) Context {
+	return Context{v: single("", key, attributes)}
 }
 
-// NewContext is a context of one kind with a key.
-func NewContext(kind, key string) Context {
-	return Context{v: jsonvalue.Object(
-		jsonvalue.Member{Key: "kind", Value: jsonvalue.String(kind)},
-		jsonvalue.Member{Key: "key", Value: jsonvalue.String(key)},
-	)}
+// NewContext makes a single context of the given kind.
+func NewContext(kind, key string, attributes map[string]Value) Context {
+	return Context{v: single(kind, key, attributes)}
 }
 
-// MultiContext combines contexts of different kinds into one. A context that is itself multi, or has
-// no kind-specific key, makes the result invalid, which the evaluator answers with INVALID_CONTEXT.
-func MultiContext(parts ...Context) Context {
-	members := make([]jsonvalue.Member, 0, len(parts))
-	for _, part := range parts {
-		kind := "user"
-		if k, ok := part.v.Field("kind").Text(); ok {
-			kind = k
-		}
-		entry := []jsonvalue.Member{{Key: "key", Value: part.v.Field("key")}}
-		if attrs := part.v.Field("attributes"); !attrs.IsNull() {
-			entry = append(entry, jsonvalue.Member{Key: "attributes", Value: attrs})
-		}
-		members = append(members, jsonvalue.Member{Key: kind, Value: jsonvalue.Object(entry...)})
+func single(kind, key string, attributes map[string]Value) Value {
+	obj := jsonvalue.NewObject()
+	if kind != "" {
+		obj.Set("kind", String(kind))
 	}
-	return Context{v: jsonvalue.Object(
-		jsonvalue.Member{Key: "kind", Value: jsonvalue.String("multi")},
-		jsonvalue.Member{Key: "contexts", Value: jsonvalue.Object(members...)},
-	)}
+	obj.Set("key", String(key))
+	if attributes != nil {
+		obj.Set("attributes", Object(attributes))
+	}
+	return jsonvalue.ObjectValue(obj)
 }
 
-// WithAttribute returns a copy of a single-kind context with an attribute set. On a context that is not a
-// single-kind object it returns the context unchanged.
-func (c Context) WithAttribute(name string, value Value) Context {
-	if !c.v.IsObject() {
-		return c
+// MultiContext makes a multi context from single contexts by kind. The kind of each entry is the map key;
+// a kind written inside an entry is dropped, because the spec refuses one there.
+func MultiContext(contexts map[string]Context) Context {
+	entries := jsonvalue.NewObject()
+	for _, kind := range sortedKeys(contexts) {
+		entries.Set(wtf8.FromGo(kind), withoutKind(contexts[kind].v))
 	}
-	var attrs []jsonvalue.Member
-	if existing := c.v.Field("attributes"); existing.IsObject() {
-		for _, key := range existing.Keys() {
-			attrs = append(attrs, jsonvalue.Member{Key: key, Value: existing.Field(key)})
-		}
-	}
-	attrs = append(attrs, jsonvalue.Member{Key: name, Value: value})
-	var members []jsonvalue.Member
-	for _, key := range c.v.Keys() {
-		if key != "attributes" {
-			members = append(members, jsonvalue.Member{Key: key, Value: c.v.Field(key)})
-		}
-	}
-	members = append(members, jsonvalue.Member{Key: "attributes", Value: jsonvalue.Object(attrs...)})
-	return Context{v: jsonvalue.Object(members...)}
+	obj := jsonvalue.NewObject()
+	obj.Set("kind", String("multi"))
+	obj.Set("contexts", jsonvalue.ObjectValue(entries))
+	return Context{v: jsonvalue.ObjectValue(obj)}
 }
 
-// ContextFromJSON reads a context from JSON text. It never fails: text that is not JSON gives a context the
-// evaluator answers with INVALID_CONTEXT, like any other invalid one.
-func ContextFromJSON(text []byte) Context {
-	v, err := jsonvalue.Parse(text)
+func withoutKind(v Value) Value {
+	src, ok := v.AsObject()
+	if !ok {
+		return v
+	}
+	out := jsonvalue.NewObject()
+	for _, key := range src.Keys() {
+		if key == "kind" {
+			continue
+		}
+		value, _ := src.Get(key)
+		out.Set(key, value)
+	}
+	return jsonvalue.ObjectValue(out)
+}
+
+// ContextFromMap makes a context from native Go values, in the shape of docs/evaluation.md:
+// {"kind": "user", "key": "u1", "attributes": {"plan": "pro"}}. Values may be nil, bool, any integer or
+// float type, string, Value, Context, a slice or array, or a map with string keys. Anything else becomes
+// null, which a clause reads as an absent attribute.
+func ContextFromMap(m map[string]any) Context {
+	return Context{v: fromNative(m, 0)}
+}
+
+// ContextFromJSON makes a context from JSON text. Text that is not JSON makes a context that is not valid.
+func ContextFromJSON(data []byte) Context {
+	v, err := jsonvalue.Parse(data)
 	if err != nil {
 		return Context{}
 	}
 	return Context{v: v}
 }
 
-// ContextFromValue wraps a Value as a context; the evaluator checks its shape.
-func ContextFromValue(v Value) Context { return Context{v: v} }
+func fromNative(x any, depth int) Value {
+	if depth > jsonvalue.MaxDepth {
+		return Null()
+	}
+	switch t := x.(type) {
+	case nil:
+		return Null()
+	case Value:
+		return t
+	case Context:
+		return t.v
+	case bool:
+		return Bool(t)
+	case string:
+		return String(t)
+	case float64:
+		return Number(t)
+	case float32:
+		return Number(float64(t))
+	case int:
+		return Number(float64(t))
+	case int64:
+		return Number(float64(t))
+	case []any:
+		items := make([]Value, len(t))
+		for i, item := range t {
+			items[i] = fromNative(item, depth+1)
+		}
+		return jsonvalue.Array(items)
+	case map[string]any:
+		obj := jsonvalue.NewObject()
+		for _, key := range sortedKeys(t) {
+			obj.Set(wtf8.FromGo(key), fromNative(t[key], depth+1))
+		}
+		return jsonvalue.ObjectValue(obj)
+	}
+	return fromReflect(reflect.ValueOf(x), depth)
+}
 
-// Value is the context as JSON.
-func (c Context) Value() Value { return c.v }
-
-// MarshalJSON writes the context as JSON.
-func (c Context) MarshalJSON() ([]byte, error) { return c.v.MarshalJSON() }
+func fromReflect(rv reflect.Value, depth int) Value {
+	switch rv.Kind() {
+	case reflect.Bool:
+		return Bool(rv.Bool())
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return Number(float64(rv.Int()))
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return Number(float64(rv.Uint()))
+	case reflect.Float32, reflect.Float64:
+		return Number(rv.Float())
+	case reflect.String:
+		return String(rv.String())
+	case reflect.Slice, reflect.Array:
+		if rv.Kind() == reflect.Slice && rv.IsNil() {
+			return Null()
+		}
+		items := make([]Value, rv.Len())
+		for i := range items {
+			items[i] = fromNative(rv.Index(i).Interface(), depth+1)
+		}
+		return jsonvalue.Array(items)
+	case reflect.Map:
+		if rv.Type().Key().Kind() != reflect.String || rv.IsNil() {
+			return Null()
+		}
+		members := make(map[string]any, rv.Len())
+		iter := rv.MapRange()
+		for iter.Next() {
+			members[iter.Key().String()] = iter.Value().Interface()
+		}
+		return fromNative(members, depth)
+	case reflect.Pointer, reflect.Interface:
+		if rv.IsNil() {
+			return Null()
+		}
+		return fromNative(rv.Elem().Interface(), depth+1)
+	}
+	return Null()
+}

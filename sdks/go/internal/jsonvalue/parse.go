@@ -4,26 +4,23 @@ import (
 	"errors"
 	"math"
 	"strconv"
-	"unicode/utf8"
 
 	"github.com/madangryscientist/toggleslash/sdks/go/internal/wtf8"
 )
 
-// MaxDepth is the deepest nesting of arrays and objects Parse reads.
-const MaxDepth = 1000
+// MaxDepth is the deepest nesting the parser accepts. The contract asks for at least 512; a Go stack
+// overflow is fatal, so there is a limit at all.
+const MaxDepth = 10000
 
-// ErrSyntax is returned for text that is not one JSON value.
-var ErrSyntax = errors.New("jsonvalue: invalid JSON")
+// ErrSyntax is the only error Parse returns. It carries no text of the input.
+var ErrSyntax = errors.New("invalid JSON")
 
-type parser struct {
-	data []byte
-	i    int
-}
-
-// Parse reads one JSON value (RFC 8259) from data. A leading UTF-8 byte order mark is skipped. A number
-// out of range is the infinity it rounds to, a string keeps a lone surrogate, and bytes that are not UTF-8
-// become U+FFFD. Any other fault returns ErrSyntax.
+// Parse reads one JSON value (RFC 8259) from data. The bytes are first decoded as UTF-8 the WHATWG way
+// (each invalid piece becomes U+FFFD) and a leading byte order mark is skipped. Numbers are binary64:
+// 1e999 is +Inf, not an error. A lone surrogate escape (\ud800) is kept. A key given twice keeps its
+// last value.
 func Parse(data []byte) (Value, error) {
+	data = wtf8.Scrub(data)
 	if len(data) >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF {
 		data = data[3:]
 	}
@@ -34,17 +31,22 @@ func Parse(data []byte) (Value, error) {
 		return Value{}, err
 	}
 	p.space()
-	if p.i != len(p.data) {
+	if p.pos != len(p.data) {
 		return Value{}, ErrSyntax
 	}
 	return v, nil
 }
 
+type parser struct {
+	data []byte
+	pos  int
+}
+
 func (p *parser) space() {
-	for p.i < len(p.data) {
-		switch p.data[p.i] {
+	for p.pos < len(p.data) {
+		switch p.data[p.pos] {
 		case ' ', '\t', '\n', '\r':
-			p.i++
+			p.pos++
 		default:
 			return
 		}
@@ -52,25 +54,25 @@ func (p *parser) space() {
 }
 
 func (p *parser) literal(word string, v Value) (Value, error) {
-	if len(p.data)-p.i < len(word) || string(p.data[p.i:p.i+len(word)]) != word {
+	if len(p.data)-p.pos < len(word) || string(p.data[p.pos:p.pos+len(word)]) != word {
 		return Value{}, ErrSyntax
 	}
-	p.i += len(word)
+	p.pos += len(word)
 	return v, nil
 }
 
 func (p *parser) value(depth int) (Value, error) {
-	if p.i >= len(p.data) {
+	if p.pos >= len(p.data) {
 		return Value{}, ErrSyntax
 	}
-	switch c := p.data[p.i]; {
+	switch c := p.data[p.pos]; {
 	case c == '{':
 		return p.object(depth + 1)
 	case c == '[':
 		return p.array(depth + 1)
 	case c == '"':
 		s, err := p.str()
-		return Value{kind: KindString, s: s}, err
+		return String(s), err
 	case c == 't':
 		return p.literal("true", Bool(true))
 	case c == 'f':
@@ -87,28 +89,28 @@ func (p *parser) array(depth int) (Value, error) {
 	if depth > MaxDepth {
 		return Value{}, ErrSyntax
 	}
-	p.i++
+	p.pos++ // [
 	items := []Value{}
 	p.space()
-	if p.i < len(p.data) && p.data[p.i] == ']' {
-		p.i++
-		return Value{kind: KindArray, arr: items}, nil
+	if p.pos < len(p.data) && p.data[p.pos] == ']' {
+		p.pos++
+		return Array(items), nil
 	}
 	for {
 		p.space()
-		item, err := p.value(depth)
+		v, err := p.value(depth)
 		if err != nil {
 			return Value{}, err
 		}
-		items = append(items, item)
+		items = append(items, v)
 		p.space()
-		if p.i >= len(p.data) {
+		if p.pos >= len(p.data) {
 			return Value{}, ErrSyntax
 		}
-		c := p.data[p.i]
-		p.i++
+		c := p.data[p.pos]
+		p.pos++
 		if c == ']' {
-			return Value{kind: KindArray, arr: items}, nil
+			return Array(items), nil
 		}
 		if c != ',' {
 			return Value{}, ErrSyntax
@@ -120,16 +122,16 @@ func (p *parser) object(depth int) (Value, error) {
 	if depth > MaxDepth {
 		return Value{}, ErrSyntax
 	}
-	p.i++
-	o := &object{vals: map[string]Value{}}
+	p.pos++ // {
+	obj := NewObject()
 	p.space()
-	if p.i < len(p.data) && p.data[p.i] == '}' {
-		p.i++
-		return Value{kind: KindObject, obj: o}, nil
+	if p.pos < len(p.data) && p.data[p.pos] == '}' {
+		p.pos++
+		return ObjectValue(obj), nil
 	}
 	for {
 		p.space()
-		if p.i >= len(p.data) || p.data[p.i] != '"' {
+		if p.pos >= len(p.data) || p.data[p.pos] != '"' {
 			return Value{}, ErrSyntax
 		}
 		key, err := p.str()
@@ -137,79 +139,29 @@ func (p *parser) object(depth int) (Value, error) {
 			return Value{}, err
 		}
 		p.space()
-		if p.i >= len(p.data) || p.data[p.i] != ':' {
+		if p.pos >= len(p.data) || p.data[p.pos] != ':' {
 			return Value{}, ErrSyntax
 		}
-		p.i++
+		p.pos++
 		p.space()
-		item, err := p.value(depth)
+		v, err := p.value(depth)
 		if err != nil {
 			return Value{}, err
 		}
-		if _, seen := o.vals[key]; !seen {
-			o.keys = append(o.keys, key)
-		}
-		o.vals[key] = item
+		obj.Set(key, v)
 		p.space()
-		if p.i >= len(p.data) {
+		if p.pos >= len(p.data) {
 			return Value{}, ErrSyntax
 		}
-		c := p.data[p.i]
-		p.i++
+		c := p.data[p.pos]
+		p.pos++
 		if c == '}' {
-			return Value{kind: KindObject, obj: o}, nil
+			return ObjectValue(obj), nil
 		}
 		if c != ',' {
 			return Value{}, ErrSyntax
 		}
 	}
-}
-
-func isDigit(c byte) bool { return c >= '0' && c <= '9' }
-
-// number checks the RFC 8259 grammar, then converts. strconv reports a result beyond the float64 range as
-// +Inf or -Inf with ErrRange, which is the value the spec wants.
-func (p *parser) number() (Value, error) {
-	start := p.i
-	if p.data[p.i] == '-' {
-		p.i++
-	}
-	if p.i >= len(p.data) || !isDigit(p.data[p.i]) {
-		return Value{}, ErrSyntax
-	}
-	if p.data[p.i] == '0' {
-		p.i++
-	} else {
-		for p.i < len(p.data) && isDigit(p.data[p.i]) {
-			p.i++
-		}
-	}
-	if p.i < len(p.data) && p.data[p.i] == '.' {
-		p.i++
-		if p.i >= len(p.data) || !isDigit(p.data[p.i]) {
-			return Value{}, ErrSyntax
-		}
-		for p.i < len(p.data) && isDigit(p.data[p.i]) {
-			p.i++
-		}
-	}
-	if p.i < len(p.data) && (p.data[p.i] == 'e' || p.data[p.i] == 'E') {
-		p.i++
-		if p.i < len(p.data) && (p.data[p.i] == '+' || p.data[p.i] == '-') {
-			p.i++
-		}
-		if p.i >= len(p.data) || !isDigit(p.data[p.i]) {
-			return Value{}, ErrSyntax
-		}
-		for p.i < len(p.data) && isDigit(p.data[p.i]) {
-			p.i++
-		}
-	}
-	f, err := strconv.ParseFloat(string(p.data[start:p.i]), 64)
-	if err != nil && !(errors.Is(err, strconv.ErrRange) && math.IsInf(f, 0)) {
-		return Value{}, ErrSyntax
-	}
-	return Number(f), nil
 }
 
 func hexValue(c byte) int {
@@ -224,101 +176,144 @@ func hexValue(c byte) int {
 	return -1
 }
 
-// hex4 reads four hex digits at offset at, or -1.
-func (p *parser) hex4(at int) int {
-	if at+4 > len(p.data) {
-		return -1
+// hex4 reads four hex digits after `\u`.
+func (p *parser) hex4() (rune, bool) {
+	if len(p.data)-p.pos < 4 {
+		return 0, false
 	}
-	v := 0
-	for _, c := range p.data[at : at+4] {
-		h := hexValue(c)
+	var r rune
+	for i := 0; i < 4; i++ {
+		h := hexValue(p.data[p.pos+i])
 		if h < 0 {
-			return -1
+			return 0, false
 		}
-		v = v<<4 | h
+		r = r<<4 | rune(h)
 	}
-	return v
+	p.pos += 4
+	return r, true
 }
 
-// str reads the string whose opening quote is at p.i.
+// str reads a string; the opening quote is at p.pos. The result is WTF-8.
 func (p *parser) str() (string, error) {
-	p.i++
-	start := p.i
-	for p.i < len(p.data) {
-		c := p.data[p.i]
+	p.pos++ // "
+	start := p.pos
+	// Fast path: no escape, no control character.
+	for p.pos < len(p.data) {
+		c := p.data[p.pos]
 		if c == '"' {
-			s := string(p.data[start:p.i])
-			p.i++
+			s := string(p.data[start:p.pos])
+			p.pos++
 			return s, nil
 		}
-		if c == '\\' || c < 0x20 || c >= utf8.RuneSelf {
+		if c == '\\' || c < 0x20 {
 			break
 		}
-		p.i++
+		p.pos++
 	}
-	buf := append(make([]byte, 0, p.i-start+16), p.data[start:p.i]...)
-	for p.i < len(p.data) {
-		c := p.data[p.i]
+	out := append([]byte(nil), p.data[start:p.pos]...)
+	for p.pos < len(p.data) {
+		c := p.data[p.pos]
 		switch {
 		case c == '"':
-			p.i++
-			return string(buf), nil
+			p.pos++
+			return string(out), nil
 		case c < 0x20:
 			return "", ErrSyntax
-		case c == '\\':
-			var err error
-			if buf, err = p.escape(buf); err != nil {
-				return "", err
-			}
-		case c < utf8.RuneSelf:
-			buf = append(buf, c)
-			p.i++
+		case c != '\\':
+			out = append(out, c)
+			p.pos++
 		default:
-			r, size := utf8.DecodeRune(p.data[p.i:])
-			if r == utf8.RuneError && size == 1 {
-				buf = append(buf, "�"...)
-			} else {
-				buf = append(buf, p.data[p.i:p.i+size]...)
+			p.pos++
+			if p.pos >= len(p.data) {
+				return "", ErrSyntax
 			}
-			p.i += size
+			e := p.data[p.pos]
+			p.pos++
+			switch e {
+			case '"', '\\', '/':
+				out = append(out, e)
+			case 'b':
+				out = append(out, '\b')
+			case 'f':
+				out = append(out, '\f')
+			case 'n':
+				out = append(out, '\n')
+			case 'r':
+				out = append(out, '\r')
+			case 't':
+				out = append(out, '\t')
+			case 'u':
+				r, ok := p.hex4()
+				if !ok {
+					return "", ErrSyntax
+				}
+				if r >= 0xD800 && r <= 0xDBFF && p.pos+1 < len(p.data) && p.data[p.pos] == '\\' && p.data[p.pos+1] == 'u' {
+					save := p.pos
+					p.pos += 2
+					lo, ok := p.hex4()
+					if ok && lo >= 0xDC00 && lo <= 0xDFFF {
+						r = 0x10000 + (r-0xD800)<<10 + (lo - 0xDC00)
+					} else {
+						p.pos = save // the next escape is read on its own
+					}
+				}
+				out = wtf8.AppendRune(out, r)
+			default:
+				return "", ErrSyntax
+			}
 		}
 	}
 	return "", ErrSyntax
 }
 
-// escape reads the escape sequence that starts at p.i (a backslash) and appends what it stands for.
-func (p *parser) escape(buf []byte) ([]byte, error) {
-	if p.i+1 >= len(p.data) {
-		return nil, ErrSyntax
+func isDigit(c byte) bool { return c >= '0' && c <= '9' }
+
+func (p *parser) number() (Value, error) {
+	start := p.pos
+	if p.data[p.pos] == '-' {
+		p.pos++
 	}
-	c := p.data[p.i+1]
-	p.i += 2
-	switch c {
-	case '"', '\\', '/':
-		return append(buf, c), nil
-	case 'b':
-		return append(buf, '\b'), nil
-	case 'f':
-		return append(buf, '\f'), nil
-	case 'n':
-		return append(buf, '\n'), nil
-	case 'r':
-		return append(buf, '\r'), nil
-	case 't':
-		return append(buf, '\t'), nil
-	case 'u':
-		u := p.hex4(p.i)
-		if u < 0 {
-			return nil, ErrSyntax
-		}
-		p.i += 4
-		if u >= 0xD800 && u <= 0xDBFF && p.i+1 < len(p.data) && p.data[p.i] == '\\' && p.data[p.i+1] == 'u' {
-			if low := p.hex4(p.i + 2); low >= 0xDC00 && low <= 0xDFFF {
-				p.i += 6
-				u = 0x10000 + (u-0xD800)<<10 + (low - 0xDC00)
-			}
-		}
-		return wtf8.AppendRune(buf, rune(u)), nil
+	if p.pos >= len(p.data) || !isDigit(p.data[p.pos]) {
+		return Value{}, ErrSyntax
 	}
-	return nil, ErrSyntax
+	if p.data[p.pos] == '0' {
+		p.pos++
+	} else {
+		for p.pos < len(p.data) && isDigit(p.data[p.pos]) {
+			p.pos++
+		}
+	}
+	if p.pos < len(p.data) && p.data[p.pos] == '.' {
+		p.pos++
+		if p.pos >= len(p.data) || !isDigit(p.data[p.pos]) {
+			return Value{}, ErrSyntax
+		}
+		for p.pos < len(p.data) && isDigit(p.data[p.pos]) {
+			p.pos++
+		}
+	}
+	if p.pos < len(p.data) && (p.data[p.pos] == 'e' || p.data[p.pos] == 'E') {
+		p.pos++
+		if p.pos < len(p.data) && (p.data[p.pos] == '+' || p.data[p.pos] == '-') {
+			p.pos++
+		}
+		if p.pos >= len(p.data) || !isDigit(p.data[p.pos]) {
+			return Value{}, ErrSyntax
+		}
+		for p.pos < len(p.data) && isDigit(p.data[p.pos]) {
+			p.pos++
+		}
+	}
+	f, err := strconv.ParseFloat(string(p.data[start:p.pos]), 64)
+	if err != nil {
+		var ne *strconv.NumError
+		if !errors.As(err, &ne) || !errors.Is(ne.Err, strconv.ErrRange) {
+			return Value{}, ErrSyntax
+		}
+		// ErrRange: f is already +Inf or -Inf (or 0 for a tiny one), which is what the spec wants.
+	}
+	if math.IsNaN(f) {
+		return Value{}, ErrSyntax
+	}
+	return Number(f), nil
 }

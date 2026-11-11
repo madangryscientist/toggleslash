@@ -3,17 +3,14 @@ package jsonvalue
 import (
 	"math"
 	"strconv"
+	"unicode/utf8"
+
+	"github.com/madangryscientist/toggleslash/sdks/go/internal/wtf8"
 )
 
-const hexDigits = "0123456789abcdef"
-
-// MarshalJSON writes v as JSON. It makes Value usable with encoding/json too.
-func (v Value) MarshalJSON() ([]byte, error) { return v.AppendJSON(nil), nil }
-
-// AppendJSON appends v as JSON. The infinities are written as 1e999 and -1e999 (so they read back as
-// themselves), negative zero as -0, and a lone surrogate as a \udXXX escape. A NaN, which parsing never
-// makes, is written as null.
-func (v Value) AppendJSON(dst []byte) []byte {
+// Append writes v as JSON. The output is plain UTF-8: a lone surrogate is written as the escape
+// \udXXX, because UTF-8 cannot hold it, and a number JSON cannot spell (Infinity, NaN) is null.
+func Append(dst []byte, v Value) []byte {
 	switch v.kind {
 	case KindBool:
 		return strconv.AppendBool(dst, v.b)
@@ -27,62 +24,73 @@ func (v Value) AppendJSON(dst []byte) []byte {
 			if i > 0 {
 				dst = append(dst, ',')
 			}
-			dst = item.AppendJSON(dst)
+			dst = Append(dst, item)
 		}
 		return append(dst, ']')
 	case KindObject:
 		dst = append(dst, '{')
-		for i, key := range v.obj.keys {
+		for i, k := range v.obj.keys {
 			if i > 0 {
 				dst = append(dst, ',')
 			}
-			dst = appendString(dst, key)
+			dst = appendString(dst, k)
 			dst = append(dst, ':')
-			dst = v.obj.vals[key].AppendJSON(dst)
+			dst = Append(dst, v.obj.m[k])
 		}
 		return append(dst, '}')
 	}
 	return append(dst, "null"...)
 }
 
+// Marshal is Append onto a new slice.
+func Marshal(v Value) []byte { return Append(nil, v) }
+
 func appendNumber(dst []byte, f float64) []byte {
-	switch {
-	case math.IsNaN(f):
+	if math.IsInf(f, 0) || math.IsNaN(f) {
 		return append(dst, "null"...)
-	case math.IsInf(f, 1):
-		return append(dst, "1e999"...)
-	case math.IsInf(f, -1):
-		return append(dst, "-1e999"...)
-	case f == 0 && math.Signbit(f):
-		return append(dst, "-0"...)
 	}
-	if abs := math.Abs(f); abs >= 1e-6 && abs < 1e21 {
+	if f == 0 {
+		return append(dst, '0') // JSON spells -0 as 0 in every reader that matters
+	}
+	if math.Abs(f) < 1e21 && f == math.Trunc(f) {
 		return strconv.AppendFloat(dst, f, 'f', -1, 64)
 	}
-	return strconv.AppendFloat(dst, f, 'e', -1, 64)
+	return strconv.AppendFloat(dst, f, 'g', -1, 64)
 }
+
+const hexDigits = "0123456789abcdef"
 
 func appendString(dst []byte, s string) []byte {
 	dst = append(dst, '"')
-	for i := 0; i < len(s); i++ {
+	for i := 0; i < len(s); {
 		c := s[i]
 		switch {
 		case c == '"' || c == '\\':
 			dst = append(dst, '\\', c)
+			i++
 		case c == '\n':
 			dst = append(dst, '\\', 'n')
+			i++
 		case c == '\r':
 			dst = append(dst, '\\', 'r')
+			i++
 		case c == '\t':
 			dst = append(dst, '\\', 't')
-		case c < 0x20:
+			i++
+		case c < 0x20 || c == 0x7F:
 			dst = append(dst, '\\', 'u', '0', '0', hexDigits[c>>4], hexDigits[c&0xF])
-		case c == 0xED && i+2 < len(s) && s[i+1] >= 0xA0 && s[i+1] <= 0xBF && s[i+2]&0xC0 == 0x80:
-			u := 0xD000 | int(s[i+1]&0x3F)<<6 | int(s[i+2]&0x3F)
-			dst = append(dst, '\\', 'u', hexDigits[u>>12], hexDigits[u>>8&0xF], hexDigits[u>>4&0xF], hexDigits[u&0xF])
-			i += 2
-		default:
+			i++
+		case c < utf8.RuneSelf:
 			dst = append(dst, c)
+			i++
+		default:
+			r, n := wtf8.DecodeRune(s, i)
+			if r >= 0xD800 && r <= 0xDFFF {
+				dst = append(dst, '\\', 'u', hexDigits[r>>12&0xF], hexDigits[r>>8&0xF], hexDigits[r>>4&0xF], hexDigits[r&0xF])
+			} else {
+				dst = append(dst, s[i:i+n]...)
+			}
+			i += n
 		}
 	}
 	return append(dst, '"')

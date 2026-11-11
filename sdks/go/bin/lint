@@ -1,18 +1,20 @@
 #!/bin/sh
-# The native lint and format check. Any finding fails; there is no warning level. Nothing is rewritten.
+# The native lint and format check, with no warnings allowed: gofmt must list nothing, and golangci-lint
+# (rule set and reasons in .golangci.yml) must find nothing.
 set -eu
 cd "$(dirname "$0")/.."
-if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
-  run() { mise exec -- "$@"; }
+
+if command -v mise >/dev/null 2>&1; then
+	run() { mise exec -- "$@"; }
 else
-  run() { "$@"; }
+	run() { "$@"; }
 fi
-run golangci-lint --version
+
 unformatted=$(run gofmt -l .)
 if [ -n "$unformatted" ]; then
-  echo "gofmt would change:" >&2
-  echo "$unformatted" >&2
-  exit 1
+	echo "gofmt would change:" >&2
+	echo "$unformatted" >&2
+	exit 1
 fi
 run go vet ./...
 run golangci-lint run ./...

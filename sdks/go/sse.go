@@ -1,74 +1,91 @@
 package toggleslash
 
-import "bytes"
+import "github.com/madangryscientist/toggleslash/sdks/go/internal/wtf8"
 
-// sseEvent is one dispatched Server-Sent Event.
+// sseEvent is one dispatched Server-Sent Event: the name (message when none was given) and the data, which
+// is the lines of its data fields joined with LF, scrubbed of invalid UTF-8.
 type sseEvent struct {
 	name string
 	data string
 }
 
-// sseParser reads a Server-Sent Events byte stream to the WHATWG rules the contract names. It works on
-// bytes: a UTF-8 sequence never holds a CR or LF byte, so a character split across two reads is whole by the
-// time its line is complete. LF, CRLF and a lone CR end a line (a CR at the end of one read is remembered, so
-// the LF that starts the next read is not a second line end); a line that starts with ":" is a comment; a
-// field with no ":" has an empty value; one leading space of a value is dropped; a leading BOM is dropped;
-// several "data" lines join with LF; an event with no "data" line is dropped; the name is "message" when none
-// was given; an event still open when the stream ends is never delivered.
+// sseParser reads a Server-Sent Events stream as the WHATWG standard does, from byte chunks of any size:
+// LF, CRLF and a lone CR end a line (a CR at the end of a chunk waits for a possible LF in the next), a line
+// that starts with ":" is a comment, a field is split at the first ":" and one space after it is dropped,
+// only `event` and `data` are read, an event with no data field is dropped, and one still incomplete when
+// the stream ends is never dispatched (the caller simply stops feeding). A leading byte order mark is
+// skipped, even when its bytes arrive in separate chunks.
 type sseParser struct {
-	line      []byte
-	afterCR   bool
-	started   bool
-	name      string
-	data      []byte
-	hasData   bool
-	bomPrefix []byte
+	head    []byte // the first bytes, held until they can be told from a byte order mark
+	started bool
+	skipLF  bool // the last chunk ended in CR
+	line    []byte
+	name    string
+	data    []byte
+	hasData bool
 }
 
-var bom = []byte{0xEF, 0xBB, 0xBF}
+var byteOrderMark = []byte{0xEF, 0xBB, 0xBF}
 
-// feed adds bytes and returns the events they complete.
-func (p *sseParser) feed(chunk []byte) []sseEvent {
+// feed reads a chunk and calls emit for each event it completes. If emit returns false, feed stops at once
+// and returns false.
+func (p *sseParser) feed(chunk []byte, emit func(sseEvent) bool) bool {
 	if !p.started {
-		// A BOM may arrive split; hold back a prefix of it until it is known to be one.
-		chunk = append(p.bomPrefix, chunk...)
-		p.bomPrefix = nil
-		if len(chunk) < len(bom) && bytes.HasPrefix(bom, chunk) {
-			p.bomPrefix = append([]byte(nil), chunk...)
-			return nil
+		p.head = append(p.head, chunk...)
+		n := min(len(p.head), len(byteOrderMark))
+		if string(p.head[:n]) == string(byteOrderMark[:n]) && len(p.head) < len(byteOrderMark) {
+			return true // could still become a byte order mark
 		}
 		p.started = true
-		chunk = bytes.TrimPrefix(chunk, bom)
+		chunk = p.head
+		if string(chunk[:n]) == string(byteOrderMark) {
+			chunk = chunk[n:]
+		}
+		p.head = nil
 	}
-	var events []sseEvent
 	for _, b := range chunk {
-		switch {
-		case b == '\n' && p.afterCR:
-			p.afterCR = false
-		case b == '\n' || b == '\r':
-			p.afterCR = b == '\r'
-			if event, ok := p.endLine(); ok {
-				events = append(events, event)
+		if p.skipLF {
+			p.skipLF = false
+			if b == '\n' {
+				continue
+			}
+		}
+		switch b {
+		case '\n':
+			if !p.endLine(emit) {
+				return false
+			}
+		case '\r':
+			p.skipLF = true
+			if !p.endLine(emit) {
+				return false
 			}
 		default:
-			p.afterCR = false
 			p.line = append(p.line, b)
 		}
 	}
-	return events
+	return true
 }
 
-func (p *sseParser) endLine() (sseEvent, bool) {
+func (p *sseParser) endLine(emit func(sseEvent) bool) bool {
 	line := p.line
 	p.line = p.line[:0]
 	if len(line) == 0 {
-		return p.dispatch()
+		return p.dispatch(emit)
 	}
 	if line[0] == ':' {
-		return sseEvent{}, false
+		return true
 	}
-	field, value, _ := bytes.Cut(line, []byte{':'})
-	value = bytes.TrimPrefix(value, []byte{' '})
+	field, value := line, []byte(nil)
+	for i, b := range line {
+		if b == ':' {
+			field, value = line[:i], line[i+1:]
+			if len(value) > 0 && value[0] == ' ' {
+				value = value[1:]
+			}
+			break
+		}
+	}
 	switch string(field) {
 	case "event":
 		p.name = string(value)
@@ -79,17 +96,17 @@ func (p *sseParser) endLine() (sseEvent, bool) {
 		p.data = append(p.data, value...)
 		p.hasData = true
 	}
-	return sseEvent{}, false
+	return true
 }
 
-func (p *sseParser) dispatch() (sseEvent, bool) {
+func (p *sseParser) dispatch(emit func(sseEvent) bool) bool {
 	name, data, hasData := p.name, p.data, p.hasData
 	p.name, p.data, p.hasData = "", nil, false
 	if !hasData {
-		return sseEvent{}, false
+		return true
 	}
 	if name == "" {
 		name = "message"
 	}
-	return sseEvent{name: name, data: string(data)}, true
+	return emit(sseEvent{name: name, data: string(wtf8.Scrub(data))})
 }
