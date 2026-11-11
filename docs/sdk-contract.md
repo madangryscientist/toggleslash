@@ -254,7 +254,7 @@ ends is discarded. The SDK acts on `connected` and `changed` and ignores any oth
   alone.
 - Content types are not checked.
 - There is no cap on the length of a line or the size of an event; the watchdog and `requestTimeout` are the
-  bounds.
+  bounds. An SDK adds none of its own: the stream comes from the operator's own server.
 
 ### 7.3 The loop
 
@@ -380,6 +380,9 @@ waits for it.
 | `2xx` | sent. The next request goes out. |
 | `5xx`, `408`, `429`, a network failure, a timeout | **kept** for the next flush, together with the entries after it that were not tried. The flush stops there. |
 | any other answer (a `400`, a `401`, a `413`, a `404`) | **dropped**: the server would refuse them again. The flush goes on with the next request. |
+
+The status alone decides. An SDK may read or discard the body of an answer, and a failure reading it changes
+nothing about the outcome.
 
 Every failed request calls `onError`. Counts kept are merged with counts recorded since. A request is
 bounded by `requestTimeout`.

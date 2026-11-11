@@ -367,9 +367,11 @@ files git tracks, hence the `git add`):
 2. Write `$L/RUN.md` from [`RUN-TEMPLATE.md`](RUN-TEMPLATE.md). Be candid: a guess you leave out is a gap
    the next run falls into again. A decision is a choice this prompt left open on purpose; a guess is a
    point where the prompt or a document should have told you and did not. Before listing one, search the
-   contract, the protocol page, the checklist and the language notes for it: a point one of them answers is not a
-   guess (cite it in `DESIGN.md` if it mattered, or in Decisions with its file and line), even when you found
-   the sentence only after assuming. Each guess quotes or names the sentence closest to it in the section its
+   contract, the protocol page, the checklist and the language notes for it. Where those are silent, search the
+   TypeScript SDK (`packages/sdk/src`) and the committed SDKs under `sdks/` with their `RUN.md` files (subject to
+   the sentence in "Repository rules", rule 2, about a brief that forbids reading its own language's removed SDK). A point any of them
+   answers is not a guess (cite it in `DESIGN.md` if it mattered, or in Decisions with its file and line), even
+   when you found the sentence only after assuming. Each guess quotes or names the sentence closest to it in the section its
    "Where" names and says why that sentence does not settle the point. A tool the prompt does not name (a test framework, a linter,
    a type checker), and its configuration (a rule set, an ignore list), is a decision, not a guess. Something
    the prompt asks for that is slow or costly is not a guess either. Before you hand off, re-read each
