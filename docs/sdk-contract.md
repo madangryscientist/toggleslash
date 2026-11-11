@@ -137,7 +137,8 @@ rules of this section, and `variationDetail` exists for each.
    not, and it does not wait for the server to come back: it is bounded by `requestTimeout`. It MAY be
    called any number of times, before or after the load, and gives the same answer: the answer is fixed when the first attempt settles, so a later load does not
    turn a false into a true. After `close` it
-   answers false if it had not settled.
+   answers false if it had not settled. When the first attempt fails, `ready` and the `onError` call for that
+   failure have no set order (`ready` MAY settle first), so a test that checks both waits for the `onError` call.
 4. **Last good ruleset.** While the server is unreachable, the SDK keeps evaluating from the last ruleset
    it held. At start, before any load, every evaluation is the fallback with `NOT_READY` and the SDK keeps
    trying.
@@ -166,7 +167,7 @@ New, and a MUST for every language it names.
 4. The SDK's callbacks (`afterEvaluation`, `onError`) SHOULD NOT be called while the SDK holds a lock of
    its own, so a callback that calls back into the client cannot deadlock it. A `ready` called from such a
    callback on the SDK's own thread SHOULD NOT wait for the load that thread runs: it returns at once with the
-   state held. A `close` called from such a callback SHOULD NOT wait for the work that thread is doing: it stops
+   state held. A `close` called on the SDK's own thread (from such a callback or otherwise) SHOULD NOT wait for the work that thread is doing: it stops
    the rest and returns.
 5. `status` SHOULD be one consistent snapshot, not four reads at four moments.
 6. A client that is never closed SHOULD NOT keep a process alive by itself where the runtime has the idea
@@ -399,7 +400,7 @@ per call, **on the caller's thread, synchronously, before the call returns**, wi
 | --- | --- |
 | `flagKey` | the key the caller asked for. |
 | `context` | the context the caller passed (the SDK itself sends none of it anywhere). |
-| `value` | what the caller is about to get. |
+| `value` | what the caller is about to get. Where an integer accessor returns integers wider than a double holds exactly (above 2^53) and the language's event type carries the value as a double, the event MAY carry the nearest double, and the SDK's `DESIGN.md` says so; the caller still gets the exact integer. |
 | `variationIndex` | as `variationDetail`; none for a fallback. |
 | `reason` | as `variationDetail`. |
 | `etag` | the ETag of the ruleset held at this evaluation, as received (the same value as `status`'s `etag` then); none before the first load. |

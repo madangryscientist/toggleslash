@@ -15,7 +15,7 @@ what it cannot see.
 - [ ] `$L/bin/test` runs every vector in `fixtures/evaluation/*.json` but `buckets.json`, read from the
   repository at test time, and every pin in `buckets.json` (`uint32` and `bucket`), and all pass; its count
   equals the phase 2 count command's (evaluation.md, "The vectors").
-- [ ] `$L/bin/test` passes 10 times in a row, and once more with the CPU loaded (one busy shell loop per logical CPU, so `nproc` of them, at normal priority),
+- [ ] `$L/bin/test` passes 10 times in a row, and once more with the CPU loaded (one busy shell loop per logical CPU, so `nproc` of them, at normal priority, started before `bin/test` and kept running until it ends, its build included),
   with the counts in `RUN.md`: a timer test that races the SDK's loops fails only under load. Such a failure is a
   bug in the test (it asserts something it did not control): fix the test, and record it in `RUN.md` as a decision,
   not a guess. A test that races a fixed number of rounds against background workers waits until each worker has

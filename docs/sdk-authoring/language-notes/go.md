@@ -2,12 +2,13 @@
 
 What the Go runs learned. Each fact cites its run: prompt `8a59987`, FS-96, 2026-11-10, unless it is marked
 (FS-115), the run at prompt `180a02d` on 2026-11-11, (FS-124), the run at prompt `8527564` on 2026-11-11, or
-(FS-126), the run at prompt `26834d8` on 2026-11-11.
+(FS-126), the run at prompt `26834d8` on 2026-11-11, or (FS-131), the run at prompt `6125364` on 2026-11-11.
 
 - **`encoding/json`.** It errors on `1e999` and replaces a lone surrogate with U+FFFD, which the spec
   forbids for both. Write the JSON reader, and hold strings as WTF-8 so a lone surrogate survives.
-- **Headers `net/http` adds itself.** `User-Agent: Go-http-client/<n>`, `Accept-Encoding: gzip`, `Host` and
-  `Content-Length`. List each in `RUN.md` with why it identifies no one (CHECKLIST.md, "Code and documents").
+- **Headers `net/http` adds itself.** `User-Agent: Go-http-client/<n>`, `Accept-Encoding: gzip` (not sent when the transport's
+  `DisableCompression` is true), `Host` and `Content-Length`. `Connection` did not show on a loopback request
+  (FS-131). List each in `RUN.md` with why it identifies no one (CHECKLIST.md, "Code and documents").
 - **Redirects.** `http.Client` follows them and may resend `Authorization` on a same-host redirect. The
   run set `CheckRedirect` to return `http.ErrUseLastResponse`, which makes a 3xx an `http_3xx` error.
 - **A network error's text carries the URL** (`*url.Error`). Report fixed text only (`network`, `timeout`).
@@ -23,3 +24,9 @@ What the Go runs learned. Each fact cites its run: prompt `8a59987`, FS-96, 2026
 - **Lint.** The run used `go vet`, `golangci-lint` and `gofmt -l`. `usestdlibvars` is noisy in table tests
   (it wants `http.StatusOK` for every literal); the run dropped it.
 - **Stopping a test.** `pkill -f 'go test'` kills the shell that ran it. Stop a test by its process id.
+- **Printing the vector count.** `bin/test` gets `vectors: <n>` from `go test -v -run '^TestVectors$'
+  ./internal/evaluator | grep 'vectors:'`, because plain `go test` hides `t.Logf` on a pass (FS-131).
+- **Errors collected by `onError`.** `Ready()` can settle before `onError` runs, so a test that reads them after
+  `Ready()` waits for them (FS-131).
+- **A test callback that needs the client.** It can run before `New` returns, so read the client through an
+  `atomic.Pointer`, not a plain variable (FS-131).
