@@ -1,15 +1,13 @@
 #!/bin/sh
-# Start the conformance test service. It runs the binary bin/test built and rebuilds only when that is
-# missing, because the harness waits 30 s for the "listening" line and a cold build must not eat it.
+# Starts the Go SDK's conformance test service and prints `listening http://127.0.0.1:<port>`.
+# It runs the binary bin/test builds (bin/.test-service) and builds it here only when it is missing.
 set -eu
+self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 cd "$(dirname "$0")/.."
-if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
-  run() { mise exec -- "$@"; }
-else
-  run() { "$@"; }
+if [ -z "${TOGGLESLASH_IN_MISE:-}" ] && command -v mise >/dev/null 2>&1; then
+	TOGGLESLASH_IN_MISE=1 exec mise exec -- "$self" "$@"
 fi
-if [ ! -x .build/test-service ]; then
-  mkdir -p .build
-  run go build -o .build/test-service ./test-service
+if [ ! -x bin/.test-service ]; then
+	go build -o bin/.test-service ./test-service
 fi
-exec .build/test-service
+exec bin/.test-service "$@"

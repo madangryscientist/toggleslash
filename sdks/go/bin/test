@@ -1,22 +1,21 @@
 #!/bin/sh
-# Run every test under the race detector, print the evaluation vector and bucket-pin counts the phase 2
-# check compares with the fixtures, then build the conformance test service into .build/ (gitignored) so
-# bin/test-service can run it without building anything.
+# Runs every Go test with the race detector, reports the evaluation vector counts, then builds the
+# test service binary. -race needs cgo, so a C compiler must exist: this uses the zig that mise.toml
+# pins, by path, because a zig elsewhere on PATH can shadow it.
 set -eu
+self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 cd "$(dirname "$0")/.."
-if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
-  run() { mise exec -- "$@"; }
-else
-  run() { "$@"; }
+
+if [ -z "${TOGGLESLASH_IN_MISE:-}" ] && command -v mise >/dev/null 2>&1; then
+	TOGGLESLASH_IN_MISE=1 exec mise exec -- "$self" "$@"
 fi
-run go version
-run go vet ./...
-out=$(run go test -race -count=1 -v ./... 2>&1) || { printf '%s\n' "$out"; exit 1; }
-printf '%s\n' "$out" | grep -E '^(ok|FAIL|---  FAIL|\?)' || true
-vectors=$(printf '%s\n' "$out" | sed -n 's/^vectors: //p')
-pins=$(printf '%s\n' "$out" | sed -n 's/^pins: //p')
-echo "vectors: ${vectors:-0} pins: ${pins:-0}"
-if [ -f test-service/main.go ]; then
-  mkdir -p .build
-  run go build -o .build/test-service ./test-service
+
+if [ -n "${TOGGLESLASH_IN_MISE:-}" ]; then
+	CC="$(mise where zig)/zig cc"
+	export CC
 fi
+
+go vet ./...
+go test -race -count=1 "$@" ./...
+go test -count=1 -v -run '^TestVectors$' ./internal/evaluator | grep 'vectors:'
+go build -o bin/.test-service ./test-service

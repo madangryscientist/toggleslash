@@ -1,32 +1,47 @@
-# The Go SDK's test service
+# The Go SDK's conformance test service
 
-`main.go` wraps the SDK in the protocol of [`docs/sdk-test-service.md`](../../../docs/sdk-test-service.md),
-so the conformance harness can drive the SDK from outside:
+`main.go` wraps the SDK in the HTTP server that `docs/sdk-test-service.md` describes, so
+`packages/sdk-conformance` can drive it from outside. It listens on `127.0.0.1:0` and prints
+`listening http://127.0.0.1:<port>` as its first line of output.
 
-```bash
-sdks/go/bin/test    # builds .build/test-service as its last step
-bun run conformance -- --service "sdks/go/bin/test-service"
+## Running it
+
+`bin/test-service` is the command the harness starts. It runs under the pinned toolchain (`mise exec`),
+builds `bin/.test-service` when that file is missing, and runs it. `bin/test` always rebuilds
+`bin/.test-service`, which is where the service is compiled for the conformance run; delete the file to force
+a rebuild by hand. From the repository root:
+
+```sh
+sdks/go/bin/test && bun run conformance -- --service sdks/go/bin/test-service
 ```
 
-It advertises `integer-accessor`: Go has `int64` next to `float64`, so the `int` accessor is real.
+## Capabilities
 
-| Protocol | Go SDK |
-| --- | --- |
-| `POST /clients` | `toggleslash.New(url, sdkKey, options...)`; `stream`, `pollIntervalMs`, `flushIntervalMs` and `requestTimeoutMs` become `WithStream`, `WithPollInterval`, `WithFlushInterval` and `WithRequestTimeout`; `onError` always records, and panics after recording when `onErrorThrows` is set |
-| `ready` | `client.Ready()` |
-| `evaluate`, accessor `bool` | `client.BoolVariationDetail(key, ctx, fallback)` |
-| `evaluate`, accessor `string` | `client.StringVariationDetail(key, ctx, fallback)` |
-| `evaluate`, accessor `number` | `client.Float64VariationDetail(key, ctx, fallback)` |
-| `evaluate`, accessor `int` | `client.IntVariationDetail(key, ctx, fallback)` |
-| `evaluate`, accessors `json` and `any` | `client.JSONVariationDetail(key, ctx, fallback)`, the fallback passed as a JSON value |
-| `status` | `client.Status()`, written as the four keys of the protocol |
-| `hook-events` | the events `WithAfterEvaluation` received (installed when `hook` or `hookThrows` is set; `hookThrows` panics after recording) |
-| `errors` | what `WithOnError` received, each as its message |
-| `close` | `client.Close()` |
+`GET /` answers `{"name": "toggleslash-sdk (Go)", "capabilities": ["integer-accessor"]}`. The Go SDK has a
+true integer accessor (`IntVariationDetail`, int64), so it advertises `integer-accessor` and the harness
+runs the integer-range scenarios against it.
 
-The context goes in as raw JSON (`ContextFromValue`), valid or not: an invalid one is a case the SDK
-answers with `ERROR INVALID_CONTEXT`. A call that fails or panics answers 500 with its text, and the harness
-fails the scenario. The service serves concurrently and keeps a client answerable after `close`.
+## Accessor mapping
 
-`bin/test-service` starts the built binary and builds it only if it is missing, because the harness waits 30 s
-for the `listening` line.
+The protocol's `accessor` field picks the SDK method. The fallback must have the accessor's type, else the
+service answers 400.
+
+| `accessor` | SDK method | Fallback in the request |
+| --- | --- | --- |
+| `bool` | `BoolVariationDetail` | a boolean |
+| `string` | `StringVariationDetail` | a string |
+| `number` | `FloatVariationDetail` | a number |
+| `int` | `IntVariationDetail` | a whole number inside the int64 range |
+| `json` | `JSONVariationDetail` | any JSON value (null accepts any served value) |
+| `any` (or absent) | `JSONVariationDetail` | any JSON value |
+
+A number the service would write that is not finite (`1e999` served to the `number` accessor) is written as
+`null`, as `JSON.stringify` does. Anything the SDK raises reaches the service's recover, which answers 500
+with the text, and the harness then fails the scenario.
+
+## Options
+
+`POST /clients` maps `stream`, `pollIntervalMs`, `flushIntervalMs` and `requestTimeoutMs` onto the SDK's
+options. `hook` and `hookThrows` install an `afterEvaluation` function that records each event (and, for
+`hookThrows`, panics); `onErrorThrows` makes the `onError` function record its message and panic. The
+recorded events and messages come back from `GET /clients/<id>/hook-events` and `/errors`.

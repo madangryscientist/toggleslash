@@ -1,14 +1,40 @@
+# The Go SDK's golangci-lint configuration. bin/lint runs gofmt -l and go vet as well.
 version: "2"
+
 linters:
+  # The standard set (errcheck, govet, ineffassign, staticcheck, unused) plus these. Each is on because it
+  # finds a real defect class for this code: a swallowed error, a leaked body or context, an unclosed
+  # response, a shadowed variable, an unchecked type assertion.
   default: standard
   enable:
-    - errorlint
     - bodyclose
+    - contextcheck
+    - errorlint
+    - gocritic
     - misspell
+    - nilerr
+    - noctx
     - unconvert
-formatters:
-  enable:
-    - gofmt
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0
+    - unparam
+  settings:
+    errcheck:
+      check-type-assertions: true
+    staticcheck:
+      checks: ["all", "-ST1000"]
+  exclusions:
+    rules:
+      # Tests discard errors from the fake server's writes and from Close on purpose: a failed write to a
+      # loopback test server is the assertion's job to notice, not a lint's.
+      - path: _test\.go
+        linters: [errcheck]
+      # The fake clock and the fake server in tests make a few single-use helpers; unparam finds them.
+      - path: _test\.go
+        linters: [unparam]
+      # context.Background in sendUsage is deliberate: a usage flush must outlive Close (contract 11), so it
+      # does not inherit the client's root context.
+      - path: usage\.go
+        linters: [contextcheck]
+      # The service creates clients from request handlers, but a client's life is its own: New starts
+      # background loops that must outlive the request (the client is closed by POST /clients/<id>/close).
+      - path: test-service/main\.go
+        linters: [contextcheck]

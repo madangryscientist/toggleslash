@@ -1,57 +1,70 @@
 package wtf8
 
 import (
-	"slices"
 	"testing"
+	"unicode/utf16"
 )
 
-// lone is a string holding one lone high surrogate, U+D83D, as WTF-8.
-var lone = string(AppendRune(nil, 0xD83D))
-
-func TestLoneSurrogateIsKept(t *testing.T) {
-	if len(lone) != 3 || !HasSurrogate(lone) {
-		t.Fatalf("lone surrogate = %q", lone)
+func TestDecodeLossy(t *testing.T) {
+	cases := map[string]string{
+		"ok":                "ok",
+		"a\xffb":            "a�b",
+		"\xED\xA0\x80":      "���", // a surrogate written as bytes is invalid
+		"\xE2\x82":          "�",   // a truncated sequence is one replacement
+		"\xF0\x9F\x98\x80":  "\U0001F600",
+		"\xC0\x80":          "��",
+		"\xF4\x90\x80\x80x": "����x",
 	}
-	if got := CodePoints("a" + lone + "b"); !slices.Equal(got, []rune{'a', 0xD83D, 'b'}) {
-		t.Fatalf("code points = %x", got)
-	}
-	if got := UTF16(lone); !slices.Equal(got, []uint16{0xD83D}) {
-		t.Fatalf("utf16 = %x", got)
-	}
-	if got := ToUTF8(lone); got != "�" {
-		t.Fatalf("to utf8 = %q", got)
-	}
-}
-
-func TestFromGoReplacesInvalidBytes(t *testing.T) {
-	if got := FromGo("a\xffb"); got != "a�b" {
-		t.Fatalf("got %q", got)
+	for in, want := range cases {
+		if got := DecodeLossy([]byte(in)); got != want {
+			t.Errorf("DecodeLossy(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 
-func TestCompareIsByUTF16Unit(t *testing.T) {
-	// U+FF5E is one unit 0xFF5E; U+1F600 is the pair D83D DE00. By unit the emoji sorts first, by
-	// UTF-8 byte or code point it sorts last.
-	if Compare("\U0001F600", "～") >= 0 {
-		t.Error("the emoji should sort before U+FF5E by UTF-16 unit")
+func TestCodePointsAndUnits(t *testing.T) {
+	s := "a\U0001F600" + string(AppendRune(nil, 0xD800))
+	cps := CodePoints(s)
+	if len(cps) != 3 || cps[1] != 0x1F600 || cps[2] != 0xD800 {
+		t.Errorf("CodePoints = %x", cps)
 	}
-	if Compare(lone, "～") >= 0 || Compare("a", "a") != 0 || Compare("b", "a") <= 0 {
-		t.Error("compare order wrong")
+	units := UTF16(s)
+	want := append(utf16.Encode([]rune("a\U0001F600")), 0xD800)
+	if len(units) != len(want) {
+		t.Fatalf("UTF16 = %x, want %x", units, want)
+	}
+	for i := range units {
+		if units[i] != want[i] {
+			t.Errorf("unit %d = %x, want %x", i, units[i], want[i])
+		}
 	}
 }
 
-func TestSubstringOperationsAreByUnit(t *testing.T) {
-	if !Contains("x"+lone+"y", lone) || Contains("xy", lone) {
-		t.Error("contains with a surrogate needle")
+func TestCompareIsUTF16Order(t *testing.T) {
+	// U+FF5E sorts above U+1F600 by byte but below it by UTF-16 code unit (0xD83D < 0xFF5E).
+	a, b := "～", "\U0001F600"
+	if Compare(a, b) <= 0 {
+		t.Errorf("Compare(%q, %q) should be positive in UTF-16 order", a, b)
 	}
-	// A lone high surrogate is the first unit of an emoji, so it is a prefix of it by unit.
-	if !HasPrefix("\U0001F600", lone) {
-		t.Error("a high surrogate is a prefix of the pair it starts")
+	if Compare("a", "b") >= 0 || Compare("b", "b") != 0 {
+		t.Error("ASCII order")
 	}
-	if HasSuffix("\U0001F600", lone) {
-		t.Error("a high surrogate is not a suffix of a pair")
+}
+
+func TestSubstringsByUnit(t *testing.T) {
+	pair := "x\U0001F600"
+	high := string(AppendRune(nil, 0xD83D))
+	if !Contains(pair, high) {
+		t.Error("a lone high surrogate is inside the pair in UTF-16")
 	}
-	if !HasSuffix("ab", "b") || !HasPrefix("ab", "a") || !Contains("abc", "") {
-		t.Error("plain ordinal operations")
+	if HasSuffix(pair, high) || !HasPrefix(pair, "x") || !HasSuffix(pair, "\U0001F600") {
+		t.Error("prefix and suffix")
+	}
+}
+
+func TestToUTF8(t *testing.T) {
+	s := "a" + string(AppendRune(nil, 0xDC00)) + "b"
+	if got := ToUTF8(s); got != "a�b" {
+		t.Errorf("ToUTF8 = %q", got)
 	}
 }

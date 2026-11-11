@@ -1,95 +1,108 @@
 package toggleslash
 
-import "bytes"
+import (
+	"bytes"
 
-// sseEvent is one dispatched Server-Sent Event.
-type sseEvent struct {
-	name string
-	data string
-}
+	"github.com/madangryscientist/toggleslash/sdks/go/internal/wtf8"
+)
 
-// sseParser reads a Server-Sent Events byte stream to the WHATWG rules the contract names. It works on
-// bytes: a UTF-8 sequence never holds a CR or LF byte, so a character split across two reads is whole by the
-// time its line is complete. LF, CRLF and a lone CR end a line (a CR at the end of one read is remembered, so
-// the LF that starts the next read is not a second line end); a line that starts with ":" is a comment; a
-// field with no ":" has an empty value; one leading space of a value is dropped; a leading BOM is dropped;
-// several "data" lines join with LF; an event with no "data" line is dropped; the name is "message" when none
-// was given; an event still open when the stream ends is never delivered.
+var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
+
+// sseParser reads Server-Sent Events the way the WHATWG standard does, on bytes, so a read may end anywhere:
+// inside a UTF-8 sequence, between a CR and its LF, or inside the byte order mark. Only the "event" and
+// "data" fields are read.
 type sseParser struct {
+	head      []byte // the first bytes, until the byte order mark question is settled
+	headDone  bool
 	line      []byte
-	afterCR   bool
-	started   bool
-	name      string
-	data      []byte
-	hasData   bool
-	bomPrefix []byte
+	pendingCR bool // the last byte was CR: an LF next belongs to it
+
+	name    string
+	data    []byte
+	hasData bool
+
+	emit func(name, data string)
 }
 
-var bom = []byte{0xEF, 0xBB, 0xBF}
+func newSSEParser(emit func(name, data string)) *sseParser { return &sseParser{emit: emit} }
 
-// feed adds bytes and returns the events they complete.
-func (p *sseParser) feed(chunk []byte) []sseEvent {
-	if !p.started {
-		// A BOM may arrive split; hold back a prefix of it until it is known to be one.
-		chunk = append(p.bomPrefix, chunk...)
-		p.bomPrefix = nil
-		if len(chunk) < len(bom) && bytes.HasPrefix(bom, chunk) {
-			p.bomPrefix = append([]byte(nil), chunk...)
-			return nil
-		}
-		p.started = true
-		chunk = bytes.TrimPrefix(chunk, bom)
-	}
-	var events []sseEvent
+// feed passes one read to the parser. emit is called for each complete event, in order.
+func (p *sseParser) feed(chunk []byte) {
 	for _, b := range chunk {
-		switch {
-		case b == '\n' && p.afterCR:
-			p.afterCR = false
-		case b == '\n' || b == '\r':
-			p.afterCR = b == '\r'
-			if event, ok := p.endLine(); ok {
-				events = append(events, event)
+		if !p.headDone {
+			p.head = append(p.head, b)
+			if !bytes.HasPrefix(utf8BOM, p.head) {
+				p.headDone = true
+				buffered := p.head
+				p.head = nil
+				for _, h := range buffered {
+					p.byte(h)
+				}
+			} else if len(p.head) == len(utf8BOM) {
+				p.headDone = true
+				p.head = nil
 			}
-		default:
-			p.afterCR = false
-			p.line = append(p.line, b)
+			continue
 		}
+		p.byte(b)
 	}
-	return events
 }
 
-func (p *sseParser) endLine() (sseEvent, bool) {
+func (p *sseParser) byte(b byte) {
+	if p.pendingCR {
+		p.pendingCR = false
+		if b == '\n' {
+			return
+		}
+	}
+	switch b {
+	case '\r':
+		p.endLine()
+		p.pendingCR = true
+	case '\n':
+		p.endLine()
+	default:
+		p.line = append(p.line, b)
+	}
+}
+
+func (p *sseParser) endLine() {
 	line := p.line
 	p.line = p.line[:0]
 	if len(line) == 0 {
-		return p.dispatch()
+		p.dispatch()
+		return
 	}
 	if line[0] == ':' {
-		return sseEvent{}, false
+		return
 	}
-	field, value, _ := bytes.Cut(line, []byte{':'})
-	value = bytes.TrimPrefix(value, []byte{' '})
+	field, value := line, []byte(nil)
+	if i := bytes.IndexByte(line, ':'); i >= 0 {
+		field, value = line[:i], line[i+1:]
+		if len(value) > 0 && value[0] == ' ' {
+			value = value[1:]
+		}
+	}
 	switch string(field) {
 	case "event":
-		p.name = string(value)
+		p.name = wtf8.DecodeLossy(value)
 	case "data":
 		if p.hasData {
 			p.data = append(p.data, '\n')
 		}
-		p.data = append(p.data, value...)
+		p.data = append(p.data, wtf8.DecodeLossy(value)...)
 		p.hasData = true
 	}
-	return sseEvent{}, false
 }
 
-func (p *sseParser) dispatch() (sseEvent, bool) {
-	name, data, hasData := p.name, p.data, p.hasData
-	p.name, p.data, p.hasData = "", nil, false
-	if !hasData {
-		return sseEvent{}, false
+func (p *sseParser) dispatch() {
+	name, data, ok := p.name, string(p.data), p.hasData
+	p.name, p.data, p.hasData = "", p.data[:0], false
+	if !ok {
+		return
 	}
 	if name == "" {
 		name = "message"
 	}
-	return sseEvent{name: name, data: string(data)}, true
+	p.emit(name, data)
 }

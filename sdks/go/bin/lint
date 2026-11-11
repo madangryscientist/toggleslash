@@ -1,18 +1,19 @@
 #!/bin/sh
-# The native lint and format check. Any finding fails; there is no warning level. Nothing is rewritten.
+# The Go SDK's lint and format check, with no warnings allowed: gofmt -l (a listed file is a failure),
+# go vet, and golangci-lint with .golangci.yml. Runs under the toolchain mise.toml pins.
 set -eu
+self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 cd "$(dirname "$0")/.."
-if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
-  run() { mise exec -- "$@"; }
-else
-  run() { "$@"; }
+
+if [ -z "${TOGGLESLASH_IN_MISE:-}" ] && command -v mise >/dev/null 2>&1; then
+	TOGGLESLASH_IN_MISE=1 exec mise exec -- "$self" "$@"
 fi
-run golangci-lint --version
-unformatted=$(run gofmt -l .)
+
+unformatted="$(gofmt -l .)"
 if [ -n "$unformatted" ]; then
-  echo "gofmt would change:" >&2
-  echo "$unformatted" >&2
-  exit 1
+	echo "gofmt would change:" >&2
+	echo "$unformatted" >&2
+	exit 1
 fi
-run go vet ./...
-run golangci-lint run ./...
+go vet ./...
+golangci-lint run ./...

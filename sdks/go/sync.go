@@ -9,147 +9,36 @@ import (
 	"strings"
 	"time"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/eval"
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
+	"github.com/madangryscientist/toggleslash/sdks/go/internal/evaluator"
+	"github.com/madangryscientist/toggleslash/sdks/go/jsonvalue"
 )
 
-// errTimeout is the cause a request context is cancelled with when its time ran out.
-var errTimeout = errors.New("timeout")
+var errStreamIdle = errors.New("stream idle")
 
-// attemptError is why a ruleset or stream attempt failed, as the code Status shows.
-type attemptError struct {
-	code SyncErrorCode
-	text string
+// attempt is how one ruleset or stream attempt ended. err is nil on success and when the attempt was
+// abandoned by Close, which is neither reported nor recorded.
+type attempt struct {
+	ok  bool
+	err *Error
 }
 
-func httpFailure(op string, status int) *attemptError {
-	return &attemptError{code: SyncErrorCode("http_" + strconv.Itoa(status)), text: op + " answered " + strconv.Itoa(status)}
-}
+// loop is the loop goroutine: the first load, then the stream and the polling of contract 7.3, until Close.
+func (c *Client) loop() {
+	defer close(c.loopDone)
+	c.loopGID.Store(goroutineID())
+	first := c.fetchRuleset()
+	c.settleFirst(c.snap.Load() != nil)
+	c.report(first.err)
 
-// failureOf classifies a transport or body error. cause is the context's cause when its time ran out.
-func failureOf(op string, ctx context.Context, err error) *attemptError {
-	if errors.Is(context.Cause(ctx), errTimeout) || errors.Is(err, errTimeout) {
-		return &attemptError{code: SyncTimeout, text: op + " timed out"}
-	}
-	return &attemptError{code: SyncNetwork, text: op + " failed"}
-}
-
-// retryAfter reads a 429's Retry-After: whole decimal digits only (spaces around them are ignored), capped at
-// maxRetryAfter. ok is false for any other status or any other header, which leaves the usual backoff in charge.
-func retryAfter(resp *http.Response) (time.Duration, bool) {
-	if resp.StatusCode != http.StatusTooManyRequests {
-		return 0, false
-	}
-	text := strings.Trim(resp.Header.Get("Retry-After"), " \t")
-	if text == "" {
-		return 0, false
-	}
-	for i := 0; i < len(text); i++ {
-		if text[i] < '0' || text[i] > '9' {
-			return 0, false
-		}
-	}
-	if len(text) > 6 {
-		return maxRetryAfter, true
-	}
-	seconds, _ := strconv.Atoi(text)
-	return min(time.Duration(seconds)*time.Second, maxRetryAfter), true
-}
-
-// hold records that nothing may reach the ruleset or stream routes before now+wait; a shorter ask never
-// shortens a longer hold.
-func (c *Client) hold(resp *http.Response) {
-	wait, ok := retryAfter(resp)
-	if !ok {
-		return
-	}
-	until := c.cfg.now().Add(wait)
-	c.statusMu.Lock()
-	if until.After(c.holdUntil) {
-		c.holdUntil = until
-	}
-	c.statusMu.Unlock()
-}
-
-// sleep waits for d, or until a held Retry-After has passed if that is later. It returns false when the
-// client was closed meanwhile.
-func (c *Client) sleep(d time.Duration) bool {
-	c.statusMu.Lock()
-	until := c.holdUntil
-	c.statusMu.Unlock()
-	d = max(d, until.Sub(c.cfg.now()))
-	if d <= 0 {
-		return c.syncCtx.Err() == nil
-	}
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	select {
-	case <-timer.C:
-		return true
-	case <-c.syncCtx.Done():
-		return false
-	}
-}
-
-// noteFailure records an attempt that failed and tells OnError, unless the client is closing: a failure
-// that Close caused is never reported.
-func (c *Client) noteFailure(op string, f *attemptError) {
-	if c.syncCtx.Err() != nil {
-		return
-	}
-	c.statusMu.Lock()
-	c.lastError = f.code
-	c.statusMu.Unlock()
-	c.report(&Error{Op: op, Code: string(f.code), Message: f.text}, c.syncWorker)
-}
-
-// synced records that the held ruleset is confirmed current as of now.
-func (c *Client) synced() {
-	c.statusMu.Lock()
-	c.lastSyncAt = c.cfg.now()
-	c.lastError = ""
-	c.statusMu.Unlock()
-}
-
-func (c *Client) setStream(state StreamState) {
-	c.statusMu.Lock()
-	if !c.closing.Load() {
-		c.stream = state
-	}
-	c.statusMu.Unlock()
-}
-
-// hasRulesetShape: a JSON object with an array "flags" and an array "segments". Anything else is not a
-// ruleset and the one held stays.
-func hasRulesetShape(v jsonvalue.Value) bool {
-	_, flags := v.Field("flags").Items()
-	_, segments := v.Field("segments").Items()
-	return v.IsObject() && flags && segments
-}
-
-// delay is the wait before the next attempt: exponential from a second up to the poll interval, jittered;
-// with no stream, the poll interval.
-func (c *Client) delay(failures int) time.Duration {
-	if !c.cfg.stream {
-		return c.cfg.pollInterval
-	}
-	ceiling := backoffBase << min(failures, 16)
-	ceiling = min(c.cfg.pollInterval, ceiling)
-	return time.Duration(float64(ceiling) * (0.5 + c.cfg.jitter()/2))
-}
-
-// runSync is the sync goroutine: the first load, then the stream and the polling until Close.
-func (c *Client) runSync() {
-	defer close(c.syncWorker.done)
-	c.refresh()
-	c.settle(c.snap.Load() != nil)
 	failures := 0
-	for c.syncCtx.Err() == nil {
-		// A 429 on the ruleset says wait, and without this the stream would be asked straight after it.
-		if c.cfg.stream && !c.sleep(0) {
-			return
+	for c.root.Err() == nil {
+		connected := false
+		if c.cfg.stream {
+			if !c.sleep(0) {
+				return
+			}
+			connected = c.followStream()
 		}
-		connected := c.cfg.stream && c.follow()
 		if connected {
 			failures = 0
 		} else {
@@ -158,140 +47,305 @@ func (c *Client) runSync() {
 		if !c.sleep(c.delay(failures)) {
 			return
 		}
-		// Sleep first: the ruleset was only just loaded, or the stream only just failed. A stream that was
-		// up needs no poll, since reconnecting announces the tag and catches up on its own.
 		if !connected {
-			c.refresh()
+			a := c.fetchRuleset()
+			c.report(a.err)
 		}
 	}
 }
 
-// refresh is one conditional fetch of the ruleset. It is true when the held ruleset is now current.
-func (c *Client) refresh() bool {
-	ctx, cancel := context.WithTimeoutCause(c.syncCtx, c.cfg.requestTimeout, errTimeout)
-	defer cancel()
-	failure := c.fetchRuleset(ctx)
-	if failure != nil {
-		c.noteFailure("sync", failure)
-		return false
+// delay is the wait of contract 7.3: the poll interval with the stream off, else a jittered backoff.
+func (c *Client) delay(failures int) time.Duration {
+	if !c.cfg.stream {
+		return c.cfg.pollInterval
 	}
-	c.synced()
-	return true
+	exp := min(failures, 16)
+	ceiling := min(c.cfg.pollInterval, time.Second<<exp)
+	return time.Duration(float64(ceiling) * (0.5 + c.cfg.jitter()/2))
 }
 
-func (c *Client) fetchRuleset(ctx context.Context) *attemptError {
-	const op = "GET /sdk/v1/ruleset"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.cfg.url+"/sdk/v1/ruleset", nil)
-	if err != nil {
-		return &attemptError{code: SyncNetwork, text: op + " failed"}
+// sleep waits d, and at least until any Retry-After hold on the ruleset and stream has passed. It reports
+// false when Close ended the wait.
+func (c *Client) sleep(d time.Duration) bool {
+	target := c.cfg.clock.Now().Add(d)
+	for {
+		c.mu.Lock()
+		hold := c.holdSync
+		c.mu.Unlock()
+		if hold.After(target) {
+			target = hold
+		}
+		remaining := target.Sub(c.cfg.clock.Now())
+		if remaining <= 0 {
+			return c.root.Err() == nil
+		}
+		t := c.cfg.clock.NewTimer(remaining)
+		select {
+		case <-t.C():
+		case <-c.root.Done():
+			t.Stop()
+			return false
+		}
 	}
-	req.Header.Set("Authorization", "Bearer "+c.cfg.sdkKey)
-	if held := c.snap.Load(); held != nil && held.etag != nil {
-		req.Header.Set("If-None-Match", *held.etag)
+}
+
+// parseRetryAfter reads a Retry-After header: whole decimal seconds only, capped at five minutes. ok is
+// false for anything else (a date, a fraction, a negative number, nothing).
+func parseRetryAfter(value string) (time.Duration, bool) {
+	value = strings.Trim(value, " \t")
+	if value == "" {
+		return 0, false
 	}
-	resp, err := c.cfg.httpClient.Do(req)
+	for i := 0; i < len(value); i++ {
+		if value[i] < '0' || value[i] > '9' {
+			return 0, false
+		}
+	}
+	value = strings.TrimLeft(value, "0")
+	if len(value) > 6 {
+		return maxRetryAfter, true
+	}
+	if value == "" {
+		return 0, true
+	}
+	seconds, err := strconv.Atoi(value)
 	if err != nil {
-		return failureOf(op, ctx, err)
+		return 0, false
+	}
+	return min(time.Duration(seconds)*time.Second, maxRetryAfter), true
+}
+
+// holdFrom lengthens a hold to the Retry-After in a 429 answer; a later one never shortens it.
+func (c *Client) holdFrom(resp *http.Response, hold *time.Time) {
+	if resp.StatusCode != http.StatusTooManyRequests {
+		return
+	}
+	wait, ok := parseRetryAfter(resp.Header.Get("Retry-After"))
+	if !ok {
+		return
+	}
+	until := c.cfg.clock.Now().Add(wait)
+	c.mu.Lock()
+	if until.After(*hold) {
+		*hold = until
+	}
+	c.mu.Unlock()
+}
+
+// failure classifies a request error into a code. abandoned is true when Close caused it.
+func (c *Client) failure(ctx context.Context, op string) (err *Error, abandoned bool) {
+	if c.isClosing() {
+		return nil, true
+	}
+	switch cause := context.Cause(ctx); {
+	case errors.Is(cause, errRequestTimeout), errors.Is(cause, errStreamIdle):
+		return &Error{Op: op, Code: LastErrorTimeout}, false
+	default:
+		return &Error{Op: op, Code: LastErrorNetwork}, false
+	}
+}
+
+// fail records a failed ruleset or stream attempt in lastError, unless Close caused it.
+func (c *Client) fail(err *Error) attempt {
+	if err == nil {
+		return attempt{}
+	}
+	c.mu.Lock()
+	if !c.closing {
+		c.lastError = err.Code
+	} else {
+		err = nil
+	}
+	c.mu.Unlock()
+	return attempt{err: err}
+}
+
+// synced records that the ruleset held matches the server: lastSyncAt moves and lastError clears.
+func (c *Client) synced() {
+	c.mu.Lock()
+	c.lastSyncAt = c.cfg.clock.Now()
+	c.lastError = ""
+	c.mu.Unlock()
+}
+
+func (c *Client) newRequest(ctx context.Context, method, path string, body io.Reader) *http.Request {
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("Authorization", "Bearer "+c.sdkKey)
+	return req
+}
+
+// fetchRuleset does the ruleset request of contract 7.1, bounded as a whole (the body read included) by
+// the request timeout, and applies the answer. It does not call onError: the caller does, after it has
+// settled ready if this was the first load.
+func (c *Client) fetchRuleset() attempt {
+	ctx, cancel := context.WithTimeoutCause(c.root, c.cfg.requestTimeout, errRequestTimeout)
+	defer cancel()
+	req := c.newRequest(ctx, http.MethodGet, "/sdk/v1/ruleset", nil)
+	if req == nil {
+		return c.fail(&Error{Op: "ruleset", Code: LastErrorNetwork})
+	}
+	held := c.snap.Load()
+	if held != nil && held.etag != "" {
+		req.Header.Set("If-None-Match", held.etag)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		e, abandoned := c.failure(ctx, "ruleset")
+		if abandoned {
+			return attempt{}
+		}
+		return c.fail(e)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	switch {
-	case resp.StatusCode == http.StatusNotModified:
-		return nil
-	case resp.StatusCode != http.StatusOK:
-		c.hold(resp)
-		return httpFailure(op, resp.StatusCode)
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return c.applyRuleset(ctx, resp)
+	case http.StatusNotModified:
+		if held == nil {
+			return c.fail(&Error{Op: "ruleset", Code: "http_304"})
+		}
+		c.synced()
+		return attempt{ok: true}
+	default:
+		c.holdFrom(resp, &c.holdSync)
+		return c.fail(&Error{Op: "ruleset", Code: "http_" + strconv.Itoa(resp.StatusCode)})
 	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return failureOf(op, ctx, err)
-	}
-	parsed, err := jsonvalue.Parse(body)
-	if err != nil || !hasRulesetShape(parsed) {
-		return &attemptError{code: SyncBadRuleset, text: op + " sent no flags and segments"}
-	}
-	next := &snapshot{ruleset: eval.Compile(parsed)}
-	if etag := resp.Header.Get("ETag"); etag != "" {
-		next.etag = &etag
-	}
-	c.statusMu.Lock()
-	c.snap.Store(next)
-	c.statusMu.Unlock()
-	return nil
 }
 
-// follow reads GET /sdk/v1/stream until it ends or fails. It is true when the stream connected, so the caller
-// can tell a stream that was up from one that never was.
-func (c *Client) follow() (connected bool) {
-	const op = "GET /sdk/v1/stream"
+// applyRuleset reads a 200 body and, if it is a ruleset, swaps it in with its ETag.
+func (c *Client) applyRuleset(ctx context.Context, resp *http.Response) attempt {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		e, abandoned := c.failure(ctx, "ruleset")
+		if abandoned {
+			return attempt{}
+		}
+		return c.fail(e)
+	}
+	value, err := jsonvalue.Parse(body)
+	if err != nil || !hasRulesetShape(value) {
+		if c.root.Err() != nil {
+			return attempt{}
+		}
+		return c.fail(&Error{Op: "ruleset", Code: LastErrorBadRuleset})
+	}
+	rs, ok := compile(value)
+	if !ok {
+		return c.fail(&Error{Op: "ruleset", Code: LastErrorNetwork})
+	}
+	next := &snapshot{ruleset: rs, etag: resp.Header.Get("ETag")}
+	c.mu.Lock()
+	c.snap.Store(next)
+	c.lastSyncAt = c.cfg.clock.Now()
+	c.lastError = ""
+	c.mu.Unlock()
+	return attempt{ok: true}
+}
+
+// compile builds the evaluator's ruleset, turning an unexpected panic into a failure.
+func compile(value jsonvalue.Value) (rs *evaluator.Ruleset, ok bool) {
+	defer func() {
+		if recover() != nil {
+			rs, ok = nil, false
+		}
+	}()
+	return evaluator.Compile(value), true
+}
+
+// hasRulesetShape is contract 5.5: an object whose flags and segments are both arrays.
+func hasRulesetShape(v jsonvalue.Value) bool {
+	if v.Kind() != jsonvalue.Object {
+		return false
+	}
+	return v.Get("flags").Kind() == jsonvalue.Array && v.Get("segments").Kind() == jsonvalue.Array
+}
+
+// followStream opens GET /sdk/v1/stream and reads events until it ends or fails (contract 7.2). It reports
+// whether the stream connected and was not ended by a failed fetch.
+func (c *Client) followStream() (connected bool) {
+	ctx, cancel := context.WithCancelCause(c.root)
+	defer cancel(nil)
 	c.setStream(StreamConnecting)
 	defer c.setStream(StreamDisconnected)
 
-	ctx, cancel := context.WithCancelCause(c.syncCtx)
-	defer cancel(nil)
-	open := time.AfterFunc(c.cfg.requestTimeout, func() { cancel(errTimeout) })
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.cfg.url+"/sdk/v1/stream", nil)
-	if err != nil {
-		open.Stop()
-		c.noteFailure("stream", &attemptError{code: SyncNetwork, text: op + " failed"})
+	opening := time.AfterFunc(c.cfg.requestTimeout, func() { cancel(errRequestTimeout) })
+	defer opening.Stop()
+
+	req := c.newRequest(ctx, http.MethodGet, "/sdk/v1/stream", nil)
+	if req == nil {
+		c.report(c.fail(&Error{Op: "stream", Code: LastErrorNetwork}).err)
 		return false
 	}
-	req.Header.Set("Authorization", "Bearer "+c.cfg.sdkKey)
 	req.Header.Set("Accept", "text/event-stream")
-	resp, err := c.cfg.httpClient.Do(req)
-	open.Stop()
+	resp, err := c.http.Do(req)
 	if err != nil {
-		c.noteFailure("stream", failureOf(op, ctx, err))
+		e, abandoned := c.failure(ctx, "stream")
+		if !abandoned {
+			c.report(c.fail(e).err)
+		}
 		return false
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK || resp.Body == nil {
-		c.hold(resp)
-		c.noteFailure("stream", httpFailure(op, resp.StatusCode))
+	opening.Stop()
+	if resp.StatusCode != http.StatusOK {
+		c.holdFrom(resp, &c.holdSync)
+		c.report(c.fail(&Error{Op: "stream", Code: "http_" + strconv.Itoa(resp.StatusCode)}).err)
 		return false
 	}
 
-	idle := time.AfterFunc(c.cfg.idle, func() { cancel(errTimeout) })
+	idle := time.AfterFunc(c.cfg.idle, func() { cancel(errStreamIdle) })
 	defer idle.Stop()
-	var parser sseParser
+
+	fetchFailed := false
+	stop := false
+	parser := newSSEParser(func(name, data string) {
+		if stop || (name != "connected" && name != "changed") {
+			return
+		}
+		if name == "connected" {
+			connected = true
+			c.setStream(StreamConnected)
+			c.mu.Lock()
+			c.lastError = ""
+			c.mu.Unlock()
+		}
+		if !c.onTag(data) {
+			fetchFailed, stop = true, true
+			cancel(errStreamEnded)
+		}
+	})
 	buf := make([]byte, 4096)
-	for {
+	for !stop {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
-			idle.Stop()
-			for _, event := range parser.feed(buf[:n]) {
-				if event.name != "changed" && event.name != "connected" {
-					continue
-				}
-				if event.name == "connected" {
-					connected = true
-					c.setStream(StreamConnected)
-					c.statusMu.Lock()
-					c.lastError = ""
-					c.statusMu.Unlock()
-				}
-				if !c.onTag(event.data) {
-					// The fetch the stream asked for failed, and a stream that stays up would never retry it.
-					// End it and count it as not connected, so the backoff and the poll take over.
-					return false
-				}
-			}
 			idle.Reset(c.cfg.idle)
+			parser.feed(buf[:n])
 		}
 		if err != nil {
-			if err != io.EOF {
-				c.noteFailure("stream", failureOf(op, ctx, err))
+			if !errors.Is(err, io.EOF) && !stop {
+				if e, abandoned := c.failure(ctx, "stream"); !abandoned {
+					c.report(c.fail(e).err)
+				}
 			}
-			return connected
+			break
 		}
 	}
+	return connected && !fetchFailed
 }
 
-// onTag handles a tag the stream names: fetch only when it is not the one held. It is false when the fetch
-// failed.
+var errStreamEnded = errors.New("stream ended")
+
+// onTag handles the ETag a stream event names: a sync if it is the one held, else a ruleset request. It
+// reports false when that request failed, which ends the stream.
 func (c *Client) onTag(tag string) bool {
-	if held := c.snap.Load(); held != nil && held.etag != nil && *held.etag == tag {
+	if held := c.snap.Load(); held != nil && held.etag == tag {
 		c.synced()
 		return true
 	}
-	return c.refresh()
+	a := c.fetchRuleset()
+	c.report(a.err)
+	return a.ok
 }
