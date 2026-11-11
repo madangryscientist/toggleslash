@@ -2,7 +2,7 @@
 
 What the Go runs learned. Each fact cites its run: prompt `8a59987`, FS-96, 2026-11-10, unless it is marked
 (FS-115), the run at prompt `180a02d` on 2026-11-11, (FS-124), the run at prompt `8527564` on 2026-11-11, or
-(FS-126), the run at prompt `26834d8` on 2026-11-11, or (FS-131), the run at prompt `6125364` on 2026-11-11, or (FS-133), the run at prompt `2a00dd1` on 2026-11-11, or (FS-135), the run at prompt `9fc2851` on 2026-11-11, or (FS-137), the run at prompt `8e82c40` on 2026-11-11.
+(FS-126), the run at prompt `26834d8` on 2026-11-11, or (FS-131), the run at prompt `6125364` on 2026-11-11, or (FS-133), the run at prompt `2a00dd1` on 2026-11-11, or (FS-135), the run at prompt `9fc2851` on 2026-11-11, or (FS-137), the run at prompt `8e82c40` on 2026-11-11, or (FS-139), the run at prompt `dfdbb05` on 2026-11-11.
 
 - **`encoding/json`.** It errors on `1e999` and replaces a lone surrogate with U+FFFD, which the spec
   forbids for both. Write the JSON reader, and hold strings as WTF-8 so a lone surrogate survives.
@@ -37,3 +37,5 @@ What the Go runs learned. Each fact cites its run: prompt `8a59987`, FS-96, 2026
 - **A recovered panic is a raised error.** A panic recovered from a hook or the evaluator is passed to `onError` as an error that carries
   the panic's value: contract section 12's "An error a hook or the evaluator raised is passed to `onError` as raised" covers it (FS-135).
 - **The test fake's stream.** It sends a `changed` event only when the test pushes one, so a test that expects a swap with the stream on pushes the event, or turns the stream off and polls (FS-137).
+- **A test never writes to a client's config after `New`.** The SDK's goroutines read it, so the write is a data race that only shows under load; give a second client the other value through its own constructor (FS-139).
+- **Name a finite check for what it checks.** A `Value.IsFinite` that was true only for a number made every string and boolean answer `null` until the harness caught it (FS-139).

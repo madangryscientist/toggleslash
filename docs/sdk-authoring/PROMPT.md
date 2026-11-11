@@ -362,8 +362,9 @@ files git tracks, hence the `git add`):
 ## Phase 6: review and report
 
 1. Walk [`CHECKLIST.md`](CHECKLIST.md) line by line: check it, fix what fails, note the evidence (a test
-   name, a command, a file and line). A line that does not apply says why; one you cannot meet is a stuck
-   point.
+   name, a command, a file and line). Read the contract's "Bounds" bullets again against your parser and your
+   client: a limit the contract does not name, added in phase 3 to be safe, is a deviation to remove. A line
+   that does not apply says why; one you cannot meet is a stuck point.
 2. Write `$L/RUN.md` from [`RUN-TEMPLATE.md`](RUN-TEMPLATE.md). Be candid: a guess you leave out is a gap
    the next run falls into again. A decision is a choice this prompt left open on purpose; a guess is a
    point where the prompt or a document should have told you and did not. Before listing one, search the

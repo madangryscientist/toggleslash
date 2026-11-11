@@ -116,7 +116,7 @@ Each line is a native test in `$L`, named in `RUN.md`.
   a `User-Agent` that names the host or user, not just the library and version, is not (contract 12).
 - [ ] Every extra beyond the contract is one contract 13 allows, and none weakens contract 5 or sends
   anything new (contract 13).
-- [ ] Test seams are options on `create` (which may be internal to the package) or the language's
+- [ ] Test seams are options on `create` (which may be internal to the package: a field of the SDK's own config that the package's tests set, as `sdks/go`'s tests set `cfg.idle`, is one) or the language's
   standard fake-time test facility, never a global or an environment variable the SDK reads (contract 13,
   PROMPT.md phase 3).
 - [ ] `bin/lint`, `bin/test` and `bin/test-service` exist, are executable, `cd` to the SDK, and run with only
