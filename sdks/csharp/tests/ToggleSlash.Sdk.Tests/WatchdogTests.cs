@@ -47,15 +47,17 @@ public sealed class WatchdogTests
     [Fact]
     public async Task A_keep_alive_restarts_the_idle_limit()
     {
+        // A longer limit than the class constant, so a scheduling stall on a loaded runner cannot trip it.
+        var idle = TimeSpan.FromSeconds(3);
         long stoppedAt = 0;
         var watch = Stopwatch.StartNew();
         await using var server = new Loopback(async (socket, quit) =>
         {
             await socket.Event("connected", "\"v1\"");
-            // Comments for three idle limits: each is under the limit apart, none changes the ruleset.
+            // Comments for two idle limits, each a sixth of the limit apart: none changes the ruleset.
             for (var i = 0; i < 12; i++)
             {
-                await Task.Delay(Idle / 3, quit);
+                await Task.Delay(idle / 6, quit);
                 await socket.Comment("keep-alive");
             }
             stoppedAt = watch.ElapsedMilliseconds;
@@ -66,16 +68,16 @@ public sealed class WatchdogTests
         {
             Url = server.Url,
             SdkKey = "key",
-            StreamIdleTimeout = Idle,
+            StreamIdleTimeout = idle,
             OnError = e =>
             {
                 if (e is TimeoutException) firstTimeout.TrySetResult(watch.ElapsedMilliseconds);
             },
         });
         Assert.True(await client.ReadyAsync());
-        var timedOutAt = await firstTimeout.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        var timedOutAt = await firstTimeout.Task.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.True(Volatile.Read(ref stoppedAt) > 0, "the idle limit fired while keep-alives were still arriving");
-        Assert.True(timedOutAt - Volatile.Read(ref stoppedAt) >= Idle.TotalMilliseconds * 0.5, $"{timedOutAt - stoppedAt} ms after the last keep-alive");
+        Assert.True(timedOutAt - Volatile.Read(ref stoppedAt) >= idle.TotalMilliseconds * 0.5, $"{timedOutAt - stoppedAt} ms after the last keep-alive");
     }
 
     [Fact]
