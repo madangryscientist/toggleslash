@@ -1,16 +1,15 @@
-package eval
+package evaluator
 
 import "strings"
 
-// Semantic versions, to the "Semantic versions" section of docs/evaluation.md. A hand-written walk over the
-// string: no regular expression and no library. Nothing here converts a numeric part to a number.
+// Semantic versions, to the "Semantic versions" section of docs/evaluation.md:
+// a hand-written walk over the string. Nothing converts a numeric part to a
+// number, so a part of any length compares.
 
 type semanticVersion struct {
 	major, minor, patch string
 	prerelease          []string
 }
-
-func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
 func isIdentifierChar(c byte) bool {
 	return isDigit(c) || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c == '-'
@@ -46,13 +45,9 @@ func identifiers(s string) ([]string, bool) {
 	return parts, true
 }
 
-// splitAt splits at the first sep; found is false when there is none.
-func splitAt(s string, sep byte) (before, after string, found bool) {
-	at := strings.IndexByte(s, sep)
-	if at < 0 {
-		return s, "", false
-	}
-	return s[:at], s[at+1:], true
+// splitAt is the text before and after the first sep, and false when there is none.
+func splitAt(s, sep string) (before, after string, found bool) {
+	return strings.Cut(s, sep)
 }
 
 func prereleaseIdentifiers(s string) ([]string, bool) {
@@ -68,10 +63,9 @@ func prereleaseIdentifiers(s string) ([]string, bool) {
 	return parts, true
 }
 
-// numericParts reads MAJOR.MINOR.PATCH, or a short form (MAJOR, MAJOR.MINOR) when short is allowed.
 func numericParts(s string, short bool) ([]string, bool) {
 	numbers := strings.Split(s, ".")
-	if len(numbers) > 3 || len(numbers) < 3 && !short {
+	if len(numbers) > 3 || (len(numbers) < 3 && !short) {
 		return nil, false
 	}
 	for _, n := range numbers {
@@ -82,29 +76,28 @@ func numericParts(s string, short bool) ([]string, bool) {
 	return numbers, true
 }
 
-// parseSemanticVersion is the version s spells, or false when it is not one.
+// parseSemanticVersion reads the version s spells.
 func parseSemanticVersion(s string) (semanticVersion, bool) {
-	withoutBuild, build, hasBuild := splitAt(s, '+')
-	// Build metadata: identifiers only, and leading zeros are fine.
+	withoutBuild, build, hasBuild := splitAt(s, "+")
 	if hasBuild {
+		// Build metadata: identifiers only, and leading zeros are fine.
 		if _, ok := identifiers(build); !ok {
 			return semanticVersion{}, false
 		}
 	}
-	core, prerelease, hasPrerelease := splitAt(withoutBuild, '-')
-	var pre []string
-	if hasPrerelease {
+	core, pre, hasPre := splitAt(withoutBuild, "-")
+	var prerelease []string
+	if hasPre {
 		var ok bool
-		if pre, ok = prereleaseIdentifiers(prerelease); !ok {
+		if prerelease, ok = prereleaseIdentifiers(pre); !ok {
 			return semanticVersion{}, false
 		}
 	}
-	// The short forms carry no suffix.
-	numbers, ok := numericParts(core, !hasBuild && !hasPrerelease)
+	numbers, ok := numericParts(core, !hasBuild && !hasPre)
 	if !ok {
 		return semanticVersion{}, false
 	}
-	v := semanticVersion{major: numbers[0], minor: "0", patch: "0", prerelease: pre}
+	v := semanticVersion{major: numbers[0], minor: "0", patch: "0", prerelease: prerelease}
 	if len(numbers) > 1 {
 		v.minor = numbers[1]
 	}
@@ -114,20 +107,14 @@ func parseSemanticVersion(s string) (semanticVersion, bool) {
 	return v, true
 }
 
-func sign(order int) int {
-	switch {
-	case order < 0:
-		return -1
-	case order > 0:
-		return 1
-	}
-	return 0
-}
-
-// compareNumeric orders digit strings with no leading zero: the longer is larger, else by code unit.
+// compareNumeric orders digit strings with no leading zero: the longer is
+// larger, else by code unit.
 func compareNumeric(a, b string) int {
 	if len(a) != len(b) {
-		return sign(len(a) - len(b))
+		if len(a) < len(b) {
+			return -1
+		}
+		return 1
 	}
 	return strings.Compare(a, b)
 }
@@ -158,16 +145,16 @@ func comparePrerelease(a, b []string) int {
 	return sign(len(a) - len(b))
 }
 
-// compareSemanticVersions is -1, 0 or 1 by SemVer 2.0.0 section 11; build metadata is already gone.
+// compareSemanticVersions is -1, 0 or 1 by SemVer 2.0.0 section 11.
 func compareSemanticVersions(a, b semanticVersion) int {
-	for _, order := range [3]int{
-		compareNumeric(a.major, b.major),
-		compareNumeric(a.minor, b.minor),
-		compareNumeric(a.patch, b.patch),
-	} {
-		if order != 0 {
-			return order
-		}
+	if order := compareNumeric(a.major, b.major); order != 0 {
+		return order
+	}
+	if order := compareNumeric(a.minor, b.minor); order != 0 {
+		return order
+	}
+	if order := compareNumeric(a.patch, b.patch); order != 0 {
+		return order
 	}
 	return comparePrerelease(a.prerelease, b.prerelease)
 }

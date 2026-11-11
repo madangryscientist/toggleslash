@@ -1,14 +1,26 @@
+# The rule set: golangci-lint's "standard" group (errcheck, govet, ineffassign, staticcheck, unused)
+# plus the linters below. Every ignore carries its reason.
 version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
 linters:
   default: standard
   enable:
-    - errorlint
-    - bodyclose
-    - misspell
-    - unconvert
-formatters:
-  enable:
-    - gofmt
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0
+    - bodyclose # an http.Response whose body is never closed leaks a connection
+    - copyloopvar # redundant loop-variable copies hide that Go 1.22 made them per iteration
+    - errorlint # compare errors with errors.Is and errors.As, never == or a type assertion
+    - gocritic # the default diagnostic and style checks
+    - misspell # typos in identifiers, comments and strings
+    - noctx # every outgoing request carries a context, so Close can cancel it
+    - nilerr # returning nil when an err was just checked is usually a swallowed error
+    - unconvert # conversions that change nothing
+    - unparam # parameters and results that never vary
+  settings:
+    errcheck:
+      exclude-functions:
+        # Closing a response body or a drained connection has nothing left to report.
+        - (io.Closer).Close
+        - (net/http.ResponseWriter).Write

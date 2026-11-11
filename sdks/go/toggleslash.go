@@ -1,112 +1,133 @@
-// Package toggleslash is the ToggleSlash server SDK for Go.
+// Package toggleslash is the Go server SDK for ToggleSlash.
 //
-// A Client keeps one ruleset current by following the server's stream (polling when the stream is down) and
-// evaluates flags locally, so the typed methods (BoolVariation, StringVariation, IntVariation, Float64Variation
-// and JSONVariation, each with a ...Detail twin) do no I/O and never block. Usage counts, which hold no context
-// and nothing about an end user, are sent in batches. Nothing here panics at a caller and no method returns an
-// error: a failure becomes the fallback you passed, with a reason, and is told to the WithOnError callback.
+// A Client holds one server key, keeps that environment's ruleset in memory,
+// evaluates flags locally to docs/evaluation.md for a context the caller
+// passes, and reports how often each variation was served. Create one with
+// New and close it with Close:
 //
 //	client := toggleslash.New("https://flags.example.com", os.Getenv("TOGGLESLASH_SDK_KEY"))
 //	defer client.Close()
 //	client.Ready()
-//	on := client.BoolVariation("new-checkout", toggleslash.UserContext("user-1"), false)
+//	on := client.BoolVariation("new-checkout", toggleslash.NewContext("user-42"), false)
 //
-// The contract is docs/sdk-contract.md in the ToggleSlash repository, and sdks/go/DESIGN.md maps each of its
-// names to Go.
+// Nothing a Client does panics at the caller: a failure becomes the caller's
+// fallback with an ERROR reason, or goes to the OnError callback, or both.
+// DESIGN.md holds the mapping from the contract's operations to this API.
 package toggleslash
 
 import (
-	"net/http"
 	"time"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/eval"
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
+	"github.com/madangryscientist/toggleslash/sdks/go/internal/evaluator"
 )
 
+// ReasonKind says how a value was chosen. The spelling is the spec's.
+type ReasonKind = evaluator.ReasonKind
+
+// The reason kinds.
 const (
-	defaultInterval = 30 * time.Second
-	defaultTimeout  = 10 * time.Second
-	// streamIdle is how long the stream may go without a byte (the server sends a keep-alive every 25 s).
-	streamIdle = 60 * time.Second
-	// maxRetryAfter is the longest wait a 429 can ask for.
-	maxRetryAfter = 300 * time.Second
-	backoffBase   = time.Second
+	ReasonOff                = evaluator.ReasonOff
+	ReasonTargetMatch        = evaluator.ReasonTargetMatch
+	ReasonRuleMatch          = evaluator.ReasonRuleMatch
+	ReasonFallthrough        = evaluator.ReasonFallthrough
+	ReasonPrerequisiteFailed = evaluator.ReasonPrerequisiteFailed
+	ReasonError              = evaluator.ReasonError
 )
 
-// config holds the options after the defaults. The seams (the fields after onError) are for tests in this
-// package: they are not options a caller can pass.
-type config struct {
-	url             string
-	sdkKey          string
-	stream          bool
-	pollInterval    time.Duration
-	flushInterval   time.Duration
-	requestTimeout  time.Duration
-	afterEvaluation func(EvaluationEvent)
-	onError         func(error)
+// ErrorCode says why a result is an ERROR. The spelling is the spec's.
+type ErrorCode = evaluator.ErrorCode
 
-	httpClient *http.Client
-	now        func() time.Time
-	jitter     func() float64
-	idle       time.Duration
-	evaluate   func(*eval.Ruleset, string, jsonvalue.Value) eval.Result
+// The evaluator's error codes.
+const (
+	ErrInvalidContext            = evaluator.ErrInvalidContext
+	ErrFlagNotFound              = evaluator.ErrFlagNotFound
+	ErrSegmentNotFound           = evaluator.ErrSegmentNotFound
+	ErrMalformedFlag             = evaluator.ErrMalformedFlag
+	ErrMalformedSegment          = evaluator.ErrMalformedSegment
+	ErrPrerequisiteCycle         = evaluator.ErrPrerequisiteCycle
+	ErrPrerequisiteDepthExceeded = evaluator.ErrPrerequisiteDepthExceeds
+)
+
+// The SDK's own error codes.
+const (
+	// ErrNotReady: no ruleset has loaded yet.
+	ErrNotReady ErrorCode = "NOT_READY"
+	// ErrTypeMismatch: the flag served a value of a different kind than the fallback.
+	ErrTypeMismatch ErrorCode = "TYPE_MISMATCH"
+	// ErrEvaluationFailed: the evaluation panicked. The failure went to OnError.
+	ErrEvaluationFailed ErrorCode = "EVALUATION_FAILED"
+)
+
+// Reason is why a flag served what it did. Code is set for ERROR, RuleIndex
+// for RULE_MATCH and FlagKey for PREREQUISITE_FAILED.
+type Reason = evaluator.Reason
+
+// Detail is a value with the variation that served it and the reason.
+// VariationIndex is nil whenever Value is the caller's fallback.
+type Detail[T any] struct {
+	Value          T
+	VariationIndex *int
+	Reason         Reason
 }
 
-// Option configures a Client.
-type Option func(*config)
+// StreamState is how the stream is doing.
+type StreamState string
 
-// WithStream turns the stream on or off. It is on by default; off polls only.
-func WithStream(on bool) Option { return func(c *config) { c.stream = on } }
+// The stream states.
+const (
+	// StreamOff: the stream option is off. It stays off until Close.
+	StreamOff StreamState = "off"
+	// StreamConnecting: the first load, and each stream attempt while it opens.
+	StreamConnecting StreamState = "connecting"
+	// StreamConnected: the stream's connected event arrived and it is still open.
+	StreamConnected StreamState = "connected"
+	// StreamDisconnected: the last attempt ended and the SDK is waiting to retry.
+	StreamDisconnected StreamState = "disconnected"
+	// StreamClosed: Close has been called.
+	StreamClosed StreamState = "closed"
+)
 
-// WithPollInterval sets how often the ruleset is polled when the stream is down or off, and the longest
-// reconnect wait. The default is 30 seconds; zero or negative is the default.
-func WithPollInterval(d time.Duration) Option {
-	return func(c *config) {
-		if d > 0 {
-			c.pollInterval = d
-		}
-	}
+// Status is what the SDK has loaded and how its stream is doing. It holds no
+// URL, key, context or error message, and it is local: the server never sees it.
+type Status struct {
+	// ETag of the ruleset held, as received; empty before the first load.
+	ETag string
+	// LastSyncAt is when the SDK last confirmed its ruleset matches the
+	// server; the zero time if never. A keep-alive does not move it.
+	LastSyncAt time.Time
+	Stream     StreamState
+	// LastError is "http_<status>", "timeout", "bad_ruleset" or "network"; empty for none.
+	LastError string
 }
 
-// WithFlushInterval sets how often usage counts are sent. The default is 30 seconds; zero or negative is
-// the default.
-func WithFlushInterval(d time.Duration) Option {
-	return func(c *config) {
-		if d > 0 {
-			c.flushInterval = d
-		}
-	}
+// EvaluationEvent is what one evaluation did, handed to the AfterEvaluation
+// hook. It carries the context the caller passed: a hook that sends it
+// anywhere is the application's decision, the SDK itself sends none of it.
+type EvaluationEvent struct {
+	FlagKey string
+	Context Context
+	// Value is what the caller is about to get. For IntVariation it is a JSON
+	// number, so above 2^53 it is the nearest double; the caller still gets the
+	// exact int64.
+	Value          Value
+	VariationIndex *int
+	Reason         Reason
+	// ETag of the ruleset this evaluation used, as received; empty before the first load.
+	ETag string
+	// FlagVersion is the flag's version in that ruleset; nil when the ruleset
+	// has no such flag or the flag is malformed.
+	FlagVersion *int
 }
 
-// WithRequestTimeout sets the longest any one request may take, and so the longest Ready waits. The
-// default is 10 seconds; zero or negative is the default.
-func WithRequestTimeout(d time.Duration) Option {
-	return func(c *config) {
-		if d > 0 {
-			c.requestTimeout = d
-		}
-	}
+// RequestError is a failed request the SDK absorbed, as OnError receives it.
+// It holds a route and a code, never a URL, a header or a key.
+type RequestError struct {
+	// Route is "ruleset", "stream" or "events".
+	Route string
+	// Code is "http_<status>", "timeout", "bad_ruleset" or "network".
+	Code string
 }
 
-// WithAfterEvaluation sets a function called synchronously, on the caller's goroutine, after every
-// variation method, a fallback included, with what the caller is about to get. A panic in it goes to the
-// OnError function and never reaches the caller, who gets the same answer and the same usage count with or
-// without it. A nil function is ignored.
-func WithAfterEvaluation(f func(EvaluationEvent)) Option {
-	return func(c *config) {
-		if f != nil {
-			c.afterEvaluation = f
-		}
-	}
-}
-
-// WithOnError sets a function told about every failure the SDK absorbs (a failed sync, a failed usage
-// request, a hook that panicked). The value is an *Error. It is never needed for correctness; a panic in it is
-// ignored. A nil function is ignored.
-func WithOnError(f func(error)) Option {
-	return func(c *config) {
-		if f != nil {
-			c.onError = f
-		}
-	}
+func (e *RequestError) Error() string {
+	return "toggleslash: " + e.Route + " request failed: " + e.Code
 }

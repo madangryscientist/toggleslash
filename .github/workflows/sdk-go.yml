@@ -35,13 +35,12 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      # The toolchain step: go and golangci-lint at the versions sdks/go/mise.toml pins. Limited to those two
-      # tools, so the root .tool-versions (.NET, a second Bun) is not installed. One file names the versions,
-      # which setup-go plus a separate golangci-lint action would split in three places.
+      # The toolchain step: the versions sdks/go/mise.toml pins (Go, zig for the race detector's C compiler, and
+      # golangci-lint). Limited to those tools, so the root .tool-versions (.NET, a second Bun) is not installed.
       - uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
         with:
           working_directory: sdks/go
-          install_args: go golangci-lint
+          install_args: go zig golangci-lint
       - run: bun install --frozen-lockfile
       - run: sdks/go/bin/lint
       - run: sdks/go/bin/test

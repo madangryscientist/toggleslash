@@ -1,57 +1,80 @@
 package wtf8
 
 import (
-	"slices"
+	"bytes"
 	"testing"
 )
 
-// lone is a string holding one lone high surrogate, U+D83D, as WTF-8.
-var lone = string(AppendRune(nil, 0xD83D))
+const (
+	loneHigh = "\xED\xA0\xBD" // U+D83D
+	loneLow  = "\xED\xB8\x80" // U+DE00
+	emoji    = "\U0001F600"   // U+D83D U+DE00 as a pair
+)
 
-func TestLoneSurrogateIsKept(t *testing.T) {
-	if len(lone) != 3 || !HasSurrogate(lone) {
-		t.Fatalf("lone surrogate = %q", lone)
+func TestDecodeUTF8IsWHATWG(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"abc", "abc"},
+		{"\xFF", "�"},
+		{"a\x80b", "a�b"},
+		{"\xE2\x82", "�"},       // a truncated three-byte sequence is one replacement
+		{"\xE2\x82x", "�x"},     // and the byte after it is reprocessed
+		{"\xF0\x9F\x98", "�"},   // a truncated four-byte sequence
+		{"\xED\xA0\x80", "���"}, // an encoded surrogate is three bad bytes
+		{"\xC0\x80", "��"},      // overlong
+		{"\xF4\x90\x80\x80", "����"},
 	}
-	if got := CodePoints("a" + lone + "b"); !slices.Equal(got, []rune{'a', 0xD83D, 'b'}) {
-		t.Fatalf("code points = %x", got)
-	}
-	if got := UTF16(lone); !slices.Equal(got, []uint16{0xD83D}) {
-		t.Fatalf("utf16 = %x", got)
-	}
-	if got := ToUTF8(lone); got != "�" {
-		t.Fatalf("to utf8 = %q", got)
+	for _, c := range cases {
+		if got := DecodeUTF8([]byte(c.in)); got != c.want {
+			t.Errorf("DecodeUTF8(%q) = %q, want %q", c.in, got, c.want)
+		}
 	}
 }
 
-func TestFromGoReplacesInvalidBytes(t *testing.T) {
-	if got := FromGo("a\xffb"); got != "a�b" {
-		t.Fatalf("got %q", got)
+func TestSurrogates(t *testing.T) {
+	if !HasSurrogate("a"+loneHigh) || HasSurrogate("a"+emoji) {
+		t.Error("HasSurrogate")
+	}
+	if got := ToUTF8("a" + loneHigh + "b"); got != "a�b" {
+		t.Errorf("ToUTF8 = %q", got)
+	}
+	units := Units(nil, emoji+loneLow)
+	if len(units) != 3 || units[0] != 0xD83D || units[1] != 0xDE00 || units[2] != 0xDE00 {
+		t.Errorf("Units = %x", units)
+	}
+	if got := CodePoints("a" + loneHigh + emoji); len(got) != 3 || got[1] != 0xD83D || got[2] != 0x1F600 {
+		t.Errorf("CodePoints = %x", got)
+	}
+	out := AppendRune(nil, 0xD83D)
+	if !bytes.Equal(out, []byte(loneHigh)) {
+		t.Errorf("AppendRune = %x", out)
 	}
 }
 
-func TestCompareIsByUTF16Unit(t *testing.T) {
-	// U+FF5E is one unit 0xFF5E; U+1F600 is the pair D83D DE00. By unit the emoji sorts first, by
-	// UTF-8 byte or code point it sorts last.
-	if Compare("\U0001F600", "～") >= 0 {
-		t.Error("the emoji should sort before U+FF5E by UTF-16 unit")
+func TestCompareUTF16(t *testing.T) {
+	// U+FFFF sorts above an astral code point in UTF-16 but below it in UTF-8.
+	if CompareUTF16("￿", emoji) <= 0 {
+		t.Error("U+FFFF should sort above U+1F600 by UTF-16 code unit")
 	}
-	if Compare(lone, "～") >= 0 || Compare("a", "a") != 0 || Compare("b", "a") <= 0 {
-		t.Error("compare order wrong")
+	if CompareUTF16("a", "b") >= 0 || CompareUTF16("b", "a") <= 0 || CompareUTF16("a", "a") != 0 {
+		t.Error("ascii order")
+	}
+	if CompareUTF16("a", "ab") >= 0 || CompareUTF16("ab", "a") <= 0 {
+		t.Error("prefix order")
 	}
 }
 
-func TestSubstringOperationsAreByUnit(t *testing.T) {
-	if !Contains("x"+lone+"y", lone) || Contains("xy", lone) {
-		t.Error("contains with a surrogate needle")
+func TestJavaScriptSubstringSemantics(t *testing.T) {
+	// A lone surrogate matches half of a pair, as JavaScript's includes does.
+	if !Contains(emoji, loneHigh) || !Contains("x"+emoji, loneLow) {
+		t.Error("Contains with a lone surrogate")
 	}
-	// A lone high surrogate is the first unit of an emoji, so it is a prefix of it by unit.
-	if !HasPrefix("\U0001F600", lone) {
-		t.Error("a high surrogate is a prefix of the pair it starts")
+	if !HasPrefix(emoji, loneHigh) || HasPrefix(emoji, loneLow) {
+		t.Error("HasPrefix with a lone surrogate")
 	}
-	if HasSuffix("\U0001F600", lone) {
-		t.Error("a high surrogate is not a suffix of a pair")
+	if !HasSuffix(emoji, loneLow) || HasSuffix(emoji, loneHigh) {
+		t.Error("HasSuffix with a lone surrogate")
 	}
-	if !HasSuffix("ab", "b") || !HasPrefix("ab", "a") || !Contains("abc", "") {
-		t.Error("plain ordinal operations")
+	if !Contains("hello", "ell") || Contains("hello", "elx") || !HasPrefix("hello", "he") || !HasSuffix("hello", "lo") {
+		t.Error("ascii")
 	}
 }
