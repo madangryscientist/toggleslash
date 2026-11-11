@@ -112,7 +112,7 @@ Each line is a native test in `$L`, named in `RUN.md`.
   Headers the HTTP client adds on its own (`User-Agent`, `Accept-Encoding`, `Host`, `Content-Length`,
   `Connection`) are allowed when `RUN.md` lists each with why it does not identify a user or a machine
   (capture one request of each route on a loopback listener, the conditional ruleset request with `If-None-Match` counting as its own route, and list what the client added, route by route, in a
-  table in `RUN.md`);
+  table in `RUN.md`; a header the client sets from the URL where a server handler reads it outside the header map (Go's `Host`, in `r.Host`) is in the table too);
   a `User-Agent` that names the host or user, not just the library and version, is not (contract 12).
 - [ ] Every extra beyond the contract is one contract 13 allows, and none weakens contract 5 or sends
   anything new (contract 13).
