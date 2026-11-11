@@ -7,112 +7,127 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
+	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonv"
 )
 
-// fixtures is fixtures/evaluation, found from this package's directory.
-var fixtures = filepath.Join("..", "..", "..", "..", "fixtures", "evaluation")
+const fixturesDir = "../../../../fixtures/evaluation"
 
-func readFixture(t *testing.T, name string) jsonvalue.Value {
+func readFixture(t *testing.T, name string) jsonv.Value {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(fixtures, name))
+	data, err := os.ReadFile(filepath.Join(fixturesDir, name))
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("read %s: %v", name, err)
 	}
-	v, err := jsonvalue.Parse(raw)
+	v, err := jsonv.Parse(data)
 	if err != nil {
-		t.Fatalf("%s: %v", name, err)
+		t.Fatalf("parse %s: %v", name, err)
 	}
 	return v
 }
 
-// resultValue is a Result in the shape a vector's "expected" has.
-func resultValue(r Result) jsonvalue.Value {
-	reason := []jsonvalue.Member{{Key: "kind", Value: jsonvalue.String(r.Reason.Kind)}}
+func fixtureNames(t *testing.T) []string {
+	t.Helper()
+	paths, err := filepath.Glob(filepath.Join(fixturesDir, "*.json"))
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("no fixtures in %s: %v", fixturesDir, err)
+	}
+	names := make([]string, len(paths))
+	for i, p := range paths {
+		names[i] = filepath.Base(p)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// resultValue renders a Result the way the vectors write it.
+func resultValue(r Result) jsonv.Value {
+	reason := jsonv.NewMembers()
+	reason.Set("kind", jsonv.StringValue(r.Reason.Kind))
 	switch r.Reason.Kind {
 	case ReasonRuleMatch:
-		reason = append(reason, jsonvalue.Member{Key: "ruleIndex", Value: jsonvalue.Number(float64(r.Reason.RuleIndex))})
+		reason.Set("ruleIndex", jsonv.NumberValue(float64(r.Reason.RuleIndex)))
 	case ReasonPrerequisiteFailed:
-		reason = append(reason, jsonvalue.Member{Key: "flagKey", Value: jsonvalue.String(r.Reason.FlagKey)})
+		reason.Set("flagKey", jsonv.StringValue(r.Reason.FlagKey))
 	case ReasonError:
-		reason = append(reason, jsonvalue.Member{Key: "code", Value: jsonvalue.String(r.Reason.Code)})
+		reason.Set("code", jsonv.StringValue(r.Reason.Code))
 	}
-	index := jsonvalue.Null()
-	if r.VariationIndex != NoVariation {
-		index = jsonvalue.Number(float64(r.VariationIndex))
+	out := jsonv.NewMembers()
+	out.Set("value", r.Value)
+	index := jsonv.NullValue()
+	if r.VariationIndex >= 0 {
+		index = jsonv.NumberValue(float64(r.VariationIndex))
 	}
-	return jsonvalue.Object(
-		jsonvalue.Member{Key: "value", Value: r.Value},
-		jsonvalue.Member{Key: "variationIndex", Value: index},
-		jsonvalue.Member{Key: "reason", Value: jsonvalue.Object(reason...)},
-	)
+	out.Set("variationIndex", index)
+	out.Set("reason", jsonv.ObjectValue(reason))
+	return jsonv.ObjectValue(out)
 }
 
 func TestVectors(t *testing.T) {
-	entries, err := os.ReadDir(fixtures)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var names []string
-	for _, e := range entries {
-		if e.Name() != "buckets.json" && filepath.Ext(e.Name()) == ".json" {
-			names = append(names, e.Name())
-		}
-	}
-	sort.Strings(names)
 	total := 0
-	kinds := map[string]bool{}
-	for _, name := range names {
-		vectors, _ := readFixture(t, name).Field("vectors").Items()
+	for _, name := range fixtureNames(t) {
+		if name == "buckets.json" {
+			continue
+		}
+		file := readFixture(t, name)
+		o, _ := file.AsObject()
+		vectors, ok := field(o, "vectors").AsArray()
+		if !ok {
+			t.Fatalf("%s has no vectors array", name)
+		}
 		for _, v := range vectors {
+			vo, _ := v.AsObject()
+			vname, _ := field(vo, "name").AsString()
 			total++
-			title, _ := v.Field("name").Text()
-			flagKey, _ := v.Field("flagKey").Text()
-			ruleset := Compile(jsonvalue.Object(
-				jsonvalue.Member{Key: "flags", Value: v.Field("flags")},
-				jsonvalue.Member{Key: "segments", Value: v.Field("segments")},
-			))
-			got := resultValue(ruleset.Evaluate(flagKey, v.Field("context")))
-			want := v.Field("expected")
-			if !jsonvalue.Equal(got, want) {
-				gotJSON := got.AppendJSON(nil)
-				wantJSON := want.AppendJSON(nil)
-				t.Errorf("%s: %s\n got  %s\n want %s", name, title, gotJSON, wantJSON)
-			}
-			reason := want.Field("reason")
-			kind, _ := reason.Field("kind").Text()
-			if code, ok := reason.Field("code").Text(); ok {
-				kind += ":" + code
-			}
-			kinds[kind] = true
+			t.Run(name+"/"+vname, func(t *testing.T) {
+				ruleset := jsonv.NewMembers()
+				ruleset.Set("flags", field(vo, "flags"))
+				ruleset.Set("segments", field(vo, "segments"))
+				flagKey, _ := field(vo, "flagKey").AsString()
+				got := resultValue(Load(jsonv.ObjectValue(ruleset)).Evaluate(flagKey, field(vo, "context")))
+				want := field(vo, "expected")
+				if !jsonv.Equal(got, want) {
+					t.Errorf("got %s, want %s", jsonv.Append(nil, got), jsonv.Append(nil, want))
+				}
+			})
 		}
 	}
 	if total == 0 {
-		t.Fatal("read no vectors")
+		t.Fatal("no vectors ran")
 	}
-	if len(kinds) != 12 {
-		t.Errorf("the vectors cover %d reasons and error codes, want 12: %v", len(kinds), kinds)
-	}
-	fmt.Printf("vectors: %d\n", total)
 }
 
 func TestBucketPins(t *testing.T) {
-	pins, _ := readFixture(t, "buckets.json").Field("buckets").Items()
-	if len(pins) == 0 {
-		t.Fatal("read no bucket pins")
+	o, _ := readFixture(t, "buckets.json").AsObject()
+	pins, ok := field(o, "buckets").AsArray()
+	if !ok || len(pins) == 0 {
+		t.Fatal("no pins")
 	}
 	for _, p := range pins {
-		key, _ := p.Field("flagKey").Text()
-		salt, _ := p.Field("salt").Text()
-		ctxKey, _ := p.Field("contextKey").Text()
-		wantHash, _ := p.Field("uint32").Number()
-		wantBucket, _ := p.Field("bucket").Number()
-		if got := hash32(key, salt, ctxKey); float64(got) != wantHash {
-			t.Errorf("hash32(%q,%q,%q) = %d, want %v", key, salt, ctxKey, got, wantHash)
-		}
-		if got := bucket(key, salt, ctxKey); float64(got) != wantBucket {
-			t.Errorf("bucket(%q,%q,%q) = %d, want %v", key, salt, ctxKey, got, wantBucket)
+		po, _ := p.AsObject()
+		flagKey, _ := field(po, "flagKey").AsString()
+		salt, _ := field(po, "salt").AsString()
+		contextKey, _ := field(po, "contextKey").AsString()
+		wantU, _ := field(po, "uint32").AsNumber()
+		wantB, _ := field(po, "bucket").AsNumber()
+		u, b := Bucket(flagKey, salt, contextKey)
+		if float64(u) != wantU || float64(b) != wantB {
+			t.Errorf("%s.%s.%s: got %d/%d, want %v/%v", flagKey, salt, contextKey, u, b, wantU, wantB)
 		}
 	}
-	fmt.Printf("pins: %d\n", len(pins))
+}
+
+// TestVectorCounts prints the counts bin/test reports: every vector and every pin the files hold.
+func TestVectorCounts(t *testing.T) {
+	vectors, pins := 0, 0
+	for _, name := range fixtureNames(t) {
+		o, _ := readFixture(t, name).AsObject()
+		if name == "buckets.json" {
+			items, _ := field(o, "buckets").AsArray()
+			pins += len(items)
+			continue
+		}
+		items, _ := field(o, "vectors").AsArray()
+		vectors += len(items)
+	}
+	fmt.Printf("vectors: %d pins: %d\n", vectors, pins)
 }

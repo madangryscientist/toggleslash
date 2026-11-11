@@ -1,59 +1,26 @@
 package eval
 
-import "github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
+import "github.com/madangryscientist/toggleslash/sdks/go/internal/jsonv"
 
-// maxPrerequisiteDepth is the prerequisite links from the requested flag; docs/evaluation.md pins the limit.
+// maxPrerequisiteDepth is the number of prerequisite links from the requested flag that docs/evaluation.md allows.
 const maxPrerequisiteDepth = 32
 
-// NoVariation is the variation index of a result that serves no variation.
-const NoVariation = -1
-
-// Reason kinds.
-const (
-	ReasonOff                = "OFF"
-	ReasonTargetMatch        = "TARGET_MATCH"
-	ReasonRuleMatch          = "RULE_MATCH"
-	ReasonFallthrough        = "FALLTHROUGH"
-	ReasonPrerequisiteFailed = "PREREQUISITE_FAILED"
-	ReasonError              = "ERROR"
-)
-
-// Reason says why a result is what it is. RuleIndex is meaningful for RULE_MATCH only, FlagKey for
-// PREREQUISITE_FAILED only and Code for ERROR only.
-type Reason struct {
-	Kind      string
-	RuleIndex int
-	FlagKey   string
-	Code      string
-}
-
-// Result is the outcome of one evaluation. Value is null when nothing is served.
-type Result struct {
-	Value          jsonvalue.Value
-	VariationIndex int
-	Reason         Reason
-}
-
 type run struct {
-	ruleset   *Ruleset
-	contexts  contexts
-	active    map[string]bool
+	rs        *Ruleset
+	ctx       contexts
+	active    map[string]struct{}
 	completed map[string]Result
 }
 
-func failure(code string) Result {
-	return Result{VariationIndex: NoVariation, Reason: Reason{Kind: ReasonError, Code: code}}
-}
-
-func served(variations []jsonvalue.Value, index int, reason Reason) Result {
+func served(variations []jsonv.Value, index int, reason Reason) Result {
 	return Result{Value: variations[index], VariationIndex: index, Reason: reason}
 }
 
-func offResult(entry *flagEntry, reason Reason) Result {
-	if entry.off < 0 {
-		return Result{VariationIndex: NoVariation, Reason: reason}
+func offResult(h header, reason Reason) Result {
+	if h.off < 0 {
+		return Result{VariationIndex: -1, Reason: reason}
 	}
-	return served(entry.variations, entry.off, reason)
+	return served(h.variations, h.off, reason)
 }
 
 func rolloutVariation(r *rollout, position int) int {
@@ -68,45 +35,46 @@ func rolloutVariation(r *rollout, position int) int {
 	return chosen
 }
 
-func serveResult(f *flag, s serve, ctxs contexts, reason Reason) Result {
+func serveResult(f *flag, s serve, c contexts, reason Reason) Result {
 	index := s.variation
 	if s.rollout != nil {
-		index = rolloutVariation(s.rollout, kindBucket(f.key, f.salt, s.rollout.kind, ctxs))
+		index = rolloutVariation(s.rollout, kindBucket(f.header.key, f.salt, s.rollout.kind, c))
 	}
-	return served(f.variations, index, reason)
+	return served(f.header.variations, index, reason)
 }
 
-func segmentRuleMatches(r *segmentRule, seg *segmentEntry, ctxs contexts) bool {
-	for i := range r.clauses {
-		if !attributeClauseMatches(&r.clauses[i], ctxs) {
+func listsContext(keys map[string]map[string]struct{}, c contexts) bool {
+	for kind, entry := range c {
+		if set, ok := keys[kind]; ok {
+			if _, in := set[entry.key]; in {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func segmentRuleMatches(r *segmentRule, s *segment, c contexts) bool {
+	for _, cl := range r.clauses {
+		if !cl.attributeMatches(c) {
 			return false
 		}
 	}
 	if r.weight < 0 {
 		return true
 	}
-	return kindBucket(seg.key, seg.salt, r.kind, ctxs) < r.weight
+	return kindBucket(s.key, s.salt, r.kind, c) < r.weight
 }
 
-// listsContext: does the context have, in any of its kinds, a key that keys lists for that kind?
-func listsContext(keys keysByKind, ctxs contexts) bool {
-	for i := range ctxs {
-		if _, listed := keys[ctxs[i].kind][ctxs[i].key]; listed {
-			return true
-		}
-	}
-	return false
-}
-
-func segmentMatches(seg *segmentEntry, ctxs contexts) bool {
-	if listsContext(seg.excluded, ctxs) {
+func segmentMatches(s *segment, c contexts) bool {
+	if listsContext(s.excluded, c) {
 		return false
 	}
-	if listsContext(seg.included, ctxs) {
+	if listsContext(s.included, c) {
 		return true
 	}
-	for i := range seg.rules {
-		if segmentRuleMatches(&seg.rules[i], seg, ctxs) {
+	for i := range s.rules {
+		if segmentRuleMatches(&s.rules[i], s, c) {
 			return true
 		}
 	}
@@ -115,11 +83,11 @@ func segmentMatches(seg *segmentEntry, ctxs contexts) bool {
 
 func (r *run) clauseMatches(c *clause) bool {
 	if c.op != opSegmentMatch {
-		return attributeClauseMatches(c, r.contexts)
+		return c.attributeMatches(r.ctx)
 	}
 	matched := false
-	for _, key := range c.segmentKeys {
-		if seg := r.ruleset.segments[key]; seg != nil && !seg.malformed && segmentMatches(seg, r.contexts) {
+	for _, key := range c.segments {
+		if s, ok := r.rs.segments[key]; ok && !s.malformed && segmentMatches(s.segment, r.ctx) {
 			matched = true
 			break
 		}
@@ -130,96 +98,95 @@ func (r *run) clauseMatches(c *clause) bool {
 func prerequisiteMet(p prerequisite, result Result) bool {
 	switch result.Reason.Kind {
 	case ReasonTargetMatch, ReasonRuleMatch, ReasonFallthrough:
-		return result.VariationIndex != NoVariation && float64(result.VariationIndex) == p.variation
+		return result.VariationIndex >= 0 && float64(result.VariationIndex) == p.variation
 	}
 	return false
 }
 
-func (r *run) checkPrerequisites(entry *flagEntry, depth int) (Result, bool) {
-	for _, p := range entry.flag.prerequisites {
+func (r *run) checkPrerequisites(f *flag, depth int) (Result, bool) {
+	for _, p := range f.prerequisites {
 		result := r.evaluateFlag(p.flagKey, depth+1)
 		if result.Reason.Kind == ReasonError {
 			return result, true
 		}
 		if !prerequisiteMet(p, result) {
-			return offResult(entry, Reason{Kind: ReasonPrerequisiteFailed, FlagKey: p.flagKey}), true
+			return offResult(f.header, Reason{Kind: ReasonPrerequisiteFailed, FlagKey: p.flagKey}), true
 		}
 	}
 	return Result{}, false
 }
 
-// targetedVariation is the variation of the first target in array order that matches the context.
-func targetedVariation(targets map[string]map[string]targetHit, ctxs contexts) (int, bool) {
-	var first targetHit
-	found := false
-	for i := range ctxs {
-		if hit, ok := targets[ctxs[i].kind][ctxs[i].key]; ok && (!found || hit.order < first.order) {
-			first, found = hit, true
+func (r *run) targeted(e *flagEntry) (int, bool) {
+	best, variation := -1, 0
+	for kind, entry := range r.ctx {
+		if hit, ok := e.targets[kind][entry.key]; ok && (best < 0 || hit.order < best) {
+			best, variation = hit.order, hit.variation
 		}
 	}
-	return first.variation, found
+	return variation, best >= 0
 }
 
-func (r *run) evaluateEntry(entry *flagEntry, depth int) Result {
-	if entry.status == statusMalformed {
-		return failure("MALFORMED_FLAG")
+func (r *run) evaluateEntry(e *flagEntry, depth int) Result {
+	if e.status == statusMalformed {
+		return failure(CodeMalformedFlag)
 	}
-	if !entry.on {
-		return offResult(entry, Reason{Kind: ReasonOff})
+	if !e.header.on {
+		return offResult(e.header, Reason{Kind: ReasonOff})
 	}
-	if entry.status == statusBroken {
-		return failure(entry.code)
+	if e.status == statusBroken {
+		return failure(e.code)
 	}
-	if blocked, stop := r.checkPrerequisites(entry, depth); stop {
+	f := e.flag
+	if blocked, ok := r.checkPrerequisites(f, depth); ok {
 		return blocked
 	}
-	f := entry.flag
-	if variation, ok := targetedVariation(f.targets, r.contexts); ok {
-		return served(f.variations, variation, Reason{Kind: ReasonTargetMatch})
+	if v, ok := r.targeted(e); ok {
+		return served(f.header.variations, v, Reason{Kind: ReasonTargetMatch})
 	}
 	for i := range f.rules {
-		matched := true
-		for j := range f.rules[i].clauses {
-			if !r.clauseMatches(&f.rules[i].clauses[j]) {
-				matched = false
+		rl := &f.rules[i]
+		all := true
+		for _, c := range rl.clauses {
+			if !r.clauseMatches(c) {
+				all = false
 				break
 			}
 		}
-		if matched {
-			return serveResult(f, f.rules[i].serve, r.contexts, Reason{Kind: ReasonRuleMatch, RuleIndex: i})
+		if all {
+			return serveResult(f, rl.serve, r.ctx, Reason{Kind: ReasonRuleMatch, RuleIndex: i})
 		}
 	}
-	return serveResult(f, f.defaultServe, r.contexts, Reason{Kind: ReasonFallthrough})
+	return serveResult(f, f.fallthrough_, r.ctx, Reason{Kind: ReasonFallthrough})
 }
 
 func (r *run) evaluateFlag(key string, depth int) Result {
 	if done, ok := r.completed[key]; ok {
 		return done
 	}
-	if r.active[key] {
-		return failure("PREREQUISITE_CYCLE")
+	if _, ok := r.active[key]; ok {
+		return failure(CodePrerequisiteCycle)
 	}
 	if depth > maxPrerequisiteDepth {
-		return failure("PREREQUISITE_DEPTH_EXCEEDED")
+		return failure(CodePrerequisiteDepthExceeded)
 	}
-	entry := r.ruleset.flags[key]
-	if entry == nil {
-		return failure("FLAG_NOT_FOUND")
+	e, ok := r.rs.flags[key]
+	if !ok {
+		return failure(CodeFlagNotFound)
 	}
-	r.active[key] = true
-	result := r.evaluateEntry(entry, depth)
+	r.active[key] = struct{}{}
+	result := r.evaluateEntry(e, depth)
 	delete(r.active, key)
 	r.completed[key] = result
 	return result
 }
 
-// Evaluate evaluates one flag for one context (as JSON). Every failure, including a prerequisite cycle, is
-// an ERROR result. The order and the comparison rules are in docs/evaluation.md.
-func (r *Ruleset) Evaluate(flagKey string, context jsonvalue.Value) Result {
-	ctxs, ok := normaliseContext(context)
-	if !ok {
-		return failure("INVALID_CONTEXT")
+// Evaluate evaluates one flag for one context. It never panics: every failure, including a prerequisite
+// cycle, is an ERROR result. The order and the comparison rules are in docs/evaluation.md.
+func (rs *Ruleset) Evaluate(flagKey string, context jsonv.Value) Result {
+	c := normaliseContext(context)
+	if c == nil {
+		return failure(CodeInvalidContext)
 	}
-	run := &run{ruleset: r, contexts: ctxs, active: map[string]bool{}, completed: map[string]Result{}}
-	return run.evaluateFlag(flagKey, 0)
+	r := &run{rs: rs, ctx: c, active: map[string]struct{}{}, completed: map[string]Result{}}
+	return r.evaluateFlag(flagKey, 0)
 }

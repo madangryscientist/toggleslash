@@ -1,112 +1,128 @@
-// Package toggleslash is the ToggleSlash server SDK for Go.
+// Package toggleslash is the Go server SDK for ToggleSlash, a feature flag service.
 //
-// A Client keeps one ruleset current by following the server's stream (polling when the stream is down) and
-// evaluates flags locally, so the typed methods (BoolVariation, StringVariation, IntVariation, Float64Variation
-// and JSONVariation, each with a ...Detail twin) do no I/O and never block. Usage counts, which hold no context
-// and nothing about an end user, are sent in batches. Nothing here panics at a caller and no method returns an
-// error: a failure becomes the fallback you passed, with a reason, and is told to the WithOnError callback.
+// A Client keeps one environment's flag rules in memory, current with the server, and evaluates flags
+// locally for a context you pass. It also counts which variations it served and reports the counts. The
+// rules it follows are docs/sdk-contract.md; evaluation itself is docs/evaluation.md.
 //
-//	client := toggleslash.New("https://flags.example.com", os.Getenv("TOGGLESLASH_SDK_KEY"))
+//	client := toggleslash.NewClient("https://flags.example.com", sdkKey)
 //	defer client.Close()
 //	client.Ready()
-//	on := client.BoolVariation("new-checkout", toggleslash.UserContext("user-1"), false)
+//	ctx := toggleslash.Object(toggleslash.Member{Key: "key", Value: toggleslash.String("user-42")})
+//	if client.BoolVariation("new-checkout", ctx, false) { ... }
 //
-// The contract is docs/sdk-contract.md in the ToggleSlash repository, and sdks/go/DESIGN.md maps each of its
-// names to Go.
+// No method panics or returns an error: a failure becomes the caller's fallback with an ERROR reason, or
+// goes to the function given to WithOnError, or both. Evaluation never does I/O and never waits. Call
+// Close when the client is no longer needed; a client that is not closed keeps two goroutines and its
+// connections until the process exits.
 package toggleslash
 
 import (
+	"math/rand/v2"
 	"net/http"
 	"time"
 
 	"github.com/madangryscientist/toggleslash/sdks/go/internal/eval"
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
 )
 
+// Defaults of the canonical options (docs/sdk-contract.md section 2).
 const (
-	defaultInterval = 30 * time.Second
-	defaultTimeout  = 10 * time.Second
-	// streamIdle is how long the stream may go without a byte (the server sends a keep-alive every 25 s).
-	streamIdle = 60 * time.Second
-	// maxRetryAfter is the longest wait a 429 can ask for.
-	maxRetryAfter = 300 * time.Second
-	backoffBase   = time.Second
+	defaultPollInterval   = 30 * time.Second
+	defaultFlushInterval  = 30 * time.Second
+	defaultRequestTimeout = 10 * time.Second
+	// defaultWatchdog: the server sends a keep-alive every 25 s; this long without a byte and the stream is
+	// dead (contract 7.2).
+	defaultWatchdog = 60 * time.Second
 )
 
-// config holds the options after the defaults. The seams (the fields after onError) are for tests in this
-// package: they are not options a caller can pass.
+// config is the options after they are applied. The fields from clock down are test seams: they are
+// unexported options, set only by this package's tests.
 type config struct {
-	url             string
-	sdkKey          string
 	stream          bool
 	pollInterval    time.Duration
 	flushInterval   time.Duration
 	requestTimeout  time.Duration
 	afterEvaluation func(EvaluationEvent)
 	onError         func(error)
+	httpClient      *http.Client
 
-	httpClient *http.Client
-	now        func() time.Time
-	jitter     func() float64
-	idle       time.Duration
-	evaluate   func(*eval.Ruleset, string, jsonvalue.Value) eval.Result
+	clock     clock
+	jitter    func() float64
+	watchdog  time.Duration
+	evaluator func(*eval.Ruleset, string, Context) eval.Result
 }
 
-// Option configures a Client.
+func defaultConfig() config {
+	return config{
+		stream:         true,
+		pollInterval:   defaultPollInterval,
+		flushInterval:  defaultFlushInterval,
+		requestTimeout: defaultRequestTimeout,
+		clock:          realClock{},
+		jitter:         rand.Float64,
+		watchdog:       defaultWatchdog,
+		evaluator: func(rs *eval.Ruleset, key string, ctx Context) eval.Result {
+			return rs.Evaluate(key, ctx)
+		},
+	}
+}
+
+// An Option changes one setting of NewClient.
 type Option func(*config)
 
-// WithStream turns the stream on or off. It is on by default; off polls only.
+// WithStream turns the live-update stream on or off. The default is on; off polls only.
 func WithStream(on bool) Option { return func(c *config) { c.stream = on } }
 
-// WithPollInterval sets how often the ruleset is polled when the stream is down or off, and the longest
-// reconnect wait. The default is 30 seconds; zero or negative is the default.
-func WithPollInterval(d time.Duration) Option {
-	return func(c *config) {
-		if d > 0 {
-			c.pollInterval = d
-		}
-	}
-}
+// WithPollInterval sets how often the client polls when the stream is down or off, and the longest wait
+// before it reconnects the stream. The default is 30 s; a value of zero or less is the default.
+func WithPollInterval(d time.Duration) Option { return func(c *config) { c.pollInterval = d } }
 
-// WithFlushInterval sets how often usage counts are sent. The default is 30 seconds; zero or negative is
+// WithFlushInterval sets how often usage counts are sent. The default is 30 s; a value of zero or less is
 // the default.
-func WithFlushInterval(d time.Duration) Option {
-	return func(c *config) {
-		if d > 0 {
-			c.flushInterval = d
-		}
-	}
-}
+func WithFlushInterval(d time.Duration) Option { return func(c *config) { c.flushInterval = d } }
 
-// WithRequestTimeout sets the longest any one request may take, and so the longest Ready waits. The
-// default is 10 seconds; zero or negative is the default.
-func WithRequestTimeout(d time.Duration) Option {
-	return func(c *config) {
-		if d > 0 {
-			c.requestTimeout = d
-		}
-	}
-}
+// WithRequestTimeout sets the longest any one request may take, its body included. The default is 10 s; a
+// value of zero or less is the default.
+func WithRequestTimeout(d time.Duration) Option { return func(c *config) { c.requestTimeout = d } }
 
-// WithAfterEvaluation sets a function called synchronously, on the caller's goroutine, after every
-// variation method, a fallback included, with what the caller is about to get. A panic in it goes to the
-// OnError function and never reaches the caller, who gets the same answer and the same usage count with or
-// without it. A nil function is ignored.
+// WithAfterEvaluation sets a function called after every evaluation, a fallback included, once per call, on
+// the caller's goroutine, before the accessor returns. A panic in it goes to the OnError function and never
+// reaches the caller. The event carries the context the caller passed; the client sends none of it anywhere.
 func WithAfterEvaluation(f func(EvaluationEvent)) Option {
-	return func(c *config) {
-		if f != nil {
-			c.afterEvaluation = f
-		}
-	}
+	return func(c *config) { c.afterEvaluation = f }
 }
 
-// WithOnError sets a function told about every failure the SDK absorbs (a failed sync, a failed usage
-// request, a hook that panicked). The value is an *Error. It is never needed for correctness; a panic in it is
-// ignored. A nil function is ignored.
-func WithOnError(f func(error)) Option {
-	return func(c *config) {
-		if f != nil {
-			c.onError = f
-		}
-	}
+// WithOnError sets a function told about every failure the client absorbs: a failed ruleset or stream
+// attempt (not one that Close abandoned), a failed usage request, a panicking evaluation, a panicking hook
+// and the counts lost at Close. It runs on the goroutine that met the failure, with no client lock held,
+// and a panic in it is recovered and ignored.
+func WithOnError(f func(error)) Option { return func(c *config) { c.onError = f } }
+
+// WithHTTPClient sets the HTTP client for every request, for a proxy or a private certificate authority.
+// The client is copied and its redirect policy replaced: a redirect is never followed, so the key is
+// never sent to another address and a 3xx is an "http_3xx" failure. Its Timeout field is ignored in
+// favour of WithRequestTimeout, which is also what bounds a stream's first answer.
+func WithHTTPClient(h *http.Client) Option { return func(c *config) { c.httpClient = h } }
+
+// The unexported options below are the test seams (docs/sdk-contract.md section 13).
+
+func withClock(k clock) Option            { return func(c *config) { c.clock = k } }
+func withJitter(f func() float64) Option  { return func(c *config) { c.jitter = f } }
+func withWatchdog(d time.Duration) Option { return func(c *config) { c.watchdog = d } }
+func withEvaluator(f func(*eval.Ruleset, string, Context) eval.Result) Option {
+	return func(c *config) { c.evaluator = f }
 }
+
+// clock is the time the client waits on and reads. Request deadlines and the stream's watchdog use real
+// time: they are about a real socket.
+type clock interface {
+	Now() time.Time
+	AfterFunc(d time.Duration, f func()) stopper
+}
+
+type stopper interface{ Stop() bool }
+
+type realClock struct{}
+
+func (realClock) Now() time.Time { return time.Now() }
+
+func (realClock) AfterFunc(d time.Duration, f func()) stopper { return time.AfterFunc(d, f) }

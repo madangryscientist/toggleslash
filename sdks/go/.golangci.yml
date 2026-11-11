@@ -1,14 +1,64 @@
+# golangci-lint v2. The rule set is the linters' "standard" group (errcheck, govet, ineffassign,
+# staticcheck, unused) plus the ones named below. Nothing is ignored by a //nolint comment; a rule that is
+# off is off here, with its reason.
 version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
 linters:
   default: standard
   enable:
-    - errorlint
+    # A response body that is not closed leaks a connection.
     - bodyclose
+    # Errors are compared with errors.Is and errors.As, never == or a type assertion.
+    - errorlint
+    # A context.Context must be passed down, so a request cannot outlive Close.
+    - noctx
+    # Shadowed variables hide a mistake in error handling.
+    - govet
+    # Dead assignments and unused parameters.
+    - unparam
+    - wastedassign
+    # A value that is copied in a range loop is a smell in hot paths.
+    - copyloopvar
+    - intrange
+    # Spelling in comments and identifiers.
     - misspell
-    - unconvert
+    # Test helpers must call t.Helper.
+    - thelper
+  settings:
+    govet:
+      enable-all: true
+      disable:
+        # fieldalignment would reorder struct fields for size; the structs here read in the order of the
+        # contract and nothing is allocated in bulk.
+        - fieldalignment
+        # shadow is checked by review: a shadowed err in a short if-scope is the usual idiom here.
+        - shadow
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+    unparam:
+      check-exported: false
+  exclusions:
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      # A test may ignore the error from closing a fake connection or writing to a recorder: the
+      # assertion that matters is made on what the other side saw.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - unparam
+      # The test service is a process of its own: it prints one line to stdout by design.
+      - path: test-service/
+        linters:
+          - errcheck
+
 formatters:
   enable:
     - gofmt
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0

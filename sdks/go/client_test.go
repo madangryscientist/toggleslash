@@ -2,10 +2,7 @@ package toggleslash
 
 import (
 	"fmt"
-	"io"
 	"net/http"
-	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -13,523 +10,448 @@ import (
 	"time"
 
 	"github.com/madangryscientist/toggleslash/sdks/go/internal/eval"
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
+	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonv"
 )
 
-var someone = UserContext("user-1")
-
-func pollOnly(opts ...Option) []Option {
-	return append([]Option{WithStream(false), WithPollInterval(20 * time.Millisecond), WithFlushInterval(20 * time.Millisecond)}, opts...)
+// quiet is the options for a client that only needs its first load: no stream, and timers far away.
+func quiet(extra ...Option) []Option {
+	return append([]Option{
+		WithStream(false), WithPollInterval(bigInterval), WithFlushInterval(bigInterval),
+		WithRequestTimeout(5 * time.Second),
+	}, extra...)
 }
 
-func TestReadyAndEvaluate(t *testing.T) {
-	url := serve(t, rulesetHandler(boolRuleset(), `"r1"`, nil))
-	c := newTestClient(t, url, nil, pollOnly()...)
+func servingFlags(f *fakeServer, flags ...string) {
+	f.handle("/sdk/v1/ruleset", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("ETag", `"1"`)
+		_, _ = fmt.Fprint(w, rulesetJSON(flags...))
+	})
+}
+
+func TestAccessors(t *testing.T) {
+	f := newFakeServer(t)
+	servingFlags(f,
+		flagJSON("b", 1, `[false,true]`, 1),
+		flagJSON("s", 1, `["a","b"]`, 1),
+		flagJSON("n", 1, `[1.5]`, 0),
+		flagJSON("i", 1, `[2.0]`, 0),
+		flagJSON("frac", 1, `[2.5]`, 0),
+		flagJSON("j", 1, `[{"k":1}]`, 0),
+	)
+	c := newTestClient(t, f, quiet()...)
 	if !c.Ready() {
-		t.Fatal("Ready() = false against a working server")
+		t.Fatal("Ready() = false")
 	}
-	d := c.BoolVariationDetail("checkout", someone, false)
-	if !d.Value || d.VariationIndex != 1 || d.Reason.Kind != ReasonFallthrough {
-		t.Fatalf("got %+v", d)
+	u := user("u1")
+
+	if d := c.BoolVariationDetail("b", u, false); !d.Value || d.VariationIndex == nil || *d.VariationIndex != 1 ||
+		d.Reason.Kind != ReasonFallthrough {
+		t.Errorf("bool detail = %+v", d)
 	}
-	missing := c.BoolVariationDetail("nope", someone, true)
-	if !missing.Value || missing.VariationIndex != NoVariation || missing.Reason.Kind != ReasonError || missing.Reason.Code != ErrorFlagNotFound {
-		t.Fatalf("missing flag: %+v", missing)
+	if got := c.StringVariation("s", u, "z"); got != "b" {
+		t.Errorf("string = %q", got)
 	}
-	invalid := c.BoolVariationDetail("checkout", Context{}, true)
-	if !invalid.Value || invalid.Reason.Code != ErrorInvalidContext {
-		t.Fatalf("invalid context: %+v", invalid)
+	if got := c.FloatVariation("n", u, 0); got != 1.5 {
+		t.Errorf("float = %v", got)
 	}
-	st := c.Status()
-	if st.ETag == nil || *st.ETag != `"r1"` || st.LastSyncAt.IsZero() || st.Stream != StreamOff || st.LastError != "" {
-		t.Fatalf("status: %+v", st)
+	if got := c.IntVariation("i", u, 9); got != 2 {
+		t.Errorf("int of 2.0 = %v, want 2", got)
+	}
+	d := c.IntVariationDetail("frac", u, 9)
+	if d.Value != 9 || d.VariationIndex != nil || d.Reason != (Reason{Kind: ReasonError, Code: ErrTypeMismatch}) {
+		t.Errorf("int of 2.5 = %+v", d)
+	}
+	if got := c.JSONVariation("j", u, Null()); !jsonv.Equal(got, ValueOf(map[string]any{"k": 1})) {
+		t.Errorf("json with a null fallback = %v", got)
+	}
+	if d := c.JSONVariationDetail("j", u, String("x")); d.Reason.Code != ErrTypeMismatch {
+		t.Errorf("json against a string fallback = %+v", d)
+	}
+	if d := c.StringVariationDetail("b", u, "z"); d.Value != "z" || d.Reason.Code != ErrTypeMismatch {
+		t.Errorf("string of a bool flag = %+v", d)
+	}
+	d2 := c.BoolVariationDetail("missing", u, true)
+	if !d2.Value || d2.VariationIndex != nil || d2.Reason != (Reason{Kind: ReasonError, Code: ErrFlagNotFound}) {
+		t.Errorf("unknown flag = %+v", d2)
+	}
+	if d := c.BoolVariationDetail("b", Number(1), false); d.Reason.Code != ErrInvalidContext {
+		t.Errorf("invalid context = %+v", d)
 	}
 }
 
-func TestURLTrailingSlashIsStripped(t *testing.T) {
-	var path atomic.Value
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path.Store(r.URL.Path)
-		_, _ = w.Write([]byte(boolRuleset()))
-	}))
-	c := newTestClient(t, url+"///", nil, pollOnly()...)
-	if !c.Ready() || path.Load() != "/sdk/v1/ruleset" {
-		t.Fatalf("ready=%v path=%v", c.Ready(), path.Load())
+func TestHugeIntegerIsATypeMismatch(t *testing.T) {
+	f := newFakeServer(t)
+	servingFlags(f,
+		flagJSON("huge", 1, `[1e19]`, 0),
+		flagJSON("edge", 1, `[9223372036854774784]`, 0), // 2^63 - 1024, the largest a binary64 can serve
+		flagJSON("over", 1, `[9223372036854775808]`, 0), // 2^63
+		flagJSON("low", 1, `[-9223372036854775808]`, 0), // -2^63
+	)
+	c := newTestClient(t, f, quiet()...)
+	c.Ready()
+	u := user("u")
+	if d := c.IntVariationDetail("huge", u, 7); d.Value != 7 || d.Reason.Code != ErrTypeMismatch {
+		t.Errorf("1e19 = %+v", d)
+	}
+	if got := c.IntVariation("edge", u, 7); got != 9223372036854774784 {
+		t.Errorf("2^63-1024 = %d", got)
+	}
+	if d := c.IntVariationDetail("over", u, 7); d.Reason.Code != ErrTypeMismatch {
+		t.Errorf("2^63 = %+v", d)
+	}
+	if got := c.IntVariation("low", u, 7); got != -9223372036854775808 {
+		t.Errorf("-2^63 = %d", got)
 	}
 }
 
 func TestNotReadyBeforeTheFirstLoad(t *testing.T) {
-	release := make(chan struct{})
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		select {
-		case <-release:
-		case <-r.Context().Done():
-		}
-	}))
-	c := newTestClient(t, url, nil, pollOnly(WithRequestTimeout(time.Second))...)
-	d := c.BoolVariationDetail("checkout", someone, true)
-	close(release)
-	if !d.Value || d.Reason.Kind != ReasonError || d.Reason.Code != ErrorNotReady || d.VariationIndex != NoVariation {
-		t.Fatalf("got %+v", d)
-	}
-}
-
-func TestReadySettlesAfterTheFirstAttemptAndIsFixed(t *testing.T) {
-	var serving atomic.Bool
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !serving.Load() {
-			http.Error(w, "down", http.StatusServiceUnavailable)
-			return
-		}
-		_, _ = w.Write([]byte(boolRuleset()))
-	}))
-	c := newTestClient(t, url, nil, pollOnly()...)
-	if c.Ready() {
-		t.Fatal("Ready() = true against a 503")
-	}
-	serving.Store(true)
-	eventually(t, 3*time.Second, "the ruleset to load by polling", func() bool { return c.BoolVariation("checkout", someone, false) })
-	if c.Ready() {
-		t.Fatal("Ready() changed after it settled")
-	}
-}
-
-func TestReadyIsBoundedByTheRequestTimeout(t *testing.T) {
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))
-	c := newTestClient(t, url, nil, pollOnly(WithRequestTimeout(150*time.Millisecond))...)
-	start := time.Now()
-	if c.Ready() {
-		t.Fatal("Ready() = true with no answer")
-	}
-	if took := time.Since(start); took > 3*time.Second {
-		t.Fatalf("Ready took %s", took)
-	}
-	if got := c.Status().LastError; got != SyncTimeout {
-		t.Fatalf("lastError = %q", got)
-	}
-}
-
-func TestReadyIsFalseAfterCloseIfNothingLoaded(t *testing.T) {
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))
-	c := newTestClient(t, url, nil, pollOnly()...)
-	within(t, 3*time.Second, "Close", c.Close)
-	if c.Ready() {
-		t.Fatal("Ready() = true after Close with nothing loaded")
-	}
-	if got := c.Status(); got.Stream != StreamClosed || got.LastError != "" {
-		t.Fatalf("status after Close: %+v", got)
-	}
-}
-
-func TestTypedAccessors(t *testing.T) {
-	flags := rulesetJSON(
-		flagJSON("n", 1, "[1.5]", 0),
-		flagJSON("two", 1, "[2.0]", 0),
-		flagJSON("huge", 1, "[1e30]", 0),
-		flagJSON("min", 1, "[-9223372036854775808]", 0),
-		flagJSON("edge", 1, "[9223372036854775808]", 0),
-		flagJSON("inf", 1, "[1e999]", 0),
-		flagJSON("s", 1, `["x"]`, 0),
-		flagJSON("obj", 1, `[{"a":1}]`, 0),
-		flagJSON("nul", 1, `[null]`, 0),
-	)
-	url := serve(t, rulesetHandler(flags, `"t"`, nil))
-	c := newTestClient(t, url, nil, pollOnly()...)
-	c.Ready()
-
-	if got := c.Float64Variation("n", someone, 0); got != 1.5 {
-		t.Errorf("float64 = %v", got)
-	}
-	if d := c.IntVariationDetail("n", someone, 7); d.Value != 7 || d.Reason.Code != ErrorTypeMismatch || d.VariationIndex != NoVariation {
-		t.Errorf("int of 1.5: %+v", d)
-	}
-	if d := c.IntVariationDetail("two", someone, 7); d.Value != 2 || d.VariationIndex != 0 {
-		t.Errorf("int of 2.0: %+v", d)
-	}
-	for _, key := range []string{"huge", "edge", "inf"} {
-		if d := c.IntVariationDetail(key, someone, 7); d.Value != 7 || d.Reason.Code != ErrorTypeMismatch {
-			t.Errorf("int of %s: %+v", key, d)
-		}
-	}
-	if d := c.IntVariationDetail("min", someone, 7); d.Value != -9223372036854775808 || d.Reason.Kind == ReasonError {
-		t.Errorf("int of -2^63: %+v", d)
-	}
-	if d := c.BoolVariationDetail("s", someone, true); !d.Value || d.Reason.Code != ErrorTypeMismatch {
-		t.Errorf("bool of a string: %+v", d)
-	}
-	if got := c.StringVariation("s", someone, "fb"); got != "x" {
-		t.Errorf("string = %q", got)
-	}
-	if d := c.JSONVariationDetail("obj", someone, Object()); d.Reason.Kind == ReasonError {
-		t.Errorf("json object against an object fallback: %+v", d)
-	}
-	if d := c.JSONVariationDetail("obj", someone, Array()); d.Reason.Code != ErrorTypeMismatch {
-		t.Errorf("json object against an array fallback: %+v", d)
-	}
-	if d := c.JSONVariationDetail("obj", someone, Null()); d.Reason.Kind == ReasonError {
-		t.Errorf("a null fallback accepts any value: %+v", d)
-	}
-	if d := c.JSONVariationDetail("nul", someone, Object()); d.Reason.Code != ErrorTypeMismatch {
-		t.Errorf("a null served value against a non-null fallback: %+v", d)
-	}
-	if d := c.JSONVariationDetail("nul", someone, Null()); d.Reason.Kind == ReasonError || d.VariationIndex != 0 {
-		t.Errorf("a null served value against a null fallback: %+v", d)
-	}
-}
-
-// A TYPE_MISMATCH is not counted: only a result that served a variation to the caller is.
-func TestOnlyServedResultsAreCounted(t *testing.T) {
-	var events syncBuf
-	url := serve(t, rulesetHandler(rulesetJSON(flagJSON("s", 1, `["x"]`, 0)), `"u"`, events.handler()))
-	c := newTestClient(t, url, nil, pollOnly(WithFlushInterval(time.Hour))...)
-	c.Ready()
-	c.BoolVariation("s", someone, false)    // TYPE_MISMATCH
-	c.BoolVariation("gone", someone, false) // FLAG_NOT_FOUND
-	c.StringVariation("s", Context{}, "")   // INVALID_CONTEXT
-	c.StringVariation("s", someone, "")     // served
-	c.Close()
-	got := events.bodies()
-	if len(got) != 1 || got[0] != `{"events":[{"flag":"s","variationIndex":0,"count":1,"day":"`+time.Now().UTC().Format("2006-01-02")+`"}]}` {
-		// The day may have turned over during the test; compare the rest.
-		if len(got) != 1 || !strings.HasPrefix(got[0], `{"events":[{"flag":"s","variationIndex":0,"count":1,"day":"`) {
-			t.Fatalf("bodies: %q", got)
-		}
-	}
-}
-
-// TestConcurrentUseUnderRace calls every operation from many goroutines, with Close racing the evaluations and a
-// second Close racing the first. `bin/test` runs it under -race.
-func TestConcurrentUseUnderRace(t *testing.T) {
-	var swaps atomic.Int64
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/sdk/v1/ruleset":
-			n := swaps.Add(1)
-			w.Header().Set("ETag", fmt.Sprintf(`"e%d"`, n))
-			_, _ = w.Write([]byte(rulesetJSON(flagJSON("checkout", int(n), "[false,true]", int(n%2)))))
-		case "/sdk/v1/events":
-			w.WriteHeader(http.StatusOK)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	var errs errorLog
-	c := newTestClient(t, url, nil, pollOnly(
-		WithOnError(errs.add),
-		WithAfterEvaluation(func(e EvaluationEvent) { _ = e.FlagKey }),
-		WithPollInterval(time.Millisecond), WithFlushInterval(time.Millisecond),
-	)...)
-	c.Ready()
-	var wg sync.WaitGroup
-	for i := range 16 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := range 300 {
-				switch (i + j) % 8 {
-				case 0:
-					c.BoolVariation("checkout", someone, false)
-				case 1:
-					c.StringVariationDetail("checkout", someone, "x")
-				case 2:
-					c.IntVariation("checkout", someone, 0)
-				case 3:
-					c.Float64VariationDetail("checkout", someone, 0)
-				case 4:
-					c.JSONVariation("checkout", someone, Null())
-				case 5:
-					_ = c.Status()
-				case 6:
-					_ = c.Ready()
-				case 7:
-					c.BoolVariation("missing", UserContext(fmt.Sprint(j)), true)
-				}
-			}
-		}()
-	}
-	for range 2 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			time.Sleep(20 * time.Millisecond)
-			c.Close()
-		}()
-	}
-	within(t, 20*time.Second, "the concurrent run", wg.Wait)
-	// After Close an evaluation still answers.
-	if d := c.BoolVariationDetail("checkout", someone, false); d.Reason.Kind == ReasonError {
-		t.Fatalf("evaluation after Close: %+v", d)
-	}
-}
-
-// A ruleset request that never answers must not slow an evaluation, and neither must a usage flush that hangs.
-func TestVariationIsBoundedWhileTheNetworkHangs(t *testing.T) {
-	var hang atomic.Bool
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if hang.Load() {
-			// Read the body so the server notices when the client gives up on the request.
-			_, _ = io.Copy(io.Discard, r.Body)
-			<-r.Context().Done()
-			return
-		}
-		if r.URL.Path == "/sdk/v1/ruleset" {
-			w.Header().Set("ETag", `"h"`)
-			_, _ = w.Write([]byte(boolRuleset()))
-		}
-	}))
-	c := newTestClient(t, url, nil, pollOnly(WithRequestTimeout(5*time.Second))...)
-	c.Ready()
-	hang.Store(true)
-	c.BoolVariation("checkout", someone, false) // a count for the flusher to hang on
-	time.Sleep(150 * time.Millisecond)          // the poll and the flush are both in flight now
-	within(t, time.Second, "1000 evaluations and Status", func() {
-		for range 1000 {
-			if !c.BoolVariation("checkout", someone, false) {
-				t.Error("wrong answer while the network hangs")
-			}
-			_ = c.Status()
+	f := newFakeServer(t)
+	f.handle("/sdk/v1/ruleset", f.hang)
+	var events []EvaluationEvent
+	var mu sync.Mutex
+	c := newTestClient(t, f, quiet(WithRequestTimeout(300*time.Millisecond), WithAfterEvaluation(func(e EvaluationEvent) {
+		mu.Lock()
+		events = append(events, e)
+		mu.Unlock()
+	}))...)
+	within(t, time.Second, "evaluating while the first load hangs", func() {
+		d := c.BoolVariationDetail("f", user("u"), true)
+		if !d.Value || d.Reason != (Reason{Kind: ReasonError, Code: ErrNotReady}) || d.VariationIndex != nil {
+			t.Errorf("before the load: %+v", d)
 		}
 	})
-	// Do not wait for Close to outlast the hung requests; the cleanup does.
+	mu.Lock()
+	if len(events) != 1 || events[0].ETag != "" || events[0].FlagVersion != nil || events[0].Reason.Code != ErrNotReady {
+		t.Errorf("hook events before the load = %+v", events)
+	}
+	mu.Unlock()
+	if c.Ready() {
+		t.Error("Ready() = true after a load that timed out")
+	}
+	if got := c.Status().LastError; got != SyncTimeout {
+		t.Errorf("lastError = %q, want timeout", got)
+	}
 }
 
-// Each evaluation sees one ruleset: the ETag and the flag version in a hook event come from the same swap.
-func TestASwapExposesOneRulesetOrTheOther(t *testing.T) {
-	var n atomic.Int64
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/sdk/v1/ruleset" {
+func TestReadyIsFixedAfterTheFirstAttempt(t *testing.T) {
+	f := newFakeServer(t)
+	var calls atomic.Int32
+	f.handle("/sdk/v1/ruleset", func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		v := n.Add(1)%2 + 1 // 1, 2, 1, 2 ...
-		w.Header().Set("ETag", fmt.Sprintf(`"tag-%d"`, v))
-		_, _ = w.Write([]byte(rulesetJSON(flagJSON("checkout", int(v), "[false,true]", int(v)-1))))
-	}))
-	var mu sync.Mutex
-	seen := map[string]int{}
-	torn := 0
-	c := newTestClient(t, url, nil, pollOnly(WithPollInterval(time.Millisecond), WithAfterEvaluation(func(e EvaluationEvent) {
-		if e.ETag == nil || e.FlagVersion == nil {
-			return
-		}
-		mu.Lock()
-		defer mu.Unlock()
-		seen[*e.ETag]++
-		wantTag := fmt.Sprintf(`"tag-%d"`, int(*e.FlagVersion))
-		wantIndex := int(*e.FlagVersion) - 1
-		if *e.ETag != wantTag || e.VariationIndex != wantIndex {
-			torn++
+		_, _ = fmt.Fprint(w, defaultRuleset(1))
+	})
+	clock := newFakeClock(time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC))
+	c := newTestClient(t, f, quiet(withClock(clock), WithPollInterval(30*time.Second))...)
+	if c.Ready() {
+		t.Fatal("Ready() = true after a 503")
+	}
+	clock.awaitTimer(t, 30*time.Second)
+	clock.advance(30 * time.Second)
+	eventually(t, "the poll to load a ruleset", func() bool { return c.Status().ETag != "" || c.BoolVariation("f", user("u"), false) })
+	if c.Ready() {
+		t.Error("Ready() turned true after a later load")
+	}
+	if !c.BoolVariation("f", user("u"), false) {
+		t.Error("the later load was not used")
+	}
+}
+
+func TestEvaluationFailedFromAPanickingEvaluator(t *testing.T) {
+	f := newFakeServer(t)
+	var errs errorLog
+	var hooks atomic.Int32
+	c := newTestClient(t, f, quiet(
+		WithOnError(errs.add),
+		WithAfterEvaluation(func(EvaluationEvent) { hooks.Add(1) }),
+		withEvaluator(func(*eval.Ruleset, string, Context) eval.Result { panic("the evaluator raised") }),
+	)...)
+	c.Ready()
+	d := c.BoolVariationDetail("f", user("u"), true)
+	if !d.Value || d.VariationIndex != nil || d.Reason != (Reason{Kind: ReasonError, Code: ErrEvaluationFailed}) {
+		t.Fatalf("detail = %+v", d)
+	}
+	if errs.count() != 1 {
+		t.Errorf("OnError calls = %d, want 1", errs.count())
+	}
+	if hooks.Load() != 1 {
+		t.Errorf("hook calls = %d, want 1", hooks.Load())
+	}
+	c.usageMu.Lock()
+	pending := len(c.pending)
+	c.usageMu.Unlock()
+	if pending != 0 {
+		t.Errorf("a failed evaluation was counted (%d pending)", pending)
+	}
+}
+
+func TestHookPanicGoesToOnErrorAndChangesNothing(t *testing.T) {
+	f := newFakeServer(t)
+	var errs errorLog
+	c := newTestClient(t, f, quiet(
+		WithOnError(errs.add),
+		WithAfterEvaluation(func(EvaluationEvent) { panic("hook raised") }),
+	)...)
+	c.Ready()
+	if !c.BoolVariation("f", user("u"), false) {
+		t.Error("a panicking hook changed the answer")
+	}
+	c.usageMu.Lock()
+	pending := len(c.pending)
+	c.usageMu.Unlock()
+	if pending != 1 || errs.count() != 1 {
+		t.Errorf("pending = %d, OnError calls = %d, want 1 and 1", pending, errs.count())
+	}
+}
+
+func TestOnErrorThatPanicsIsIgnored(t *testing.T) {
+	f := newFakeServer(t)
+	f.handle("/sdk/v1/ruleset", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(500) })
+	c := newTestClient(t, f, quiet(WithOnError(func(error) { panic("onError raised") }))...)
+	if c.Ready() {
+		t.Error("Ready() = true after a 500")
+	}
+	if got := c.Status().LastError; got != "http_500" {
+		t.Errorf("lastError = %q", got)
+	}
+}
+
+// A hook's etag and flagVersion belong to the same ruleset while another goroutine swaps rulesets.
+func TestHookETagAndFlagVersionStayPaired(t *testing.T) {
+	f := newFakeServer(t)
+	var bad atomic.Int32
+	var seenEvents atomic.Int32
+	c := newTestClient(t, f, quiet(WithAfterEvaluation(func(e EvaluationEvent) {
+		seenEvents.Add(1)
+		if e.FlagVersion == nil || e.ETag != fmt.Sprintf(`"%d"`, int(*e.FlagVersion)) {
+			bad.Add(1)
 		}
 	}))...)
 	c.Ready()
+	snaps := make([]*snapshot, 40)
+	for i := range snaps {
+		parsed, err := ParseJSON([]byte(defaultRuleset(i + 1)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		snaps[i] = &snapshot{ruleset: eval.Load(parsed), etag: fmt.Sprintf(`"%d"`, i+1)}
+	}
+	stop := make(chan struct{})
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for range 2000 {
-				c.BoolVariation("checkout", someone, false)
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+					c.BoolVariation("f", user("u"), false)
+				}
 			}
 		}()
 	}
+	// Swap until the readers have really overlapped with the swaps: a fixed number of rounds can finish
+	// before a loaded machine has scheduled one reader.
+	eventually(t, "evaluations racing the swaps", func() bool {
+		for round := range 200 {
+			c.install(snaps[round%len(snaps)])
+		}
+		return seenEvents.Load() >= 2000
+	})
+	close(stop)
 	wg.Wait()
-	mu.Lock()
-	defer mu.Unlock()
-	if torn != 0 {
-		t.Fatalf("%d evaluations saw an ETag, a version or a variation from different rulesets", torn)
+	if bad.Load() != 0 {
+		t.Errorf("%d of %d hook events had an etag that does not match their flagVersion", bad.Load(), seenEvents.Load())
 	}
-	if len(seen) < 2 {
-		t.Logf("only saw %v; the swap race was not exercised this run", seen)
+	if seenEvents.Load() == 0 {
+		t.Error("no evaluations ran")
 	}
 }
 
-// A hook and an onError that call back into the client must not deadlock it.
-func TestCallbacksMayCallTheClient(t *testing.T) {
-	url := serve(t, rulesetHandler(boolRuleset(), `"cb"`, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "no", http.StatusInternalServerError)
-	})))
-	var c *Client
-	var hookRan, errorRan atomic.Int64
-	var ready sync.WaitGroup
-	ready.Add(1)
-	opts := pollOnly(
-		WithAfterEvaluation(func(EvaluationEvent) {
-			ready.Wait()
-			_ = c.Status()
-			if hookRan.Add(1) == 1 { // the call below runs this hook again; once is enough to prove it
-				_ = c.BoolVariation("checkout", someone, false)
-			}
-		}),
-		WithOnError(func(error) {
-			ready.Wait()
-			_ = c.Status()
-			if errorRan.Add(1) == 1 {
-				_ = c.BoolVariation("checkout", someone, false)
-			}
-		}),
-		WithFlushInterval(10*time.Millisecond),
-	)
-	c = newTestClient(t, url, nil, opts...)
-	ready.Done()
+// Every operation from many goroutines, Close racing them, and two Closes racing. Run it under -race.
+func TestManyGoroutinesWithCloseRacing(t *testing.T) {
+	f := newFakeServer(t)
+	c := newTestClient(t, f,
+		WithPollInterval(20*time.Millisecond), WithFlushInterval(10*time.Millisecond),
+		WithRequestTimeout(2*time.Second), WithAfterEvaluation(func(EvaluationEvent) {}),
+		WithOnError(func(error) {}))
 	c.Ready()
-	within(t, 3*time.Second, "an evaluation whose hook calls the client", func() { c.BoolVariation("checkout", someone, false) })
-	// The events route answers 500, so the flusher calls OnError, which calls the client.
-	eventually(t, 3*time.Second, "OnError to run", func() bool { return errorRan.Load() > 0 })
-	within(t, 3*time.Second, "Close", c.Close)
-	if hookRan.Load() == 0 {
-		t.Fatal("the hook never ran")
+	var wg sync.WaitGroup
+	for g := range 32 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			u := user(fmt.Sprintf("u%d", g))
+			for range 300 {
+				c.BoolVariation("f", u, false)
+				c.StringVariationDetail("f", u, "x")
+				c.JSONVariation("f", u, Null())
+				c.IntVariation("f", u, 1)
+				c.Status()
+				c.Ready()
+			}
+		}()
 	}
-}
-
-// Close called from inside a callback does not wait on itself.
-func TestCloseFromInsideACallback(t *testing.T) {
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "no", http.StatusInternalServerError)
-	}))
-	closed := make(chan struct{})
-	var c *Client
-	var once sync.Once
-	var ready sync.WaitGroup
-	ready.Add(1)
-	c = newTestClient(t, url, nil, pollOnly(WithOnError(func(error) {
-		ready.Wait()
-		once.Do(func() {
+	closers := make(chan struct{}, 3)
+	for range 3 {
+		go func() {
+			time.Sleep(5 * time.Millisecond)
 			c.Close()
-			close(closed)
+			closers <- struct{}{}
+		}()
+	}
+	within(t, 20*time.Second, "the goroutines", wg.Wait)
+	for range 3 {
+		select {
+		case <-closers:
+		case <-time.After(10 * time.Second):
+			t.Fatal("a Close call never returned")
+		}
+	}
+	if got := c.Status().Stream; got != StreamClosed {
+		t.Errorf("stream = %q after Close", got)
+	}
+	// Evaluation still answers from the ruleset held after Close.
+	if !c.BoolVariation("f", user("late"), false) {
+		t.Error("evaluation stopped after Close")
+	}
+}
+
+func TestTLSPath(t *testing.T) {
+	f := newTLSFakeServer(t)
+	c := newTestClient(t, f, quiet(WithHTTPClient(f.srv.Client()))...)
+	if !c.Ready() {
+		t.Fatalf("Ready() = false over TLS, lastError %q", c.Status().LastError)
+	}
+	if !strings.HasPrefix(f.url(), "https://") {
+		t.Fatalf("test server url = %q", f.url())
+	}
+	if got := c.Status().ETag; got != `"1"` {
+		t.Errorf("etag = %q", got)
+	}
+	// Without the test certificate authority the same server is refused, as a network error.
+	plain := NewClient(f.url(), "k", quiet()...)
+	defer plain.Close()
+	if plain.Ready() || plain.Status().LastError != SyncNetwork {
+		t.Errorf("an untrusted certificate: ready %v, lastError %q", plain.Ready(), plain.Status().LastError)
+	}
+}
+
+func TestEvaluationNeverWaitsOnARequest(t *testing.T) {
+	t.Run("a ruleset request that hangs", func(t *testing.T) {
+		f := newFakeServer(t)
+		f.handle("/sdk/v1/ruleset", f.hang)
+		c := newTestClient(t, f, quiet(WithRequestTimeout(2*time.Second))...)
+		f.await("/sdk/v1/ruleset", 1)
+		within(t, 500*time.Millisecond, "variation, detail and status", func() {
+			for range 200 {
+				c.BoolVariation("f", user("u"), false)
+				c.JSONVariationDetail("f", user("u"), Null())
+				c.Status()
+			}
 		})
-	}))...)
-	ready.Done()
-	select {
-	case <-closed:
-	case <-time.After(5 * time.Second):
-		t.Fatal("Close from inside OnError never returned")
+	})
+	t.Run("a usage flush that hangs", func(t *testing.T) {
+		f := newFakeServer(t)
+		f.handle("/sdk/v1/events", f.hang)
+		c := newTestClient(t, f, quiet(WithFlushInterval(20*time.Millisecond), WithRequestTimeout(2*time.Second))...)
+		c.Ready()
+		c.BoolVariation("f", user("u"), false)
+		f.await("/sdk/v1/events", 1)
+		within(t, 500*time.Millisecond, "variation while a flush hangs", func() {
+			for range 200 {
+				if !c.BoolVariation("f", user("u"), false) {
+					t.Error("wrong answer")
+				}
+				c.Status()
+			}
+		})
+	})
+}
+
+func TestCloseReturnsWithinAboutTwiceTheRequestTimeoutWhenRequestsHang(t *testing.T) {
+	f := newFakeServer(t)
+	f.handle("/sdk/v1/ruleset", f.hang)
+	f.handle("/sdk/v1/events", f.hang)
+	timeout := 300 * time.Millisecond
+	c := NewClient(f.url(), "k", quiet(WithRequestTimeout(timeout))...)
+	f.await("/sdk/v1/ruleset", 1)
+	c.record("f", 0)
+	start := time.Now()
+	within(t, 5*time.Second, "Close", c.Close)
+	if took := time.Since(start); took > 4*timeout {
+		t.Errorf("Close took %v with request timeout %v", took, timeout)
+	}
+	if c.Ready() {
+		t.Error("Ready() = true for a client closed before its first load")
 	}
 }
 
-func TestEvaluatorPanicGivesFallbackAndOneOnError(t *testing.T) {
-	url := serve(t, rulesetHandler(boolRuleset(), `"p"`, nil))
-	var errs errorLog
-	var events []EvaluationEvent
-	var mu sync.Mutex
-	c := newTestClient(t, url, func(cfg *config) {
-		cfg.evaluate = func(*eval.Ruleset, string, jsonvalue.Value) eval.Result { panic("boom") }
-	}, pollOnly(WithOnError(errs.add), WithAfterEvaluation(func(e EvaluationEvent) {
-		mu.Lock()
-		events = append(events, e)
-		mu.Unlock()
-	}))...)
-	c.Ready()
-	before := errs.count()
-	d := c.BoolVariationDetail("checkout", someone, true)
-	if !d.Value || d.VariationIndex != NoVariation || d.Reason.Kind != ReasonError || d.Reason.Code != ErrorEvaluationFailed {
-		t.Fatalf("got %+v", d)
-	}
-	if got := errs.count() - before; got != 1 {
-		t.Fatalf("OnError was called %d times for one panic", got)
-	}
-	last := errs.all()[errs.count()-1]
-	if last.Op != "evaluate" || strings.Contains(last.Error(), "boom") && false {
-		t.Fatalf("error: %+v", last)
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if len(events) != 1 || events[0].Reason.Code != ErrorEvaluationFailed {
-		t.Fatalf("hook events: %+v", events)
-	}
-}
-
-func TestHookAndOnErrorPanicsNeverReachTheCaller(t *testing.T) {
-	url := serve(t, rulesetHandler(boolRuleset(), `"h"`, nil))
-	var errs errorLog
-	c := newTestClient(t, url, nil, pollOnly(
-		WithAfterEvaluation(func(EvaluationEvent) { panic("hook") }),
-		WithOnError(func(err error) { errs.add(err); panic("onError") }),
-	)...)
-	c.Ready()
-	d := c.BoolVariationDetail("checkout", someone, false)
-	if !d.Value || d.VariationIndex != 1 || d.Reason.Kind != ReasonFallthrough {
-		t.Fatalf("the hook changed the answer: %+v", d)
-	}
-	if errs.count() != 1 || errs.all()[0].Op != "hook" {
-		t.Fatalf("errors: %+v", errs.all())
-	}
-}
-
-func TestHookEventCarriesWhatTheCallerGot(t *testing.T) {
-	url := serve(t, rulesetHandler(boolRuleset(), `W/"abc"`, nil))
-	var got []EvaluationEvent
-	var mu sync.Mutex
-	c := newTestClient(t, url, nil, pollOnly(WithAfterEvaluation(func(e EvaluationEvent) {
-		mu.Lock()
-		got = append(got, e)
-		mu.Unlock()
-	}))...)
-	c.Ready()
-	c.BoolVariation("checkout", someone, false)
-	c.StringVariation("checkout", someone, "fallback") // TYPE_MISMATCH: the hook sees the fallback
-	c.BoolVariation("missing", someone, true)
-	mu.Lock()
-	defer mu.Unlock()
-	if len(got) != 3 {
-		t.Fatalf("%d events", len(got))
-	}
-	first := got[0]
-	if first.FlagKey != "checkout" || first.VariationIndex != 1 || first.ETag == nil || *first.ETag != `W/"abc"` || first.FlagVersion == nil || *first.FlagVersion != 1 {
-		t.Fatalf("first: %+v", first)
-	}
-	if b, _ := first.Value.Bool(); !b {
-		t.Fatalf("first value: %v", first.Value)
-	}
-	if s, _ := got[1].Value.Text(); s != "fallback" || got[1].Reason.Code != ErrorTypeMismatch {
-		t.Fatalf("second: %+v", got[1])
-	}
-	if got[2].FlagVersion != nil || got[2].Reason.Code != ErrorFlagNotFound {
-		t.Fatalf("third: %+v", got[2])
-	}
-}
-
-// The helper process for TestAnUnclosedClientDoesNotKeepTheProcessAlive: it opens a client, uses it, and
-// returns without closing.
-func TestUnclosedClientHelper(t *testing.T) {
-	if os.Getenv("TOGGLESLASH_TEST_UNCLOSED_URL") == "" {
-		t.Skip("run by TestAnUnclosedClientDoesNotKeepTheProcessAlive")
-	}
-	c := New(os.Getenv("TOGGLESLASH_TEST_UNCLOSED_URL"), "k")
-	if !c.Ready() || !c.BoolVariation("checkout", someone, false) {
-		t.Fatal("the helper's client did not load")
-	}
-	// No Close, on purpose.
-}
-
-func TestAnUnclosedClientDoesNotKeepTheProcessAlive(t *testing.T) {
-	// A stream that stays open, so the client has a goroutine blocked on a socket when the process ends.
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/sdk/v1/ruleset":
-			w.Header().Set("ETag", `"x"`)
-			_, _ = w.Write([]byte(boolRuleset()))
-		case "/sdk/v1/stream":
-			w.Header().Set("Content-Type", "text/event-stream")
-			_, _ = w.Write([]byte("event: connected\ndata: \"x\"\n\n"))
-			w.(http.Flusher).Flush()
-			<-r.Context().Done()
+func TestCallbacksThatCallBackIntoTheClient(t *testing.T) {
+	t.Run("OnError on the sync goroutine calls Ready, Status, variation and Close", func(t *testing.T) {
+		f := newFakeServer(t)
+		f.handle("/sdk/v1/ruleset", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(500) })
+		var c *Client
+		called := make(chan struct{})
+		var once sync.Once
+		ready := make(chan *Client, 1)
+		c = NewClient(f.url(), "k", quiet(WithOnError(func(error) {
+			once.Do(func() {
+				cc := <-ready
+				cc.Ready()
+				cc.Status()
+				cc.BoolVariation("f", user("u"), false)
+				cc.Close()
+				close(called)
+			})
+		}))...)
+		ready <- c
+		select {
+		case <-called:
+		case <-time.After(5 * time.Second):
+			t.Fatal("OnError calling back into the client never returned")
 		}
-	}))
-	cmd := exec.Command(os.Args[0], "-test.run=^TestUnclosedClientHelper$", "-test.count=1")
-	cmd.Env = append(os.Environ(), "TOGGLESLASH_TEST_UNCLOSED_URL="+url)
-	done := make(chan error, 1)
-	var out strings.Builder
-	cmd.Stdout, cmd.Stderr = &out, &out
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	go func() { done <- cmd.Wait() }()
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("helper failed: %v\n%s", err, out.String())
+		within(t, 5*time.Second, "Close after the callback", c.Close)
+	})
+	t.Run("OnError during the final flush calls Close", func(t *testing.T) {
+		f := newFakeServer(t)
+		f.handle("/sdk/v1/events", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(500) })
+		var c *Client
+		var calls atomic.Int32
+		c = NewClient(f.url(), "k", quiet(WithOnError(func(error) {
+			calls.Add(1)
+			c.Close()
+		}))...)
+		c.Ready()
+		c.BoolVariation("f", user("u"), false)
+		within(t, 5*time.Second, "Close with an OnError that calls Close", c.Close)
+		if calls.Load() == 0 {
+			t.Error("the final flush did not report its failure")
 		}
-	case <-time.After(20 * time.Second):
-		_ = cmd.Process.Kill()
-		t.Fatalf("the process was kept alive by an unclosed client\n%s", out.String())
-	}
+	})
+	t.Run("the hook calls Status and another variation", func(t *testing.T) {
+		f := newFakeServer(t)
+		var c *Client
+		var inHook atomic.Bool
+		var calls atomic.Int32
+		c = NewClient(f.url(), "k", quiet(WithAfterEvaluation(func(EvaluationEvent) {
+			if inHook.CompareAndSwap(false, true) {
+				defer inHook.Store(false)
+				calls.Add(1)
+				c.Status()
+				c.Ready()
+				c.BoolVariation("f", user("inner"), false)
+			}
+		}))...)
+		defer c.Close()
+		c.Ready()
+		within(t, 5*time.Second, "a hook that calls the client", func() { c.BoolVariation("f", user("u"), false) })
+		if calls.Load() != 1 {
+			t.Errorf("hook ran its body %d times", calls.Load())
+		}
+	})
 }

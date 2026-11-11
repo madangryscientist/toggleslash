@@ -2,8 +2,6 @@ package toggleslash
 
 import (
 	"context"
-	"math"
-	"math/rand/v2"
 	"net/http"
 	"strings"
 	"sync"
@@ -11,391 +9,335 @@ import (
 	"time"
 
 	"github.com/madangryscientist/toggleslash/sdks/go/internal/eval"
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
 )
 
-// snapshot is a ruleset and the ETag it came with. It is immutable and swapped as one pointer, so a reader
-// sees the ruleset and the tag from the same moment.
-type snapshot struct {
-	ruleset *eval.Ruleset
-	etag    *string
-}
-
-// worker is one of the client's two goroutines. Close waits for it, except while it is inside a callback:
-// then it is the callback that may be calling Close, and waiting would wait on itself.
-type worker struct {
-	done    chan struct{}
-	inCall  atomic.Int32
-	entered chan struct{}
-}
-
-func newWorker() *worker { return &worker{done: make(chan struct{}), entered: make(chan struct{}, 1)} }
-
-func (w *worker) enter() {
-	w.inCall.Add(1)
-	select {
-	case w.entered <- struct{}{}:
-	default:
-	}
-}
-
-func (w *worker) leave() { w.inCall.Add(-1) }
-
-// wait returns when the worker has stopped, or is inside a callback (and so is not doing anything more).
-func (w *worker) wait() {
-	for {
-		if w.inCall.Load() > 0 {
-			return
-		}
-		select {
-		case <-w.done:
-			return
-		case <-w.entered:
-		}
-	}
-}
-
-// Client is a ToggleSlash server SDK client. Create it with New. All methods are safe to call from any
-// number of goroutines.
+// Client follows one environment's ruleset and evaluates flags from it. Every method is safe to call from
+// many goroutines at once. Make one with NewClient and share it.
 type Client struct {
-	cfg config
+	cfg       config
+	baseURL   string
+	sdkKey    string
+	httpc     *http.Client
+	transport *http.Transport
 
+	// snap is the ruleset and its ETag, replaced whole. install stores it under stateMu so Status reads the
+	// same pair as the fields beside it.
 	snap atomic.Pointer[snapshot]
 
-	// statusMu guards the fields below it, and the store of a new snapshot, so Status sees one moment.
-	statusMu   sync.Mutex
+	stateMu    sync.Mutex
 	lastSyncAt time.Time
-	lastError  SyncErrorCode
 	stream     StreamState
-	holdUntil  time.Time // a 429 on the ruleset or stream asked for nothing to reach them before this
+	lastError  SyncError
 
-	// usageMu guards the pending counts and whether they are still being recorded.
-	usageMu   sync.Mutex
-	pending   map[usageKey]int64
-	recording bool
+	usageMu sync.Mutex
+	pending map[usageKey]int64
+	flushMu sync.Mutex
 
-	// flushMu makes flushes serial and guards the events route's own Retry-After hold.
-	flushMu         sync.Mutex
-	eventsHoldUntil time.Time
+	// syncHold and usageHold are Retry-After deadlines in Unix nanoseconds on the client's clock.
+	syncHold  atomic.Int64
+	usageHold atomic.Int64
+
+	ctx       context.Context
+	cancel    context.CancelFunc
+	syncDone  chan struct{}
+	flushDone chan struct{}
+
+	readyCh   chan struct{}
+	readyOnce sync.Once
+	readyVal  atomic.Bool
 
 	closing atomic.Bool
 	done    chan struct{}
-
-	syncCtx     context.Context
-	cancelSync  context.CancelFunc
-	flushCtx    context.Context
-	cancelFlush context.CancelFunc
-	syncWorker  *worker
-	flushWorker *worker
-
-	settled     chan struct{}
-	settleOnce  sync.Once
-	readyResult atomic.Bool
+	// inCallback counts the application callbacks (OnError) now running on a goroutine Close waits for: the
+	// two loops and Close's own final flush. Close stops waiting while it is above zero, so a Close called
+	// from such a callback returns instead of waiting for itself.
+	inCallback atomic.Int32
 }
 
-// New creates a client and starts it. It returns at once without waiting for the network, never panics and
-// never returns an error: a URL that cannot be used shows up as a "network" failure in Status and the
-// OnError callback, like any other unreachable server. Call Ready to wait for the first load.
-func New(url, sdkKey string, opts ...Option) *Client {
-	return start(newConfig(url, sdkKey, opts...))
-}
-
-// newConfig is the defaults with the options applied.
-func newConfig(url, sdkKey string, opts ...Option) config {
-	cfg := config{
-		url:            strings.TrimRight(url, "/"),
-		sdkKey:         sdkKey,
-		stream:         true,
-		pollInterval:   defaultInterval,
-		flushInterval:  defaultInterval,
-		requestTimeout: defaultTimeout,
-		idle:           streamIdle,
-		now:            time.Now,
-		jitter:         rand.Float64,
-		evaluate:       (*eval.Ruleset).Evaluate,
-	}
+// NewClient starts a client for the ToggleSlash server at url, which authenticates with sdkKey, a server
+// SDK key. It returns at once and never fails: the first ruleset request runs on a goroutine, and until it
+// ends every evaluation returns its fallback with the NOT_READY reason. Call Ready to wait for it, and
+// Close when done.
+func NewClient(url, sdkKey string, opts ...Option) *Client {
+	cfg := defaultConfig()
 	for _, opt := range opts {
 		if opt != nil {
 			opt(&cfg)
 		}
 	}
-	return cfg
-}
-
-// start builds a client from a finished config. Tests use it to set the seams.
-func start(cfg config) *Client {
-	if cfg.httpClient == nil {
-		transport := http.DefaultTransport.(*http.Transport).Clone()
-		cfg.httpClient = &http.Client{Transport: transport}
+	defaults := defaultConfig()
+	if cfg.pollInterval <= 0 {
+		cfg.pollInterval = defaults.pollInterval
 	}
-	// A redirect would carry the Authorization header to wherever it points; a 3xx is just a failed attempt.
-	hc := *cfg.httpClient
-	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	cfg.httpClient = &hc
+	if cfg.flushInterval <= 0 {
+		cfg.flushInterval = defaults.flushInterval
+	}
+	if cfg.requestTimeout <= 0 {
+		cfg.requestTimeout = defaults.requestTimeout
+	}
+	if cfg.watchdog <= 0 {
+		cfg.watchdog = defaults.watchdog
+	}
+	if cfg.clock == nil {
+		cfg.clock = defaults.clock
+	}
+	if cfg.jitter == nil {
+		cfg.jitter = defaults.jitter
+	}
+	if cfg.evaluator == nil {
+		cfg.evaluator = defaults.evaluator
+	}
 
 	c := &Client{
-		cfg:         cfg,
-		pending:     map[usageKey]int64{},
-		recording:   true,
-		done:        make(chan struct{}),
-		settled:     make(chan struct{}),
-		syncWorker:  newWorker(),
-		flushWorker: newWorker(),
-		stream:      StreamOff,
+		cfg:       cfg,
+		baseURL:   strings.TrimRight(url, "/"),
+		sdkKey:    sdkKey,
+		pending:   make(map[usageKey]int64),
+		syncDone:  make(chan struct{}),
+		flushDone: make(chan struct{}),
+		readyCh:   make(chan struct{}),
+		done:      make(chan struct{}),
+		stream:    StreamOff,
 	}
 	if cfg.stream {
 		c.stream = StreamConnecting
 	}
-	c.syncCtx, c.cancelSync = context.WithCancel(context.Background())
-	c.flushCtx, c.cancelFlush = context.WithCancel(context.Background())
-	go c.runSync()
-	go c.runFlush()
+	c.httpc, c.transport = newHTTPClient(cfg.httpClient)
+	c.ctx, c.cancel = context.WithCancel(context.Background())
+	go c.runSync(c.ctx)
+	go c.runFlush(c.ctx)
 	return c
 }
 
-// settle fixes the answer of Ready; only the first call counts.
-func (c *Client) settle(ok bool) {
-	c.settleOnce.Do(func() {
-		c.readyResult.Store(ok)
-		close(c.settled)
+// Ready waits for the first ruleset request to end, which takes at most the request timeout, and reports
+// whether a ruleset is held. The answer is fixed then: a later load does not turn false into true. After
+// Close it reports false if the first request had not ended. It may be called any number of times.
+func (c *Client) Ready() bool {
+	<-c.readyCh
+	return c.readyVal.Load()
+}
+
+func (c *Client) settleReady(held bool) {
+	c.readyOnce.Do(func() {
+		c.readyVal.Store(held)
+		close(c.readyCh)
 	})
 }
 
-// Ready blocks until the first ruleset load has finished, bounded by the request timeout, and reports
-// whether a ruleset is held. False means flags serve their fallbacks until the client reaches the server.
-// The answer is fixed once the first attempt has settled; after Close it is false if nothing had loaded.
-func (c *Client) Ready() bool {
-	<-c.settled
-	return c.readyResult.Load()
-}
-
-// Status returns what the client has loaded and how its stream is doing, from memory, in one snapshot.
+// Status is one consistent snapshot of what the client has loaded. It makes no request and never waits.
 func (c *Client) Status() Status {
-	c.statusMu.Lock()
-	defer c.statusMu.Unlock()
-	s := Status{LastSyncAt: c.lastSyncAt, Stream: c.stream, LastError: c.lastError}
-	if snap := c.snap.Load(); snap != nil && snap.etag != nil {
-		etag := *snap.etag
-		s.ETag = &etag
+	c.stateMu.Lock()
+	defer c.stateMu.Unlock()
+	st := Status{LastSyncAt: c.lastSyncAt, Stream: c.stream, LastError: c.lastError}
+	if held := c.snap.Load(); held != nil {
+		st.ETag = held.etag
 	}
-	return s
+	if c.closing.Load() {
+		st.Stream = StreamClosed
+	}
+	return st
 }
 
-// report tells the OnError callback, on the calling goroutine, with no lock held. w is the worker doing so,
-// or nil for any other goroutine. A panic in the callback is ignored.
-func (c *Client) report(err *Error, w *worker) {
-	if c.cfg.onError == nil {
+// report hands an error to the OnError function. A panic in that function is ignored.
+func (c *Client) report(err error) {
+	f := c.cfg.onError
+	if f == nil || err == nil {
 		return
 	}
-	if w != nil {
-		w.enter()
-		defer w.leave()
-	}
 	defer func() { _ = recover() }()
-	c.cfg.onError(err)
+	f(err)
 }
 
-// resolution is what an evaluation produced before a typed method converts the value.
-type resolution struct {
-	result   eval.Result
-	usable   bool // the evaluator served a variation
-	snap     *snapshot
-	code     ErrorCode // set when the result is an SDK error (NOT_READY, EVALUATION_FAILED)
-	panicked any
+// reportFromLoop is report, from a goroutine that Close waits for.
+func (c *Client) reportFromLoop(err error) {
+	c.inCallback.Add(1)
+	defer c.inCallback.Add(-1)
+	c.report(err)
 }
 
-func (c *Client) resolve(flagKey string, ctx Context) (r resolution) {
-	r.snap = c.snap.Load()
-	if r.snap == nil {
-		r.code = ErrorNotReady
-		return r
-	}
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			r = resolution{snap: r.snap, code: ErrorEvaluationFailed, panicked: recovered}
-		}
-	}()
-	r.result = c.cfg.evaluate(r.snap.ruleset, flagKey, ctx.v)
-	r.usable = r.result.VariationIndex != NoVariation
-	return r
+// BoolVariation is the value of a boolean flag for ctx, or fallback.
+func (c *Client) BoolVariation(flagKey string, ctx Context, fallback bool) bool {
+	return c.BoolVariationDetail(flagKey, ctx, fallback).Value
 }
 
-// accessor says how a typed method reads and writes a served value.
-type accessor[T any] struct {
-	// read converts a served value; it is false when the value is not of the accessor's kind.
-	read func(fallback T, served Value) (T, bool)
-	// write is the value as JSON, for the hook event.
-	write func(T) Value
+// StringVariation is the value of a string flag for ctx, or fallback.
+func (c *Client) StringVariation(flagKey string, ctx Context, fallback string) string {
+	return c.StringVariationDetail(flagKey, ctx, fallback).Value
 }
 
-// variation is the one place the result order of the contract (section 4) is written.
-func variation[T any](c *Client, a accessor[T], flagKey string, ctx Context, fallback T) Detail[T] {
-	res := c.resolve(flagKey, ctx)
-	detail := Detail[T]{Value: fallback, VariationIndex: NoVariation}
-	switch {
-	case res.code != "":
-		detail.Reason = errorReason(res.code)
-		if res.panicked != nil {
-			c.report(&Error{Op: "evaluate", Code: string(ErrorEvaluationFailed), Message: "evaluation failed", Err: panicError(res.panicked)}, nil)
-		}
-	case !res.usable:
-		detail.Reason = reasonOf(res.result.Reason)
+// IntVariation is the value of an integer flag for ctx, or fallback. A served number with a fraction, or
+// outside the range of int64, is a TYPE_MISMATCH and gives fallback.
+func (c *Client) IntVariation(flagKey string, ctx Context, fallback int64) int64 {
+	return c.IntVariationDetail(flagKey, ctx, fallback).Value
+}
+
+// FloatVariation is the value of a number flag for ctx, or fallback.
+func (c *Client) FloatVariation(flagKey string, ctx Context, fallback float64) float64 {
+	return c.FloatVariationDetail(flagKey, ctx, fallback).Value
+}
+
+// JSONVariation is the value of a flag of any kind for ctx, or fallback. A null fallback accepts any
+// served value; otherwise the served value must be of the fallback's JSON kind.
+func (c *Client) JSONVariation(flagKey string, ctx Context, fallback Value) Value {
+	return c.JSONVariationDetail(flagKey, ctx, fallback).Value
+}
+
+// BoolVariationDetail is BoolVariation with the variation index and the reason.
+func (c *Client) BoolVariationDetail(flagKey string, ctx Context, fallback bool) Detail[bool] {
+	return variation(c, flagKey, ctx, fallback, Bool,
+		func(v Value) (bool, bool) { return v.AsBool() })
+}
+
+// StringVariationDetail is StringVariation with the variation index and the reason.
+func (c *Client) StringVariationDetail(flagKey string, ctx Context, fallback string) Detail[string] {
+	return variation(c, flagKey, ctx, fallback, String,
+		func(v Value) (string, bool) { return v.AsString() })
+}
+
+// IntVariationDetail is IntVariation with the variation index and the reason.
+func (c *Client) IntVariationDetail(flagKey string, ctx Context, fallback int64) Detail[int64] {
+	return variation(c, flagKey, ctx, fallback,
+		func(n int64) Value { return Number(float64(n)) }, intFromValue)
+}
+
+// FloatVariationDetail is FloatVariation with the variation index and the reason.
+func (c *Client) FloatVariationDetail(flagKey string, ctx Context, fallback float64) Detail[float64] {
+	return variation(c, flagKey, ctx, fallback, Number,
+		func(v Value) (float64, bool) { return v.AsNumber() })
+}
+
+// JSONVariationDetail is JSONVariation with the variation index and the reason.
+func (c *Client) JSONVariationDetail(flagKey string, ctx Context, fallback Value) Detail[Value] {
+	return variation(c, flagKey, ctx, fallback, func(v Value) Value { return v },
+		func(v Value) (Value, bool) {
+			if fallback.IsNull() || v.Kind() == fallback.Kind() {
+				return v, true
+			}
+			return Value{}, false
+		})
+}
+
+// outcome is the result of one evaluation before it is typed: a served value (index >= 0) or a failure.
+type outcome struct {
+	value  Value
+	index  int
+	reason Reason
+}
+
+// variation is every accessor: evaluate, apply the mismatch rule through convert, count a served value,
+// run the hook, and answer. wrap turns the answer back into a Value for the hook.
+func variation[T any](
+	c *Client, flagKey string, ctx Context, fallback T,
+	wrap func(T) Value, convert func(Value) (T, bool),
+) Detail[T] {
+	held := c.snap.Load()
+	detail := Detail[T]{Value: fallback}
+	counted := false
+	switch held {
+	case nil:
+		detail.Reason = Reason{Kind: ReasonError, Code: ErrNotReady}
 	default:
-		if value, ok := a.read(fallback, res.result.Value); ok {
-			detail = Detail[T]{Value: value, VariationIndex: res.result.VariationIndex, Reason: reasonOf(res.result.Reason)}
-			c.record(flagKey, detail.VariationIndex)
-		} else {
-			detail.Reason = errorReason(ErrorTypeMismatch)
+		out, ok := c.runEvaluator(held.ruleset, flagKey, ctx)
+		switch {
+		case !ok:
+			detail.Reason = Reason{Kind: ReasonError, Code: ErrEvaluationFailed}
+		case out.index < 0:
+			detail.Reason = out.reason
+		default:
+			if typed, matches := convert(out.value); matches {
+				index := out.index
+				detail = Detail[T]{Value: typed, VariationIndex: &index, Reason: out.reason}
+				counted = true
+			} else {
+				detail.Reason = Reason{Kind: ReasonError, Code: ErrTypeMismatch}
+			}
 		}
+	}
+	if counted {
+		c.record(flagKey, *detail.VariationIndex)
 	}
 	if c.cfg.afterEvaluation != nil {
-		c.runHook(res, flagKey, ctx, a.write(detail.Value), detail.VariationIndex, detail.Reason)
+		c.runHook(held, flagKey, ctx, wrap(detail.Value), detail.VariationIndex, detail.Reason)
 	}
 	return detail
 }
 
-func (c *Client) runHook(res resolution, flagKey string, ctx Context, value Value, index int, reason Reason) {
-	event := EvaluationEvent{FlagKey: flagKey, Context: ctx, Value: value, VariationIndex: index, Reason: reason}
-	if res.snap != nil {
-		if res.snap.etag != nil {
-			etag := *res.snap.etag
-			event.ETag = &etag
+// runEvaluator runs the evaluator, turning a panic into ok == false and a report to OnError.
+func (c *Client) runEvaluator(rs *eval.Ruleset, flagKey string, ctx Context) (out outcome, ok bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.report(&PanicError{Where: "the evaluator", Value: "evaluation raised"})
+			out, ok = outcome{}, false
 		}
-		if version, ok := res.snap.ruleset.FlagVersion(flagKey); ok {
+	}()
+	res := c.cfg.evaluator(rs, flagKey, ctx)
+	return outcome{
+		value: res.Value,
+		index: res.VariationIndex,
+		reason: Reason{
+			Kind:      ReasonKind(res.Reason.Kind),
+			RuleIndex: res.Reason.RuleIndex,
+			FlagKey:   res.Reason.FlagKey,
+			Code:      ErrorCode(res.Reason.Code),
+		},
+	}, true
+}
+
+// runHook calls the AfterEvaluation function with the ETag and flag version of the snapshot the evaluation
+// used. A panic in it goes to OnError.
+func (c *Client) runHook(held *snapshot, flagKey string, ctx Context, value Value, index *int, reason Reason) {
+	event := EvaluationEvent{
+		FlagKey: flagKey, Context: ctx, Value: value, VariationIndex: index, Reason: reason,
+	}
+	if held != nil {
+		event.ETag = held.etag
+		if version, ok := held.ruleset.FlagVersion(flagKey); ok {
 			event.FlagVersion = &version
 		}
 	}
 	defer func() {
-		if recovered := recover(); recovered != nil {
-			c.report(&Error{Op: "hook", Code: "hook_panic", Message: "afterEvaluation panicked", Err: panicError(recovered)}, nil)
+		if r := recover(); r != nil {
+			c.report(&PanicError{Where: "the AfterEvaluation function", Value: r})
 		}
 	}()
 	c.cfg.afterEvaluation(event)
 }
 
-type recoveredPanic struct{ value any }
-
-func (p recoveredPanic) Error() string { return "panic" }
-
-func panicError(v any) error {
-	if err, ok := v.(error); ok {
-		return err
-	}
-	return recoveredPanic{v}
-}
-
-var boolAccessor = accessor[bool]{
-	read:  func(_ bool, v Value) (bool, bool) { return v.Bool() },
-	write: func(b bool) Value { return jsonvalue.Bool(b) },
-}
-
-var stringAccessor = accessor[string]{
-	read:  func(_ string, v Value) (string, bool) { return v.Text() },
-	write: func(s string) Value { return jsonvalue.String(s) },
-}
-
-var float64Accessor = accessor[float64]{
-	read:  func(_ float64, v Value) (float64, bool) { return v.Number() },
-	write: func(n float64) Value { return jsonvalue.Number(n) },
-}
-
-var int64Accessor = accessor[int64]{
-	read: func(_ int64, v Value) (int64, bool) {
-		n, ok := v.Number()
-		// 2^63 is the first float64 above the int64 range; NaN and the infinities fail these tests too.
-		if !ok || n != math.Trunc(n) || n < -(1<<63) || n >= 1<<63 {
-			return 0, false
-		}
-		return int64(n), true
-	},
-	write: func(n int64) Value { return jsonvalue.Number(float64(n)) },
-}
-
-// jsonAccessor accepts a value of the fallback's kind; a null fallback accepts any served value.
-var jsonAccessor = accessor[Value]{
-	read: func(fallback Value, served Value) (Value, bool) {
-		if fallback.IsNull() {
-			return served, true
-		}
-		return served, !served.IsNull() && served.Kind() == fallback.Kind()
-	},
-	write: func(v Value) Value { return v },
-}
-
-// BoolVariation is the flag's boolean for a context, or fallback.
-func (c *Client) BoolVariation(flagKey string, ctx Context, fallback bool) bool {
-	return c.BoolVariationDetail(flagKey, ctx, fallback).Value
-}
-
-// BoolVariationDetail is BoolVariation with the variation index and the reason.
-func (c *Client) BoolVariationDetail(flagKey string, ctx Context, fallback bool) Detail[bool] {
-	return variation(c, boolAccessor, flagKey, ctx, fallback)
-}
-
-// StringVariation is the flag's string for a context, or fallback.
-func (c *Client) StringVariation(flagKey string, ctx Context, fallback string) string {
-	return c.StringVariationDetail(flagKey, ctx, fallback).Value
-}
-
-// StringVariationDetail is StringVariation with the variation index and the reason.
-func (c *Client) StringVariationDetail(flagKey string, ctx Context, fallback string) Detail[string] {
-	return variation(c, stringAccessor, flagKey, ctx, fallback)
-}
-
-// Float64Variation is the flag's number for a context, or fallback.
-func (c *Client) Float64Variation(flagKey string, ctx Context, fallback float64) float64 {
-	return c.Float64VariationDetail(flagKey, ctx, fallback).Value
-}
-
-// Float64VariationDetail is Float64Variation with the variation index and the reason.
-func (c *Client) Float64VariationDetail(flagKey string, ctx Context, fallback float64) Detail[float64] {
-	return variation(c, float64Accessor, flagKey, ctx, fallback)
-}
-
-// IntVariation is the flag's integer for a context, or fallback. A served number with a fractional part or
-// outside the signed 64-bit range is ERROR TYPE_MISMATCH; 2.0 is the integer 2.
-func (c *Client) IntVariation(flagKey string, ctx Context, fallback int64) int64 {
-	return c.IntVariationDetail(flagKey, ctx, fallback).Value
-}
-
-// IntVariationDetail is IntVariation with the variation index and the reason.
-func (c *Client) IntVariationDetail(flagKey string, ctx Context, fallback int64) Detail[int64] {
-	return variation(c, int64Accessor, flagKey, ctx, fallback)
-}
-
-// JSONVariation is the flag's JSON value for a context, or fallback. The served value must be of the
-// fallback's JSON kind; a Null fallback accepts any served value.
-func (c *Client) JSONVariation(flagKey string, ctx Context, fallback Value) Value {
-	return c.JSONVariationDetail(flagKey, ctx, fallback).Value
-}
-
-// JSONVariationDetail is JSONVariation with the variation index and the reason.
-func (c *Client) JSONVariationDetail(flagKey string, ctx Context, fallback Value) Detail[Value] {
-	return variation(c, jsonAccessor, flagKey, ctx, fallback)
-}
-
-// Close stops following the server, sends the pending usage counts once and releases everything. It is safe
-// to call twice, from any goroutine and from inside a callback; every call returns when the same shutdown is
-// done. Evaluation still works afterwards, on the last ruleset, and counts nothing.
+// Close stops following the server, sends the final usage counts and releases the client's goroutines and
+// connections. It never fails, may be called more than once and from many goroutines, and every call
+// returns when the same shutdown is done: within about twice the request timeout. A Close called from the
+// OnError function, on a goroutine the client owns, stops the rest of the shutdown and returns at once.
 func (c *Client) Close() {
-	if !c.closing.CompareAndSwap(false, true) {
-		<-c.done
-		return
+	if c.closing.CompareAndSwap(false, true) {
+		c.shutdown()
+		close(c.done)
 	}
-	c.statusMu.Lock()
-	c.stream = StreamClosed
-	c.statusMu.Unlock()
-	c.usageMu.Lock()
-	c.recording = false
-	c.usageMu.Unlock()
-	c.cancelSync()
-	c.cancelFlush()
-	c.syncWorker.wait()
-	c.flushWorker.wait()
-	c.settle(false)
-	errs := c.finalFlush()
-	close(c.done)
-	for _, err := range errs {
-		c.report(err, nil)
+	c.waitFor(c.done)
+}
+
+func (c *Client) shutdown() {
+	c.cancel()
+	c.waitFor(c.syncDone)
+	c.waitFor(c.flushDone)
+	c.settleReady(false)
+	c.finalFlush()
+	if c.transport != nil {
+		c.transport.CloseIdleConnections()
+	}
+}
+
+// waitFor waits for ch, or stops waiting while an application callback runs on a goroutine of the client.
+func (c *Client) waitFor(ch <-chan struct{}) {
+	tick := time.NewTicker(2 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ch:
+			return
+		case <-tick.C:
+			if c.inCallback.Load() > 0 {
+				return
+			}
+		}
 	}
 }

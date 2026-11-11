@@ -1,196 +1,489 @@
 package eval
 
-// Patterns for the "matches" op, to the "Patterns" section of docs/evaluation.md. pattern_parse.go reads a
-// pattern into a tree; this compiles the tree to a small program and runs it on a Pike VM over code points:
-// no backtracking and no regexp package, so a match costs O(program x input) whatever the pattern.
-
-type instOp uint8
+// The `matches` op: a parser for the pattern dialect in docs/evaluation.md ("Patterns"), a compiler to a
+// small program, and a Pike VM over code points. There is no backtracking and no platform regexp.
 
 const (
-	opChar instOp = iota
+	maxPatternLength = 1024
+	maxPatternSize   = 10000
+	maxPatternCount  = 100
+	endOfPattern     = -1
+)
+
+// item is a set of inclusive code point ranges (lo, hi pairs), or their complement when negate is set.
+type item struct {
+	ranges []rune
+	negate bool
+}
+
+// charSet is a class: any of its items, or none of them when negate is set.
+type charSet struct {
+	items  []item
+	negate bool
+}
+
+type nodeKind uint8
+
+const (
+	nodeSet nodeKind = iota
+	nodeStart
+	nodeEnd
+	nodeConcat
+	nodeAlt
+	nodeRepeat
+)
+
+type node struct {
+	kind  nodeKind
+	set   charSet
+	parts []*node // concat parts, alt sides, or the one repeated body
+	min   int
+	max   int // -1 is unbounded
+	size  int
+}
+
+type parseError struct{}
+
+func fail() { panic(parseError{}) }
+
+func saturate(size int) int { return min(size, maxPatternSize+1) }
+
+func single(c rune) item { return item{ranges: []rune{c, c}} }
+
+func setOf(it item) *node {
+	return &node{kind: nodeSet, set: charSet{items: []item{it}}, size: 1}
+}
+
+var (
+	digitItem = item{ranges: []rune{'0', '9'}}
+	wordItem  = item{ranges: []rune{'0', '9', 'A', 'Z', '_', '_', 'a', 'z'}}
+	// U+0009 to U+000D are \t \n \v \f \r.
+	spaceItem = item{ranges: []rune{0x09, 0x0D, ' ', ' '}}
+)
+
+func negated(it item) item { return item{ranges: it.ranges, negate: true} }
+
+type patternParser struct {
+	cps []rune
+	pos int
+}
+
+func (p *patternParser) peek(offset int) rune {
+	if p.pos+offset >= len(p.cps) {
+		return endOfPattern
+	}
+	return p.cps[p.pos+offset]
+}
+
+func (p *patternParser) take() rune {
+	c := p.peek(0)
+	p.pos++
+	return c
+}
+
+func (p *patternParser) alternation() *node {
+	sides := []*node{p.concat()}
+	for p.peek(0) == '|' {
+		p.pos++
+		sides = append(sides, p.concat())
+	}
+	if len(sides) == 1 {
+		return sides[0]
+	}
+	size := len(sides) - 1
+	for _, s := range sides {
+		size += s.size
+	}
+	return &node{kind: nodeAlt, parts: sides, size: saturate(size)}
+}
+
+func (p *patternParser) concat() *node {
+	var parts []*node
+	size := 0
+	for c := p.peek(0); c != endOfPattern && c != '|' && c != ')'; c = p.peek(0) {
+		atom := p.atom()
+		anchor := atom.kind == nodeStart || atom.kind == nodeEnd
+		if q := p.peek(0); !anchor && (q == '*' || q == '+' || q == '?' || q == '{') {
+			atom = p.quantify(atom)
+		}
+		parts = append(parts, atom)
+		size = saturate(size + atom.size)
+	}
+	return &node{kind: nodeConcat, parts: parts, size: size}
+}
+
+func (p *patternParser) atom() *node {
+	c := p.take()
+	switch c {
+	case '(':
+		inner := p.alternation()
+		if p.take() != ')' {
+			fail()
+		}
+		return inner
+	case '[':
+		return &node{kind: nodeSet, set: p.charClass(), size: 1}
+	case '\\':
+		return setOf(p.escape())
+	case '*', '+', '?', '{', '}', ']', endOfPattern:
+		fail()
+	case '.':
+		return setOf(negated(single('\n')))
+	case '^':
+		return &node{kind: nodeStart, size: 1}
+	case '$':
+		return &node{kind: nodeEnd, size: 1}
+	}
+	return setOf(single(c))
+}
+
+// escape reads after a backslash: one code point, or one of the six shorthand classes.
+func (p *patternParser) escape() item {
+	c := p.take()
+	switch c {
+	case '\\', '.', '[', ']', '(', ')', '|', '*', '+', '?', '{', '}', '^', '$', '-':
+		return single(c)
+	case 'n':
+		return single('\n')
+	case 't':
+		return single('\t')
+	case 'r':
+		return single('\r')
+	case 'f':
+		return single('\f')
+	case 'v':
+		return single('\v')
+	case 'd':
+		return digitItem
+	case 'w':
+		return wordItem
+	case 's':
+		return spaceItem
+	case 'D':
+		return negated(digitItem)
+	case 'W':
+		return negated(wordItem)
+	case 'S':
+		return negated(spaceItem)
+	}
+	fail()
+	return item{}
+}
+
+// isSingle reports whether an item is exactly one code point (so it may be a range endpoint).
+func isSingle(it item) bool {
+	return !it.negate && len(it.ranges) == 2 && it.ranges[0] == it.ranges[1]
+}
+
+func (p *patternParser) charClass() charSet {
+	negate := p.peek(0) == '^'
+	if negate {
+		p.pos++
+	}
+	items := []item{p.member(true)}
+	for p.peek(0) != ']' {
+		items = append(items, p.member(false))
+	}
+	p.pos++
+	return charSet{items: items, negate: negate}
+}
+
+func (p *patternParser) member(first bool) item {
+	from := p.classAtom(first)
+	if p.peek(0) != '-' || p.peek(1) == endOfPattern || p.peek(1) == ']' {
+		return from
+	}
+	p.pos++
+	to := p.classAtom(false)
+	// A shorthand class (\d, \D) is not a single code point. A single-character escape (\n, \]) is.
+	if !isSingle(from) || !isSingle(to) || from.ranges[0] > to.ranges[0] {
+		fail()
+	}
+	return item{ranges: []rune{from.ranges[0], to.ranges[0]}}
+}
+
+func (p *patternParser) classAtom(first bool) item {
+	c := p.take()
+	if c == endOfPattern || c == '[' || c == ']' {
+		fail()
+	}
+	if c == '\\' {
+		return p.escape()
+	}
+	// An unescaped `-` is a literal only as the first member or directly before `]`.
+	if c == '-' && !first && p.peek(0) != ']' {
+		fail()
+	}
+	return single(c)
+}
+
+func (p *patternParser) quantify(body *node) *node {
+	c := p.take()
+	if c != '{' {
+		lo, hi := 0, -1
+		if c == '+' {
+			lo = 1
+		}
+		if c == '?' {
+			hi = 1
+		}
+		return &node{kind: nodeRepeat, parts: []*node{body}, min: lo, max: hi, size: saturate(body.size + 1)}
+	}
+	lo := p.count()
+	hi := lo
+	if p.peek(0) == ',' {
+		p.pos++
+		if p.peek(0) == '}' {
+			hi = -1
+		} else {
+			hi = p.count()
+		}
+	}
+	if p.take() != '}' {
+		fail()
+	}
+	if hi == -1 {
+		return repeatNode(body, lo, -1, lo+1)
+	}
+	if lo > hi {
+		fail()
+	}
+	return repeatNode(body, lo, hi, hi)
+}
+
+func repeatNode(body *node, lo, hi, times int) *node {
+	return &node{kind: nodeRepeat, parts: []*node{body}, min: lo, max: hi, size: max(1, saturate(times*body.size))}
+}
+
+func isDigit(c rune) bool { return c >= '0' && c <= '9' }
+
+// count reads ASCII digits with no leading zero, at most 100.
+func (p *patternParser) count() int {
+	c := p.take()
+	if !isDigit(c) {
+		fail()
+	}
+	if c == '0' {
+		if isDigit(p.peek(0)) {
+			fail()
+		}
+		return 0
+	}
+	value := int(c - '0')
+	for isDigit(p.peek(0)) {
+		value = value*10 + int(p.take()-'0')
+		if value > maxPatternCount {
+			fail()
+		}
+	}
+	return value
+}
+
+// parsePattern returns the tree for a pattern's code points, or nil when it is not a valid pattern.
+func parsePattern(cps []rune) (n *node) {
+	if len(cps) > maxPatternLength {
+		return nil
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			if _, ok := r.(parseError); !ok {
+				panic(r)
+			}
+			n = nil
+		}
+	}()
+	p := &patternParser{cps: cps}
+	n = p.alternation()
+	if p.pos < len(p.cps) { // an unmatched `)`
+		return nil
+	}
+	if n.size > maxPatternSize {
+		return nil
+	}
+	return n
+}
+
+type opcode uint8
+
+const (
+	opChar opcode = iota
 	opSplit
-	opStartAnchor
-	opEndAnchor
+	opStart
+	opEnd
 	opMatch
 )
 
-// inst is one instruction. A jump is a split whose two targets are the same.
 type inst struct {
-	op   instOp
+	op   opcode
 	set  *charSet
 	x, y int
 }
 
-// pattern is a compiled pattern.
-type pattern []inst
+// Pattern is a compiled pattern.
+type Pattern struct {
+	program []inst
+}
 
-func addSplit(program []inst, x int) []inst { return append(program, inst{op: opSplit, x: x, y: x}) }
+type emitter struct{ program []inst }
 
-func emitAlt(sides []*node, program []inst) []inst {
+func (e *emitter) split(x int) int {
+	e.program = append(e.program, inst{op: opSplit, x: x, y: x})
+	return len(e.program) - 1
+}
+
+func (e *emitter) emit(n *node) {
+	switch n.kind {
+	case nodeSet:
+		set := n.set
+		e.program = append(e.program, inst{op: opChar, set: &set})
+	case nodeStart:
+		e.program = append(e.program, inst{op: opStart})
+	case nodeEnd:
+		e.program = append(e.program, inst{op: opEnd})
+	case nodeConcat:
+		for _, part := range n.parts {
+			e.emit(part)
+		}
+	case nodeAlt:
+		e.emitAlt(n.parts)
+	case nodeRepeat:
+		e.emitRepeat(n.parts[0], n.min, n.max)
+	}
+}
+
+func (e *emitter) emitAlt(sides []*node) {
 	var jumps []int
 	last := len(sides) - 1
 	for i, side := range sides {
 		choice := -1
 		if i < last {
-			choice = len(program)
-			program = addSplit(program, len(program)+1)
+			choice = e.split(len(e.program) + 1)
 		}
-		program = emit(side, program)
+		e.emit(side)
 		if choice < 0 {
 			continue
 		}
-		jumps = append(jumps, len(program))
-		program = addSplit(program, 0)
-		program[choice].y = len(program)
+		jumps = append(jumps, e.split(0))
+		e.program[choice].y = len(e.program)
 	}
 	for _, j := range jumps {
-		program[j].x, program[j].y = len(program), len(program)
+		e.program[j].x = len(e.program)
+		e.program[j].y = len(e.program)
 	}
-	return program
 }
 
-func emitRepeat(body *node, minimum, maximum int, program []inst) []inst {
-	// A body of size 0 is empty groups only and matches just the empty string, so repeating it emits
-	// nothing. Its copies would otherwise cost instructions that the size does not count.
+func (e *emitter) emitRepeat(body *node, lo, hi int) {
+	// A body of size 0 is empty groups only and matches just the empty string; repeating it emits nothing.
 	if body.size == 0 {
-		return program
+		return
 	}
-	for i := 0; i < minimum; i++ {
-		program = emit(body, program)
+	for range lo {
+		e.emit(body)
 	}
-	if maximum < 0 {
-		top := len(program)
-		program = addSplit(program, top+1)
-		program = emit(body, program)
-		program = addSplit(program, top)
-		program[top].y = len(program)
-		return program
+	if hi < 0 {
+		top := len(e.program)
+		loop := e.split(top + 1)
+		e.emit(body)
+		e.split(top)
+		e.program[loop].y = len(e.program)
+		return
 	}
 	var optional []int
-	for i := minimum; i < maximum; i++ {
-		optional = append(optional, len(program))
-		program = addSplit(program, len(program)+1)
-		program = emit(body, program)
+	for i := lo; i < hi; i++ {
+		optional = append(optional, e.split(len(e.program)+1))
+		e.emit(body)
 	}
-	for _, choice := range optional {
-		program[choice].y = len(program)
-	}
-	return program
-}
-
-func emit(n *node, program []inst) []inst {
-	switch n.kind {
-	case nodeSet:
-		return append(program, inst{op: opChar, set: n.set})
-	case nodeStart:
-		return append(program, inst{op: opStartAnchor})
-	case nodeEnd:
-		return append(program, inst{op: opEndAnchor})
-	case nodeConcat:
-		for _, part := range n.parts {
-			program = emit(part, program)
-		}
-		return program
-	case nodeAlt:
-		return emitAlt(n.parts, program)
-	default:
-		return emitRepeat(n.body, n.min, n.max, program)
+	for _, c := range optional {
+		e.program[c].y = len(e.program)
 	}
 }
 
-// compilePattern is the compiled pattern, or false when text is not a valid pattern.
-func compilePattern(text string) (pattern, bool) {
-	root, ok := parsePattern(codePoints(text))
-	if !ok {
-		return nil, false
+// CompilePattern returns the compiled pattern, or nil when text is not a valid pattern.
+func CompilePattern(cps []rune) *Pattern {
+	n := parsePattern(cps)
+	if n == nil {
+		return nil
 	}
-	program := emit(root, nil)
-	return append(program, inst{op: opMatch}), true
+	e := &emitter{}
+	e.emit(n)
+	e.program = append(e.program, inst{op: opMatch})
+	return &Pattern{program: e.program}
 }
 
-func inItem(i item, c rune) bool {
+func inItem(it item, c rune) bool {
 	hit := false
-	for k := 0; k+1 < len(i.ranges) && !hit; k += 2 {
-		hit = i.ranges[k] <= c && c <= i.ranges[k+1]
+	for i := 0; i+1 < len(it.ranges) && !hit; i += 2 {
+		hit = it.ranges[i] <= c && c <= it.ranges[i+1]
 	}
-	return hit != i.negate
+	return hit != it.negate
 }
 
-func inSet(set *charSet, c rune) bool {
+func inSet(s *charSet, c rune) bool {
 	hit := false
-	for _, i := range set.items {
-		if inItem(i, c) {
+	for _, it := range s.items {
+		if inItem(it, c) {
 			hit = true
 			break
 		}
 	}
-	return hit != set.negate
+	return hit != s.negate
 }
 
-// matcher is the state of one run of a program over one input.
-type matcher struct {
-	program pattern
-	length  int
-	seen    []int32
-	stack   []int
-}
-
-// add puts pc and everything it reaches without reading onto list; it reports whether that reaches a match.
-func (m *matcher) add(list []int, pc, pos int) ([]int, bool) {
-	m.stack = append(m.stack[:0], pc)
-	for len(m.stack) > 0 {
-		at := m.stack[len(m.stack)-1]
-		m.stack = m.stack[:len(m.stack)-1]
-		if m.seen[at] == int32(pos) {
-			continue
-		}
-		m.seen[at] = int32(pos)
-		in := &m.program[at]
-		switch in.op {
-		case opMatch:
-			return list, true
-		case opChar:
-			list = append(list, at)
-		case opSplit:
-			m.stack = append(m.stack, in.y, in.x)
-		case opStartAnchor:
-			if pos == 0 {
-				m.stack = append(m.stack, at+1)
-			}
-		case opEndAnchor:
-			if pos == m.length {
-				m.stack = append(m.stack, at+1)
-			}
-		}
+// Matches reports whether the pattern matches somewhere in the code points. A Pike VM: each instruction
+// is visited at most once per input position.
+func (p *Pattern) Matches(input []rune) bool {
+	program := p.program
+	length := len(input)
+	seen := make([]int, len(program))
+	for i := range seen {
+		seen[i] = -1
 	}
-	return list, false
-}
+	var stack []int
+	current := make([]int, 0, len(program))
+	next := make([]int, 0, len(program))
 
-// patternMatches reports whether the pattern matches somewhere in text. A Pike VM: each instruction is
-// visited once per position.
-func patternMatches(program pattern, text string) bool {
-	input := codePoints(text)
-	m := &matcher{program: program, length: len(input), seen: make([]int32, len(program))}
-	for i := range m.seen {
-		m.seen[i] = -1
+	add := func(list *[]int, pc, pos int) bool {
+		stack = append(stack[:0], pc)
+		for len(stack) > 0 {
+			at := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			if at >= len(program) || seen[at] == pos {
+				continue
+			}
+			seen[at] = pos
+			in := &program[at]
+			switch in.op {
+			case opMatch:
+				return true
+			case opChar:
+				*list = append(*list, at)
+			case opSplit:
+				stack = append(stack, in.y, in.x)
+			case opStart:
+				if pos == 0 {
+					stack = append(stack, at+1)
+				}
+			case opEnd:
+				if pos == length {
+					stack = append(stack, at+1)
+				}
+			}
+		}
+		return false
 	}
-	var current, next []int
+
 	for pos := 0; ; pos++ {
-		var matched bool
-		if current, matched = m.add(current, 0, pos); matched {
+		if add(&current, 0, pos) {
 			return true
 		}
-		if pos >= len(input) {
+		if pos >= length {
 			return false
 		}
 		c := input[pos]
 		next = next[:0]
 		for _, pc := range current {
-			in := &m.program[pc]
-			if in.op != opChar || !inSet(in.set, c) {
-				continue
-			}
-			if next, matched = m.add(next, pc+1, pos+1); matched {
+			in := &program[pc]
+			if in.op == opChar && inSet(in.set, c) && add(&next, pc+1, pos+1) {
 				return true
 			}
 		}
