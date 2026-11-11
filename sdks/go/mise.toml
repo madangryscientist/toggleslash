@@ -1,3 +1,4 @@
 [tools]
 go = "1.27.3"
 golangci-lint = "2.15.0"
+zig = "0.17.1"

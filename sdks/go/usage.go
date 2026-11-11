@@ -3,20 +3,21 @@ package toggleslash
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
-	"sort"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
 )
 
-// maxBatch is the most entries one POST /sdk/v1/events carries: the server takes 1000 events and 128 KiB, and
-// an entry is at most about 140 bytes, so 500 stay under both.
-const maxBatch = 500
+// maxEventsPerRequest is how many entries one events request carries (the server takes 1000).
+const maxEventsPerRequest = 500
 
-// usageKey is what counts are summed by: a flag, the variation served and the UTC day.
 type usageKey struct {
 	flag  string
 	index int
@@ -28,158 +29,164 @@ type usageEntry struct {
 	count int64
 }
 
-// record counts one served result. It is a map increment under a small lock, so it is safe on a request path.
+// record counts one served variation for today (UTC). It is an in-memory add. Nothing is counted after Close.
 func (c *Client) record(flagKey string, index int) {
-	key := usageKey{flag: flagKey, index: index, day: c.cfg.now().UTC().Format("2006-01-02")}
+	day := c.cfg.now().UTC().Format("2006-01-02")
 	c.usageMu.Lock()
-	if c.recording {
-		c.pending[key]++
+	defer c.usageMu.Unlock()
+	if c.usageClosed {
+		return
 	}
-	c.usageMu.Unlock()
+	c.usage[usageKey{flagKey, index, day}]++
 }
 
-// holding reports whether a 429 from the events route asked for nothing to be sent yet. flushMu is held.
-func (c *Client) holding() bool { return c.cfg.now().Before(c.eventsHoldUntil) }
-
-// runFlush is the flush goroutine: send what is pending every flush interval until Close.
-func (c *Client) runFlush() {
-	defer close(c.flushWorker.done)
-	timer := time.NewTimer(c.cfg.flushInterval)
-	defer timer.Stop()
-	for {
-		select {
-		case <-c.flushCtx.Done():
-			return
-		case <-timer.C:
-		}
-		for _, err := range c.flush() {
-			c.report(err, c.flushWorker)
-		}
-		timer.Reset(c.cfg.flushInterval)
-	}
-}
-
-// finalFlush is the last flush, on Close. It will not wait out a Retry-After, and it will not ignore one, so
-// counts still held back then are lost, and that is reported.
-func (c *Client) finalFlush() []*Error {
-	errs := c.flush()
-	c.flushMu.Lock()
-	held := c.holding()
-	c.flushMu.Unlock()
+func (c *Client) takeUsage() []usageEntry {
 	c.usageMu.Lock()
-	unsent := len(c.pending)
-	c.usageMu.Unlock()
-	if unsent > 0 && held {
-		errs = append(errs, &Error{Op: "close", Code: "usage_unsent", Message: "closed with " + strconv.Itoa(unsent) + " usage counts unsent: the server asked to wait"})
+	defer c.usageMu.Unlock()
+	entries := make([]usageEntry, 0, len(c.usage))
+	for k, n := range c.usage {
+		entries = append(entries, usageEntry{k, n})
 	}
-	return errs
-}
-
-// take swaps the pending counts out, in a fixed order.
-func (c *Client) take() []usageEntry {
-	c.usageMu.Lock()
-	taken := c.pending
-	c.pending = map[usageKey]int64{}
-	c.usageMu.Unlock()
-	entries := make([]usageEntry, 0, len(taken))
-	for key, count := range taken {
-		entries = append(entries, usageEntry{key, count})
-	}
-	sort.Slice(entries, func(i, j int) bool {
-		a, b := entries[i].usageKey, entries[j].usageKey
+	clear(c.usage)
+	slices.SortFunc(entries, func(a, b usageEntry) int {
 		if a.day != b.day {
-			return a.day < b.day
+			return strings.Compare(a.day, b.day)
 		}
 		if a.flag != b.flag {
-			return a.flag < b.flag
+			return strings.Compare(a.flag, b.flag)
 		}
-		return a.index < b.index
+		return a.index - b.index
 	})
 	return entries
 }
 
-// putBack merges counts a failed send did not deliver back into the pending ones.
-func (c *Client) putBack(entries []usageEntry) {
+// restoreUsage merges counts that were not sent with the ones recorded since.
+func (c *Client) restoreUsage(entries []usageEntry) {
 	c.usageMu.Lock()
+	defer c.usageMu.Unlock()
 	for _, e := range entries {
-		c.pending[e.usageKey] += e.count
+		c.usage[e.usageKey] += e.count
 	}
-	c.usageMu.Unlock()
 }
 
-// flush sends what is pending and returns the errors to tell OnError. Flushes are serial. A batch that
-// fails for a reason that can pass (the server is down or busy) is put back and stops the flush; one the
-// server refused is dropped, since it would be refused again.
-func (c *Client) flush() []*Error {
+func (c *Client) pendingUsage() int {
+	c.usageMu.Lock()
+	defer c.usageMu.Unlock()
+	return len(c.usage)
+}
+
+func (c *Client) flushLoop() {
+	defer close(c.flushDone)
+	c.markGoroutine()
+	defer c.unmarkGoroutine()
+	timer := time.NewTimer(c.cfg.flushInterval)
+	defer timer.Stop()
+	for {
+		select {
+		case <-c.stop:
+			return
+		case <-timer.C:
+		}
+		c.safely("events", func() { c.flush(false) })
+		timer.Reset(c.cfg.flushInterval)
+	}
+}
+
+type postOutcome int
+
+const (
+	postSent postOutcome = iota
+	postKept
+	postDropped
+)
+
+// flush sends the pending counts. Flushes are serial. final is the flush Close makes: it does not wait out a
+// Retry-After, and counts still held back by one are lost and reported.
+func (c *Client) flush(final bool) {
 	c.flushMu.Lock()
-	defer c.flushMu.Unlock()
-	if c.holding() {
+	errs := c.flushLocked()
+	c.flushMu.Unlock()
+	if final && c.pendingUsage() > 0 && c.eventsHold.remaining(c.cfg.now()) > 0 {
+		errs = append(errs, &Error{Op: "close", Code: fmt.Sprintf("closed with %d usage counts unsent: the server asked to wait", c.pendingUsage())})
+	}
+	for _, err := range errs {
+		c.report(err)
+	}
+}
+
+func (c *Client) flushLocked() []error {
+	if c.eventsHold.remaining(c.cfg.now()) > 0 {
 		return nil
 	}
-	entries := c.take()
-	var errs []*Error
-	for start := 0; start < len(entries); start += maxBatch {
-		batch := entries[start:min(start+maxBatch, len(entries))]
-		keep, err := c.post(batch)
+	entries := c.takeUsage()
+	var errs []error
+	for start := 0; start < len(entries); start += maxEventsPerRequest {
+		chunk := entries[start:min(start+maxEventsPerRequest, len(entries))]
+		outcome, err := c.postEvents(chunk)
 		if err != nil {
 			errs = append(errs, err)
 		}
-		if keep {
-			c.putBack(entries[start:])
+		switch outcome {
+		case postKept:
+			c.restoreUsage(entries[start:])
 			return errs
+		case postSent, postDropped:
 		}
 	}
 	return errs
 }
 
-func marshalBatch(batch []usageEntry) []byte {
-	body := []byte(`{"events":[`)
-	for i, e := range batch {
+func eventsBody(entries []usageEntry) []byte {
+	var b strings.Builder
+	b.WriteString(`{"events":[`)
+	for i, e := range entries {
 		if i > 0 {
-			body = append(body, ',')
+			b.WriteByte(',')
 		}
-		body = append(body, `{"flag":`...)
-		body = jsonvalue.String(e.flag).AppendJSON(body)
-		body = append(body, `,"variationIndex":`...)
-		body = strconv.AppendInt(body, int64(e.index), 10)
-		body = append(body, `,"count":`...)
-		body = strconv.AppendInt(body, e.count, 10)
-		body = append(body, `,"day":"`...)
-		body = append(body, e.day...)
-		body = append(body, `"}`...)
+		b.WriteString(`{"flag":`)
+		jsonvalue.WriteString(&b, e.flag)
+		b.WriteString(`,"variationIndex":`)
+		b.WriteString(strconv.Itoa(e.index))
+		b.WriteString(`,"count":`)
+		b.WriteString(strconv.FormatInt(e.count, 10))
+		b.WriteString(`,"day":`)
+		jsonvalue.WriteString(&b, e.day)
+		b.WriteByte('}')
 	}
-	return append(body, `]}`...)
+	b.WriteString(`]}`)
+	return []byte(b.String())
 }
 
-// post sends one batch. keep is true when the batch should be tried again later.
-func (c *Client) post(batch []usageEntry) (keep bool, err *Error) {
-	const op = "POST /sdk/v1/events"
-	// The request is not tied to Close: one already in flight is left to finish, bounded by the timeout.
-	ctx, cancel := context.WithTimeoutCause(context.Background(), c.cfg.requestTimeout, errTimeout)
+// postEvents sends one request. The flush context is not the sync context: Close waits for a flush that is
+// running, and each request is bounded by the request timeout.
+func (c *Client) postEvents(entries []usageEntry) (postOutcome, error) {
+	rctx, cancel := context.WithTimeoutCause(context.Background(), c.cfg.requestTimeout, errRequestTimeout)
 	defer cancel()
-	req, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.url+"/sdk/v1/events", bytes.NewReader(marshalBatch(batch)))
-	if reqErr != nil {
-		return true, &Error{Op: "usage", Code: string(SyncNetwork), Message: op + " failed"}
+	req, err := c.newRequest(rctx, http.MethodPost, "/sdk/v1/events", bytes.NewReader(eventsBody(entries)))
+	if err != nil {
+		return postKept, &Error{Op: "events", Code: LastErrorNetwork}
 	}
-	req.Header.Set("Authorization", "Bearer "+c.cfg.sdkKey)
 	req.Header.Set("Content-Type", "application/json")
-	resp, doErr := c.cfg.httpClient.Do(req)
-	if doErr != nil {
-		f := failureOf(op, ctx, doErr)
-		return true, &Error{Op: "usage", Code: string(f.code), Message: f.text}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		code := LastErrorNetwork
+		if errors.Is(context.Cause(rctx), errRequestTimeout) {
+			code = LastErrorTimeout
+		}
+		return postKept, &Error{Op: "events", Code: code}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
 	status := resp.StatusCode
 	if status >= 200 && status < 300 {
-		return false, nil
+		return postSent, nil
 	}
-	if wait, ok := retryAfter(resp); ok {
-		if until := c.cfg.now().Add(wait); until.After(c.eventsHoldUntil) {
-			c.eventsHoldUntil = until
-		}
+	failure := &Error{Op: "events", Code: "http_" + strconv.Itoa(status)}
+	if status == http.StatusTooManyRequests {
+		c.noteRetryAfter(&c.eventsHold, resp)
 	}
-	f := httpFailure(op, status)
-	return status >= 500 || status == http.StatusRequestTimeout || status == http.StatusTooManyRequests,
-		&Error{Op: "usage", Code: string(f.code), Message: f.text}
+	if status >= 500 || status == http.StatusRequestTimeout || status == http.StatusTooManyRequests {
+		return postKept, failure
+	}
+	return postDropped, failure
 }

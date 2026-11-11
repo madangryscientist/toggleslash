@@ -15,34 +15,38 @@ func feedAll(chunks ...string) []sseEvent {
 }
 
 func TestSSEParser(t *testing.T) {
+	ev := func(name, data string) sseEvent { return sseEvent{name: name, data: data} }
 	cases := []struct {
 		name   string
 		chunks []string
 		want   []sseEvent
 	}{
-		{"one event", []string{"event: changed\ndata: \"a\"\n\n"}, []sseEvent{{"changed", `"a"`}}},
-		{"CRLF", []string{"event: changed\r\ndata: x\r\n\r\n"}, []sseEvent{{"changed", "x"}}},
-		{"bare CR", []string{"event: changed\rdata: x\r\r"}, []sseEvent{{"changed", "x"}}},
-		{"CRLF split across reads", []string{"event: changed\r", "\ndata: x\r", "\n\r", "\n"}, []sseEvent{{"changed", "x"}}},
-		{"split in a field", []string{"eve", "nt: chan", "ged\nda", "ta: x\n", "\n"}, []sseEvent{{"changed", "x"}}},
-		{"default name", []string{"data: x\n\n"}, []sseEvent{{"message", "x"}}},
-		{"comment is ignored", []string{": keep-alive\n\nevent: changed\ndata: x\n\n"}, []sseEvent{{"changed", "x"}}},
-		{"two data lines join with LF", []string{"data: a\ndata: b\n\n"}, []sseEvent{{"message", "a\nb"}}},
-		{"no data, no event", []string{"event: changed\n\n"}, nil},
-		{"one space after the colon is removed, no more", []string{"data:  x\n\n"}, []sseEvent{{"message", " x"}}},
-		{"no space after the colon", []string{"data:x\n\n"}, []sseEvent{{"message", "x"}}},
-		{"unknown field is ignored", []string{"id: 4\nretry: 10\ndata: x\n\n"}, []sseEvent{{"message", "x"}}},
-		{"BOM at the start is dropped", []string{"\xef\xbb\xbfdata: x\n\n"}, []sseEvent{{"message", "x"}}},
-		{"BOM split across reads", []string{"\xef", "\xbb", "\xbfdata: x\n\n"}, []sseEvent{{"message", "x"}}},
-		{"name does not leak into the next event", []string{"event: a\ndata: 1\n\ndata: 2\n\n"}, []sseEvent{{"a", "1"}, {"message", "2"}}},
-		{"an event not ended by a blank line is not dispatched", []string{"event: changed\ndata: x\n"}, nil},
-		{"two events in one read", []string{"data: 1\n\ndata: 2\n\n"}, []sseEvent{{"message", "1"}, {"message", "2"}}},
+		{"lf", []string{"event: changed\ndata: \"a\"\n\n"}, []sseEvent{ev("changed", `"a"`)}},
+		{"crlf", []string{"event: changed\r\ndata: x\r\n\r\n"}, []sseEvent{ev("changed", "x")}},
+		{"lone cr", []string{"event: changed\rdata: x\r\r"}, []sseEvent{ev("changed", "x")}},
+		{"cr then lf split across reads", []string{"event: changed\r", "\ndata: x\r", "\n\r", "\n"}, []sseEvent{ev("changed", "x")}},
+		{"comment ignored", []string{": keep-alive\n\n", "event: connected\ndata: t\n\n"}, []sseEvent{ev("connected", "t")}},
+		{"comment inside an event", []string{"event: changed\n: note\ndata: x\n\n"}, []sseEvent{ev("changed", "x")}},
+		{"several data lines join with lf", []string{"data: a\ndata: b\ndata\n\n"}, []sseEvent{ev("message", "a\nb\n")}},
+		{"no data line drops the event", []string{"event: changed\n\n", "data: ok\n\n"}, []sseEvent{ev("message", "ok")}},
+		{"empty data line dispatches", []string{"event: changed\ndata:\n\n"}, []sseEvent{ev("changed", "")}},
+		{"name defaults to message", []string{"data: x\n\n"}, []sseEvent{ev("message", "x")}},
+		{"one space is stripped, a second is kept", []string{"data:  x\n\n"}, []sseEvent{ev("message", " x")}},
+		{"no space after the colon", []string{"data:x\n\n"}, []sseEvent{ev("message", "x")}},
+		{"unfinished event is discarded", []string{"event: changed\ndata: x\n"}, nil},
+		{"id and retry are ignored", []string{"id: 1\nretry: 5\ndata: x\n\n"}, []sseEvent{ev("message", "x")}},
+		{"event name resets after dispatch", []string{"event: changed\ndata: a\n\ndata: b\n\n"}, []sseEvent{ev("changed", "a"), ev("message", "b")}},
+		{"bom at the start", []string{"\xef\xbb\xbfdata: x\n\n"}, []sseEvent{ev("message", "x")}},
+		{"bom split across reads", []string{"\xef\xbb", "\xbfdata: x\n\n"}, []sseEvent{ev("message", "x")}},
+		{"utf-8 split across reads", []string{"data: \xf0\x9f", "\x98\x80\n\n"}, []sseEvent{ev("message", "\U0001F600")}},
+		{"invalid utf-8 is repaired", []string{"data: \xff\xe2\x82\n\n"}, []sseEvent{ev("message", "��")}},
+		{"byte at a time", []string{"d", "a", "t", "a", ":", " ", "x", "\n", "\n"}, []sseEvent{ev("message", "x")}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := feedAll(tc.chunks...)
 			if !reflect.DeepEqual(got, tc.want) {
-				t.Fatalf("got %#v, want %#v", got, tc.want)
+				t.Fatalf("got %q, want %q", got, tc.want)
 			}
 		})
 	}

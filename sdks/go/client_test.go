@@ -1,11 +1,8 @@
 package toggleslash
 
 import (
-	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,520 +13,437 @@ import (
 	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
 )
 
-var someone = UserContext("user-1")
+var user = UserContext("u1")
 
-func pollOnly(opts ...Option) []Option {
-	return append([]Option{WithStream(false), WithPollInterval(20 * time.Millisecond), WithFlushInterval(20 * time.Millisecond)}, opts...)
-}
-
-func TestReadyAndEvaluate(t *testing.T) {
-	url := serve(t, rulesetHandler(boolRuleset(), `"r1"`, nil))
-	c := newTestClient(t, url, nil, pollOnly()...)
+func TestLoadEvaluateAndStatus(t *testing.T) {
+	f := newFakeServer(t)
+	f.handle(pathRuleset, serveRuleset(rulesetJSON(4, 1), `"v1"`))
+	c, log := newTestClient(t, f, WithPollInterval(20*time.Millisecond))
 	if !c.Ready() {
-		t.Fatal("Ready() = false against a working server")
+		t.Fatal("Ready() = false")
 	}
-	d := c.BoolVariationDetail("checkout", someone, false)
-	if !d.Value || d.VariationIndex != 1 || d.Reason.Kind != ReasonFallthrough {
-		t.Fatalf("got %+v", d)
-	}
-	missing := c.BoolVariationDetail("nope", someone, true)
-	if !missing.Value || missing.VariationIndex != NoVariation || missing.Reason.Kind != ReasonError || missing.Reason.Code != ErrorFlagNotFound {
-		t.Fatalf("missing flag: %+v", missing)
-	}
-	invalid := c.BoolVariationDetail("checkout", Context{}, true)
-	if !invalid.Value || invalid.Reason.Code != ErrorInvalidContext {
-		t.Fatalf("invalid context: %+v", invalid)
+	d := c.BoolVariationDetail("flag", user, false)
+	if !d.Value || d.VariationIndex == nil || *d.VariationIndex != 1 || d.Reason.Kind != ReasonFallthrough {
+		t.Fatalf("detail = %+v", d)
 	}
 	st := c.Status()
-	if st.ETag == nil || *st.ETag != `"r1"` || st.LastSyncAt.IsZero() || st.Stream != StreamOff || st.LastError != "" {
-		t.Fatalf("status: %+v", st)
+	if st.ETag != `"v1"` || st.LastSyncAt.IsZero() || st.Stream != StreamOff || st.LastError != "" {
+		t.Fatalf("status = %+v", st)
+	}
+	// The next poll sends If-None-Match, gets a 304, and moves lastSyncAt.
+	waitFor(t, "a conditional poll", func() bool { return len(f.seen(pathRuleset)) >= 3 })
+	reqs := f.seen(pathRuleset)
+	if got := reqs[0].header.Get("If-None-Match"); got != "" {
+		t.Errorf("first request sent If-None-Match %q", got)
+	}
+	if got := reqs[1].header.Get("If-None-Match"); got != `"v1"` {
+		t.Errorf("second request sent If-None-Match %q", got)
+	}
+	if st2 := c.Status(); !st2.LastSyncAt.After(st.LastSyncAt) {
+		t.Errorf("lastSyncAt did not move on a 304")
+	}
+	if n := log.count(); n != 0 {
+		t.Errorf("onError called %d times: %v", n, log.all())
 	}
 }
 
-func TestURLTrailingSlashIsStripped(t *testing.T) {
-	var path atomic.Value
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path.Store(r.URL.Path)
-		_, _ = w.Write([]byte(boolRuleset()))
-	}))
-	c := newTestClient(t, url+"///", nil, pollOnly()...)
-	if !c.Ready() || path.Load() != "/sdk/v1/ruleset" {
-		t.Fatalf("ready=%v path=%v", c.Ready(), path.Load())
+func TestNotReadyAnswersAtOnce(t *testing.T) {
+	f := newFakeServer(t)
+	f.handle(pathRuleset, f.hang)
+	c, _ := newTestClient(t, f, WithRequestTimeout(time.Hour))
+	start := time.Now()
+	d := c.BoolVariationDetail("flag", user, true)
+	if !d.Value || d.VariationIndex != nil || d.Reason.Kind != ReasonError || d.Reason.Code != ErrNotReady {
+		t.Fatalf("detail = %+v", d)
+	}
+	if time.Since(start) > time.Second {
+		t.Fatalf("took %v", time.Since(start))
 	}
 }
 
-func TestNotReadyBeforeTheFirstLoad(t *testing.T) {
-	release := make(chan struct{})
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		select {
-		case <-release:
-		case <-r.Context().Done():
-		}
-	}))
-	c := newTestClient(t, url, nil, pollOnly(WithRequestTimeout(time.Second))...)
-	d := c.BoolVariationDetail("checkout", someone, true)
-	close(release)
-	if !d.Value || d.Reason.Kind != ReasonError || d.Reason.Code != ErrorNotReady || d.VariationIndex != NoVariation {
-		t.Fatalf("got %+v", d)
-	}
-}
-
-func TestReadySettlesAfterTheFirstAttemptAndIsFixed(t *testing.T) {
-	var serving atomic.Bool
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !serving.Load() {
-			http.Error(w, "down", http.StatusServiceUnavailable)
+func TestReadyIsBoundedByTheRequestTimeoutAndFixed(t *testing.T) {
+	f := newFakeServer(t)
+	var calls atomic.Int32
+	f.handle(pathRuleset, func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			f.hang(w, r)
 			return
 		}
-		_, _ = w.Write([]byte(boolRuleset()))
-	}))
-	c := newTestClient(t, url, nil, pollOnly()...)
+		serveRuleset(rulesetJSON(1, 1), `"v1"`)(w, r)
+	})
+	c, log := newTestClient(t, f, WithRequestTimeout(150*time.Millisecond), WithPollInterval(20*time.Millisecond))
 	if c.Ready() {
-		t.Fatal("Ready() = true against a 503")
+		t.Fatal("Ready() = true after a timeout")
 	}
-	serving.Store(true)
-	eventually(t, 3*time.Second, "the ruleset to load by polling", func() bool { return c.BoolVariation("checkout", someone, false) })
+	if c.Status().LastError != "" && c.Status().LastError != LastErrorTimeout {
+		t.Fatalf("lastError %q", c.Status().LastError)
+	}
+	if !log.has("timeout") {
+		t.Fatalf("no timeout error: %v", log.all())
+	}
+	// A later load does not turn the answer into true.
+	waitFor(t, "a later load", func() bool { return c.BoolVariation("flag", user, false) })
 	if c.Ready() {
-		t.Fatal("Ready() changed after it settled")
+		t.Fatal("Ready() changed after the first attempt settled")
 	}
 }
 
-func TestReadyIsBoundedByTheRequestTimeout(t *testing.T) {
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))
-	c := newTestClient(t, url, nil, pollOnly(WithRequestTimeout(150*time.Millisecond))...)
+func TestBodyReadIsUnderTheTimeout(t *testing.T) {
+	f := newFakeServer(t)
+	f.handle(pathRuleset, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100000")
+		w.WriteHeader(200)
+		_, _ = io.WriteString(w, `{"flags":[`)
+		w.(http.Flusher).Flush()
+		f.hang(w, r)
+	})
+	c, log := newTestClient(t, f, WithRequestTimeout(150*time.Millisecond))
 	start := time.Now()
 	if c.Ready() {
-		t.Fatal("Ready() = true with no answer")
+		t.Fatal("Ready() = true")
 	}
-	if took := time.Since(start); took > 3*time.Second {
-		t.Fatalf("Ready took %s", took)
+	if time.Since(start) > 5*time.Second {
+		t.Fatalf("took %v", time.Since(start))
 	}
-	if got := c.Status().LastError; got != SyncTimeout {
-		t.Fatalf("lastError = %q", got)
-	}
-}
-
-func TestReadyIsFalseAfterCloseIfNothingLoaded(t *testing.T) {
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))
-	c := newTestClient(t, url, nil, pollOnly()...)
-	within(t, 3*time.Second, "Close", c.Close)
-	if c.Ready() {
-		t.Fatal("Ready() = true after Close with nothing loaded")
-	}
-	if got := c.Status(); got.Stream != StreamClosed || got.LastError != "" {
-		t.Fatalf("status after Close: %+v", got)
+	if !log.has("timeout") {
+		t.Fatalf("errors: %v", log.all())
 	}
 }
 
-func TestTypedAccessors(t *testing.T) {
-	flags := rulesetJSON(
-		flagJSON("n", 1, "[1.5]", 0),
-		flagJSON("two", 1, "[2.0]", 0),
-		flagJSON("huge", 1, "[1e30]", 0),
-		flagJSON("min", 1, "[-9223372036854775808]", 0),
-		flagJSON("edge", 1, "[9223372036854775808]", 0),
-		flagJSON("inf", 1, "[1e999]", 0),
-		flagJSON("s", 1, `["x"]`, 0),
-		flagJSON("obj", 1, `[{"a":1}]`, 0),
-		flagJSON("nul", 1, `[null]`, 0),
-	)
-	url := serve(t, rulesetHandler(flags, `"t"`, nil))
-	c := newTestClient(t, url, nil, pollOnly()...)
-	c.Ready()
-
-	if got := c.Float64Variation("n", someone, 0); got != 1.5 {
-		t.Errorf("float64 = %v", got)
+func TestErrorCodes(t *testing.T) {
+	cases := []struct {
+		name    string
+		handler http.HandlerFunc
+		want    string
+	}{
+		{"500", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(500) }, "http_500"},
+		{"403", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(403) }, "http_403"},
+		{"304 with nothing held", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(304) }, "http_304"},
+		{"redirect", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/elsewhere", http.StatusFound) }, "http_302"},
+		{"not json", func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "<html>bad gateway") }, "bad_ruleset"},
+		{"empty object", func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "{}") }, "bad_ruleset"},
+		{"flags not an array", func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, `{"flags":{},"segments":[]}`) }, "bad_ruleset"},
+		{"array body", func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, `[]`) }, "bad_ruleset"},
+		{"truncated", func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, `{"flags":[],"segm`) }, "bad_ruleset"},
+		{"too deep", func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, strings.Repeat("[", 5000)+strings.Repeat("]", 5000))
+		}, "bad_ruleset"},
 	}
-	if d := c.IntVariationDetail("n", someone, 7); d.Value != 7 || d.Reason.Code != ErrorTypeMismatch || d.VariationIndex != NoVariation {
-		t.Errorf("int of 1.5: %+v", d)
-	}
-	if d := c.IntVariationDetail("two", someone, 7); d.Value != 2 || d.VariationIndex != 0 {
-		t.Errorf("int of 2.0: %+v", d)
-	}
-	for _, key := range []string{"huge", "edge", "inf"} {
-		if d := c.IntVariationDetail(key, someone, 7); d.Value != 7 || d.Reason.Code != ErrorTypeMismatch {
-			t.Errorf("int of %s: %+v", key, d)
-		}
-	}
-	if d := c.IntVariationDetail("min", someone, 7); d.Value != -9223372036854775808 || d.Reason.Kind == ReasonError {
-		t.Errorf("int of -2^63: %+v", d)
-	}
-	if d := c.BoolVariationDetail("s", someone, true); !d.Value || d.Reason.Code != ErrorTypeMismatch {
-		t.Errorf("bool of a string: %+v", d)
-	}
-	if got := c.StringVariation("s", someone, "fb"); got != "x" {
-		t.Errorf("string = %q", got)
-	}
-	if d := c.JSONVariationDetail("obj", someone, Object()); d.Reason.Kind == ReasonError {
-		t.Errorf("json object against an object fallback: %+v", d)
-	}
-	if d := c.JSONVariationDetail("obj", someone, Array()); d.Reason.Code != ErrorTypeMismatch {
-		t.Errorf("json object against an array fallback: %+v", d)
-	}
-	if d := c.JSONVariationDetail("obj", someone, Null()); d.Reason.Kind == ReasonError {
-		t.Errorf("a null fallback accepts any value: %+v", d)
-	}
-	if d := c.JSONVariationDetail("nul", someone, Object()); d.Reason.Code != ErrorTypeMismatch {
-		t.Errorf("a null served value against a non-null fallback: %+v", d)
-	}
-	if d := c.JSONVariationDetail("nul", someone, Null()); d.Reason.Kind == ReasonError || d.VariationIndex != 0 {
-		t.Errorf("a null served value against a null fallback: %+v", d)
-	}
-}
-
-// A TYPE_MISMATCH is not counted: only a result that served a variation to the caller is.
-func TestOnlyServedResultsAreCounted(t *testing.T) {
-	var events syncBuf
-	url := serve(t, rulesetHandler(rulesetJSON(flagJSON("s", 1, `["x"]`, 0)), `"u"`, events.handler()))
-	c := newTestClient(t, url, nil, pollOnly(WithFlushInterval(time.Hour))...)
-	c.Ready()
-	c.BoolVariation("s", someone, false)    // TYPE_MISMATCH
-	c.BoolVariation("gone", someone, false) // FLAG_NOT_FOUND
-	c.StringVariation("s", Context{}, "")   // INVALID_CONTEXT
-	c.StringVariation("s", someone, "")     // served
-	c.Close()
-	got := events.bodies()
-	if len(got) != 1 || got[0] != `{"events":[{"flag":"s","variationIndex":0,"count":1,"day":"`+time.Now().UTC().Format("2006-01-02")+`"}]}` {
-		// The day may have turned over during the test; compare the rest.
-		if len(got) != 1 || !strings.HasPrefix(got[0], `{"events":[{"flag":"s","variationIndex":0,"count":1,"day":"`) {
-			t.Fatalf("bodies: %q", got)
-		}
-	}
-}
-
-// TestConcurrentUseUnderRace calls every operation from many goroutines, with Close racing the evaluations and a
-// second Close racing the first. `bin/test` runs it under -race.
-func TestConcurrentUseUnderRace(t *testing.T) {
-	var swaps atomic.Int64
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/sdk/v1/ruleset":
-			n := swaps.Add(1)
-			w.Header().Set("ETag", fmt.Sprintf(`"e%d"`, n))
-			_, _ = w.Write([]byte(rulesetJSON(flagJSON("checkout", int(n), "[false,true]", int(n%2)))))
-		case "/sdk/v1/events":
-			w.WriteHeader(http.StatusOK)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	var errs errorLog
-	c := newTestClient(t, url, nil, pollOnly(
-		WithOnError(errs.add),
-		WithAfterEvaluation(func(e EvaluationEvent) { _ = e.FlagKey }),
-		WithPollInterval(time.Millisecond), WithFlushInterval(time.Millisecond),
-	)...)
-	c.Ready()
-	var wg sync.WaitGroup
-	for i := range 16 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := range 300 {
-				switch (i + j) % 8 {
-				case 0:
-					c.BoolVariation("checkout", someone, false)
-				case 1:
-					c.StringVariationDetail("checkout", someone, "x")
-				case 2:
-					c.IntVariation("checkout", someone, 0)
-				case 3:
-					c.Float64VariationDetail("checkout", someone, 0)
-				case 4:
-					c.JSONVariation("checkout", someone, Null())
-				case 5:
-					_ = c.Status()
-				case 6:
-					_ = c.Ready()
-				case 7:
-					c.BoolVariation("missing", UserContext(fmt.Sprint(j)), true)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFakeServer(t)
+			f.handle(pathRuleset, tc.handler)
+			c, log := newTestClient(t, f)
+			if c.Ready() {
+				t.Fatal("Ready() = true")
+			}
+			if got := c.Status().LastError; got != tc.want {
+				t.Fatalf("lastError = %q, want %q", got, tc.want)
+			}
+			if !log.has(tc.want) {
+				t.Fatalf("onError got %v", log.all())
+			}
+			for _, e := range log.all() {
+				if strings.Contains(e, f.url()) || strings.Contains(e, "127.0.0.1") {
+					t.Fatalf("error text carries the URL: %q", e)
 				}
 			}
-		}()
-	}
-	for range 2 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			time.Sleep(20 * time.Millisecond)
-			c.Close()
-		}()
-	}
-	within(t, 20*time.Second, "the concurrent run", wg.Wait)
-	// After Close an evaluation still answers.
-	if d := c.BoolVariationDetail("checkout", someone, false); d.Reason.Kind == ReasonError {
-		t.Fatalf("evaluation after Close: %+v", d)
-	}
-}
-
-// A ruleset request that never answers must not slow an evaluation, and neither must a usage flush that hangs.
-func TestVariationIsBoundedWhileTheNetworkHangs(t *testing.T) {
-	var hang atomic.Bool
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if hang.Load() {
-			// Read the body so the server notices when the client gives up on the request.
-			_, _ = io.Copy(io.Discard, r.Body)
-			<-r.Context().Done()
-			return
-		}
-		if r.URL.Path == "/sdk/v1/ruleset" {
-			w.Header().Set("ETag", `"h"`)
-			_, _ = w.Write([]byte(boolRuleset()))
-		}
-	}))
-	c := newTestClient(t, url, nil, pollOnly(WithRequestTimeout(5*time.Second))...)
-	c.Ready()
-	hang.Store(true)
-	c.BoolVariation("checkout", someone, false) // a count for the flusher to hang on
-	time.Sleep(150 * time.Millisecond)          // the poll and the flush are both in flight now
-	within(t, time.Second, "1000 evaluations and Status", func() {
-		for range 1000 {
-			if !c.BoolVariation("checkout", someone, false) {
-				t.Error("wrong answer while the network hangs")
-			}
-			_ = c.Status()
-		}
-	})
-	// Do not wait for Close to outlast the hung requests; the cleanup does.
-}
-
-// Each evaluation sees one ruleset: the ETag and the flag version in a hook event come from the same swap.
-func TestASwapExposesOneRulesetOrTheOther(t *testing.T) {
-	var n atomic.Int64
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/sdk/v1/ruleset" {
-			return
-		}
-		v := n.Add(1)%2 + 1 // 1, 2, 1, 2 ...
-		w.Header().Set("ETag", fmt.Sprintf(`"tag-%d"`, v))
-		_, _ = w.Write([]byte(rulesetJSON(flagJSON("checkout", int(v), "[false,true]", int(v)-1))))
-	}))
-	var mu sync.Mutex
-	seen := map[string]int{}
-	torn := 0
-	c := newTestClient(t, url, nil, pollOnly(WithPollInterval(time.Millisecond), WithAfterEvaluation(func(e EvaluationEvent) {
-		if e.ETag == nil || e.FlagVersion == nil {
-			return
-		}
-		mu.Lock()
-		defer mu.Unlock()
-		seen[*e.ETag]++
-		wantTag := fmt.Sprintf(`"tag-%d"`, int(*e.FlagVersion))
-		wantIndex := int(*e.FlagVersion) - 1
-		if *e.ETag != wantTag || e.VariationIndex != wantIndex {
-			torn++
-		}
-	}))...)
-	c.Ready()
-	var wg sync.WaitGroup
-	for range 8 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for range 2000 {
-				c.BoolVariation("checkout", someone, false)
-			}
-		}()
-	}
-	wg.Wait()
-	mu.Lock()
-	defer mu.Unlock()
-	if torn != 0 {
-		t.Fatalf("%d evaluations saw an ETag, a version or a variation from different rulesets", torn)
-	}
-	if len(seen) < 2 {
-		t.Logf("only saw %v; the swap race was not exercised this run", seen)
-	}
-}
-
-// A hook and an onError that call back into the client must not deadlock it.
-func TestCallbacksMayCallTheClient(t *testing.T) {
-	url := serve(t, rulesetHandler(boolRuleset(), `"cb"`, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "no", http.StatusInternalServerError)
-	})))
-	var c *Client
-	var hookRan, errorRan atomic.Int64
-	var ready sync.WaitGroup
-	ready.Add(1)
-	opts := pollOnly(
-		WithAfterEvaluation(func(EvaluationEvent) {
-			ready.Wait()
-			_ = c.Status()
-			if hookRan.Add(1) == 1 { // the call below runs this hook again; once is enough to prove it
-				_ = c.BoolVariation("checkout", someone, false)
-			}
-		}),
-		WithOnError(func(error) {
-			ready.Wait()
-			_ = c.Status()
-			if errorRan.Add(1) == 1 {
-				_ = c.BoolVariation("checkout", someone, false)
-			}
-		}),
-		WithFlushInterval(10*time.Millisecond),
-	)
-	c = newTestClient(t, url, nil, opts...)
-	ready.Done()
-	c.Ready()
-	within(t, 3*time.Second, "an evaluation whose hook calls the client", func() { c.BoolVariation("checkout", someone, false) })
-	// The events route answers 500, so the flusher calls OnError, which calls the client.
-	eventually(t, 3*time.Second, "OnError to run", func() bool { return errorRan.Load() > 0 })
-	within(t, 3*time.Second, "Close", c.Close)
-	if hookRan.Load() == 0 {
-		t.Fatal("the hook never ran")
-	}
-}
-
-// Close called from inside a callback does not wait on itself.
-func TestCloseFromInsideACallback(t *testing.T) {
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "no", http.StatusInternalServerError)
-	}))
-	closed := make(chan struct{})
-	var c *Client
-	var once sync.Once
-	var ready sync.WaitGroup
-	ready.Add(1)
-	c = newTestClient(t, url, nil, pollOnly(WithOnError(func(error) {
-		ready.Wait()
-		once.Do(func() {
-			c.Close()
-			close(closed)
 		})
-	}))...)
-	ready.Done()
-	select {
-	case <-closed:
-	case <-time.After(5 * time.Second):
-		t.Fatal("Close from inside OnError never returned")
 	}
 }
 
-func TestEvaluatorPanicGivesFallbackAndOneOnError(t *testing.T) {
-	url := serve(t, rulesetHandler(boolRuleset(), `"p"`, nil))
-	var errs errorLog
-	var events []EvaluationEvent
+func TestAnUnusableURLIsANetworkError(t *testing.T) {
+	log := &errLog{}
+	c := NewClient("http://127.0.0.1:1", "k", WithStream(false), WithOnError(log.add))
+	defer c.Close()
+	if c.Ready() {
+		t.Fatal("Ready() = true")
+	}
+	if got := c.Status().LastError; got != LastErrorNetwork {
+		t.Fatalf("lastError %q", got)
+	}
+	bad := NewClient("ht\ttp://bad url", "k", WithStream(false), WithOnError(log.add))
+	defer bad.Close()
+	if bad.Ready() || bad.Status().LastError != LastErrorNetwork {
+		t.Fatalf("status = %+v", bad.Status())
+	}
+	for _, e := range log.all() {
+		if strings.Contains(e, "127.0.0.1") || strings.Contains(e, "bad url") {
+			t.Fatalf("error text carries the URL: %q", e)
+		}
+	}
+}
+
+func TestOnlyARulesetReplacesARuleset(t *testing.T) {
+	f := newFakeServer(t)
+	var n atomic.Int32
+	f.handle(pathRuleset, func(w http.ResponseWriter, r *http.Request) {
+		if n.Add(1) == 1 {
+			serveRuleset(rulesetJSON(1, 1), `"v1"`)(w, r)
+			return
+		}
+		_, _ = io.WriteString(w, "{}")
+	})
+	c, _ := newTestClient(t, f, WithPollInterval(10*time.Millisecond))
+	if !c.Ready() {
+		t.Fatal("not ready")
+	}
+	waitFor(t, "a bad answer", func() bool { return c.Status().LastError == "bad_ruleset" })
+	if !c.BoolVariation("flag", user, false) || c.Status().ETag != `"v1"` {
+		t.Fatal("the ruleset held was replaced")
+	}
+}
+
+func TestBodyDecoding(t *testing.T) {
+	f := newFakeServer(t)
+	body := "\xef\xbb\xbf" + rulesetWith("\"café \\ud800 \xff!\"")
+	// A raw invalid byte inside a string, a BOM in front and a lone surrogate escape.
+	f.handle(pathRuleset, func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, body) })
+	c, _ := newTestClient(t, f)
+	if !c.Ready() {
+		t.Fatalf("not ready: %+v", c.Status())
+	}
+	got := c.StringVariation("flag", user, "fallback")
+	if !strings.Contains(got, "café ") || !strings.HasSuffix(got, "�!") {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestTypedAccessorsAndTheMismatchRule(t *testing.T) {
+	type check func(t *testing.T, c *Client)
+	cases := []struct {
+		name    string
+		literal string
+		check   check
+	}{
+		{"bool", `true`, func(t *testing.T, c *Client) {
+			if !c.BoolVariation("flag", user, false) {
+				t.Error("bool")
+			}
+			d := c.StringVariationDetail("flag", user, "x")
+			if d.Value != "x" || d.VariationIndex != nil || d.Reason.Code != ErrTypeMismatch {
+				t.Errorf("string on a bool: %+v", d)
+			}
+			a := c.AnyVariationDetail("flag", user, NullValue())
+			if b, _ := a.Value.Bool(); !b || a.VariationIndex == nil {
+				t.Errorf("any with a null fallback: %+v", a)
+			}
+			if d := c.AnyVariationDetail("flag", user, StringValue("x")); d.Reason.Code != ErrTypeMismatch {
+				t.Errorf("any with a string fallback: %+v", d)
+			}
+		}},
+		{"null served", `null`, func(t *testing.T, c *Client) {
+			if d := c.StringVariationDetail("flag", user, "x"); d.Reason.Code != ErrTypeMismatch {
+				t.Errorf("null against a string: %+v", d)
+			}
+			if d := c.AnyVariationDetail("flag", user, NullValue()); d.VariationIndex == nil || !d.Value.IsNull() {
+				t.Errorf("null against a null fallback: %+v", d)
+			}
+		}},
+		{"array and object differ", `[1,2]`, func(t *testing.T, c *Client) {
+			if d := c.JSONVariationDetail("flag", user, ObjectValue(nil, nil)); d.Reason.Code != ErrTypeMismatch {
+				t.Errorf("array against an object: %+v", d)
+			}
+			d := c.JSONVariationDetail("flag", user, ArrayValue())
+			if d.VariationIndex == nil || d.Value.Len() != 2 || d.Value.JSON() != "[1,2]" {
+				t.Errorf("array against an array: %+v", d)
+			}
+		}},
+		{"fraction", `2.5`, func(t *testing.T, c *Client) {
+			if d := c.IntVariationDetail("flag", user, 7); d.Value != 7 || d.Reason.Code != ErrTypeMismatch {
+				t.Errorf("int on a fraction: %+v", d)
+			}
+			if got := c.FloatVariation("flag", user, 0); got != 2.5 {
+				t.Errorf("float: %v", got)
+			}
+		}},
+		{"two point zero", `2.0`, func(t *testing.T, c *Client) {
+			if d := c.IntVariationDetail("flag", user, 7); d.Value != 2 || d.VariationIndex == nil {
+				t.Errorf("int on 2.0: %+v", d)
+			}
+		}},
+		{"top of int64", `9223372036854774784`, func(t *testing.T, c *Client) {
+			if d := c.IntVariationDetail("flag", user, 7); d.Value != 9223372036854774784 {
+				t.Errorf("int on 2^63-1024: %+v", d)
+			}
+		}},
+		{"just past int64", `9223372036854775807`, func(t *testing.T, c *Client) {
+			if d := c.IntVariationDetail("flag", user, 7); d.Value != 7 || d.Reason.Code != ErrTypeMismatch {
+				t.Errorf("int on 2^63: %+v", d)
+			}
+		}},
+		{"huge", `1e20`, func(t *testing.T, c *Client) {
+			if d := c.IntVariationDetail("flag", user, 7); d.Value != 7 || d.Reason.Code != ErrTypeMismatch {
+				t.Errorf("int on 1e20: %+v", d)
+			}
+			if got := c.FloatVariation("flag", user, 0); got != 1e20 {
+				t.Errorf("float: %v", got)
+			}
+		}},
+		{"infinity", `1e999`, func(t *testing.T, c *Client) {
+			if d := c.IntVariationDetail("flag", user, 7); d.Reason.Code != ErrTypeMismatch {
+				t.Errorf("int on infinity: %+v", d)
+			}
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFakeServer(t)
+			f.handle(pathRuleset, serveRuleset(rulesetWith(tc.literal), `"e"`))
+			c, _ := newTestClient(t, f)
+			if !c.Ready() {
+				t.Fatalf("not ready: %+v", c.Status())
+			}
+			tc.check(t, c)
+		})
+	}
+}
+
+func TestInvalidContextsAreFallbacks(t *testing.T) {
+	f := newFakeServer(t)
+	f.handle(pathRuleset, serveRuleset(rulesetJSON(1, 1), `"v1"`))
+	c, _ := newTestClient(t, f)
+	c.Ready()
+	for name, ctx := range map[string]Context{
+		"zero":        {},
+		"empty key":   UserContext(""),
+		"bad kind":    NewContext("has space", "k"),
+		"not json":    ContextFromJSON([]byte("{")),
+		"array":       ContextFromJSON([]byte("[]")),
+		"bad native":  ContextFromMap(map[string]any{"key": make(chan int)}),
+		"empty multi": MultiContext(),
+	} {
+		d := c.BoolVariationDetail("flag", ctx, false)
+		if d.Value || d.VariationIndex != nil || d.Reason.Kind != ReasonError || d.Reason.Code != ErrInvalidContext {
+			t.Errorf("%s: %+v", name, d)
+		}
+	}
+	multi := MultiContext(UserContext("u1"), NewContext("org", "o1").With("plan", StringValue("pro")))
+	if d := c.BoolVariationDetail("flag", multi, false); !d.Value {
+		t.Errorf("multi: %+v", d)
+	}
+	if d := c.BoolVariationDetail("flag", ContextFromMap(map[string]any{"kind": "user", "key": "k", "attributes": map[string]any{"n": 1, "ok": true}}), false); !d.Value {
+		t.Errorf("from map: %+v", d)
+	}
+	if d := c.BoolVariationDetail("nope", user, true); d.Reason.Code != ErrFlagNotFound || !d.Value {
+		t.Errorf("unknown flag: %+v", d)
+	}
+}
+
+func TestEvaluationFailedIsOneOnError(t *testing.T) {
+	f := newFakeServer(t)
+	f.handle(pathRuleset, serveRuleset(rulesetJSON(1, 1), `"v1"`))
+	boom := func(*eval.Ruleset, string, jsonvalue.Value) eval.Result { panic("boom with secret-key-u1") }
+	c, log := newTestClient(t, f, withEvaluator(boom))
+	c.Ready()
+	before := log.count()
+	d := c.BoolVariationDetail("flag", user, true)
+	if !d.Value || d.VariationIndex != nil || d.Reason.Code != ErrEvaluationFailed {
+		t.Fatalf("detail = %+v", d)
+	}
+	if got := log.count() - before; got != 1 {
+		t.Fatalf("onError called %d times", got)
+	}
+	for _, e := range log.all() {
+		if strings.Contains(e, "secret-key-u1") || strings.Contains(e, "u1") {
+			t.Fatalf("error carries the panic value or context: %q", e)
+		}
+	}
+	// It was not counted.
+	c.flush(false)
+	if got := f.seen(pathEvents); len(got) != 0 {
+		t.Fatalf("sent %d events requests", len(got))
+	}
+}
+
+func TestHookSeesTheAnswerAndCannotChangeIt(t *testing.T) {
+	f := newFakeServer(t)
+	f.handle(pathRuleset, serveRuleset(rulesetJSON(9, 1), `"v1"`))
 	var mu sync.Mutex
-	c := newTestClient(t, url, func(cfg *config) {
-		cfg.evaluate = func(*eval.Ruleset, string, jsonvalue.Value) eval.Result { panic("boom") }
-	}, pollOnly(WithOnError(errs.add), WithAfterEvaluation(func(e EvaluationEvent) {
+	var events []EvaluationEvent
+	c, log := newTestClient(t, f, WithAfterEvaluation(func(e EvaluationEvent) {
 		mu.Lock()
 		events = append(events, e)
 		mu.Unlock()
-	}))...)
-	c.Ready()
-	before := errs.count()
-	d := c.BoolVariationDetail("checkout", someone, true)
-	if !d.Value || d.VariationIndex != NoVariation || d.Reason.Kind != ReasonError || d.Reason.Code != ErrorEvaluationFailed {
-		t.Fatalf("got %+v", d)
-	}
-	if got := errs.count() - before; got != 1 {
-		t.Fatalf("OnError was called %d times for one panic", got)
-	}
-	last := errs.all()[errs.count()-1]
-	if last.Op != "evaluate" || strings.Contains(last.Error(), "boom") && false {
-		t.Fatalf("error: %+v", last)
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if len(events) != 1 || events[0].Reason.Code != ErrorEvaluationFailed {
-		t.Fatalf("hook events: %+v", events)
-	}
-}
-
-func TestHookAndOnErrorPanicsNeverReachTheCaller(t *testing.T) {
-	url := serve(t, rulesetHandler(boolRuleset(), `"h"`, nil))
-	var errs errorLog
-	c := newTestClient(t, url, nil, pollOnly(
-		WithAfterEvaluation(func(EvaluationEvent) { panic("hook") }),
-		WithOnError(func(err error) { errs.add(err); panic("onError") }),
-	)...)
-	c.Ready()
-	d := c.BoolVariationDetail("checkout", someone, false)
-	if !d.Value || d.VariationIndex != 1 || d.Reason.Kind != ReasonFallthrough {
-		t.Fatalf("the hook changed the answer: %+v", d)
-	}
-	if errs.count() != 1 || errs.all()[0].Op != "hook" {
-		t.Fatalf("errors: %+v", errs.all())
-	}
-}
-
-func TestHookEventCarriesWhatTheCallerGot(t *testing.T) {
-	url := serve(t, rulesetHandler(boolRuleset(), `W/"abc"`, nil))
-	var got []EvaluationEvent
-	var mu sync.Mutex
-	c := newTestClient(t, url, nil, pollOnly(WithAfterEvaluation(func(e EvaluationEvent) {
-		mu.Lock()
-		got = append(got, e)
-		mu.Unlock()
-	}))...)
-	c.Ready()
-	c.BoolVariation("checkout", someone, false)
-	c.StringVariation("checkout", someone, "fallback") // TYPE_MISMATCH: the hook sees the fallback
-	c.BoolVariation("missing", someone, true)
-	mu.Lock()
-	defer mu.Unlock()
-	if len(got) != 3 {
-		t.Fatalf("%d events", len(got))
-	}
-	first := got[0]
-	if first.FlagKey != "checkout" || first.VariationIndex != 1 || first.ETag == nil || *first.ETag != `W/"abc"` || first.FlagVersion == nil || *first.FlagVersion != 1 {
-		t.Fatalf("first: %+v", first)
-	}
-	if b, _ := first.Value.Bool(); !b {
-		t.Fatalf("first value: %v", first.Value)
-	}
-	if s, _ := got[1].Value.Text(); s != "fallback" || got[1].Reason.Code != ErrorTypeMismatch {
-		t.Fatalf("second: %+v", got[1])
-	}
-	if got[2].FlagVersion != nil || got[2].Reason.Code != ErrorFlagNotFound {
-		t.Fatalf("third: %+v", got[2])
-	}
-}
-
-// The helper process for TestAnUnclosedClientDoesNotKeepTheProcessAlive: it opens a client, uses it, and
-// returns without closing.
-func TestUnclosedClientHelper(t *testing.T) {
-	if os.Getenv("TOGGLESLASH_TEST_UNCLOSED_URL") == "" {
-		t.Skip("run by TestAnUnclosedClientDoesNotKeepTheProcessAlive")
-	}
-	c := New(os.Getenv("TOGGLESLASH_TEST_UNCLOSED_URL"), "k")
-	if !c.Ready() || !c.BoolVariation("checkout", someone, false) {
-		t.Fatal("the helper's client did not load")
-	}
-	// No Close, on purpose.
-}
-
-func TestAnUnclosedClientDoesNotKeepTheProcessAlive(t *testing.T) {
-	// A stream that stays open, so the client has a goroutine blocked on a socket when the process ends.
-	url := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/sdk/v1/ruleset":
-			w.Header().Set("ETag", `"x"`)
-			_, _ = w.Write([]byte(boolRuleset()))
-		case "/sdk/v1/stream":
-			w.Header().Set("Content-Type", "text/event-stream")
-			_, _ = w.Write([]byte("event: connected\ndata: \"x\"\n\n"))
-			w.(http.Flusher).Flush()
-			<-r.Context().Done()
-		}
+		panic("the hook raised")
 	}))
-	cmd := exec.Command(os.Args[0], "-test.run=^TestUnclosedClientHelper$", "-test.count=1")
-	cmd.Env = append(os.Environ(), "TOGGLESLASH_TEST_UNCLOSED_URL="+url)
-	done := make(chan error, 1)
-	var out strings.Builder
-	cmd.Stdout, cmd.Stderr = &out, &out
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
+	c.Ready()
+	d := c.BoolVariationDetail("flag", user, false)
+	if !d.Value || d.VariationIndex == nil {
+		t.Fatalf("a panicking hook changed the answer: %+v", d)
 	}
-	go func() { done <- cmd.Wait() }()
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("helper failed: %v\n%s", err, out.String())
-		}
-	case <-time.After(20 * time.Second):
-		_ = cmd.Process.Kill()
-		t.Fatalf("the process was kept alive by an unclosed client\n%s", out.String())
+	mu.Lock()
+	last := events[len(events)-1]
+	mu.Unlock()
+	if last.FlagKey != "flag" || last.ETag != `"v1"` || last.FlagVersion == nil || *last.FlagVersion != 9 || last.VariationIndex == nil {
+		t.Fatalf("event = %+v", last)
+	}
+	if b, _ := last.Value.Bool(); !b {
+		t.Fatalf("event value = %+v", last.Value)
+	}
+	if !log.has("hook") {
+		t.Fatalf("errors: %v", log.all())
+	}
+	c.flush(false)
+	reqs := f.seen(pathEvents)
+	if len(reqs) != 1 || !strings.Contains(reqs[0].body, `"count":1`) {
+		t.Fatalf("the evaluation was not counted once: %+v", reqs)
+	}
+	// The hook ran on the caller's goroutine: its panic was recovered there, not in the SDK's.
+}
+
+func TestOnErrorThatPanicsIsIgnored(t *testing.T) {
+	f := newFakeServer(t)
+	f.handle(pathRuleset, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(500) })
+	c := NewClient(f.url(), "k", WithStream(false), WithOnError(func(error) { panic("no") }))
+	defer c.Close()
+	if c.Ready() {
+		t.Fatal("ready")
+	}
+	if c.Status().LastError != "http_500" {
+		t.Fatalf("status %+v", c.Status())
+	}
+}
+
+func TestRedirectsAreNotFollowed(t *testing.T) {
+	target := newFakeServer(t)
+	target.handle("/target", serveRuleset(rulesetJSON(1, 1), `"v1"`))
+	f := newFakeServer(t)
+	f.handle(pathRuleset, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.url()+"/target", http.StatusTemporaryRedirect)
+	})
+	c, _ := newTestClient(t, f)
+	if c.Ready() || c.Status().LastError != "http_307" {
+		t.Fatalf("status %+v", c.Status())
+	}
+	if n := len(target.seen("/target")); n != 0 {
+		t.Fatalf("the redirect target got %d requests", n)
+	}
+}
+
+func TestTrailingSlashesAreRemoved(t *testing.T) {
+	f := newFakeServer(t)
+	f.handle(pathRuleset, serveRuleset(rulesetJSON(1, 1), `"v1"`))
+	c := NewClient(f.url()+"///", "k", WithStream(false))
+	defer c.Close()
+	if !c.Ready() {
+		t.Fatalf("status %+v", c.Status())
+	}
+}
+
+func TestTLS(t *testing.T) {
+	f := newFakeServer(t)
+	_ = f
+	tlsSrv := newTLSServer(t, serveRuleset(rulesetJSON(1, 1), `"v1"`))
+	c := NewClient(tlsSrv.URL, "k", WithStream(false), WithHTTPClient(tlsSrv.Client()))
+	defer c.Close()
+	if !c.Ready() {
+		t.Fatalf("status %+v", c.Status())
+	}
+	// Without the test certificate in its pool the default client refuses the connection: a network error.
+	bad := NewClient(tlsSrv.URL, "k", WithStream(false))
+	defer bad.Close()
+	if bad.Ready() || bad.Status().LastError != LastErrorNetwork {
+		t.Fatalf("status %+v", bad.Status())
 	}
 }

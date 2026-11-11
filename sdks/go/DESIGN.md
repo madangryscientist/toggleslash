@@ -1,214 +1,178 @@
-# Go SDK: design
+# ToggleSlash Go SDK: design
 
-This is the design of the ToggleSlash server SDK for Go, written before the code, to
-[`docs/sdk-contract.md`](../../docs/sdk-contract.md) (the contract) and
-[`docs/evaluation.md`](../../docs/evaluation.md) (the spec). It is built from
-[`docs/sdk-authoring/PROMPT.md`](../../docs/sdk-authoring/PROMPT.md); the run report is [`RUN.md`](RUN.md).
+Written before any code (PROMPT.md, phase 1). The package is `toggleslash`, in the module
+`github.com/madangryscientist/toggleslash/sdks/go`. Nothing is registered under that path.
 
-Inputs: language Go. Runtime, minimum version and build tool were not given, so each is a decision (see
-"The minimum runtime and the toolchain").
+## 1. The mapping table
 
-## The mapping table
-
-The module is `github.com/madangryscientist/toggleslash/sdks/go` and its one public package is named
-`toggleslash` (`go` is a keyword). Everything below is in package `toggleslash` unless it says otherwise.
-Durations are `time.Duration`.
+Names follow Go's usual casing. `Client` is the type `NewClient` returns; every method is safe to call from
+many goroutines at once.
 
 | Name | In Go |
 | --- | --- |
-| `create` | `toggleslash.New(url, sdkKey string, opts ...Option) *Client`. It starts two goroutines and returns without waiting for the network. It never panics and never returns an error: a URL that cannot be used shows up as a `network` failure in `Status` and `onError`, like any other unreachable server. |
-| `ready` | `(*Client).Ready() bool`. Blocks the calling goroutine until the first load has finished (bounded by `requestTimeout`), then answers whether a ruleset is held. Any number of calls from any goroutine; the answer is fixed when the first attempt settles; after `Close` it answers `false` if nothing had loaded. |
-| `variation` | Typed methods, no generic method: `BoolVariation(flagKey, ctx, fallback bool) bool`, `StringVariation(...) string`, `IntVariation(...) int64`, `Float64Variation(...) float64` and `JSONVariation(flagKey, ctx, fallback Value) Value`. A `Null()` fallback to `JSONVariation` accepts any served value. |
-| `variationDetail` | One `...Detail` twin per typed method: `BoolVariationDetail`, `StringVariationDetail`, `IntVariationDetail`, `Float64VariationDetail` and `JSONVariationDetail`, each returning `Detail[T]`, a struct of `Value T`, `VariationIndex int` (`NoVariation`, which is `-1`, when the value is the fallback) and `Reason Reason`. |
-| `status` | `(*Client).Status() Status`, a struct of `ETag *string`, `LastSyncAt time.Time` (the zero time means never), `Stream StreamState` and `LastError SyncErrorCode` (`""` means none). One consistent snapshot, read from memory under one small lock. |
-| `close` | `(*Client).Close()`. Idempotent and safe from any goroutine and from a callback; every call returns when the same shutdown is done. |
-| `url` | the first argument of `New`. Trailing `/` characters are removed; nothing else is validated. |
-| `sdkKey` | the second argument of `New`. |
-| `stream` | `WithStream(bool)`. The default is on. A functional option is only applied when given, so "not given" and `false` differ with no sentinel. |
-| `pollInterval` | `WithPollInterval(d)`; default 30 s; a zero or negative `d` is the default. |
-| `flushInterval` | `WithFlushInterval(d)`; default 30 s; a zero or negative `d` is the default. |
-| `requestTimeout` | `WithRequestTimeout(d)`; default 10 s; a zero or negative `d` is the default. |
-| `hooks.afterEvaluation` | `WithAfterEvaluation(func(EvaluationEvent))`. A nil function is ignored. The event holds `FlagKey`, `Context`, `Value`, `VariationIndex`, `Reason`, `ETag *string` and `FlagVersion *float64`. |
-| `onError` | `WithOnError(func(error))`; default none (ignore). The errors the SDK builds are `*toggleslash.Error` values with an `Op` and a `Code`; a hook's panic arrives as an `*Error` that wraps what it panicked with. |
-| `accessor shape` | Typed methods only, because a Go method cannot take type parameters and a generic function (`toggleslash.Variation[T](c, ...)`) would add a second spelling of the same five. The accessors are `bool`, `string`, `int` (an `int64`), `float64` and `json` (a `Value`, whose `Null()` fallback is the `any` accessor). Each has a `Detail` twin. A typed method needs the served value to be of its own kind, whatever the caller's fallback is. `IntVariation` is the integer accessor (below). |
-| `onError thread` | The goroutine that met the failure: the SDK's sync goroutine for a failed ruleset or stream attempt, its flush goroutine for a failed usage request, the goroutine that called `Close` for the final flush and for the counts lost at close, and the caller's own goroutine for an evaluation that panicked and for a hook that panicked. No SDK lock is held during the call. |
+| `create` | `toggleslash.NewClient(url, sdkKey string, opts ...Option) *Client`. It returns a client and never an error: it starts the sync and flush goroutines and does not wait for the network. A bad URL makes each request a `network` error. |
+| `ready` | `(*Client).Ready() bool`. Blocks until the first ruleset load has finished, then answers whether a ruleset is held. It is bounded by the request timeout, the answer is fixed when the first attempt settles, and after `Close` it answers `false` if it had not settled. |
+| `variation` | The accessors of "accessor shape" below, for example `(*Client).BoolVariation(flagKey string, ctx Context, fallback bool) bool`. |
+| `variationDetail` | The matching `...VariationDetail` methods, for example `(*Client).BoolVariationDetail(...) Detail[bool]`. A `Detail[T]` has `Value T`, `VariationIndex *int` (nil when the value is the fallback) and `Reason Reason`. |
+| `status` | `(*Client).Status() Status`, a struct copied under one lock: `ETag string` (empty: none), `LastSyncAt time.Time` (zero: never), `Stream StreamState`, `LastError string` (empty: none, else one of the `LastError...` codes). |
+| `close` | `(*Client).Close()`. No return value, never panics, safe to call twice and concurrently. Returns within about twice the request timeout. |
+| `url` | the first argument of `NewClient`, required. Trailing `/` characters are removed. |
+| `sdkKey` | the second argument of `NewClient`, required. |
+| `stream` | `toggleslash.WithStream(bool)`. Default on. The option stores a `*bool`, so "not given" (on) is told from `false`. |
+| `pollInterval` | `toggleslash.WithPollInterval(time.Duration)`. Default 30 s. Zero or negative falls back to the default (contract section 2 allows it). |
+| `flushInterval` | `toggleslash.WithFlushInterval(time.Duration)`. Default 30 s. Zero or negative falls back to the default. |
+| `requestTimeout` | `toggleslash.WithRequestTimeout(time.Duration)`. Default 10 s. Zero or negative falls back to the default. |
+| `hooks.afterEvaluation` | `toggleslash.WithAfterEvaluation(func(EvaluationEvent))`. Default none. A nil function is ignored. It runs on the caller's goroutine, synchronously. A panic in it is recovered and goes to `onError`. |
+| `onError` | `toggleslash.WithOnError(func(error))`. Default ignore. A panic in it is recovered and ignored. |
+| `accessor shape` | Typed methods, each with a `...Detail` twin: `BoolVariation`, `StringVariation`, `IntVariation` (int64), `FloatVariation` (float64), `JSONVariation` (a `Value` that must be an array or an object, fallback kind decides) and `AnyVariation` (a `Value`; a null fallback accepts any served kind). No generic method: Go methods cannot take type parameters, and a free generic function over the fallback's type could not tell `int64` from `float64` for the contract section 4 integer rule. |
+| `onError thread` | The goroutine that hit the failure: the sync goroutine for a ruleset or stream failure, the flush goroutine (or, for the final flush, the shutdown goroutine) for a usage failure, the caller's goroutine for a hook that panicked or an evaluation that raised. It is called synchronously and never while the SDK holds one of its own locks. |
 
-**The closed sets** keep their spelling as string types with constants, so `toggleslash.ReasonOff` is the
-string `"OFF"` and it prints and marshals as the canonical text: `ReasonKind` (`OFF`,
-`PREREQUISITE_FAILED`, `TARGET_MATCH`, `RULE_MATCH`, `FALLTHROUGH`, `ERROR`), `ErrorCode` (the
-evaluator's seven and the SDK's `NOT_READY`, `TYPE_MISMATCH`, `EVALUATION_FAILED`) and `StreamState`
-(`off`, `connecting`, `connected`, `disconnected`, `closed`). `Reason` is a struct `(Kind, RuleIndex,
-FlagKey, Code)`; `RuleIndex` means something only for `RULE_MATCH`, `FlagKey` only for
-`PREREQUISITE_FAILED` and `Code` only for `ERROR`. `SyncErrorCode` is a string type holding
-`http_<status>`, `timeout`, `bad_ruleset` or `network`; the constants `ErrTimeout`, `ErrBadRuleset` and
-`ErrNetwork` hold the three fixed ones.
+**Closed sets keep their spelling.** `ReasonKind` is a string type with the constants `ReasonOff`
+(`"OFF"`), `ReasonPrerequisiteFailed`, `ReasonTargetMatch`, `ReasonRuleMatch`, `ReasonFallthrough` and
+`ReasonError`. `ErrorCode` is a string type holding `"INVALID_CONTEXT"`, `"FLAG_NOT_FOUND"`,
+`"SEGMENT_NOT_FOUND"`, `"MALFORMED_FLAG"`, `"MALFORMED_SEGMENT"`, `"PREREQUISITE_CYCLE"`,
+`"PREREQUISITE_DEPTH_EXCEEDED"`, `"NOT_READY"`, `"TYPE_MISMATCH"` and `"EVALUATION_FAILED"`.
+`StreamState` is a string type: `"off"`, `"connecting"`, `"connected"`, `"disconnected"`, `"closed"`. The
+`lastError` codes are the strings `http_<status>`, `timeout`, `bad_ruleset` and `network`
+(`LastErrorTimeout`, `LastErrorBadRuleset`, `LastErrorNetwork` are constants; the HTTP one is built).
+A `Reason` carries `Kind`, `Code` (set for `ERROR`), `RuleIndex *int` (set for `RULE_MATCH`) and
+`PrerequisiteKey string` (set for `PREREQUISITE_FAILED`).
 
-**An option whose default is on or non-zero.** The options are functional options applied over a struct
-that starts with the defaults, so an option that is not passed keeps its default and `WithStream(false)`
-is `false`. A duration that is zero or negative is replaced by the default, as contract section 2
-suggests.
+**Telling "not given" from false or zero.** Options are functions over an unexported config whose fields are
+pointers (`stream *bool`) or checked against zero (`pollInterval <= 0` takes the default). Nothing is
+read from the environment.
 
-**The integer accessor.** `IntVariation` returns an `int64`. A served number that has a fractional part,
-is not finite, or is outside the signed 64-bit range is `ERROR TYPE_MISMATCH` and the caller gets the
-fallback; `2.0` is the integer `2`. The test service advertises the `integer-accessor` capability.
+**Contexts.** A `Context` wraps the SDK's own JSON value, so a context keeps `1e999` and lone surrogates.
+Builders: `UserContext(key)`, `NewContext(kind, key)` with `.With(attr, value)` for attributes and
+`MultiContext(...)`; `ContextFromJSON([]byte)` reads raw JSON through the SDK's own reader, and
+`ContextFromMap(map[string]any)` converts native values. The zero `Context` and any context that cannot be
+built are invalid and evaluate to `ERROR INVALID_CONTEXT`, never a panic.
 
-## Concurrency
+## 2. Concurrency
 
-Go runs goroutines on several cores, so everything is written for the race detector, and `bin/test`
-runs the tests with `-race`.
+- **The ruleset and its ETag** are one immutable `snapshot` struct (`*eval.Ruleset`, the ETag string). A
+  sync builds the new ruleset off to the side and replaces the pointer with one `atomic.Pointer.Store`
+  inside the status lock, so a reader sees the old pair or the new pair and a hook's `etag` and
+  `flagVersion` belong to the ruleset it evaluated. `variation` loads the pointer with no lock.
+- **Locks.** `statusMu` (an `RWMutex`) guards `lastSyncAt`, `stream`, `lastError` and the snapshot swap, and
+  is held only for field assignments, never across I/O or a callback. `usageMu` guards the counts map and
+  is held for one map add or a swap-out. `flushMu` makes flushes serial and is held across the usage
+  requests; `variation` never takes it, and nothing that `variation` takes is held by a request. `holdMu`
+  guards the two Retry-After deadlines. `closeOnce` and a `done` channel make `Close` idempotent. No lock is
+  held while `afterEvaluation` or `onError` runs: errors found under `flushMu` are collected and reported
+  after it is released.
+- **Goroutines.** Two, started by `NewClient`: the sync goroutine (first load, then the loop of contract
+  7.3) and the flush goroutine (a timer loop). Both watch a `stop` channel and a context cancelled by
+  `Close`. `Close` starts one shutdown goroutine on the first call (a `sync.Once`); it cancels the sync
+  context, closes `stop`, waits for both goroutines, runs the final flush with its own context, settles
+  `ready` false if unsettled and closes `done`. Every `Close` call waits on `done`. Bound: the sync
+  goroutine is abandoned at once (its requests carry the cancelled context), a flush already running is
+  bounded by one `requestTimeout` per request and the final flush by the same, so `Close` returns within
+  about twice `requestTimeout`.
+- **Callbacks that call back in.** The SDK records the goroutine id of each goroutine it owns (sync, flush,
+  shutdown). `Ready` and `Close` check the caller against that set (`goid()` reads the id from
+  `runtime.Stack`; only these two operations pay for it, never `variation`). From an SDK goroutine,
+  `Ready` returns the state held without waiting, and `Close` starts shutdown and returns without waiting
+  for the work that goroutine is in the middle of (contract 6.4).
+- **A client never closed** keeps no process alive: goroutines do not hold a Go program open, and the
+  idle HTTP connections are the transport's own.
+- **The race detector** runs for the whole test suite (`go test -race`).
 
-- **The held ruleset.** One immutable `snapshot{ruleset, etag}` held in an `atomic.Pointer[snapshot]`.
-  Evaluation loads the pointer once into a local and uses only that, so a hook's `ETag` and
-  `FlagVersion` always belong to the ruleset the evaluation used. A load builds a new `snapshot` and
-  stores it: one pointer store, which a reader sees whole or not at all. `variation` takes no lock to read it.
-- **Locks.** Four, each held for a handful of in-memory operations and never across I/O or a callback:
-  1. `statusMu` guards `lastSyncAt`, `lastError`, the stream state and the "closed" flag, and the store
-     of the new snapshot (so `Status` sees the ETag, the sync time and the error from one moment).
-     `variation` never takes it. `Status` takes it for a few field reads.
-  2. `usageMu` guards the pending-count map and the "recording stopped" flag. `variation` takes it for one
-     map add. A flush takes it only to swap the map out and to merge kept counts back in.
-  3. `flushMu` makes flushes serial and guards the `Retry-After` hold of the events route. Only the flush
-     goroutine, a `Flush` call and `Close` take it, and a flush holds it across its requests; evaluation
-     never touches it.
-  4. the one-shot `closing` flag is an `atomic.Bool`, not a lock: the first `Close` to flip it shuts down
-     and every other call waits on the `done` channel.
-  An evaluation takes only `usageMu`, which a request never holds, so a hung server or a hung flush
-  cannot slow `variation` down.
-- **Callbacks.** `afterEvaluation` and `onError` are called with no lock held. Code that meets an error
-  collects it, releases its locks and then reports it, so a callback may call `Status`, `variation` and
-  even `Close` on the same client without a deadlock. `Close` is the one place that needs care: a call
-  from inside `onError` on the sync goroutine would wait for that goroutine to finish. Each loop goroutine
-  counts the callbacks it is inside, and `Close` does not wait for a loop that is inside one (the loop
-  has already been told to stop and starts nothing more). The errors `Close` itself collects during the
-  final flush are delivered after the `done` channel is closed, so a `Close` made from that callback
-  returns at once.
-- **Goroutines.** Two, started by `New`: the sync goroutine (the first load, then the stream and poll
-  loop) and the flush goroutine. Neither keeps a process alive: a Go process exits when `main`
-  returns, whatever goroutines are running. Both stop on `Close`.
-- **Waits.** Every wait is `select` on a timer (through the clock seam) and a context's `Done`, so
-  `Close` cancelling the context wakes the sync loop, the flush loop and a `Retry-After` hold at once.
-- **Close.** `Close` flips `closing`, sets the stream state to `closed`, stops recording usage counts,
-  cancels the sync context (which aborts a ruleset request or stream in flight) and the flush context,
-  waits for both goroutines, settles `Ready` (false when nothing loaded), sends the final flush under
-  `flushMu`, closes `done`, and then delivers the errors it collected. A usage request already in flight
-  in the flush goroutine is left to finish, bounded by `requestTimeout`, as the contract allows.
-- **The tests the harness cannot run** are in `*_test.go` and run under `-race`: many goroutines calling
-  every operation, `Close` racing `variation` and itself, a ruleset request and a usage flush that
-  hang, swaps under readers (a hook's `ETag` against its `FlagVersion`), and callbacks that call back
-  into the client.
+## 3. HTTP and SSE
 
-## HTTP and SSE
+- **Client.** `net/http` with a `*http.Client` whose `Transport` is a clone of the default one, owned by the
+  `Client` and closed (`CloseIdleConnections`) on `Close`, and whose `CheckRedirect` returns
+  `http.ErrUseLastResponse`, so a 3xx is an `http_3xx` error and `Authorization` is never resent to a
+  redirect target. An option (`WithHTTPClient`) injects another client for tests.
+- **Whole request, body included.** Each ruleset and events request runs under
+  `context.WithTimeoutCause(parent, requestTimeout, errRequestTimeout)`; the context is cancelled only after
+  the body has been read and closed, so the timer covers connect, headers and body. A `context.Cause` of
+  `errRequestTimeout` is `timeout`; a cancel by `Close` is silent; anything else is `network`. Error text
+  reported to `onError` is fixed text (`network`, `timeout`, `bad_ruleset`, `http_<n>`), never a `*url.Error`
+  string, which carries the URL.
+- **The stream.** Opening is bounded by `requestTimeout` with a timer that cancels the request until the
+  response headers arrive (then the timer is stopped). After that a watchdog `time.Timer` of 60 s is reset
+  after every `Read` that returns bytes; when it fires it cancels the request with cause `errWatchdog`, so
+  the blocked `Read` returns and the cause makes `timeout`. The length is the unexported option
+  `withWatchdog` for tests.
+- **SSE parser.** Hand written (`sse.go`), about 80 lines, to WHATWG: it reads bytes, treats LF, CRLF and a
+  lone CR as line ends (a CR at the end of a read waits for the next byte to see if an LF follows), strips
+  a leading BOM, ignores comment lines, reads only `event` and `data`, strips one space after the colon,
+  joins several `data` lines with LF, drops an event with no `data` line, names an event `message` when no
+  name was given, and discards an event unfinished when the stream ends. UTF-8 split across reads is kept
+  because it works on bytes and only decodes a whole line.
+- **The body.** A ruleset body is read whole, a leading BOM skipped, bytes that are not valid UTF-8 replaced
+  with U+FFFD per maximal invalid subpart (Go's `utf8` decoding of one invalid byte at a time differs, so
+  the SDK scans with `utf8.DecodeRune` and extends the invalid run exactly as WHATWG does), then parsed by the
+  SDK's own reader.
 
-**Client.** `net/http`. One `*http.Client` per SDK client, with a `Transport` cloned from
-`http.DefaultTransport` (so proxy environment variables and HTTP/2 behave as a Go program expects) and
-no `Client.Timeout`. A test seam can replace the `*http.Client`. The headers the SDK sets are exactly
-`Authorization`, `Accept` (stream only), `If-None-Match` (ruleset only, when a ruleset and an ETag are
-held) and `Content-Type` (events only); `net/http` adds `Host`, `User-Agent`, `Accept-Encoding: gzip`
-(and decodes it) and `Content-Length`.
+## 4. Dependencies
 
-**The whole-request bound (7.1).** A ruleset request and a usage request each get a
-`context.WithTimeoutCause(parent, requestTimeout, errTimeout)`, passed to `http.NewRequestWithContext`
-and held until the body has been read. `net/http` ends a body read when the request's context ends, so
-a server that sends headers and then trickles or stalls the body is a `timeout`, and the connect, the
-headers and the body share the one limit. The parent is the client's sync context, so `Close` aborts a
-ruleset or stream request at once (and a request aborted that way is never reported).
+Runtime: none. The standard library has `net/http`, `crypto/sha256`, `sync`, `context`, `time`. Test: none
+beyond the standard `testing` and `net/http/httptest` packages. Lint: `go vet`, `gofmt` and
+`golangci-lint` (pinned in `mise.toml`), which are tools and not dependencies of the module. `zig` is pinned
+only as a C compiler for `-race`, see section 6.
 
-**The stream (7.2).** A `context.WithCancelCause` per stream attempt. A `time.AfterFunc` of
-`requestTimeout` cancels it with `errTimeout` and is stopped when the headers arrive: that bounds the
-open and nothing after it. Then the read loop owns a second `time.AfterFunc`, the watchdog (60 s,
-a seam for tests), which is `Reset` after every `Read` that returns bytes, a keep-alive comment included,
-and cancels the attempt with `errIdle` if it fires. Cancelling makes the blocked `Read` return, and the
-cause says `timeout`. A status other than 200 is `http_<status>` (a 429 is also read for
-`Retry-After`). A body that ends cleanly is not an error. A body that is empty is simply a stream that
-ends with no `connected`, which counts as never connected.
+## 5. JSON
 
-**Server-Sent Events.** A hand-written parser in `sse.go`, about eighty lines, to the WHATWG rules the
-contract names. It works on bytes, which is enough: a UTF-8 sequence never contains a CR or LF byte, so
-a character split across reads survives because a line is only decoded when it is complete. LF, CRLF
-and a lone CR end a line, and a CR at the end of one read is remembered so the LF that starts the next
-read is not a second line end; a line that starts with `:` is a comment; a field with no `:` has an
-empty value; one leading space of a value is dropped; a leading BOM is dropped; several `data` lines are
-joined with LF; an event with no `data` line is dropped; the event name is `message` when none was given;
-and an event incomplete when the stream ends is never delivered. Only `event` and `data` are read. No SSE
-library is used.
+`encoding/json` cannot do what the spec asks: it fails on `1e999` (a number out of range) and replaces a
+lone surrogate escape with U+FFFD. So the SDK has its own reader (`internal/jsonvalue`).
 
-## Dependencies
+- A `Value` is a small tagged struct: kind (null, bool, number, string, array, object), the number as a
+  `float64` read with `strconv.ParseFloat` on the literal (which returns `+Inf` with a range error for
+  `1e999`; the reader accepts that, as binary64 says, and reads `9007199254740993` as
+  `9007199254740992`), the string, a slice of values, and an object as a map plus its keys. A duplicate key
+  keeps the last value. `-0.0` stays negative zero. Depth is limited to 1000 levels (the contract asks at
+  least 512).
+- **Strings are WTF-8 Go strings.** A well-formed pair of `😀` escapes becomes the 4-byte UTF-8
+  sequence; a lone surrogate (from `\ud800` or an unpaired half) is encoded as the 3-byte generalized
+  form (`ED A0 80`), which Go strings hold as plain bytes. `internal/wtf8` decodes them into code points
+  (surrogates included) for comparison, pattern matching and hashing, and the evaluator hashes the same
+  bytes the spec names: for a lone surrogate it hashes the code point's UTF-16 or WTF-8 form as
+  `docs/evaluation.md` says, which is read in phase 2 and recorded below if it needs a decision.
+- **Ordinal string comparison is by UTF-16 code unit**, as the spec says, not by Go's byte order. `wtf8`
+  provides `CompareUTF16`.
+- The reader also writes JSON (`Write`), used by the test service to answer with a value as it arrived and
+  by the events body (which holds only strings and whole numbers, so it uses `strconv`).
 
-Runtime: none. The standard library has HTTP (`net/http`), SHA-256 (`crypto/sha256`), time and
-synchronisation. The JSON reader is hand-written (see "JSON") because `encoding/json` cannot hold what
-the spec requires.
+## 6. The minimum runtime and the toolchain
 
-Test and lint: the standard `testing` package for the tests (no third-party assertion library), the
-race detector (`go test -race`, which needs cgo and a C compiler), and `golangci-lint` (pinned in
-`mise.toml`) together with `gofmt` and `go vet` for lint and format. The test service uses `net/http`.
+- **Pin:** Go 1.27.3, the newest release `mise ls-remote go` lists on the run date. go.dev also lists 1.27.4
+  as stable; mise hides it (its minimum-release-age setting). The pin follows the tool, as the language
+  notes say, and RUN.md records it as a guess.
+- **Minimum:** `go 1.26` in `go.mod`. Upstream supports the two newest majors, and 1.27 is current, so 1.26
+  is the oldest in security support; the SDK uses `atomic.Pointer`, `context.WithTimeoutCause`,
+  `min`/`max`, `slices`, `maps` and range-over-int, all in 1.22 or earlier, so nothing newer is needed.
+- **Test framework:** the standard `testing` package. **Lint:** `go vet`, `gofmt -l` and `golangci-lint`
+  v2 with an explicit linter list (`.golangci.yml`; each ignored rule has a reason beside it).
+- **Race detector:** `go test -race` needs cgo and so a C compiler. `bin/test` uses `gcc` or `cc` when one is
+  on `PATH` and otherwise `zig cc` (zig is pinned in `mise.toml`), so the self-hosted runner, which has no C
+  compiler, still runs `-race`. The README says so.
+- **Integer accessor:** `IntVariation` returns `int64`. A served number with a fractional part, or outside
+  `[-2^63, 2^63)`, is `TYPE_MISMATCH`; `2.0` is `2`. The test service advertises `integer-accessor`.
+- **Build tool:** the `go` command and plain `go.mod`. **Package manager:** Go modules (nothing to install).
 
-## JSON
-
-`encoding/json` cannot be the parser, for two reasons the spec pins: it returns an error for `1e999`
-instead of reading Infinity, and it turns a lone surrogate (`"\ud800"`) into U+FFFD. So the SDK has its
-own reader and its own value type, in `internal/jsonvalue`, exposed in the public API as `toggleslash.Value`
-(a type alias) with constructors (`Null`, `Bool`, `Number`, `String`, `Array`, `Object`), accessors,
-`ParseJSON`, `MarshalJSON` and `AppendJSON`.
-
-- **Numbers** are `float64`, read with `strconv.ParseFloat` after a grammar check of RFC 8259, and a range
-  error is accepted as the infinity it returns: `1e999` is `+Inf`, `9007199254740993` is
-  `9007199254740992`, `-0.0` is kept as negative zero. Writing a value back out spells `+Inf` as `1e999`,
-  `-Inf` as `-1e999` and negative zero as `-0`.
-- **Strings** are Go strings holding WTF-8: the UTF-8 encoding in which a lone surrogate is the three bytes
-  that UTF-8 forbids for it (`ED A0..BF xx`). A valid escaped pair (`😀`) is combined into the real
-  four-byte sequence, so one string has one byte form, which makes byte equality the same as UTF-16
-  code unit equality. Raw bytes that are not valid UTF-8 in the input are read as U+FFFD, as `Response.json()`
-  does in the TypeScript SDK. Writing a value back out escapes a lone surrogate as `\udXXX`.
-- **Objects** keep their members in order with an index, and a duplicate key keeps the last value, as
-  `JSON.parse` does. Nesting deeper than 1000 levels is an error (so a ruleset that deep is `bad_ruleset`).
-- **Contexts.** The public `Context` wraps a `Value`, so it can hold `1e999` and lone surrogates. It is built
-  from typed builders (`UserContext`, `NewContext`, `MultiContext`, with `WithAttribute`) or from raw
-  JSON with `ContextFromJSON(raw []byte) Context`, which never fails: text that is not JSON gives a context
-  the evaluator answers with `INVALID_CONTEXT`, like any other invalid one.
-
-**Strings in the evaluator.** The spec compares by UTF-16 code unit and matches patterns by code point.
-Equality and the substring ops are byte operations on canonical WTF-8 except when the needle contains a
-lone surrogate, which could match half of a pair in the haystack: then they run over UTF-16 units. Order
-compares the first differing code point by its UTF-16 form (a high surrogate for anything above U+FFFF).
-Patterns read both the pattern and the candidate as code points, a lone surrogate being the code point
-with that value. Hashing replaces a lone surrogate with U+FFFD, then hashes the UTF-8.
-
-## The minimum runtime and the toolchain
-
-- **Runtime.** The `gc` toolchain, the current mainstream one (`gccgo` and TinyGo are not tested).
-- **Minimum version: Go 1.26.** Go supports the two most recent releases, and with 1.27 current that is
-  1.27 and 1.26; the SDK uses nothing newer than 1.26 (it needs `atomic.Pointer`, `context.WithTimeoutCause`,
-  the `min` and `max` built-ins and `for range n`, all older). Declared as `go 1.26` in `go.mod`.
-- **Developed and tested on** the version `mise.toml` pins (Go 1.27.3). CI runs that one only.
-- **Build tool.** `go build` and modules, no wrapper: the mainstream default and enough for a library
-  with no dependencies.
-- **Lint and format: `golangci-lint` v2** (pinned by mise), with `gofmt` and `go vet`: the mainstream
-  aggregator, running `vet`, `staticcheck` and `errcheck` among its defaults, plus a short list of extra
-  linters in `.golangci.yml`.
-- **Tests: the standard `testing` package** with table tests and subtests; the vector test reads
-  `fixtures/` at test time. Test seams (a clock, a jitter source, the watchdog length, an `*http.Client`, an
-  evaluator that panics) are unexported options of `New`, used by tests inside the package.
-- **Build output.** `bin/test` builds the test service into `.build/` (ignored by git) every time it runs.
-- **The race detector** is on in `bin/test`.
-- **The integer accessor** is `IntVariation`, an `int64`, bounded to the signed 64-bit range.
-
-## The package layout
+## 7. The package layout
 
 ```
 sdks/go/
-  go.mod                  module github.com/madangryscientist/toggleslash/sdks/go, go 1.26, no requires
-  mise.toml               go and golangci-lint pins
-  .golangci.yml           the lint configuration
-  bin/lint  bin/test  bin/test-service
-  toggleslash.go          package documentation, New and the options
-  client.go               Client, the typed accessors and the result builder
-  context.go  types.go    Context, Reason, Detail, Status, Error and the closed sets
-  sync.go  sse.go         the ruleset sync, the stream, the loop and the SSE parser
-  usage.go                usage counts and the flush
-  *_test.go               the native tests (package toggleslash)
-  internal/wtf8/          strings as WTF-8: lone surrogates kept, UTF-16 code unit order and length
-  internal/jsonvalue/     the JSON value type, reader and writer (no dependencies)
-  internal/eval/          the evaluator: context, ruleset loading, clauses, semver, dates, the pattern
-                          matcher, bucketing; no network code. vectors_test.go runs fixtures/evaluation
-  test-service/           main.go (package main, the conformance test service) and README.md
+  go.mod                 module github.com/madangryscientist/toggleslash/sdks/go
+  toggleslash.go         package doc, Client, NewClient, options, Ready, Status, Close
+  types.go               Reason, ErrorCode, StreamState, Status, Detail, EvaluationEvent
+  context.go             Context and its builders
+  variation.go           the typed accessors and the contract section 4 result order
+  sync.go                the ruleset request, the stream, the loop, backoff, Retry-After holds
+  sse.go                 the Server-Sent Events parser
+  usage.go               usage counts and the flush
+  internal/jsonvalue/    the JSON reader and writer, the Value type
+  internal/wtf8/         WTF-8 helpers: code points, UTF-16 comparison, UTF-8 repair
+  internal/eval/         the evaluator (no network code), the pattern parser and Pike VM, semver, dates
+  *_test.go              client tests, a loopback fake server, the concurrency tests
+  internal/eval/vectors_test.go   every fixtures/evaluation vector and bucket pin
+  test-service/          package main, the conformance test service (README.md maps the accessors)
+  bin/lint, bin/test, bin/test-service
+  mise.toml, .golangci.yml, .gitignore, README.md, DESIGN.md, RUN.md
 ```
+
+The test service is one more `main` package in the same module, so `go build ./...` and `go vet ./...`
+compile it with the tests. Build output goes to `.build/`, which `.gitignore` lists.

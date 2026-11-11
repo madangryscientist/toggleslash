@@ -1,14 +1,27 @@
 version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
 linters:
-  default: standard
+  default: none
   enable:
-    - errorlint
     - bodyclose
+    - errcheck
+    - errorlint
+    - govet
+    - ineffassign
     - misspell
+    - nilerr
+    - noctx
+    - staticcheck
     - unconvert
+    - unused
+    - wastedassign
+  # usestdlibvars is left out on purpose: in table tests it wants http.StatusOK for every status literal,
+  # and a literal 429 next to the header that carries it is clearer than the constant.
+
 formatters:
   enable:
     - gofmt
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0

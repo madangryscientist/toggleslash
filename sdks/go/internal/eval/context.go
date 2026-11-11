@@ -1,50 +1,28 @@
-// Package eval evaluates a flag for a context to docs/evaluation.md. It is the Go implementation of that
-// spec and has no network or SDK code in it. Compile validates and indexes a ruleset once; Evaluate never
-// panics on any input and answers every failure as an ERROR result.
 package eval
 
-import (
-	"crypto/sha256"
-	"encoding/binary"
-
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/wtf8"
-)
+import "github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
 
 // defaultKind is what a kind that is read and absent means, everywhere.
 const defaultKind = "user"
 
-// bucketCount: buckets run 0..99999 and a rollout weight of 1000 is 1%.
-const bucketCount = 100_000
-
-// kindContext is the key and attributes of one kind, after normalising.
+// kindContext is the key and attributes of one kind, after normalising. Attributes is the zero Value
+// (null) when there are none.
 type kindContext struct {
-	kind     string
-	key      string
-	keyValue jsonvalue.Value
-	attrs    jsonvalue.Value // null or an object
+	key        string
+	attributes jsonvalue.Value
 }
 
-// contexts is a valid context as a list of its kinds.
-type contexts []kindContext
+// Contexts is a valid context as a map from kind to that kind's key and attributes.
+type Contexts map[string]kindContext
 
-func (c contexts) get(kind string) *kindContext {
-	for i := range c {
-		if c[i].kind == kind {
-			return &c[i]
-		}
-	}
-	return nil
-}
-
-// isKind is ^[A-Za-z0-9._-]+$, and neither "kind" nor "multi".
+// isKind is `^[A-Za-z0-9._-]+$`, and neither `kind` nor `multi`.
 func isKind(s string) bool {
 	if s == "" || s == "kind" || s == "multi" {
 		return false
 	}
 	for i := 0; i < len(s); i++ {
 		c := s[i]
-		ok := c >= '0' && c <= '9' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c == '.' || c == '_' || c == '-'
+		ok := (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-'
 		if !ok {
 			return false
 		}
@@ -52,51 +30,62 @@ func isKind(s string) bool {
 	return true
 }
 
-func readEntry(kind string, v jsonvalue.Value) (kindContext, bool) {
-	keyValue := v.Field("key")
-	key, ok := keyValue.Text()
-	if !ok || key == "" {
+func readEntry(v jsonvalue.Value) (kindContext, bool) {
+	key, _ := v.Get("key")
+	if key.Kind != jsonvalue.String || key.S == "" {
 		return kindContext{}, false
 	}
-	attrs := v.Field("attributes")
-	if !attrs.IsNull() && !attrs.IsObject() {
-		return kindContext{}, false
+	attrs, _ := v.Get("attributes")
+	switch attrs.Kind {
+	case jsonvalue.Null:
+		return kindContext{key: key.S}, true
+	case jsonvalue.Object:
+		return kindContext{key: key.S, attributes: attrs}, true
 	}
-	return kindContext{kind: kind, key: key, keyValue: keyValue, attrs: attrs}, true
+	return kindContext{}, false
 }
 
-func readMulti(v jsonvalue.Value) (contexts, bool) {
-	inner := v.Field("contexts")
-	if !v.Field("key").IsNull() || !v.Field("attributes").IsNull() || !inner.IsObject() {
+func readMulti(v jsonvalue.Value) (Contexts, bool) {
+	key, _ := v.Get("key")
+	attrs, _ := v.Get("attributes")
+	contexts, _ := v.Get("contexts")
+	if !key.IsAbsent() || !attrs.IsAbsent() || contexts.Kind != jsonvalue.Object {
 		return nil, false
 	}
-	var out contexts
-	for _, kind := range inner.Keys() {
-		raw := inner.Field(kind)
-		if !isKind(kind) || !raw.IsObject() || !raw.Field("kind").IsNull() {
+	out := Contexts{}
+	for _, kind := range contexts.O.Keys {
+		raw := contexts.O.M[kind]
+		if !isKind(kind) || raw.Kind != jsonvalue.Object {
 			return nil, false
 		}
-		entry, ok := readEntry(kind, raw)
+		if inner, _ := raw.Get("kind"); !inner.IsAbsent() {
+			return nil, false
+		}
+		entry, ok := readEntry(raw)
 		if !ok {
 			return nil, false
 		}
-		out = append(out, entry)
+		out[kind] = entry
 	}
-	return out, len(out) > 0
-}
-
-// normaliseContext reads a context as a list of kinds, or reports that it is not valid.
-func normaliseContext(v jsonvalue.Value) (contexts, bool) {
-	if !v.IsObject() {
+	if len(out) == 0 {
 		return nil, false
 	}
+	return out, true
+}
+
+// NormaliseContext reads a context as a map from kind to `{ key, attributes }`, or reports false when it
+// is not valid.
+func NormaliseContext(v jsonvalue.Value) (Contexts, bool) {
+	if v.Kind != jsonvalue.Object {
+		return nil, false
+	}
+	kindValue, _ := v.Get("kind")
 	kind := defaultKind
-	if kv := v.Field("kind"); !kv.IsNull() {
-		s, ok := kv.Text()
-		if !ok {
+	if !kindValue.IsAbsent() {
+		if kindValue.Kind != jsonvalue.String {
 			return nil, false
 		}
-		kind = s
+		kind = kindValue.S
 	}
 	if kind == "multi" {
 		return readMulti(v)
@@ -104,35 +93,25 @@ func normaliseContext(v jsonvalue.Value) (contexts, bool) {
 	if !isKind(kind) {
 		return nil, false
 	}
-	entry, ok := readEntry(kind, v)
+	entry, ok := readEntry(v)
 	if !ok {
 		return nil, false
 	}
-	return contexts{entry}, true
+	return Contexts{kind: entry}, true
 }
 
-// bucket is where a context lands for a flag or segment: SHA-256 of the UTF-8 bytes of
-// "<key>.<salt>.<contextKey>", the first 4 bytes as a big-endian uint32, modulo 100000. A lone surrogate
-// is encoded as U+FFFD, as encoding to UTF-8 does.
-func bucket(key, salt, contextKey string) int {
-	return int(hash32(key, salt, contextKey) % bucketCount)
-}
-
-// hash32 is the first four bytes of the SHA-256 of "<key>.<salt>.<contextKey>", big-endian.
-func hash32(key, salt, contextKey string) uint32 {
-	sum := sha256.Sum256([]byte(wtf8.ToUTF8(key + "." + salt + "." + contextKey)))
-	return binary.BigEndian.Uint32(sum[:4])
-}
-
-// kindBucket is the bucket for the key of kind: the key as it is for "user", "<kind>:<key>" for any other
-// kind, and 0 when the context does not have that kind.
-func kindBucket(key, salt, kind string, c contexts) int {
-	context := c.get(kind)
-	if context == nil {
+// kindBucket is the bucket for the key of kind (empty is `user`): the key as it is for `user`,
+// `<kind>:<key>` for any other kind, and 0 when the context does not have that kind.
+func kindBucket(key, salt, kind string, contexts Contexts) int {
+	if kind == "" {
+		kind = defaultKind
+	}
+	c, ok := contexts[kind]
+	if !ok {
 		return 0
 	}
 	if kind == defaultKind {
-		return bucket(key, salt, context.key)
+		return Bucket(key, salt, c.key)
 	}
-	return bucket(key, salt, kind+":"+context.key)
+	return Bucket(key, salt, kind+":"+c.key)
 }
