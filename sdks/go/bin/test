@@ -1,22 +1,34 @@
 #!/bin/sh
-# Run every test under the race detector, print the evaluation vector and bucket-pin counts the phase 2
-# check compares with the fixtures, then build the conformance test service into .build/ (gitignored) so
-# bin/test-service can run it without building anything.
+# Builds everything, runs every native test under the race detector, prints the vector and pin
+# counts, then builds the test service binary last. Needs only what mise.toml pins (go and zig:
+# -race needs cgo, and zig is the C compiler, named by path so a zig elsewhere on PATH cannot shadow it).
 set -eu
 cd "$(dirname "$0")/.."
-if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
-  run() { mise exec -- "$@"; }
+
+if command -v mise >/dev/null 2>&1; then
+	zig="$(mise exec -- mise where zig)/zig"
+	run() { mise exec -- "$@"; }
 else
-  run() { "$@"; }
+	zig="$(command -v zig)"
+	run() { "$@"; }
 fi
-run go version
-run go vet ./...
-out=$(run go test -race -count=1 -v ./... 2>&1) || { printf '%s\n' "$out"; exit 1; }
-printf '%s\n' "$out" | grep -E '^(ok|FAIL|---  FAIL|\?)' || true
-vectors=$(printf '%s\n' "$out" | sed -n 's/^vectors: //p')
-pins=$(printf '%s\n' "$out" | sed -n 's/^pins: //p')
-echo "vectors: ${vectors:-0} pins: ${pins:-0}"
-if [ -f test-service/main.go ]; then
-  mkdir -p .build
-  run go build -o .build/test-service ./test-service
+export CGO_ENABLED=1
+export CC="$zig cc"
+
+run go build ./...
+# -count=1: never report a cached result.
+run go test -race -count=1 ./...
+
+out="$(run go test -race -count=1 -v -run '^(TestVectors|TestBucketPins)$' ./internal/evaluator)"
+vectors="$(printf '%s\n' "$out" | sed -n 's/.*vectors: \([0-9][0-9]*\)$/\1/p' | head -n 1)"
+pins="$(printf '%s\n' "$out" | sed -n 's/.*pins: \([0-9][0-9]*\)$/\1/p' | head -n 1)"
+if [ -z "$vectors" ] || [ -z "$pins" ]; then
+	printf '%s\n' "$out" >&2
+	echo "bin/test: could not read the vector and pin counts" >&2
+	exit 1
 fi
+echo "vectors: $vectors pins: $pins"
+
+# The test service binary, last. bin/test-service runs it and builds it only when it is missing.
+mkdir -p .build
+run go build -o .build/test-service ./test-service

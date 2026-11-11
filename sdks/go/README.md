@@ -1,76 +1,83 @@
-# ToggleSlash server SDK for Go
+# Go server SDK for ToggleSlash
 
-Feature flags evaluated locally, in your process, from a ruleset the ToggleSlash server keeps current. It
-meets [`docs/sdk-contract.md`](../../docs/sdk-contract.md), has no dependency outside the Go standard
-library (Go 1.26 or later) and is **not published**: there is no tag and no module proxy entry to install from.
+Not published. Use it from a checkout of this repository. It is written to
+[`docs/sdk-contract.md`](../../docs/sdk-contract.md) and evaluates to [`docs/evaluation.md`](../../docs/evaluation.md).
+[`DESIGN.md`](DESIGN.md) holds the design and the mapping of every canonical name to Go.
+
+Module `github.com/madangryscientist/toggleslash/sdks/go`, package `toggleslash`. It needs Go 1.26 or newer
+and no dependency outside the standard library.
 
 ## Quickstart
 
-Install from a checkout of this repository, with a `replace` in your own `go.mod`:
+In another module, point at the checkout:
 
 ```sh
 go mod edit -require github.com/madangryscientist/toggleslash/sdks/go@v0.0.0 \
-  -replace github.com/madangryscientist/toggleslash/sdks/go=/path/to/checkout/sdks/go
+  -replace github.com/madangryscientist/toggleslash/sdks/go=/path/to/toggleslash/sdks/go
 ```
-
-Then:
 
 ```go
 package main
 
 import (
-	"os"
+	"fmt"
 
 	toggleslash "github.com/madangryscientist/toggleslash/sdks/go"
 )
 
 func main() {
-	client := toggleslash.New("https://flags.example.com", os.Getenv("TOGGLESLASH_SDK_KEY"))
-	defer client.Close() // sends the last usage counts and stops the background goroutines
+	client := toggleslash.New("https://flags.example.test", "fs_server_...",
+		toggleslash.WithOnError(func(err error) { fmt.Println("toggleslash:", err) }))
+	defer client.Close()
 
-	client.Ready() // optional: waits for the first load, never longer than the request timeout
-	ctx := toggleslash.UserContext("user-42").WithAttribute("plan", toggleslash.String("pro"))
-	if client.BoolVariation("new-checkout", ctx, false) {
-		// ...
+	client.Ready() // waits for the first attempt, at most about the request timeout
+
+	user := toggleslash.UserContext("user-42", map[string]any{"plan": "pro"})
+	if client.BoolVariation("new-checkout", user, false) {
+		fmt.Println("new checkout")
 	}
+	detail := client.StringVariationDetail("banner", user, "none")
+	fmt.Println(detail.Value, detail.Reason.Kind)
 }
 ```
 
-`New` returns at once and never panics. `...Variation` and its `...VariationDetail` twins never wait for the
-network: before the first load they answer your fallback with the reason `ERROR` / `NOT_READY`. A client is
-safe to use from many goroutines. Options are `WithStream`, `WithPollInterval`, `WithFlushInterval`,
-`WithRequestTimeout`, `WithAfterEvaluation` and `WithOnError`.
+`New` never fails and never blocks: it starts the loops and returns. `Variation` and `Status` never wait
+for the network.
 
-Read the key from the environment, never from source.
+## Mapping
 
-## The API
+| Canonical | Go |
+| --- | --- |
+| `create` | `New(url, sdkKey, opts...)` |
+| `ready` | `Ready() bool` |
+| `variation` | `Variation`, `BoolVariation`, `StringVariation`, `NumberVariation`, `IntVariation`, `JSONVariation` |
+| `variationDetail` | the same names with `Detail` after them |
+| `status` | `Status()` |
+| `close` | `Close()` |
+| `stream`, `pollInterval`, `flushInterval`, `requestTimeout` | `WithStream`, `WithPollInterval`, `WithFlushInterval`, `WithRequestTimeout` |
+| `hooks.afterEvaluation`, `onError` | `WithAfterEvaluation`, `WithOnError` |
 
-Every name in the contract and its Go spelling is in the table in
-[`DESIGN.md`](DESIGN.md#the-mapping-table), along with the design choices behind it.
+The rest of the table (types, closed sets, threads) is in [`DESIGN.md`](DESIGN.md) section 1.
 
 ## Guarantees
 
-The contract's section 5, as this SDK keeps it:
+- No call panics or returns an error to the caller. A failure is a result with a reason, a `status`, or an `onError` call.
+- `Variation` and `Status` do no I/O and wait for nothing.
+- The last good ruleset is kept: a failed or malformed answer never replaces it.
+- The ruleset and its ETag swap together, so a hook's `etag` and `flagVersion` always match.
+- Callbacks run with no SDK lock held, so they may call back into the client.
+- `Close` is idempotent, safe from any goroutine, sends the last usage counts and returns within about twice the request timeout.
+- No end-user context leaves the process: requests carry usage counts only, and the SDK logs nothing.
+- An unclosed client does not keep the process alive.
 
-1. It never panics at a caller, whatever the server, the network, a context, a hook or `OnError` does.
-2. `Variation`, `VariationDetail` and `Status` never do I/O and never wait.
-3. `Ready` settles after the first attempt and gives the same answer every time.
-4. While the server is unreachable it keeps evaluating from the last good ruleset.
-5. Only something with the shape of a ruleset replaces a ruleset.
-
-It also sends no context, context key or attribute anywhere: usage counts carry a flag, a variation index and
-a day.
-
-## Running the checks
-
-The toolchain is pinned in [`mise.toml`](mise.toml) (`mise install` from this directory). The `bin` scripts
-find it themselves.
+## Develop
 
 ```sh
-sdks/go/bin/lint      # gofmt -l, go vet, golangci-lint run
-sdks/go/bin/test      # go vet, go test -race for every package and vector, then builds the test service
-bun run conformance -- --service sdks/go/bin/test-service   # from the repository root: the conformance harness
+sdks/go/bin/lint                                               # gofmt, go vet, golangci-lint
+sdks/go/bin/test                                               # go test -race, then prints the vector and pin counts
+bun run conformance -- --service sdks/go/bin/test-service      # the shared scenarios and vectors
 ```
 
-The test service is described in [`test-service/README.md`](test-service/README.md). A report of the run that
-built this SDK is in [`RUN.md`](RUN.md).
+`mise install` in this directory installs Go, golangci-lint and zig. The race detector needs cgo, which
+needs a C compiler, and a machine may not have one: `mise.toml` pins `zig`, and `bin/test` sets
+`CC` to the pinned `zig cc` by path.

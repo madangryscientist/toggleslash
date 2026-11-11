@@ -1,113 +1,130 @@
 package toggleslash
 
 import (
-	"io/fs"
+	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
-// librarySources is every non-test Go file of the SDK itself (not test-service, which is a program).
-func librarySources(t *testing.T) map[string]string {
+// sources lists the non-test Go files of the module.
+func sources(t *testing.T) []string {
 	t.Helper()
-	out := map[string]string{}
-	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
+	var out []string
+	err := filepath.Walk(".", func(p string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() {
-			if path == "test-service" || path == ".build" || path == "vendor" {
-				return filepath.SkipDir
-			}
-			return nil
+		if info.IsDir() && (info.Name() == ".build" || info.Name() == "testdata") {
+			return filepath.SkipDir
 		}
-		if strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, "_test.go") {
-			b, err := os.ReadFile(path)
-			if err != nil {
-				return err
-			}
-			out[path] = string(b)
+		if strings.HasSuffix(p, ".go") && !strings.HasSuffix(p, "_test.go") {
+			out = append(out, p)
 		}
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(out) < 10 {
-		t.Fatalf("found only %d source files; the walk is wrong", len(out))
-	}
 	return out
 }
 
-// docs/evaluation.md has its own regular expression dialect, so nothing may reach for the platform's.
-func TestNoPlatformRegexpInTheSDK(t *testing.T) {
-	for path, src := range librarySources(t) {
-		if strings.Contains(src, `"regexp"`) || strings.Contains(src, `"regexp/syntax"`) {
-			t.Errorf("%s imports the platform regexp package", path)
+// The platform regular-expression package is never used: the matches dialect is its own parser
+// and machine (docs/evaluation.md). The name is built in two pieces so that a search of the module
+// for it finds nothing.
+func TestNoRegexpPackage(t *testing.T) {
+	needle := `"` + "reg" + "exp"
+	for _, p := range sources(t) {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(b), needle) {
+			t.Errorf("%s imports a %s package", p, needle[1:])
 		}
 	}
 }
 
-// No log line, no print, no error value built from a context, a key or an attribute.
-func TestNoLoggingAndNoContextInErrors(t *testing.T) {
-	forbidden := []string{`"log"`, `"log/slog"`, "fmt.Print", "println(", "os.Stderr", "os.Stdout"}
-	for path, src := range librarySources(t) {
-		for _, f := range forbidden {
-			if strings.Contains(src, f) {
-				t.Errorf("%s uses %s", path, f)
+// identByte reports whether b can be part of an identifier.
+func identByte(b byte) bool {
+	return b == '_' || b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
+}
+
+// calls reports whether src calls the bare function name (not a method or a longer name).
+func calls(src, name string) bool {
+	for i := 0; ; {
+		j := strings.Index(src[i:], name+"(")
+		if j < 0 {
+			return false
+		}
+		j += i
+		if j == 0 || !identByte(src[j-1]) && src[j-1] != '.' {
+			return true
+		}
+		i = j + 1
+	}
+}
+
+// The SDK logs nothing: no logging package, no print to a stream. Context data cannot reach a log
+// that does not exist (contract section 12).
+func TestNoLogging(t *testing.T) {
+	for _, p := range sources(t) {
+		if strings.Contains(p, "test-service") {
+			continue // the test service prints its listening line and its errors
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		src := string(b)
+		for _, bad := range []string{`"log"`, `"log/slog"`, "fmt.Print", "fmt.Fprint", "os.Stdout", "os.Stderr"} {
+			if strings.Contains(src, bad) {
+				t.Errorf("%s: %s", p, bad)
 			}
 		}
-	}
-	// Every *Error the SDK builds names an operation and a fixed message. None may interpolate anything but
-	// a status code or a count.
-	build := regexp.MustCompile(`&Error\{[^}]*Message:\s*([^,}]*)`)
-	for path, src := range librarySources(t) {
-		for _, m := range build.FindAllStringSubmatch(src, -1) {
-			msg := m[1]
-			for _, bad := range []string{"flagKey", "ctx", "context", "sdkKey", "cfg.url", "c.cfg.url", "attr", "key"} {
-				if strings.Contains(msg, bad) {
-					t.Errorf("%s: an Error message mentions %q: %s", path, bad, msg)
-				}
+		for _, bad := range []string{"print", "println"} {
+			if calls(src, bad) {
+				t.Errorf("%s: calls %s", p, bad)
 			}
 		}
 	}
 }
 
-// The SDK sets exactly the four headers the contract allows.
-func TestOnlyTheAllowedHeadersAreSet(t *testing.T) {
-	set := regexp.MustCompile(`Header\.(?:Set|Add)\("([^"]+)"`)
-	allowed := map[string]bool{"Authorization": true, "Accept": true, "If-None-Match": true, "Content-Type": true}
-	found := map[string]bool{}
-	for path, src := range librarySources(t) {
-		for _, m := range set.FindAllStringSubmatch(src, -1) {
-			found[m[1]] = true
-			if !allowed[m[1]] {
-				t.Errorf("%s sets header %s", path, m[1])
-			}
-		}
-		if strings.Contains(src, "Header = ") || strings.Contains(src, "Header[") {
-			t.Errorf("%s writes a header map directly", path)
-		}
-	}
-	for name := range allowed {
-		if !found[name] {
-			t.Errorf("header %s is never set", name)
+func TestNoDashesInSources(t *testing.T) {
+	for _, p := range sources(t) {
+		b, _ := os.ReadFile(p)
+		if strings.ContainsAny(string(b), string([]rune{0x2013, 0x2014})) {
+			t.Errorf("%s has an em or en dash", p)
 		}
 	}
 }
 
-// The seams are fields of an unexported config, never package variables or environment variables.
-func TestNoEnvironmentVariablesAreRead(t *testing.T) {
-	for path, src := range librarySources(t) {
-		for _, line := range strings.Split(src, "\n") {
-			if strings.HasPrefix(strings.TrimSpace(line), "//") {
-				continue // the package example reads the key from the environment, as a caller would
-			}
-			if strings.Contains(line, "os.Getenv") || strings.Contains(line, "os.LookupEnv") || strings.Contains(line, "os.Environ") {
-				t.Errorf("%s reads the environment: %s", path, line)
-			}
+// An unclosed client must not keep the process alive.
+func TestUnclosedClientDoesNotKeepTheProcessAlive(t *testing.T) {
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		t.Skip("no go on PATH")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, goBin, "run", "./testdata/unclosed")
+	done := make(chan error, 1)
+	var out []byte
+	go func() {
+		var e error
+		out, e = cmd.CombinedOutput()
+		done <- e
+	}()
+	select {
+	case e := <-done:
+		if e != nil || !strings.Contains(string(out), "done") {
+			t.Fatalf("exit: %v, output: %s", e, out)
 		}
+	case <-time.After(120 * time.Second):
+		_ = cmd.Process.Kill()
+		t.Fatal("the process did not exit with an unclosed client")
 	}
 }

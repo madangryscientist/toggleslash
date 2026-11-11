@@ -1,77 +1,99 @@
 package toggleslash
 
-import "bytes"
+import (
+	"bufio"
+	"io"
 
-// sseEvent is one dispatched Server-Sent Event.
+	"github.com/madangryscientist/toggleslash/sdks/go/internal/wtf8"
+)
+
+// sseEvent is one dispatched Server-Sent Event: only the fields the SDK reads.
 type sseEvent struct {
 	name string
 	data string
 }
 
-// sseParser reads a Server-Sent Events byte stream to the WHATWG rules the contract names. It works on
-// bytes: a UTF-8 sequence never holds a CR or LF byte, so a character split across two reads is whole by the
-// time its line is complete. LF, CRLF and a lone CR end a line (a CR at the end of one read is remembered, so
-// the LF that starts the next read is not a second line end); a line that starts with ":" is a comment; a
-// field with no ":" has an empty value; one leading space of a value is dropped; a leading BOM is dropped;
-// several "data" lines join with LF; an event with no "data" line is dropped; the name is "message" when none
-// was given; an event still open when the stream ends is never delivered.
+// sseParser reads Server-Sent Events as the WHATWG standard does. Lines end in LF, CR or CRLF; a
+// line starting with a colon is a comment; one leading space of a value is removed; an event with
+// no data line is dropped; an event still incomplete at the end of the input is discarded. It reads
+// byte by byte from the reader it is given, so an event is dispatched when its blank line is read,
+// not when the next read returns.
 type sseParser struct {
-	line      []byte
-	afterCR   bool
-	started   bool
-	name      string
-	data      []byte
-	hasData   bool
-	bomPrefix []byte
+	r       *bufio.Reader
+	line    []byte
+	skipLF  bool
+	first   bool
+	name    string
+	data    []byte
+	hasData bool
 }
 
-var bom = []byte{0xEF, 0xBB, 0xBF}
+func newSSEParser(r io.Reader) *sseParser {
+	return &sseParser{r: bufio.NewReader(r), first: true}
+}
 
-// feed adds bytes and returns the events they complete.
-func (p *sseParser) feed(chunk []byte) []sseEvent {
-	if !p.started {
-		// A BOM may arrive split; hold back a prefix of it until it is known to be one.
-		chunk = append(p.bomPrefix, chunk...)
-		p.bomPrefix = nil
-		if len(chunk) < len(bom) && bytes.HasPrefix(bom, chunk) {
-			p.bomPrefix = append([]byte(nil), chunk...)
-			return nil
+// next returns the next dispatched event, or the error that ended the input (io.EOF for a clean
+// end).
+func (p *sseParser) next() (sseEvent, error) {
+	for {
+		b, err := p.r.ReadByte()
+		if err != nil {
+			return sseEvent{}, err
 		}
-		p.started = true
-		chunk = bytes.TrimPrefix(chunk, bom)
-	}
-	var events []sseEvent
-	for _, b := range chunk {
-		switch {
-		case b == '\n' && p.afterCR:
-			p.afterCR = false
-		case b == '\n' || b == '\r':
-			p.afterCR = b == '\r'
-			if event, ok := p.endLine(); ok {
-				events = append(events, event)
+		if p.skipLF {
+			p.skipLF = false
+			if b == '\n' {
+				continue
 			}
+		}
+		switch b {
+		case '\n':
+		case '\r':
+			p.skipLF = true
 		default:
-			p.afterCR = false
 			p.line = append(p.line, b)
+			continue
+		}
+		line := p.line
+		p.line = p.line[:0]
+		if p.first {
+			p.first = false
+			line = wtf8.StripBOM(line)
+		}
+		if ev, ok := p.handle(line); ok {
+			return ev, nil
 		}
 	}
-	return events
 }
 
-func (p *sseParser) endLine() (sseEvent, bool) {
-	line := p.line
-	p.line = p.line[:0]
+func (p *sseParser) handle(line []byte) (sseEvent, bool) {
 	if len(line) == 0 {
-		return p.dispatch()
+		name, data, has := p.name, p.data, p.hasData
+		p.name, p.data, p.hasData = "", p.data[:0], false
+		if !has {
+			return sseEvent{}, false
+		}
+		if name == "" {
+			name = "message"
+		}
+		return sseEvent{name: name, data: string(wtf8.DecodeLossy(data))}, true
 	}
 	if line[0] == ':' {
 		return sseEvent{}, false
 	}
-	field, value, _ := bytes.Cut(line, []byte{':'})
-	value = bytes.TrimPrefix(value, []byte{' '})
+	field, value := line, []byte(nil)
+	for i, c := range line {
+		if c == ':' {
+			field, value = line[:i], line[i+1:]
+			break
+		}
+	}
+	if len(value) > 0 && value[0] == ' ' {
+		value = value[1:]
+	}
 	switch string(field) {
 	case "event":
-		p.name = string(value)
+		p.name = string(wtf8.DecodeLossy(value))
 	case "data":
 		if p.hasData {
 			p.data = append(p.data, '\n')
@@ -80,16 +102,4 @@ func (p *sseParser) endLine() (sseEvent, bool) {
 		p.hasData = true
 	}
 	return sseEvent{}, false
-}
-
-func (p *sseParser) dispatch() (sseEvent, bool) {
-	name, data, hasData := p.name, p.data, p.hasData
-	p.name, p.data, p.hasData = "", nil, false
-	if !hasData {
-		return sseEvent{}, false
-	}
-	if name == "" {
-		name = "message"
-	}
-	return sseEvent{name: name, data: string(data)}, true
 }

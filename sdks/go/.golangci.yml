@@ -1,14 +1,43 @@
 version: "2"
+
+# The rule set is the linters golangci-lint enables by default (errcheck, govet, ineffassign, staticcheck,
+# unused) plus the ones below. Each addition says why it earns its noise.
 linters:
   default: standard
   enable:
+    # A bare "return err" or an error compared with == loses what wrapping adds; the SDK wraps with %w.
     - errorlint
+    # A request or response body that is not closed leaks a connection; every one here is closed.
     - bodyclose
+    # An HTTP request built without a context cannot be cancelled by Close.
+    - noctx
+    # Code the compiler accepts but that never runs.
+    - unparam
+    # An exported name nobody documented is part of the API that nobody can read.
+    - revive
+    # A misspelling in a comment or an identifier.
     - misspell
-    - unconvert
-formatters:
-  enable:
-    - gofmt
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0
+    # A t.Helper() missing from a test helper points a failure at the helper, not the test.
+    - thelper
+    # A test that mutates shared state in parallel without saying so.
+    - tparallel
+  # usestdlibvars is left off on purpose: in table tests it wants http.StatusOK for every literal,
+  # and the status codes in these tests are the numbers a server sends.
+  settings:
+    govet:
+      # A shadowed err hides a failure that an outer check then misses.
+      enable:
+        - shadow
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: error-return
+        - name: error-naming
+        - name: unused-parameter
+          # The test seams and the callbacks have parameters a signature requires and a body ignores.
+          disabled: true
+  exclusions:
+    presets:
+      - comments
+      - std-error-handling
