@@ -26,7 +26,7 @@ what it cannot see.
 ## What the harness checks (contract MUSTs it covers)
 
 - [ ] Both context shapes, single and multi, are accepted (contract 3): the harness, `privacy.json`, and the
-  `kinds.json` vectors run through the service.
+  `kinds.json` vectors run through the service. A typed builder need not reject a number that is not finite (NaN, an infinity): it is a present attribute of the wrong type, which evaluation.md covers ("A number that is not finite never matches").
 - [ ] Results follow the order of contract 4 and the mismatch rule, with the SDK's own error codes: the
   harness, `evaluation.json`, `usage.json`.
 - [ ] With `integer-accessor`, a served fraction is `TYPE_MISMATCH` and a served `2.0` is `2` (contract 4,
@@ -93,7 +93,7 @@ Each line is a native test in `$L`, named in `RUN.md`.
   accessor, whether the language's integers are fixed-width (`int64`) or unbounded (contract 4, "Typed
   languages"; the `huge` scenario).
 - [ ] A client that is never closed does not keep the process from exiting, where the runtime has daemon
-  threads or background tasks (contract 6.6, SHOULD).
+  threads or background tasks (contract 6.6, SHOULD). Where background work can never keep the process alive (Go's goroutines), the line is met by construction: say so in `RUN.md` and name the function that starts that work.
 
 ## Code and documents
 
