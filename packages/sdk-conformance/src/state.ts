@@ -23,6 +23,8 @@ export interface RunState {
   client: string | null;
   closed: boolean;
   marks: Map<string, Mark>;
+  /** When (ms on the server's clock) each change in the client's `onError` count was first seen. */
+  errorLog: { at: number; count: number }[];
   sentinel: Sentinel;
 }
 
@@ -83,5 +85,8 @@ export function mark(state: RunState, name: string): Mark {
 export async function errorCount(state: RunState): Promise<number> {
   if (state.client === null) return 0;
   const answer = await state.service.client(state.client, "errors", "GET");
-  return typeof answer["count"] === "number" ? answer["count"] : 0;
+  const count = typeof answer["count"] === "number" ? answer["count"] : 0;
+  if (count !== (state.errorLog.at(-1)?.count ?? 0))
+    state.errorLog.push({ at: state.server.now(), count });
+  return count;
 }

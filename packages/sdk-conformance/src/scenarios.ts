@@ -116,12 +116,37 @@ function recorded(server: FakeServer): string {
   return lines.length === 0 ? "    (nothing)" : lines.join("\n");
 }
 
-function failure(scenario: Scenario, done: number, why: string, server: FakeServer): string {
+/** The harness's own clock readings, so a failure on a window says when each thing happened. */
+function timeline(state: RunState): string {
+  const marks = [...state.marks].map(
+    ([name, one]) =>
+      `    ${Math.round(one.at)} ms  mark "${name}" (${one.seq} requests, ${one.errors} errors so far)`,
+  );
+  const errors = state.errorLog.map(
+    (seen) =>
+      `    ${Math.round(seen.at)} ms  onError calls read as ${seen.count} (the first read that showed it)`,
+  );
+  const lines = [...marks, ...errors];
+  return lines.length === 0
+    ? "    (no marks, no errors seen)"
+    : lines.toSorted((a, b) => parseInt(a, 10) - parseInt(b, 10)).join("\n");
+}
+
+function failure(scenario: Scenario, done: number, why: string, state: RunState): string {
+  const { server } = state;
   const steps = scenario.steps.slice(0, done + 1).map((step, index) => {
     const pointer = index === done ? ">>" : "  ";
     return `  ${pointer} ${index + 1}. ${show(step, 400)}`;
   });
-  return [why, "  steps:", ...steps, "  the server recorded:", recorded(server)].join("\n");
+  return [
+    why,
+    "  steps:",
+    ...steps,
+    `  the server recorded (at ${Math.round(server.now())} ms now):`,
+    recorded(server),
+    "  marks and errors seen, on the same clock:",
+    timeline(state),
+  ].join("\n");
 }
 
 async function finish(state: RunState): Promise<void> {
@@ -150,6 +175,7 @@ export async function runScenario(
     client: null,
     closed: false,
     marks: new Map(),
+    errorLog: [],
     sentinel: sentinelFor(index),
   };
   let done = 0;
@@ -169,7 +195,7 @@ export async function runScenario(
     return {
       scenario,
       result: "fail",
-      detail: failure(scenario, Math.min(done, scenario.steps.length - 1), why, server),
+      detail: failure(scenario, Math.min(done, scenario.steps.length - 1), why, state),
     };
   }
 }
