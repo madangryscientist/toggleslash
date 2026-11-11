@@ -79,7 +79,8 @@ not list is skipped and reported as skipped.
 with `integer-accessor`), `json` or `any` (the generic method, or the closest the language has). Each
 answers `variationDetail`'s three fields. A service maps these onto its SDK's methods and says how in a
 README next to it. The `json` accessor applies contract 4's mismatch rule like the others: it compares
-kinds (array and object are distinct, a null fallback accepts any kind), never the fallback's contents.
+kinds (array and object are distinct, a null fallback accepts any kind), never the fallback's contents. A number
+that is not finite (a `1e999` read as Infinity) is written back as JSON `null`, as `JSON.stringify` does.
 
 **Hook events** are `{ flagKey, context, value, variationIndex, reason, etag, flagVersion }`, in the
 language's own field names mapped back to these.

@@ -108,7 +108,8 @@ Each line is a native test in `$L`, named in `RUN.md`.
   source for request headers finds only `Authorization`, `Accept`, `If-None-Match` and `Content-Type`.
   Headers the HTTP client adds on its own (`User-Agent`, `Accept-Encoding`, `Host`, `Content-Length`,
   `Connection`) are allowed when `RUN.md` lists each with why it does not identify a user or a machine
-  (capture one request on a loopback listener and list what the client added);
+  (capture one request of each route on a loopback listener and list what the client added, route by route, in a
+  table in `RUN.md`);
   a `User-Agent` that names the host or user, not just the library and version, is not (contract 12).
 - [ ] Every extra beyond the contract is one contract 13 allows, and none weakens contract 5 or sends
   anything new (contract 13).
@@ -131,4 +132,7 @@ Each line is a native test in `$L`, named in `RUN.md`.
 - [ ] No package was published and no name reserved (PROMPT.md, rule 3).
 - [ ] Commit subjects are Conventional Commits, none `feat`, with no `Co-Authored-By` or AI attribution
   (PROMPT.md, rules 5 and 6).
+- [ ] The workflow's job is `runs-on: proxmox` with exactly the same-repo `if:`, triggers only `pull_request` and
+  `push`, installs its own toolchain, and `bun scripts/check-workflows.ts .github/workflows/*.yml` passes
+  (PROMPT.md, phase 5).
 - [ ] `RUN.md` follows `RUN-TEMPLATE.md`, with evidence for every line of this list (PROMPT.md, phase 6).

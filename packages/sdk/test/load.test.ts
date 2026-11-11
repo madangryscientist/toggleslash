@@ -93,6 +93,42 @@ describe("a ruleset that has not changed", () => {
   });
 });
 
+describe("an answer the server should not give", () => {
+  it("treats a 304 with no ruleset held as the http_304 error", async () => {
+    const client = h.start({
+      stream: false,
+      fetch: async () => new Response(null, { status: 304 }),
+    });
+    expect(await client.ready()).toBe(false);
+    expect(client.status().lastError).toBe("http_304");
+    expect(client.status().lastSyncAt).toBeNull();
+    expect(h.errors).toHaveLength(1);
+  });
+
+  it("treats an empty ETag as none and never sends it as If-None-Match", async () => {
+    const seen: (string | null)[] = [];
+    const client = h.start({
+      stream: false,
+      fetch: async (input, init) => {
+        if (input.endsWith("/sdk/v1/ruleset"))
+          seen.push(new Headers(init?.headers).get("If-None-Match"));
+        return h.server
+          .fetch(input, init)
+          .then(
+            (response) =>
+              new Response(response.body, { status: response.status, headers: { ETag: "" } }),
+          );
+      },
+    });
+    await client.ready();
+    expect(client.status().etag).toBeNull();
+    expect(client.variation("checkout", user, false)).toBe(true);
+
+    await h.clock.advance(30_000);
+    expect(seen).toEqual([null, null]);
+  });
+});
+
 describe("never throws at a caller", () => {
   it("returns the fallback for a bad context, and says why", async () => {
     const client = h.start();

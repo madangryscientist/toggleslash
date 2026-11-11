@@ -166,7 +166,8 @@ New, and a MUST for every language it names.
 4. The SDK's callbacks (`afterEvaluation`, `onError`) SHOULD NOT be called while the SDK holds a lock of
    its own, so a callback that calls back into the client cannot deadlock it. A `ready` called from such a
    callback on the SDK's own thread SHOULD NOT wait for the load that thread runs: it returns at once with the
-   state held.
+   state held. A `close` called from such a callback SHOULD NOT wait for the work that thread is doing: it stops
+   the rest and returns.
 5. `status` SHOULD be one consistent snapshot, not four reads at four moments.
 6. A client that is never closed SHOULD NOT keep a process alive by itself where the runtime has the idea
    (a daemon thread, a background task).
@@ -189,15 +190,19 @@ as received, quotes included>`; it sends the header in no other case.
 
 | Answer | What the SDK does |
 | --- | --- |
-| `200` | read the body as JSON. If it has the shape of [section 5](#5-guarantees) item 5, build the ruleset, keep the `ETag` response header (or none if it has none), and it is a **sync**. Else `bad_ruleset`. |
-| `304` | the ruleset held is current: a **sync**. The body is not read. |
+| `200` | read the body as JSON. If it has the shape of [section 5](#5-guarantees) item 5, build the ruleset, keep the `ETag` response header (or none if it has none or it is empty), and it is a **sync**. Else `bad_ruleset`. |
+| `304` | with a ruleset held, it is current: a **sync**, and the body is not read. With none held (the SDK sent no `If-None-Match`, so the server should not have said it), the `http_304` error. |
 | `429` | read `Retry-After` ([7.4](#74-429-and-retry-after)), then the `http_429` error. |
 | anything else | the `http_<status>` error. |
 | a network failure | `network`. |
 | no answer within `requestTimeout` | `timeout`. The limit covers the whole request, **reading the body included**. |
 
 Reading the `200` body: a duplicate key in a JSON object keeps the last value, a leading byte order mark is
-skipped, and there is no size cap (`requestTimeout` bounds the read). Redirects are not specified: an SDK may
+skipped, and there is no size cap (`requestTimeout` bounds the read). Bytes that are not valid UTF-8 are
+replaced with U+FFFD as the WHATWG Encoding standard's UTF-8 decoder does (one U+FFFD per maximal invalid
+subpart, not one per byte), and the body is kept and parsed, as the TypeScript SDK's `response.json()` does; a
+lone surrogate written as a JSON escape is a different case ([`evaluation.md`](evaluation.md)). An SDK MAY refuse a body
+nested deeper than its parser allows, as `bad_ruleset`; that limit MUST be at least 512 levels. Redirects are not specified: an SDK may
 follow them (the TypeScript SDK's `fetch` does) or not, and a `3xx` it does not follow is an `http_<status>`
 error like any other status.
 
@@ -245,6 +250,8 @@ ends is discarded. The SDK acts on `connected` and `changed` and ignores any oth
   [7.4](#74-429-and-retry-after)). A stream the server ends cleanly is not an error and leaves `lastError`
   alone.
 - Content types are not checked.
+- There is no cap on the length of a line or the size of an event; the watchdog and `requestTimeout` are the
+  bounds.
 
 ### 7.3 The loop
 

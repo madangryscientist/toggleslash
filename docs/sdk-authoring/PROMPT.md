@@ -45,7 +45,9 @@ These hold for every file you write, code, comments, docs, commit messages and t
 2. **Only `$L/` and `.github/workflows/sdk-<lang>.yml` change.** Nothing else in the repository: not the
    contract, the spec, the harness, the scenarios, the vectors, this directory, `AGENTS.md`, `package.json`
    or another SDK. If you need another change, do not make it: report it under proposed changes, or under
-   stuck points if it blocks you.
+   stuck points if it blocks you. Reading is not limited: you may read anything committed (another SDK, its
+   `bin/` scripts, the TypeScript SDK) to get your code working, and that is not a guess. A brief may still
+   forbid reading its own language's removed SDK.
 3. **No publishing.** No registry account, no package upload, no name reservation, no tag. Publishing is
    a human step.
 4. **Scratch goes under `$TMPDIR`**, never a hard-coded `/tmp`. Tests that need a directory make one there
@@ -74,8 +76,8 @@ Every SDK has the same three executable `sh` scripts, so CI and people run any l
 Each starts with `#!/bin/sh` and `set -eu`, does `cd "$(dirname "$0")/.."` before anything else, calls
 each tool through `mise exec -- <tool>` when `mise` is on `PATH` (a mise shim fails in a directory where
 its tool is not active, and the root `.tool-versions` is a different set) and plainly otherwise (in CI a
-setup step puts the tools on `PATH`), and needs nothing beyond what `$L/mise.toml` pins and a stock
-`ubuntu-latest` runner has (`sh`, a C compiler). Build output goes in a directory `$L/.gitignore` ignores.
+setup step puts the tools on `PATH`), and needs nothing beyond what `$L/mise.toml` pins and `sh` (the CI runner
+has only Docker, Bun and Node, so no C compiler is assumed: if a race detector needs one, the README says so and the workflow provides it). Build output goes in a directory `$L/.gitignore` ignores.
 `bin/test` builds every time (the test service included; in an interpreted language that is a byte-compile or
 syntax check of every source, test and test-service file, so a syntax error in a file no test imports still fails), never reports a cached result, runs under the
 language's race detector where it has one, and prints `vectors: <n> pins: <n>` even when all pass. `bin/lint`
@@ -101,6 +103,7 @@ Read these in this order. Read the contract and the test-service page in full; y
 8. [`docs/api.md`](../api.md), "SDK read API" only: the wire, where the contract leaves a detail open.
 9. `docs/sdk-authoring/language-notes/<lang>.md`, if it exists: what earlier runs learned. It never
    overrides the contract. If there is none, say so in `RUN.md`: every language choice is then a decision.
+   A brief that tests the prompt without the notes says so, and then you skip this item.
 10. [`CHECKLIST.md`](CHECKLIST.md) and [`RUN-TEMPLATE.md`](RUN-TEMPLATE.md): what you are checked against.
 
 Record the prompt version for your report before you change anything:
@@ -229,7 +232,9 @@ be internal to the package, or the language's standard test facility for fake ti
 environment variable the SDK reads.
 
 Write native unit tests for what the harness cannot reach: the "Native tests" lines of
-[`CHECKLIST.md`](CHECKLIST.md). Test long timers through the seams, never by waiting real minutes. Step a fake clock only when the SDK is
+[`CHECKLIST.md`](CHECKLIST.md). Write first one loopback fake server for them, which records each request's
+headers: it serves the header audit, the `Retry-After` cap and the watchdog tests. Test long timers through the
+seams, never by waiting real minutes. Step a fake clock only when the SDK is
 waiting on it (for example count the clock's armed timers), never after a fixed real pause: a pause passes on a quiet
 machine and fails on a loaded one.
 
@@ -241,7 +246,8 @@ machine and fails on a loaded one.
 
 ## Phase 4: test service
 
-Write `$L/test-service/` to the protocol in [`docs/sdk-test-service.md`](../sdk-test-service.md), and
+Read the status shape in [`docs/sdk-test-service.md`](../sdk-test-service.md) before the first run
+(`lastSyncAt` is whole epoch milliseconds or `null`). Write `$L/test-service/` to its protocol, and
 `$L/bin/test-service` to start it. Put the test service where your build tool compiles it with the
 tests (where the build is several projects, it is one more project), and say where in `$L/test-service/README.md`. The reference is `packages/sdk/test-service/main.ts`.
 What the protocol page says and a cold reader misses:
@@ -296,6 +302,10 @@ server recorded; read those before you change code.
    is a decision. For `jdx/mise-action` the inputs are `working_directory: sdks/<lang>` and `install_args` naming
    the tools, so a run need not read a sibling's workflow. Copy the checkout and Bun lines and `BUN_VERSION` from `ci.yml` as they are when you run.
 
+   The job runs on the self-hosted runner, which has only Docker, Bun and Node: it installs its own toolchain,
+   its `if:` is exactly the one below, and the triggers are `pull_request` and `push` only (never
+   `pull_request_target`, `workflow_run`, a comment trigger or `workflow_dispatch`).
+
 ```yaml
 name: SDK (<Language>)
 
@@ -325,7 +335,8 @@ env:
 jobs:
   sdk:
     name: <Language> SDK (lint, test, conformance)
-    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: proxmox
     timeout-minutes: 20
     steps:
       - uses: <the actions/checkout line from ci.yml>
@@ -341,11 +352,12 @@ jobs:
       - run: bun run conformance -- --service sdks/<lang>/bin/test-service
 ```
 
-**Check.** Lint and tests pass, and the repository's own format and dash checks pass over your files (the
-dash check reads only files git tracks, hence the `git add`):
+**Check.** Lint, tests and the repository's format, dash and workflow checks pass (the dash check reads only
+files git tracks, hence the `git add`):
 
 ```sh
-"$L/bin/lint" && "$L/bin/test" && git add -A && bun run format:check && bun scripts/check-dashes.ts
+"$L/bin/lint" && "$L/bin/test" && git add -A && bun run format:check && bun scripts/check-dashes.ts \
+  && bun scripts/check-workflows.ts .github/workflows/*.yml
 ```
 
 ## Phase 6: review and report
