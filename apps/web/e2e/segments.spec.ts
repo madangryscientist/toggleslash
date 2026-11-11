@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { API_PORT, E2E_ADMIN_TOKEN } from "./constants.ts";
+import { waitForHydrated } from "./hydrated.ts";
 
 test.beforeEach(async ({ request }) => {
   await request.post(`http://127.0.0.1:${API_PORT}/__reset`);
@@ -104,6 +105,8 @@ test.describe("members of other context kinds", () => {
   test("an invalid line names itself and nothing is sent", async ({ page }) => {
     await page.goto("/segments?project=shop&env=production");
     await page.getByTestId("edit-beta-testers").click();
+    await waitForHydrated(page, "#segment-included");
+    await expect(page.locator("#segment-included")).toHaveValue("alice\nbob");
     await page.locator("#segment-included-kinds").fill("org:acme\nacme");
     await page.getByTestId("save-segment").click();
     await expect(page.getByTestId("segment-error")).toContainText("Line 2");

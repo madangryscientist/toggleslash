@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { API_PORT, E2E_ADMIN_TOKEN } from "./constants.ts";
+import { waitForHydrated } from "./hydrated.ts";
 
 const API = `http://127.0.0.1:${API_PORT}`;
 const AUTH = { authorization: `Bearer ${E2E_ADMIN_TOKEN}` };
@@ -143,6 +144,8 @@ test.describe("segments", () => {
   test("a version conflict keeps the typing and says to reload", async ({ page, request }) => {
     await page.goto("/segments?project=shop&env=production");
     await page.getByTestId("edit-beta-testers").click();
+    await waitForHydrated(page, "#segment-included");
+    await expect(page.locator("#segment-included")).toHaveValue("alice\nbob");
     await page.locator("#segment-included").fill("alice\ncarol");
     // Someone else saves after this page loaded.
     await request.post(`${API}/__bump-segment/shop/production/beta-testers`);
