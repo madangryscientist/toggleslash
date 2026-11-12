@@ -1,203 +1,259 @@
-"""A fake ToggleSlash server on loopback and small helpers for the client tests."""
+"""A fake ToggleSlash server on loopback, built on raw sockets so a test controls every byte and every pause."""
 
 from __future__ import annotations
 
+import contextlib
 import json
+import select
+import socket
 import threading
 import time
 from collections.abc import Callable
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-KEY = "test-key-9f3a"
+from toggleslash._client import Client, Config
 
 
-def flag(key: str, variations: list[Any], serve: int, version: int = 1, on: bool = True) -> dict[str, Any]:
-    return {
-        "key": key,
-        "on": on,
-        "variations": variations,
-        "offVariation": 0,
-        "salt": "salt-" + key,
-        "version": version,
-        "targets": [],
-        "prerequisites": [],
-        "rules": [],
-        "fallthrough": {"variation": serve},
-    }
-
-
-def bool_flag(key: str, value: bool, version: int = 1) -> dict[str, Any]:
-    return flag(key, [False, True], 1 if value else 0, version)
-
-
-def ruleset(*flags: dict[str, Any]) -> dict[str, Any]:
-    return {"flags": list(flags), "segments": []}
-
-
-def wait_until(predicate: Callable[[], Any], timeout: float = 5.0, step: float = 0.005) -> bool:
-    end = time.monotonic() + timeout
-    while time.monotonic() < end:
-        if predicate():
-            return True
-        time.sleep(step)
-    return bool(predicate())
-
-
-class Recorded:
-    def __init__(self, route: str, headers: dict[str, str], body: bytes, method: str, path: str) -> None:
-        self.route = route
-        self.headers = headers
-        self.body = body
+class Request:
+    def __init__(
+        self, method: str, path: str, raw_headers: list[tuple[str, str]], body: bytes
+    ) -> None:
         self.method = method
         self.path = path
+        self.raw_headers = raw_headers
+        self.headers = {name.lower(): value for name, value in raw_headers}
+        self.body = body
 
     def json(self) -> Any:
         return json.loads(self.body)
 
 
-class Request:
-    """One request inside a handler: send an answer, or open a stream and write to it."""
+class Connection:
+    def __init__(self, sock: socket.socket) -> None:
+        self.sock = sock
 
-    def __init__(self, handler: BaseHTTPRequestHandler, server: FakeServer, recorded: Recorded) -> None:
-        self.handler = handler
-        self.server = server
-        self.recorded = recorded
+    def send(self, data: bytes) -> None:
+        self.sock.sendall(data)
 
-    def send(self, status: int = 200, body: bytes = b"", headers: dict[str, str] | None = None) -> None:
-        self.handler.send_response(status)
-        for name, value in (headers or {}).items():
-            self.handler.send_header(name, value)
-        self.handler.send_header("Content-Length", str(len(body)))
-        self.handler.end_headers()
-        self.handler.wfile.write(body)
+    def close(self) -> None:
+        with contextlib.suppress(OSError):
+            self.sock.shutdown(socket.SHUT_RDWR)
+        with contextlib.suppress(OSError):
+            self.sock.close()
 
-    def open_stream(self, status: int = 200) -> None:
-        """Headers only: no Content-Length and not chunked, so the body ends when the server closes."""
-        self.handler.send_response(status)
-        self.handler.send_header("Content-Type", "text/event-stream")
-        self.handler.end_headers()
-        self.handler.wfile.flush()
-
-    def write(self, data: bytes) -> None:
-        self.handler.wfile.write(data)
-        self.handler.wfile.flush()
-
-    def hang(self, seconds: float = 30.0) -> None:
-        self.server.stopping.wait(seconds)
+    def wait_closed(self, timeout: float) -> bool:
+        """True once the client has closed its end."""
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            try:
+                ready, _, _ = select.select([self.sock], [], [], 0.02)
+                if ready and self.sock.recv(1) == b"":
+                    return True
+            except (OSError, ValueError):
+                return True
+        return False
 
 
-Handler = Callable[[Request], None]
+Handler = Callable[[Request, Connection], None]
+
+
+def response(status: int = 200, body: bytes | str = b"", **headers: str) -> bytes:
+    data = body.encode() if isinstance(body, str) else body
+    lines = [f"HTTP/1.1 {status} X".encode(), f"Content-Length: {len(data)}".encode()]
+    lines += [f"{name.replace('_', '-')}: {value}".encode() for name, value in headers.items()]
+    return b"\r\n".join(lines) + b"\r\n\r\n" + data
+
+
+def reply(status: int = 200, body: bytes | str = b"", **headers: str) -> Handler:
+    def handle(_request: Request, connection: Connection) -> None:
+        connection.send(response(status, body, **headers))
+        connection.close()
+
+    return handle
+
+
+def chunk(data: bytes | str) -> bytes:
+    raw = data.encode() if isinstance(data, str) else data
+    return f"{len(raw):x}\r\n".encode() + raw + b"\r\n"
+
+
+STREAM_HEAD = (
+    b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n"
+)
+
+
+def event(name: str, data: str) -> bytes:
+    return chunk(f"event: {name}\ndata: {data}\n\n")
+
+
+def flag_json(
+    key: str = "f",
+    variations: list[Any] | None = None,
+    *,
+    on: bool = True,
+    fallthrough: int = 1,
+    version: int = 3,
+    **extra: Any,
+) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "key": key,
+        "on": on,
+        "variations": [False, True] if variations is None else variations,
+        "offVariation": 0,
+        "salt": "salt",
+        "version": version,
+        "targets": [],
+        "prerequisites": [],
+        "rules": [],
+        "fallthrough": {"variation": fallthrough},
+    }
+    base.update(extra)
+    return base
+
+
+def ruleset_json(*flags: dict[str, Any]) -> str:
+    return json.dumps({"flags": list(flags), "segments": []})
 
 
 class FakeServer:
-    def __init__(self, tls: tuple[str, str] | None = None) -> None:
-        self.stopping = threading.Event()
-        self.lock = threading.Lock()
-        self.requests: list[Recorded] = []
-        self.ruleset: dict[str, Any] = ruleset(bool_flag("checkout", True), bool_flag("legacy", False))
-        self.version = 1
-        self.overrides: dict[str, Handler] = {}
-        outer = self
-
-        class _Handler(BaseHTTPRequestHandler):
-            def log_message(self, format: str, *args: Any) -> None:
-                return
-
-            def do_GET(self) -> None:
-                outer.handle(self)
-
-            def do_POST(self) -> None:
-                outer.handle(self)
-
-        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
-        self.httpd.daemon_threads = True
-        self.httpd.request_queue_size = 128
-        scheme = "http"
-        if tls is not None:
-            import ssl
-
-            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-            context.load_cert_chain(tls[0], tls[1])
-            self.httpd.socket = context.wrap_socket(self.httpd.socket, server_side=True)
-            scheme = "https"
-        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
-        self.thread.start()
-        self.url = f"{scheme}://127.0.0.1:{self.httpd.server_address[1]}"
+    def __init__(self) -> None:
+        self.requests: list[Request] = []
+        self._routes: dict[tuple[str, str], list[Handler]] = {}
+        self._lock = threading.Lock()
+        self._connections: list[Connection] = []
+        self._listener = socket.socket()
+        self._listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._listener.bind(("127.0.0.1", 0))
+        self._listener.listen(64)
+        self.port = self._listener.getsockname()[1]
+        self._stopped = False
+        self._thread = threading.Thread(target=self._accept, daemon=True)
+        self._thread.start()
 
     @property
-    def etag(self) -> str:
-        return f'"v{self.version}"'
+    def url(self) -> str:
+        return f"http://127.0.0.1:{self.port}"
 
-    def publish(self, new: dict[str, Any]) -> None:
-        with self.lock:
-            self.ruleset = new
-            self.version += 1
+    def on(self, method: str, path: str, *handlers: Handler) -> None:
+        """The handlers answer successive requests; the last one answers every request after."""
+        with self._lock:
+            self._routes[(method, path)] = list(handlers)
 
-    def bump(self, *flags: dict[str, Any]) -> None:
-        """Publish a ruleset whose flags carry the new version number, built under the lock."""
-        with self.lock:
-            self.version += 1
-            self.ruleset = ruleset(*(dict(f, version=self.version) for f in flags))
+    def seen(self, method: str, path: str) -> list[Request]:
+        with self._lock:
+            return [r for r in self.requests if r.method == method and r.path == path]
 
-    def on(self, route: str, handler: Handler | None) -> None:
-        if handler is None:
-            self.overrides.pop(route, None)
-        else:
-            self.overrides[route] = handler
+    def stop(self) -> None:
+        self._stopped = True
+        with contextlib.suppress(OSError):
+            self._listener.shutdown(
+                socket.SHUT_RDWR
+            )  # wakes the accept that close alone leaves blocked
+        with contextlib.suppress(OSError):
+            self._listener.close()
+        with self._lock:
+            connections = list(self._connections)
+        for connection in connections:
+            connection.close()
+        self._thread.join(2)
 
-    def count(self, route: str) -> int:
-        with self.lock:
-            return sum(1 for r in self.requests if r.route == route)
+    def _accept(self) -> None:
+        while not self._stopped:
+            try:
+                sock, _ = self._listener.accept()
+            except OSError:
+                return
+            connection = Connection(sock)
+            with self._lock:
+                self._connections.append(connection)
+            threading.Thread(target=self._serve, args=(connection,), daemon=True).start()
 
-    def recorded(self, route: str) -> list[Recorded]:
-        with self.lock:
-            return [r for r in self.requests if r.route == route]
+    def _read_request(self, sock: socket.socket) -> Request | None:
+        data = b""
+        while b"\r\n\r\n" not in data:
+            piece = sock.recv(65536)
+            if not piece:
+                return None
+            data += piece
+        head, _, rest = data.partition(b"\r\n\r\n")
+        lines = head.decode("latin-1").split("\r\n")
+        method, path, _version = lines[0].split(" ", 2)
+        raw = [tuple(line.split(": ", 1)) for line in lines[1:]]
+        length = int(next((v for n, v in raw if n.lower() == "content-length"), "0"))
+        while len(rest) < length:
+            rest += sock.recv(65536)
+        return Request(method, path, raw, rest[:length])
 
-    def handle(self, handler: BaseHTTPRequestHandler) -> None:
-        length = int(handler.headers.get("Content-Length") or 0)
-        body = handler.rfile.read(length) if length else b""
-        path = handler.path
-        route = {"/sdk/v1/ruleset": "ruleset", "/sdk/v1/stream": "stream", "/sdk/v1/events": "events"}.get(
-            path, "other"
-        )
-        recorded = Recorded(route, dict(handler.headers.items()), body, handler.command, path)
-        with self.lock:
-            self.requests.append(recorded)
-        request = Request(handler, self, recorded)
+    def _serve(self, connection: Connection) -> None:
         try:
-            (self.overrides.get(route) or getattr(self, "_" + route, self._other))(request)
-        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
-            pass
+            request = self._read_request(connection.sock)
+            if request is None:
+                connection.close()
+                return
+            with self._lock:
+                self.requests.append(request)
+                handlers = self._routes.get((request.method, request.path), [])
+                handler = (
+                    handlers.pop(0) if len(handlers) > 1 else (handlers[0] if handlers else None)
+                )
+            (handler or reply(404))(request, connection)
+        except (OSError, ValueError):
+            connection.close()
 
-    def _other(self, request: Request) -> None:
-        request.send(404)
 
-    def _ruleset(self, request: Request) -> None:
-        with self.lock:
-            etag, body = self.etag, json.dumps(self.ruleset).encode()
-        if request.recorded.headers.get("If-None-Match") == etag:
-            request.send(304, headers={"ETag": etag})
-            return
-        request.send(200, body, {"ETag": etag, "Content-Type": "application/json"})
+def wait_for(predicate: Callable[[], Any], timeout: float = 5.0) -> bool:
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        if predicate():
+            return True
+        time.sleep(0.005)
+    return bool(predicate())
 
-    def _events(self, request: Request) -> None:
-        request.send(200, b"{}")
 
-    def _stream(self, request: Request) -> None:
-        request.open_stream()
-        with self.lock:
-            sent = self.etag
-        request.write(f"event: connected\ndata: {sent}\n\n".encode())
-        while not self.stopping.wait(0.02):
-            with self.lock:
-                now = self.etag
-            if now != sent:
-                sent = now
-                request.write(f"event: changed\ndata: {sent}\n\n".encode())
+def config(server: FakeServer, **changes: Any) -> Config:
+    base: dict[str, Any] = {
+        "url": server.url,
+        "sdk_key": "test-key",
+        "stream": False,
+        "poll_interval": 0.05,
+        "flush_interval": 3600.0,
+        "request_timeout": 2.0,
+    }
+    base.update(changes)
+    return Config(**base)
 
-    def close(self) -> None:
-        self.stopping.set()
-        self.httpd.shutdown()
-        self.httpd.server_close()
-        self.thread.join(5)
+
+def make_client(server: FakeServer, **changes: Any) -> Client:
+    return Client(config(server, **changes))
+
+
+def stream(*pieces: bytes, then: str = "hold", gap: float = 0.0) -> Handler:
+    """Answers a stream request with the head and the pieces, then holds the connection open (`hold`), closes it
+    cleanly (`end`, with the chunked terminator) or abruptly (`cut`)."""
+
+    def handle(_request: Request, connection: Connection) -> None:
+        connection.send(STREAM_HEAD)
+        for piece in pieces:
+            connection.send(piece)
+            if gap:
+                time.sleep(gap)
+        if then == "end":
+            connection.send(b"0\r\n\r\n")
+            connection.close()
+        elif then == "cut":
+            connection.close()
+        else:
+            connection.wait_closed(20)
+            connection.close()
+
+    return handle
+
+
+def stalled(seconds: float = 20.0) -> Handler:
+    """Reads the request and says nothing until the client gives up."""
+
+    def handle(_request: Request, connection: Connection) -> None:
+        connection.wait_closed(seconds)
+        connection.close()
+
+    return handle

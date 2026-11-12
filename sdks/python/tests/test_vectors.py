@@ -1,23 +1,40 @@
-"""Every shared evaluation vector and every bucket pin (docs/evaluation.md, "The vectors")."""
+"""Every evaluation vector and bucket pin in fixtures/evaluation, run through the evaluator."""
 
 from __future__ import annotations
 
 import math
+import pathlib
+import sys
 import unittest
-from pathlib import Path
 from typing import Any
 
 from toggleslash import _json
-from toggleslash._bucket import bucket, uint32
-from toggleslash._evaluate import evaluate, load_ruleset
+from toggleslash._bucket import bucket_of, uint32_of
+from toggleslash._evaluate import Outcome, evaluate
+from toggleslash._ruleset import create_ruleset
 
-FIXTURES = Path(__file__).resolve().parents[3] / "fixtures" / "evaluation"
+FIXTURES = pathlib.Path(__file__).resolve().parent.parent.parent.parent / "fixtures" / "evaluation"
 
-counts = {"files": 0, "vectors": 0, "pins": 0}
+counts = {"vectors": 0, "pins": 0}
+
+
+def read(path: pathlib.Path) -> Any:
+    return _json.loads(path.read_bytes())
+
+
+def reason_of(outcome: Outcome) -> dict[str, Any]:
+    reason: dict[str, Any] = {"kind": outcome.kind}
+    if outcome.rule_index is not None:
+        reason["ruleIndex"] = outcome.rule_index
+    if outcome.flag_key is not None:
+        reason["flagKey"] = outcome.flag_key
+    if outcome.code is not None:
+        reason["code"] = outcome.code
+    return reason
 
 
 def same(a: Any, b: Any) -> bool:
-    """Deep equality that tells ``True`` from ``1`` and compares numbers as binary64."""
+    """Deep equality by the specification: numbers by IEEE-754 (so -0 equals 0), a bool is not a number."""
     if isinstance(a, bool) or isinstance(b, bool):
         return isinstance(a, bool) and isinstance(b, bool) and a == b
     if isinstance(a, (int, float)) and isinstance(b, (int, float)):
@@ -29,53 +46,41 @@ def same(a: Any, b: Any) -> bool:
     return type(a) is type(b) and a == b
 
 
-def reason_dict(reason: Any) -> dict[str, Any]:
-    out: dict[str, Any] = {"kind": str(reason.kind)}
-    if reason.code is not None:
-        out["code"] = str(reason.code)
-    if reason.rule_index is not None:
-        out["ruleIndex"] = reason.rule_index
-    if reason.flag_key is not None:
-        out["flagKey"] = reason.flag_key
-    return out
-
-
-def load(path: Path) -> Any:
-    return _json.loads(path.read_bytes())
-
-
 class VectorTests(unittest.TestCase):
     def test_vectors(self) -> None:
-        paths = sorted(p for p in FIXTURES.glob("*.json") if p.name != "buckets.json")
-        self.assertTrue(paths, "no vector files found")
-        for path in paths:
-            counts["files"] += 1
-            vectors = load(path)["vectors"]
-            self.assertTrue(vectors, f"no vectors in {path.name}")
-            for vector in vectors:
-                with self.subTest(f"{path.name}: {vector['name']}"):
-                    counts["vectors"] += 1
-                    ruleset = load_ruleset({"flags": vector["flags"], "segments": vector["segments"]})
-                    value, index, reason = evaluate(ruleset, vector["flagKey"], vector["context"])
+        files = sorted(p for p in FIXTURES.glob("*.json") if p.name != "buckets.json")
+        self.assertTrue(files, f"no vector files under {FIXTURES}")
+        for path in files:
+            for vector in read(path)["vectors"]:
+                counts["vectors"] += 1
+                with self.subTest(file=path.name, vector=vector["name"]):
+                    ruleset = create_ruleset(
+                        {"flags": vector["flags"], "segments": vector["segments"]}
+                    )
+                    outcome = evaluate(ruleset, vector["flagKey"], vector["context"])
                     expected = vector["expected"]
-                    self.assertTrue(same(value, expected["value"]), f"value {value!r}")
-                    self.assertEqual(index, expected["variationIndex"])
-                    self.assertTrue(same(reason_dict(reason), expected["reason"]), f"reason {reason!r}")
+                    actual = {
+                        "value": outcome.value,
+                        "variationIndex": outcome.variation_index,
+                        "reason": reason_of(outcome),
+                    }
+                    self.assertTrue(
+                        same(actual, expected),
+                        f"{path.name}: {vector['name']}: {actual} != {expected}",
+                    )
+        self.assertGreater(counts["vectors"], 0, "no vectors were read")
 
-    def test_pins(self) -> None:
-        pins = load(FIXTURES / "buckets.json")["buckets"]
-        self.assertTrue(pins, "no pins found")
+    def test_bucket_pins(self) -> None:
+        pins = read(FIXTURES / "buckets.json")["buckets"]
+        self.assertTrue(pins, "no bucket pins were read")
         for pin in pins:
-            with self.subTest(f"{pin['flagKey']}.{pin['salt']}.{pin['contextKey']}"):
-                counts["pins"] += 1
-                got = uint32(pin["flagKey"], pin["salt"], pin["contextKey"])
-                self.assertEqual(got, pin["uint32"])
-                self.assertEqual(bucket(pin["flagKey"], pin["salt"], pin["contextKey"]), pin["bucket"])
+            counts["pins"] += 1
+            args = (pin["flagKey"], pin["salt"], pin["contextKey"])
+            with self.subTest(pin=args):
+                self.assertEqual(uint32_of(*args), pin["uint32"])
+                self.assertEqual(bucket_of(*args), pin["bucket"])
 
 
 def tearDownModule() -> None:
-    print(f"vectors: {counts['vectors']} pins: {counts['pins']}")
-
-
-if __name__ == "__main__":
-    unittest.main()
+    sys.stdout.write(f"vectors: {counts['vectors']} pins: {counts['pins']}\n")
+    sys.stdout.flush()

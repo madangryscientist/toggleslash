@@ -1,143 +1,151 @@
-"""Usage counts: (flag, variation index, UTC day) to a count, flushed in batches (contract 9)."""
+"""Usage counts: how often each flag variation was served, per UTC day, sent in batches. Counts only: no
+context, no context key, nothing about an end user."""
 
 from __future__ import annotations
 
-import json
 import threading
+import time
 from collections.abc import Callable
-from typing import Any
 
-from ._http import Aborted, Endpoint, NetworkFailure, RequestTimeout, Transport
+from . import _json
+from ._http import Aborted, Hold, RequestTimeout, Transport, retry_after
+from ._types import LastError, ToggleSlashError
 
 MAX_BATCH = 500
-MAX_HOLD_SECONDS = 300.0
-
-
-def retry_after(headers: Any) -> float | None:
-    """The seconds a ``Retry-After`` asks for, capped at 300, or None when the header is not whole
-    decimal digits (spaces around it are ignored)."""
-    if headers is None:
-        return None
-    raw = headers.get("Retry-After")
-    if not isinstance(raw, str):
-        return None
-    text = raw.strip(" ")
-    if not text or not text.isascii() or not text.isdigit():
-        return None
-    if len(text) > 6:
-        return MAX_HOLD_SECONDS
-    return min(float(int(text)), MAX_HOLD_SECONDS)
+_Key = tuple[str, int, str]
 
 
 def retryable(status: int) -> bool:
-    return status >= 500 or status in (408, 429)
+    """Whether a batch the server refused is kept for another try. The status alone decides."""
+    return status >= 500 or status in {408, 429}
 
 
-class Usage:
-    """The counts and the flush. ``flush`` is serial; a hold keeps the counts and sends nothing."""
-
+class UsageReporter:
     def __init__(
         self,
         *,
-        endpoint: Endpoint,
-        headers: dict[str, str],
         transport: Transport,
-        monotonic: Callable[[], float],
+        sdk_key: str,
         request_timeout: float,
-        report: Callable[[str, str], None],
+        on_error: Callable[[Exception], None],
+        now: Callable[[], float],
+        hold: Hold,
     ) -> None:
-        self._endpoint = endpoint
-        self._headers = headers
         self._transport = transport
-        self._monotonic = monotonic
-        self._request_timeout = request_timeout
-        self._report = report
-        self._lock = threading.Lock()
+        self._sdk_key = sdk_key
+        self._timeout = request_timeout
+        self._on_error = on_error
+        self._now = now
+        self._hold = hold
+        self._pending: dict[_Key, int] = {}
+        self._usage_lock = threading.Lock()
         self._flush_lock = threading.Lock()
-        self._counts: dict[tuple[str, int, str], int] = {}
-        self._stopped = False
-        self._hold_until = 0.0
+        self._counting = True
+        self._stopping = threading.Event()
 
-    def add(self, flag: str, index: int, day: str) -> None:
-        with self._lock:
-            if self._stopped:
-                return
-            key = (flag, index, day)
-            self._counts[key] = self._counts.get(key, 0) + 1
+    def record(self, flag: str, variation_index: int) -> None:
+        day = time.strftime("%Y-%m-%d", time.gmtime(self._now()))
+        key = (flag, variation_index, day)
+        with self._usage_lock:
+            if self._counting:
+                self._pending[key] = self._pending.get(key, 0) + 1
 
-    def stop(self) -> None:
-        """Nothing more is counted (called by ``close`` before the final flush)."""
-        with self._lock:
-            self._stopped = True
+    def stop_counting(self) -> None:
+        """Nothing is counted from here on, and a flush in progress stops after its current batch."""
+        with self._usage_lock:
+            self._counting = False
+        self._stopping.set()
 
-    def pending(self) -> int:
-        with self._lock:
-            return len(self._counts)
+    def pending_count(self) -> int:
+        with self._usage_lock:
+            return len(self._pending)
 
-    def holding(self) -> bool:
-        return self._monotonic() < self._hold_until
+    def flush(self) -> None:
+        """Sends what is pending. Flushes run one at a time. It never raises, and `on_error` runs after the
+        flush lock is released."""
+        with self._flush_lock:
+            errors = self._send(final=False)
+        self._tell(errors)
 
-    def _readd(self, entries: list[tuple[tuple[str, int, str], int]]) -> None:
-        with self._lock:
-            for key, count in entries:
-                self._counts[key] = self._counts.get(key, 0) + count
-
-    def flush(self, lock_timeout: float = -1) -> None:
-        """Send what is pending, in batches of at most 500, one request at a time. ``lock_timeout``
-        bounds the wait for a flush already running (``close`` passes one)."""
-        if not self._flush_lock.acquire(timeout=lock_timeout):
+    def finish(self, wait: float) -> None:
+        """The last flush, on closing. It does not wait out a `Retry-After`, and it says so when that costs counts."""
+        if not self._flush_lock.acquire(timeout=max(wait, 0.0)):
+            left = self.pending_count()
+            self._tell(
+                [
+                    ToggleSlashError(
+                        f"closed with {left} usage counts unsent: a flush was still running"
+                    )
+                ]
+            )
             return
         try:
-            if self.holding():
-                return
-            with self._lock:
-                if not self._counts:
-                    return
-                taken = list(self._counts.items())
-                self._counts = {}
-            start = 0
-            while start < len(taken):
-                batch = taken[start : start + MAX_BATCH]
-                outcome = self._send(batch)
-                if outcome == "kept":
-                    self._readd(taken[start:])
-                    return
-                start += MAX_BATCH
+            errors = self._send(final=True)
         finally:
             self._flush_lock.release()
-
-    def _send(self, batch: list[tuple[tuple[str, int, str], int]]) -> str:
-        payload = {
-            "events": [
-                {"flag": flag, "variationIndex": index, "count": count, "day": day}
-                for (flag, index, day), count in batch
-            ]
-        }
-        body = json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode("ascii")
-        headers = dict(self._headers)
-        headers["Content-Type"] = "application/json"
-        try:
-            response = self._transport.fetch(
-                self._endpoint,
-                "POST",
-                "/sdk/v1/events",
-                headers,
-                body,
-                self._request_timeout,
-                None,
+        left = self.pending_count()
+        if left and self._hold.remaining() > 0:
+            errors.append(
+                ToggleSlashError(
+                    f"closed with {left} usage counts unsent: the server asked to wait"
+                )
             )
+        self._tell(errors)
+
+    def _tell(self, errors: list[Exception]) -> None:
+        for error in errors:
+            self._on_error(error)
+
+    def _take(self) -> list[tuple[_Key, int]]:
+        with self._usage_lock:
+            entries = list(self._pending.items())
+            self._pending = {}
+        return entries
+
+    def _put_back(self, entries: list[tuple[_Key, int]]) -> None:
+        with self._usage_lock:
+            for key, count in entries:
+                self._pending[key] = self._pending.get(key, 0) + count
+
+    def _send(self, *, final: bool) -> list[Exception]:
+        errors: list[Exception] = []
+        if self._hold.remaining() > 0:
+            return errors
+        entries = self._take()
+        for start in range(0, len(entries), MAX_BATCH):
+            if not final and self._stopping.is_set():
+                self._put_back(entries[start:])
+                return errors
+            if not self._post(entries[start : start + MAX_BATCH], errors):
+                self._put_back(entries[start:])
+                return errors
+        return errors
+
+    def _post(self, batch: list[tuple[_Key, int]], errors: list[Exception]) -> bool:
+        """False when the batch (and the rest) should be kept and the flush should stop."""
+        events = [
+            {"flag": flag, "variationIndex": index, "count": count, "day": day}
+            for (flag, index, day), count in batch
+        ]
+        headers = {"Authorization": f"Bearer {self._sdk_key}", "Content-Type": "application/json"}
+        try:
+            body = _json.dumps({"events": events}).encode("ascii")
+            response = self._transport.request(
+                "POST", "/sdk/v1/events", headers, body, self._timeout
+            )
+        except Aborted:
+            return False
         except RequestTimeout:
-            self._report("timeout", "usage request failed: timeout")
-            return "kept"
-        except (NetworkFailure, Aborted):
-            self._report("network", "usage request failed: network")
-            return "kept"
+            errors.append(ToggleSlashError("POST /sdk/v1/events timed out", LastError.TIMEOUT))
+            return False
+        except Exception:
+            errors.append(ToggleSlashError("POST /sdk/v1/events failed", LastError.NETWORK))
+            return False
         status = response.status
         if 200 <= status < 300:
-            return "sent"
-        self._report(f"http_{status}", f"usage request failed: http_{status}")
-        if status == 429:
-            seconds = retry_after(response.headers)
-            if seconds is not None:
-                self._hold_until = max(self._hold_until, self._monotonic() + seconds)
-        return "kept" if retryable(status) else "dropped"
+            return True
+        wait = retry_after(status, response.headers.get("retry-after"))
+        if wait is not None:
+            self._hold.raise_to(wait)
+        errors.append(ToggleSlashError(f"POST /sdk/v1/events answered {status}", f"http_{status}"))
+        return not retryable(status)

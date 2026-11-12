@@ -1,16 +1,16 @@
-"""The public value types and the closed sets, with the contract's canonical spelling."""
+"""The values the SDK hands to a caller: results, status, events, and the closed sets of the contract."""
 
 from __future__ import annotations
 
-import enum
+import datetime
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from enum import StrEnum
 from typing import Any
 
 
-class ReasonKind(enum.StrEnum):
-    """Why a flag gave the value it gave (contract 4)."""
+class ReasonKind(StrEnum):
+    """Why a flag evaluated the way it did (docs/evaluation.md)."""
 
     OFF = "OFF"
     PREREQUISITE_FAILED = "PREREQUISITE_FAILED"
@@ -20,8 +20,8 @@ class ReasonKind(enum.StrEnum):
     ERROR = "ERROR"
 
 
-class ErrorCode(enum.StrEnum):
-    """The code of an ``ERROR`` reason: the evaluator's and the SDK's own."""
+class ErrorCode(StrEnum):
+    """The code of an `ERROR` reason: the evaluator's, then the SDK's own (contract 4)."""
 
     INVALID_CONTEXT = "INVALID_CONTEXT"
     FLAG_NOT_FOUND = "FLAG_NOT_FOUND"
@@ -35,8 +35,8 @@ class ErrorCode(enum.StrEnum):
     EVALUATION_FAILED = "EVALUATION_FAILED"
 
 
-class StreamState(enum.StrEnum):
-    """The state of the stream in ``Status.stream`` (contract 8)."""
+class StreamState(StrEnum):
+    """How the stream is doing (contract 8)."""
 
     OFF = "off"
     CONNECTING = "connecting"
@@ -45,8 +45,8 @@ class StreamState(enum.StrEnum):
     CLOSED = "closed"
 
 
-class LastError:
-    """The codes of ``Status.last_error`` that are fixed; ``http_<status>`` is built from a status."""
+class LastError(StrEnum):
+    """Why the most recent ruleset or stream attempt failed, besides `http_<status>` (contract 8)."""
 
     TIMEOUT = "timeout"
     BAD_RULESET = "bad_ruleset"
@@ -55,8 +55,8 @@ class LastError:
 
 @dataclass(frozen=True, slots=True)
 class Reason:
-    """The reason of an evaluation. ``code`` is set for ``ERROR``, ``rule_index`` for ``RULE_MATCH``
-    and ``flag_key`` (the direct prerequisite that failed) for ``PREREQUISITE_FAILED``."""
+    """The evaluator's reason. `code` is set for an `ERROR`, `rule_index` for `RULE_MATCH`, `flag_key` for
+    `PREREQUISITE_FAILED` (the direct prerequisite)."""
 
     kind: ReasonKind
     code: ErrorCode | None = None
@@ -66,7 +66,8 @@ class Reason:
 
 @dataclass(frozen=True, slots=True)
 class Detail:
-    """What ``variation_detail`` returns."""
+    """What `variation_detail` answers: the value (the served one, or the fallback), the variation index
+    (None when the value is the fallback) and the reason."""
 
     value: Any
     variation_index: int | None
@@ -75,17 +76,19 @@ class Detail:
 
 @dataclass(frozen=True, slots=True)
 class Status:
-    """A snapshot of what the SDK holds (contract 8). It never holds a URL, key, context or message."""
+    """A snapshot of what the SDK has loaded. `last_error` is a `LastError` or `"http_<status>"`; it never
+    holds a URL, a key, a message or a context."""
 
     etag: str | None
-    last_sync_at: datetime | None
+    last_sync_at: datetime.datetime | None
     stream: StreamState
     last_error: str | None
 
 
 @dataclass(frozen=True, slots=True)
 class EvaluationEvent:
-    """What ``after_evaluation`` receives (contract 10)."""
+    """What one evaluation did, handed to `Hooks.after_evaluation`. It carries the context the caller passed;
+    the SDK itself sends none of it anywhere."""
 
     flag_key: str
     context: Any
@@ -98,15 +101,16 @@ class EvaluationEvent:
 
 @dataclass(frozen=True, slots=True)
 class Hooks:
-    """The hooks an application can install. A hook that is not callable is ignored."""
+    """Observers of each evaluation. `after_evaluation` is called on the caller's thread with an
+    `EvaluationEvent`; its return value is ignored, and an error it raises goes to `on_error`."""
 
     after_evaluation: Callable[[EvaluationEvent], Any] | None = None
 
 
 class ToggleSlashError(Exception):
-    """An error the SDK builds for ``on_error``. ``code`` is a short stable string. It never carries a
-    context, a context key or an attribute."""
+    """An error the SDK absorbed and tells `on_error` about. `code` is the `LastError` or `http_<status>` of a
+    failed ruleset or stream attempt, and `None` for the other failures."""
 
-    def __init__(self, message: str, code: str) -> None:
+    def __init__(self, message: str, code: str | None = None) -> None:
         super().__init__(message)
         self.code = code

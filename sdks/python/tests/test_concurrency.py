@@ -1,3 +1,6 @@
+"""Concurrency: there is no race detector in Python, so these start many threads together on a Barrier and
+join them with a timeout, and check the invariants the contract states."""
+
 from __future__ import annotations
 
 import subprocess
@@ -8,263 +11,325 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-import toggleslash
-from support import KEY, FakeServer, flag, wait_until
+from support import (
+    FakeServer,
+    event,
+    flag_json,
+    make_client,
+    reply,
+    ruleset_json,
+    stalled,
+    stream,
+    wait_for,
+)
 from toggleslash import StreamState
+from toggleslash._client import Client
 
-CTX = {"key": "u1"}
-SRC = str(Path(__file__).resolve().parent.parent / "src")
+RULESET = "/sdk/v1/ruleset"
+STREAM = "/sdk/v1/stream"
+EVENTS = "/sdk/v1/events"
+CTX = {"key": "u"}
+HERE = Path(__file__).resolve().parent
 
 
-class ConcurrencyTests(unittest.TestCase):
+def run_threads(count: int, body: Any, timeout: float = 15.0) -> list[BaseException]:
+    """Runs `body(i)` on `count` threads released together; returns what they raised. Fails if one hangs."""
+    barrier = threading.Barrier(count)
+    failures: list[BaseException] = []
+
+    def target(i: int) -> None:
+        try:
+            barrier.wait(5)
+            body(i)
+        except BaseException as exc:
+            failures.append(exc)
+
+    threads = [threading.Thread(target=target, args=(i,), daemon=True) for i in range(count)]
+    for thread in threads:
+        thread.start()
+    end = time.monotonic() + timeout
+    for thread in threads:
+        thread.join(max(end - time.monotonic(), 0.0))
+    stuck = [t for t in threads if t.is_alive()]
+    if stuck:
+        raise AssertionError(f"{len(stuck)} threads did not finish within {timeout}s")
+    return failures
+
+
+class ConcurrencyTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self.server = FakeServer()
+        self.errors: list[Exception] = []
+        self.addCleanup(self.server.stop)
 
-    def tearDown(self) -> None:
-        self.server.close()
+    def client(self, *flags: dict[str, Any], **changes: Any) -> Client:
+        if flags or not self.server._routes.get(("GET", RULESET)):
+            self.server.on(
+                "GET", RULESET, reply(200, ruleset_json(*(flags or (flag_json(),))), ETag='"v1"')
+            )
+        changes.setdefault("on_error", self.errors.append)
+        client = make_client(self.server, **changes)
+        self.addCleanup(client.close)
+        return client
 
-    def test_every_operation_races_with_close(self) -> None:
-        client = toggleslash.create(
-            self.server.url, KEY, poll_interval=0.01, flush_interval=0.01, request_timeout=1
-        )
+
+class RaceTests(ConcurrencyTestCase):
+    def test_close_racing_evaluation(self) -> None:
+        self.server.on("POST", EVENTS, reply(202))
+        client = self.client()
+        self.assertTrue(client.ready())
+        seen: list[Any] = []
+
+        def body(i: int) -> None:
+            if i == 0:
+                time.sleep(0.01)
+                client.close()
+                return
+            for _ in range(2000):
+                seen.append(client.variation("f", CTX, "fb"))
+                client.status()
+
+        self.assertEqual(run_threads(8, body), [])
+        self.assertTrue(set(map(repr, seen)) <= {"True", "'fb'"})
+        self.assertEqual(client.status().stream, StreamState.CLOSED)
+
+    def test_two_closes_race_and_the_final_flush_goes_once(self) -> None:
+        self.server.on("POST", EVENTS, reply(202))
+        client = self.client()
         client.ready()
-        failures: list[BaseException] = []
-        stop = threading.Event()
-        barrier = threading.Barrier(13)
+        for _ in range(5):
+            client.variation("f", CTX, False)
+        started = time.monotonic()
+        self.assertEqual(run_threads(16, lambda _i: client.close()), [])
+        self.assertLess(time.monotonic() - started, 3.0)
+        posts = self.server.seen("POST", EVENTS)
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(posts[0].json()["events"][0]["count"], 5)
 
-        def worker(n: int) -> None:
-            barrier.wait()
-            try:
-                while not stop.is_set():
-                    client.variation("checkout", CTX, False)
-                    client.variation_detail("legacy", {"key": f"k{n}"}, True)
-                    client.int_variation("checkout", CTX, 1)
-                    client.status()
-                    client.ready()
-                    time.sleep(0.0005)
-            except BaseException as error:
-                failures.append(error)
+    def test_status_never_shows_connected_with_an_error(self) -> None:
+        self.server.on("GET", RULESET, reply(200, ruleset_json(flag_json()), ETag='"v1"'))
+        self.server.on(
+            "GET", STREAM, stream(event("connected", '"v1"'), event("changed", '"v1"'), then="cut")
+        )
+        client = self.client(stream=True, poll_interval=0.02, random=lambda: 0.0)
+        client.ready()
+        bad: list[Any] = []
+        stop = time.monotonic() + 1.5
 
-        threads = [threading.Thread(target=worker, args=(i,), daemon=True) for i in range(12)]
-        for thread in threads:
-            thread.start()
-        barrier.wait()
-        time.sleep(0.3)
+        def body(_i: int) -> None:
+            while time.monotonic() < stop:
+                status = client.status()
+                if status.stream == StreamState.CONNECTED and status.last_error is not None:
+                    bad.append(status)
+                time.sleep(0.0002)  # six spinning readers would starve the I/O threads of the GIL
+
+        self.assertEqual(run_threads(6, body), [])
+        self.assertEqual(bad, [])
+        self.assertGreater(len(self.server.seen("GET", STREAM)), 1)
+
+    def test_every_operation_from_many_threads_together(self) -> None:
+        self.server.on("POST", EVENTS, reply(202))
+        events: list[Any] = []
+        client = self.client(
+            flag_json("f", [1, 2, 3], fallthrough=2),
+            after_evaluation=events.append,
+            flush_interval=0.05,
+            poll_interval=0.02,
+        )
+
+        def body(i: int) -> None:
+            for n in range(300):
+                match (i + n) % 5:
+                    case 0:
+                        client.variation("f", {"key": f"u{n}"}, 0)
+                    case 1:
+                        client.variation_detail("f", {"key": f"u{n}"}, 0)
+                    case 2:
+                        client.int_variation("f", {"key": f"u{n}"}, 0)
+                    case 3:
+                        client.status()
+                    case _:
+                        client.ready()
+
+        self.assertEqual(run_threads(12, body), [])
+        client.close()
+        total = sum(
+            e["count"] for r in self.server.seen("POST", EVENTS) for e in r.json()["events"]
+        )
+        served = sum(1 for e in events if e.variation_index is not None)
+        self.assertEqual(total, served)
+        self.assertEqual(self.errors, [])
+
+    def test_the_etag_and_the_flag_version_always_come_from_one_ruleset(self) -> None:
+        a = reply(200, ruleset_json(flag_json("f", version=1)), ETag='"a"')
+        b = reply(200, ruleset_json(flag_json("f", version=2)), ETag='"b"')
+        self.server.on("GET", RULESET, *([a, b] * 200))
+        events: list[Any] = []
+        client = self.client(poll_interval=0.001, after_evaluation=events.append)
+        client.ready()
+        stop = time.monotonic() + 1.0
+
+        def body(_i: int) -> None:
+            while time.monotonic() < stop:
+                client.variation("f", CTX, False)
+
+        self.assertEqual(run_threads(4, body), [])
+        pairs = {(e.etag, e.flag_version) for e in events}
+        self.assertTrue(pairs <= {('"a"', 1), ('"b"', 2)}, pairs)
+        self.assertEqual(len(pairs), 2)
+
+
+class BlockingTests(ConcurrencyTestCase):
+    def latency(self, client: Client) -> float:
+        worst = 0.0
+        for _ in range(50):
+            started = time.monotonic()
+            client.variation("f", CTX, False)
+            client.variation_detail("f", CTX, False)
+            client.status()
+            worst = max(worst, time.monotonic() - started)
+        return worst
+
+    def test_evaluation_does_not_wait_for_a_hanging_ruleset_request(self) -> None:
+        self.server.on(
+            "GET", RULESET, reply(200, ruleset_json(flag_json()), ETag='"v1"'), stalled()
+        )
+        client = self.client(poll_interval=0.01, request_timeout=5)
+        client.ready()
+        time.sleep(0.2)
+        self.assertLess(self.latency(client), 0.1)
+
+    def test_evaluation_does_not_wait_for_a_hanging_flush(self) -> None:
+        self.server.on("POST", EVENTS, stalled())
+        client = self.client(request_timeout=0.5)
+        client.ready()
+        client.variation("f", CTX, False)
+        flusher = threading.Thread(target=client._usage.flush, daemon=True)
+        flusher.start()
+        self.assertTrue(wait_for(lambda: len(self.server.seen("POST", EVENTS)) == 1))
+        self.assertLess(self.latency(client), 0.1)
         started = time.monotonic()
         client.close()
-        self.assertLess(time.monotonic() - started, 3)
-        time.sleep(0.1)
-        stop.set()
-        for thread in threads:
-            thread.join(5)
-            self.assertFalse(thread.is_alive())
-        self.assertEqual(failures, [])
+        self.assertLess(time.monotonic() - started, 2.5)
+        flusher.join(8)
+
+    def test_evaluation_before_the_first_load_does_not_wait_for_it(self) -> None:
+        self.server.on("GET", RULESET, stalled())
+        client = self.client(request_timeout=5)
+        started = time.monotonic()
+        client.variation("f", CTX, False)
+        self.assertLess(time.monotonic() - started, 0.1)
+
+
+class ReentrancyTests(ConcurrencyTestCase):
+    def test_a_hook_may_call_back_into_the_client(self) -> None:
+        self.server.on("POST", EVENTS, reply(202))
+        seen: list[Any] = []
+
+        def hook(_event: Any) -> None:
+            seen.append((client.status().etag, client.variation("f", CTX, "inner")))
+
+        client = self.client(after_evaluation=hook)
+        client.ready()
+        client.variation("f", CTX, False)
+        self.assertEqual(seen[0], ('"v1"', "inner"))
+
+    def test_a_hook_may_close_the_client(self) -> None:
+        self.server.on("POST", EVENTS, reply(202))
+        client = self.client(after_evaluation=lambda _e: client.close())
+        client.ready()
+        done = threading.Thread(target=client.variation, args=("f", CTX, False), daemon=True)
+        done.start()
+        done.join(5)
+        self.assertFalse(done.is_alive())
         self.assertEqual(client.status().stream, StreamState.CLOSED)
-        self.assertTrue(client.variation("checkout", CTX, False))
 
-    def test_two_closes_race(self) -> None:
-        for _ in range(10):
-            client = toggleslash.create(
-                self.server.url, KEY, poll_interval=0.01, flush_interval=0.01, request_timeout=1
-            )
-            client.ready()
-            client.variation("checkout", CTX, False)
-            barrier = threading.Barrier(8)
-            done: list[float] = []
-
-            def closer() -> None:
-                barrier.wait()
-                started = time.monotonic()
-                client.close()
-                done.append(time.monotonic() - started)
-
-            threads = [threading.Thread(target=closer, daemon=True) for _ in range(8)]
-            for thread in threads:
-                thread.start()
-            for thread in threads:
-                thread.join(6)
-                self.assertFalse(thread.is_alive())
-            self.assertEqual(len(done), 8)
-            self.assertLess(max(done), 3)
-            self.assertEqual(client.status().stream, StreamState.CLOSED)
-
-    def test_variation_returns_while_the_ruleset_request_hangs(self) -> None:
-        self.server.on("ruleset", lambda r: r.hang(5))
-        client = toggleslash.create(self.server.url, KEY, stream=False, request_timeout=2)
-        try:
-            worst = 0.0
-            for _ in range(200):
-                started = time.monotonic()
-                client.variation("checkout", CTX, False)
-                client.status()
-                worst = max(worst, time.monotonic() - started)
-            self.assertLess(worst, 0.25)
-        finally:
-            started = time.monotonic()
-            client.close()
-            self.assertLess(time.monotonic() - started, 4)
-
-    def test_variation_returns_while_a_flush_hangs(self) -> None:
-        self.server.on("events", lambda r: r.hang(5))
-        client = toggleslash.create(
-            self.server.url, KEY, stream=False, poll_interval=30, flush_interval=0.02, request_timeout=1.5
-        )
-        try:
-            self.assertTrue(client.ready())
-            client.variation("checkout", CTX, False)
-            self.assertTrue(wait_until(lambda: self.server.count("events") >= 1))
-            worst = 0.0
-            for _ in range(300):
-                started = time.monotonic()
-                client.variation("checkout", CTX, False)
-                worst = max(worst, time.monotonic() - started)
-            self.assertLess(worst, 0.25)
-        finally:
-            started = time.monotonic()
-            client.close()
-            self.assertLess(time.monotonic() - started, 4)
-
-    def test_a_hook_sees_the_etag_and_version_of_one_ruleset(self) -> None:
-        self.server.bump(flag("f", [False, True], 1))
-        seen: list[tuple[str | None, int | None]] = []
-        lock = threading.Lock()
-
-        def hook(event: toggleslash.EvaluationEvent) -> None:
-            with lock:
-                seen.append((event.etag, event.flag_version))
-
-        client = toggleslash.create(
-            self.server.url,
-            KEY,
-            stream=False,
-            poll_interval=0.001,
-            hooks=toggleslash.Hooks(after_evaluation=hook),
-        )
-        try:
-            self.assertTrue(client.ready())
-            stop = threading.Event()
-
-            def publisher() -> None:
-                while not stop.is_set():
-                    self.server.bump(flag("f", [False, True], 1))
-                    time.sleep(0.001)
-
-            def reader() -> None:
-                while not stop.is_set():
-                    client.variation("f", CTX, False)
-                    time.sleep(0.0005)
-
-            threads = [threading.Thread(target=publisher, daemon=True)] + [
-                threading.Thread(target=reader, daemon=True) for _ in range(6)
-            ]
-            for thread in threads:
-                thread.start()
-            deadline = time.monotonic() + 15
-            while time.monotonic() < deadline:
-                with lock:
-                    if len({v for _, v in seen}) > 5:
-                        break
-                time.sleep(0.05)
-            stop.set()
-            for thread in threads:
-                thread.join(5)
-            with lock:
-                versions = {v for _, v in seen}
-            self.assertGreater(len(versions), 5, "the ruleset never changed under the readers")
-            with lock:
-                pairs = list(seen)
-            for etag, version in pairs:
-                if version is not None:
-                    self.assertEqual(etag, f'"v{version}"')
-        finally:
-            client.close()
-
-    def test_callbacks_may_use_the_client_without_deadlock(self) -> None:
-        self.server.on("ruleset", lambda r: r.send(500))
+    def test_on_error_on_an_sdk_thread_may_call_ready_status_and_variation(self) -> None:
+        self.server.on("GET", RULESET, reply(503))
         calls: list[Any] = []
-        holder: dict[str, toggleslash.Client] = {}
 
-        def on_error(error: BaseException) -> None:
-            client = holder["c"]
-            calls.append((client.ready(), client.status().last_error, client.variation("x", CTX, 5)))
-            client.close()
-            calls.append("closed")
+        def on_error(_error: Exception) -> None:
+            calls.append(
+                (client.ready(), client.status().last_error, client.variation("f", CTX, 9))
+            )
 
-        client = toggleslash.create(self.server.url, KEY, stream=False, on_error=on_error)
-        holder["c"] = client
-        self.assertTrue(wait_until(lambda: "closed" in calls))
-        self.assertEqual(calls[0], (False, "http_500", 5))
-        client.close()
-
-    def test_a_hook_may_use_the_client(self) -> None:
-        depth = [0]
-        holder: dict[str, toggleslash.Client] = {}
-
-        def hook(event: toggleslash.EvaluationEvent) -> None:
-            if depth[0] == 0:
-                depth[0] += 1
-                holder["c"].variation("legacy", CTX, True)
-                holder["c"].status()
-                holder["c"].ready()
-
-        client = toggleslash.create(
-            self.server.url,
-            KEY,
-            stream=False,
-            poll_interval=30,
-            hooks=toggleslash.Hooks(after_evaluation=hook),
-        )
-        holder["c"] = client
-        try:
-            self.assertTrue(client.ready())
-            self.assertTrue(client.variation("checkout", CTX, False))
-        finally:
-            client.close()
-
-    def test_ready_is_fixed_and_false_after_close_if_unsettled(self) -> None:
-        self.server.on("ruleset", lambda r: r.hang(5))
-        client = toggleslash.create(self.server.url, KEY, stream=False, request_timeout=3)
-        results: list[bool] = []
-        waiter = threading.Thread(target=lambda: results.append(client.ready()), daemon=True)
-        waiter.start()
-        time.sleep(0.2)
-        client.close()
-        waiter.join(5)
-        self.assertEqual(results, [False])
+        client = self.client(on_error=on_error)
         self.assertFalse(client.ready())
+        self.assertTrue(wait_for(lambda: calls))
+        self.assertEqual(calls[0], (False, "http_503", 9))
 
-    def test_ready_answer_is_fixed_once_settled(self) -> None:
-        client = toggleslash.create(self.server.url, KEY, stream=False, poll_interval=0.02)
-        try:
-            self.assertTrue(client.ready())
-            self.server.on("ruleset", lambda r: r.send(500))
-            time.sleep(0.1)
-            self.assertTrue(client.ready())
-        finally:
+    def test_on_error_on_an_sdk_thread_may_close_without_joining_itself(self) -> None:
+        self.server.on("GET", RULESET, reply(503))
+        finished = threading.Event()
+
+        def on_error(_error: Exception) -> None:
+            client.close()
+            finished.set()
+
+        client = self.client(on_error=on_error)
+        self.assertTrue(finished.wait(5))
+        self.assertTrue(wait_for(lambda: client.status().stream == StreamState.CLOSED))
+
+    def test_a_close_from_an_sdk_thread_while_the_caller_closes(self) -> None:
+        self.server.on("GET", RULESET, reply(503))
+        entered = threading.Event()
+        release = threading.Event()
+
+        def on_error(_error: Exception) -> None:
+            entered.set()
+            release.wait(5)
             client.close()
 
-    def test_daemon_threads_do_not_keep_the_process_alive(self) -> None:
+        client = self.client(on_error=on_error, request_timeout=0.5)
+        self.assertTrue(entered.wait(5))
+        started = time.monotonic()
+        threading.Timer(0.1, release.set).start()
+        client.close()
+        self.assertLess(time.monotonic() - started, 4.0)
+
+    def test_callbacks_run_with_no_sdk_lock_held(self) -> None:
+        self.server.on("POST", EVENTS, reply(202))
+        results: list[Any] = []
+
+        def hook(_event: Any) -> None:
+            thread = threading.Thread(target=lambda: results.append(client.status()), daemon=True)
+            thread.start()
+            thread.join(2)
+            results.append(thread.is_alive())
+
+        client = self.client(after_evaluation=hook)
+        client.ready()
+        client.variation("f", CTX, False)
+        self.assertIs(results[-1], False)
+
+
+class ProcessTests(unittest.TestCase):
+    def test_a_client_that_is_never_closed_does_not_keep_the_process_alive(self) -> None:
         script = (
-            "import sys, toggleslash\n"
-            "c = toggleslash.create(sys.argv[1], 'k', flush_interval=0.05)\n"
-            "c.variation('checkout', {'key': 'u'}, False)\n"
+            "import sys\n"
+            "sys.path[:0] = [sys.argv[1], sys.argv[2]]\n"
+            "from support import FakeServer, reply, ruleset_json, flag_json, stream, event\n"
+            "import toggleslash\n"
+            "server = FakeServer()\n"
+            "server.on('GET', '/sdk/v1/ruleset', reply(200, ruleset_json(flag_json()), ETag='\"v1\"'))\n"
+            "server.on('GET', '/sdk/v1/stream', stream(event('connected', '\"v1\"')))\n"
+            "client = toggleslash.create(url=server.url, sdk_key='k', stream=True)\n"
+            "assert client.ready()\n"
+            "client.variation('f', {'key': 'u'}, False)\n"
+            "print('done')\n"
         )
-        hang = FakeServer()
-        hang.on("ruleset", lambda r: r.hang(30))
-        try:
-            for url in ("http://127.0.0.1:9", self.server.url, hang.url):
-                started = time.monotonic()
-                done = subprocess.run(
-                    [sys.executable, "-X", "dev", "-W", "error", "-c", script, url],
-                    env={"PYTHONPATH": SRC, "PYTHONDONTWRITEBYTECODE": "1"},
-                    capture_output=True,
-                    check=False,
-                    timeout=20,
-                )
-                self.assertEqual(done.returncode, 0, done.stderr.decode())
-                self.assertLess(time.monotonic() - started, 8, url)
-        finally:
-            hang.close()
+        src = str(HERE.parent / "src")
+        started = time.monotonic()
+        done = subprocess.run(
+            [sys.executable, "-X", "dev", "-W", "error", "-c", script, str(HERE), src],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("done", done.stdout)
+        self.assertLess(time.monotonic() - started, 10.0)
 
 
 if __name__ == "__main__":
