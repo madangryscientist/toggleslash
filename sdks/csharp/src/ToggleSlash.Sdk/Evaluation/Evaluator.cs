@@ -1,4 +1,4 @@
-using System.Text.Json;
+using ToggleSlash.Sdk.Json;
 
 namespace ToggleSlash.Sdk.Evaluation;
 
@@ -25,9 +25,9 @@ internal static class Evaluator
     /// (<c>{ "kind": "multi", "contexts": { "user": { "key": ... }, ... } }</c>); one that is not valid is
     /// <c>INVALID_CONTEXT</c>.
     /// </summary>
-    public static EvaluationResult Evaluate(Ruleset ruleset, string flagKey, JsonElement context)
+    public static EvaluationResult Evaluate(Ruleset ruleset, string flagKey, JsonValue? context)
     {
-        if (ContextKinds.Normalise(context) is not { } contexts) return EvaluationResult.Failure(ErrorCode.InvalidContext);
+        if (ContextKinds.Normalise(context) is not { } contexts) return EvaluationResult.Failure(ErrorCode.INVALID_CONTEXT);
         return EvaluateFlag(new Run(ruleset, contexts), flagKey, 0);
     }
 
@@ -37,7 +37,7 @@ internal static class Evaluator
     private static EvaluationResult OffResult(FlagHeader header, Reason reason) =>
         header.OffVariation is { } index
             ? Served(header, index, reason)
-            : new EvaluationResult(EvaluationResult.JsonNull, null, reason);
+            : new EvaluationResult(JsonValue.Null, null, reason);
 
     private static int RolloutVariation(IReadOnlyList<WeightedVariation> rollout, int position)
     {
@@ -98,7 +98,7 @@ internal static class Evaluator
     }
 
     private static bool PrerequisiteMet(Prerequisite prerequisite, EvaluationResult result) =>
-        result.Reason.Kind is ReasonKind.TargetMatch or ReasonKind.RuleMatch or ReasonKind.Fallthrough
+        result.Reason.Kind is ReasonKind.TARGET_MATCH or ReasonKind.RULE_MATCH or ReasonKind.FALLTHROUGH
         && result.VariationIndex is { } served
         && served == prerequisite.Variation;
 
@@ -107,10 +107,10 @@ internal static class Evaluator
         foreach (var prerequisite in flag.Prerequisites)
         {
             var result = EvaluateFlag(run, prerequisite.FlagKey, depth + 1);
-            if (result.Reason.Kind == ReasonKind.Error) return result;
+            if (result.Reason.Kind == ReasonKind.ERROR) return result;
             if (!PrerequisiteMet(prerequisite, result))
             {
-                return OffResult(flag.Header, new Reason(ReasonKind.PrerequisiteFailed, FlagKey: prerequisite.FlagKey));
+                return OffResult(flag.Header, new Reason(ReasonKind.PREREQUISITE_FAILED, FlagKey: prerequisite.FlagKey));
             }
         }
         return null;
@@ -121,25 +121,25 @@ internal static class Evaluator
         switch (entry)
         {
             case MalformedEntry:
-                return EvaluationResult.Failure(ErrorCode.MalformedFlag);
+                return EvaluationResult.Failure(ErrorCode.MALFORMED_FLAG);
             case BrokenEntry broken:
                 return broken.Header.On
                     ? EvaluationResult.Failure(broken.Code)
-                    : OffResult(broken.Header, new Reason(ReasonKind.Off));
+                    : OffResult(broken.Header, new Reason(ReasonKind.OFF));
             case ReadyEntry { Flag: var flag }:
-                if (!flag.Header.On) return OffResult(flag.Header, new Reason(ReasonKind.Off));
+                if (!flag.Header.On) return OffResult(flag.Header, new Reason(ReasonKind.OFF));
                 if (CheckPrerequisites(flag, run, depth) is { } blocked) return blocked;
                 if (TargetedVariation(flag, run) is { } targeted)
                 {
-                    return Served(flag.Header, targeted, new Reason(ReasonKind.TargetMatch));
+                    return Served(flag.Header, targeted, new Reason(ReasonKind.TARGET_MATCH));
                 }
                 for (var ruleIndex = 0; ruleIndex < flag.Rules.Count; ruleIndex++)
                 {
                     var rule = flag.Rules[ruleIndex];
                     if (!rule.Clauses.All(clause => ClauseMatches(clause, run))) continue;
-                    return ServeResult(flag, rule.Serve, run, new Reason(ReasonKind.RuleMatch, RuleIndex: ruleIndex));
+                    return ServeResult(flag, rule.Serve, run, new Reason(ReasonKind.RULE_MATCH, RuleIndex: ruleIndex));
                 }
-                return ServeResult(flag, flag.Fallthrough, run, new Reason(ReasonKind.Fallthrough));
+                return ServeResult(flag, flag.Fallthrough, run, new Reason(ReasonKind.FALLTHROUGH));
             default:
                 throw new InvalidOperationException("unreachable: FlagEntry is closed");
         }
@@ -149,9 +149,9 @@ internal static class Evaluator
     private static EvaluationResult EvaluateFlag(Run run, string key, int depth)
     {
         if (run.Completed.TryGetValue(key, out var completed)) return completed;
-        if (run.Active.Contains(key)) return EvaluationResult.Failure(ErrorCode.PrerequisiteCycle);
-        if (depth > MaxPrerequisiteDepth) return EvaluationResult.Failure(ErrorCode.PrerequisiteDepthExceeded);
-        if (!run.Ruleset.TryGetFlag(key, out var entry)) return EvaluationResult.Failure(ErrorCode.FlagNotFound);
+        if (run.Active.Contains(key)) return EvaluationResult.Failure(ErrorCode.PREREQUISITE_CYCLE);
+        if (depth > MaxPrerequisiteDepth) return EvaluationResult.Failure(ErrorCode.PREREQUISITE_DEPTH_EXCEEDED);
+        if (!run.Ruleset.TryGetFlag(key, out var entry)) return EvaluationResult.Failure(ErrorCode.FLAG_NOT_FOUND);
         run.Active.Add(key);
         var result = EvaluateEntry(entry, run, depth);
         run.Active.Remove(key);

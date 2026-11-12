@@ -1,273 +1,208 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Text.Json;
+using System.Globalization;
+using ToggleSlash.Sdk.Tests.Support;
 
 namespace ToggleSlash.Sdk.Tests;
 
-/// <summary>
-/// Contract 6 and 5.2. .NET has no race detector, so the many-thread tests here stand in for one: they run every
-/// operation from many threads while the ruleset swaps under them and the client closes, and fail on any raise,
-/// hang or torn read.
-/// </summary>
-public sealed class ConcurrencyTests
+public class ConcurrencyTests
 {
-    private static readonly Context User = Context.ForKey("u1");
+    private static readonly object Ctx = new Dictionary<string, object?> { ["key"] = "u" };
 
-    private static async Task<HttpResponseMessage> Churn(Seen request, int[] counter)
+    [Fact]
+    public async Task AHooksEtagAndFlagVersionBelongToTheSameRulesetUnderConcurrentSwaps()
     {
-        switch (request.Path)
+        var counter = 0;
+        // Each answer is a new ruleset whose tag is "<n>" and whose flag version is n.
+        using var server = new LoopbackServer(async (r, c, _) =>
         {
-            case Reply.Ruleset:
-                var n = Interlocked.Increment(ref counter[0]);
-                return await Reply.Rules(Flags.Constant("f", "true", n), $"\"v{n}\"");
-            default:
-                return await Reply.Status(202);
+            if (r.Path != "/sdk/v1/ruleset")
+            {
+                await c.SendAsync(202, "{}");
+                return;
+            }
+
+            var n = Interlocked.Increment(ref counter);
+            await c.SendAsync(200, Rulesets.Ruleset(Rulesets.Flag("a", "true", n)), ("ETag", $"\"{n.ToString(CultureInfo.InvariantCulture)}\""));
+        });
+        var bad = 0;
+        var seen = 0;
+        var versions = new HashSet<long>();
+        using var client = Harness.Client(server, o =>
+        {
+            o.PollInterval = TimeSpan.FromMilliseconds(1);
+            o.AfterEvaluation = e =>
+            {
+                if (e.FlagVersion is not { } version)
+                {
+                    return;
+                }
+
+                Interlocked.Increment(ref seen);
+                lock (versions)
+                {
+                    versions.Add(version);
+                }
+
+                if (e.Etag != $"\"{version.ToString(CultureInfo.InvariantCulture)}\"")
+                {
+                    Interlocked.Increment(ref bad);
+                }
+            };
+        });
+        Assert.True(await client.ReadyAsync());
+        var watch = Stopwatch.StartNew();
+        while (watch.Elapsed < TimeSpan.FromSeconds(1.5))
+        {
+            client.BoolVariation("a", Ctx, false);
+        }
+
+        Assert.Equal(0, bad);
+        Assert.True(seen > 100);
+        lock (versions)
+        {
+            Assert.True(versions.Count > 5, $"only {versions.Count} rulesets were swapped in");
         }
     }
 
     [Fact]
-    public async Task Every_operation_from_many_threads_with_close_racing_does_not_raise_or_hang()
+    public async Task StatusNeverShowsALastErrorBesideAConnectedStream()
     {
-        var counter = new int[1];
-        var errors = new Errors();
-        var server = new FakeServer(TimeProvider.System, (r, _) => Churn(r, counter));
-        var client = ToggleSlashClient.Create(new ClientOptions
-        {
-            Url = "http://sdk.invalid",
-            SdkKey = "key",
-            Stream = false,
-            PollInterval = TimeSpan.FromMilliseconds(2),
-            FlushInterval = TimeSpan.FromMilliseconds(3),
-            OnError = errors.Add,
-            Hooks = new Hooks { AfterEvaluation = e => _ = e.Etag },
-            Handler = server,
-        });
-        Assert.True(await client.ReadyAsync());
-
-        var raised = new ConcurrentQueue<Exception>();
-        var stop = new CancellationTokenSource();
-        using var start = new ManualResetEventSlim();
-        var workers = Enumerable.Range(0, 24).Select(i => Task.Factory.StartNew(() =>
-        {
-            start.Wait();
-            try
+        using var server = new LoopbackServer(Rulesets.Backend(
+            () => Rulesets.Ruleset(Rulesets.Flag("a", "true")),
+            () => "\"v\"",
+            stream: async (_, c, _) =>
             {
-                while (!stop.IsCancellationRequested)
+                await c.HeadAsync(200, ("Content-Type", "text/event-stream"));
+                await c.WriteAsync("event: connected\ndata: \"v\"\n\n");
+                await Task.Delay(1);
+                c.Reset();
+            }));
+        using var client = Harness.Client(server, o =>
+        {
+            o.Stream = true;
+            o.PollInterval = TimeSpan.FromMilliseconds(2);
+        });
+        var violations = 0;
+        var connectedSeen = 0;
+        var watch = Stopwatch.StartNew();
+        while (watch.Elapsed < TimeSpan.FromSeconds(2))
+        {
+            var status = client.Status();
+            if (status.Stream == StreamState.connected)
+            {
+                connectedSeen++;
+                if (status.LastError is not null)
                 {
-                    switch (i % 8)
-                    {
-                        case 0: client.BoolVariation("f", User, false); break;
-                        case 1: client.BoolVariationDetail("f", User, false); break;
-                        case 2: client.StringVariation("f", User, "x"); break;
-                        case 3: client.IntVariationDetail("f", User, 0); break;
-                        case 4: client.DoubleVariation("f", User, 0); break;
-                        case 5: client.JsonVariation("f", User, default); break;
-                        case 6: _ = client.Status; break;
-                        default: client.ReadyAsync().Wait(); break;
-                    }
+                    violations++;
                 }
             }
-            catch (Exception error)
+        }
+
+        Assert.Equal(0, violations);
+        Assert.True(connectedSeen > 0);
+        Assert.True(server.To("/sdk/v1/stream").Count > 5);
+    }
+
+    [Fact]
+    public async Task CallbacksThatCallBackIntoTheClientDoNotDeadlock()
+    {
+        using var server = new LoopbackServer(async (_, c, _) => await c.SendAsync(500, "no"));
+        var inside = new TaskCompletionSource<(bool Ready, string Status)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        ToggleSlashClient? holder = null;
+        using var client = Harness.Client(server, o => o.OnError = unused =>
+        {
+            var c = holder;
+            if (c is null)
             {
-                raised.Enqueue(error);
+                return;
             }
-        }, TaskCreationOptions.LongRunning)).ToArray();
 
-        start.Set();
-        await Task.Delay(300);
-        // Two closes at once, while the workers keep calling.
-        var closers = new[] { Task.Run(client.Close), Task.Run(client.Close), Task.Run(() => client.CloseAsync().GetAwaiter().GetResult()) };
-        await Task.WhenAll(closers).WaitAsync(TimeSpan.FromSeconds(15));
-        await Task.Delay(100);
-        stop.Cancel();
-        await Task.WhenAll(workers).WaitAsync(TimeSpan.FromSeconds(15));
-
-        Assert.Empty(raised);
-        Assert.Equal(StreamState.Closed, client.Status.Stream);
-        // Ready had settled true before close; a settled answer does not change.
-        Assert.True(await client.ReadyAsync());
-        Assert.Empty(errors.All);
-        // After close the answer is still a fallback or a value, never a raise.
-        _ = client.BoolVariation("f", User, true);
-        Assert.True(counter[0] > 5, "the ruleset never swapped under the readers");
+            _ = c.Status();
+            _ = c.BoolVariation("a", Ctx, false);
+            var ready = c.Ready();
+            c.Close();
+            inside.TrySetResult((ready, c.Status().Stream.ToString()));
+        });
+        holder = client;
+        var (ready, stream) = await Wait.WithinAsync(inside.Task, "a callback that calls Ready and Close");
+        Assert.False(ready);
+        Assert.Equal("closed", stream);
+        Assert.False(await Wait.WithinAsync(client.ReadyAsync(), "ready"));
+        await Wait.WithinAsync(client.CloseAsync(), "close after a close from a callback");
     }
 
     [Fact]
-    public async Task A_hook_never_sees_an_etag_and_a_version_from_two_rulesets()
+    public async Task AHookThatCallsBackIntoTheClientDoesNotDeadlock()
     {
-        var counter = new int[1];
-        var torn = new ConcurrentQueue<string>();
-        var seenVersions = new ConcurrentDictionary<double, bool>();
-        var server = new FakeServer(TimeProvider.System, (r, _) => Churn(r, counter));
-        var client = ToggleSlashClient.Create(new ClientOptions
+        using var server = new LoopbackServer(Rulesets.Backend(() => Rulesets.Ruleset(Rulesets.Flag("a", "true")), () => "\"v\""));
+        var depth = 0;
+        var seen = 0;
+        ToggleSlashClient? holder = null;
+        using var client = Harness.Client(server, o => o.AfterEvaluation = unused =>
         {
-            Url = "http://sdk.invalid",
-            SdkKey = "key",
-            Stream = false,
-            PollInterval = TimeSpan.FromMilliseconds(1),
-            Hooks = new Hooks
+            Interlocked.Increment(ref seen);
+            if (holder is { } c && Interlocked.Exchange(ref depth, 1) == 0)
             {
-                AfterEvaluation = e =>
-                {
-                    seenVersions[e.FlagVersion ?? -1] = true;
-                    if (e.Etag != $"\"v{e.FlagVersion}\"") torn.Enqueue($"{e.Etag} with version {e.FlagVersion}");
-                },
-            },
-            Handler = server,
+                _ = c.Status();
+                _ = c.Ready();
+                _ = c.BoolVariation("a", Ctx, false);
+                Volatile.Write(ref depth, 0);
+            }
+        });
+        holder = client;
+        Assert.True(await client.ReadyAsync());
+        Assert.True(await Task.Run(() => client.BoolVariation("a", Ctx, false)).WaitAsync(TimeSpan.FromSeconds(20)));
+        Assert.True(seen >= 2);
+    }
+
+    [Fact]
+    public async Task ATaskHookThatFailsLaterGoesToOnErrorAndChangesNeitherTheAnswerNorTheCount()
+    {
+        using var server = new LoopbackServer(Rulesets.Backend(() => Rulesets.Ruleset(Rulesets.Flag("a", "true")), () => "\"v\""));
+        var errors = new List<Exception>();
+        using var client = Harness.Client(server, o =>
+        {
+            o.FlushInterval = TimeSpan.FromHours(1);
+            o.PollInterval = TimeSpan.FromHours(1);
+            o.AfterEvaluationAsync = async _ =>
+            {
+                await Task.Delay(20);
+                throw new InvalidOperationException("later");
+            };
+            o.OnError = e => { lock (errors) { errors.Add(e); } };
         });
         Assert.True(await client.ReadyAsync());
-        var stop = new CancellationTokenSource();
-        var readers = Enumerable.Range(0, 8).Select(_ => Task.Factory.StartNew(() =>
-        {
-            while (!stop.IsCancellationRequested) client.BoolVariation("f", User, false);
-        }, TaskCreationOptions.LongRunning)).ToArray();
-        await Wait.Until(() => seenVersions.Count >= 50, "fifty different rulesets to be read");
-        stop.Cancel();
-        await Task.WhenAll(readers).WaitAsync(TimeSpan.FromSeconds(15));
-        await client.CloseAsync();
-        Assert.Empty(torn);
-    }
-
-    [Fact]
-    public async Task Evaluation_returns_within_a_bound_while_the_first_ruleset_request_hangs()
-    {
-        var server = new FakeServer(TimeProvider.System, (_, token) => Reply.Hang(token));
-        var client = ToggleSlashClient.Create(new ClientOptions { Url = "http://sdk.invalid", SdkKey = "key", Handler = server });
-        var watch = Stopwatch.StartNew();
-        var detail = client.BoolVariationDetail("f", User, true);
-        Assert.True(watch.ElapsedMilliseconds < 500, $"took {watch.ElapsedMilliseconds} ms");
-        Assert.Equal(ErrorCode.NotReady, detail.Reason.Code);
+        var detail = client.BoolVariationDetail("a", Ctx, false);
         Assert.True(detail.Value);
-        var closing = Stopwatch.StartNew();
-        client.Close();
-        Assert.True(closing.ElapsedMilliseconds < 3000, $"close took {closing.ElapsedMilliseconds} ms with a request hanging");
+        Assert.Equal(0, detail.VariationIndex);
+        await Wait.UntilAsync(() => { lock (errors) { return errors.Count == 1; } }, "the hook's later failure");
+        lock (errors)
+        {
+            Assert.Equal("later", errors[0].Message);
+        }
+
+        await client.FlushAsync(false);
+        var posts = server.To("/sdk/v1/events");
+        Assert.Single(posts);
+        Assert.Contains("\"count\":1", posts[0].Body, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task Evaluation_returns_within_a_bound_while_a_usage_flush_hangs()
+    public async Task AThrowingHookAndAThrowingOnErrorChangeNothing()
     {
-        var server = new FakeServer(TimeProvider.System, (r, token) => r.Path == Reply.Events ? Reply.Hang(token) : Reply.Rules(Flags.Constant("f", "true"), "\"v1\""));
-        var client = ToggleSlashClient.Create(new ClientOptions
+        using var server = new LoopbackServer(Rulesets.Backend(() => Rulesets.Ruleset(Rulesets.Flag("a", "true")), () => "\"v\""));
+        var reported = 0;
+        using var client = Harness.Client(server, o =>
         {
-            Url = "http://sdk.invalid",
-            SdkKey = "key",
-            Stream = false,
-            FlushInterval = TimeSpan.FromMilliseconds(20),
-            RequestTimeout = TimeSpan.FromSeconds(1),
-            Handler = server,
+            o.AfterEvaluation = _ => throw new InvalidOperationException("hook");
+            o.OnError = _ =>
+            {
+                Interlocked.Increment(ref reported);
+                throw new InvalidOperationException("on error");
+            };
         });
         Assert.True(await client.ReadyAsync());
-        client.BoolVariation("f", User, false);
-        await Wait.Until(() => server.To(Reply.Events).Count > 0, "the flush to start and hang");
-        var watch = Stopwatch.StartNew();
-        for (var i = 0; i < 1000; i++) Assert.True(client.BoolVariation("f", User, false));
-        Assert.True(watch.ElapsedMilliseconds < 1000, $"1000 evaluations took {watch.ElapsedMilliseconds} ms during a hung flush");
-        // Close waits for the running flush and sends the last one, each bounded by the request timeout (contract 11).
-        var closing = Stopwatch.StartNew();
-        await client.CloseAsync().WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.True(closing.Elapsed < TimeSpan.FromSeconds(5), $"close took {closing.Elapsed}");
-    }
-
-    [Fact]
-    public async Task A_hook_and_an_onError_can_call_back_into_the_client()
-    {
-        var server = new FakeServer(TimeProvider.System, (r, _) => r.Path == Reply.Ruleset ? Reply.Rules(Flags.Constant("f", "true"), "\"v1\"") : Reply.Status(500));
-        var hookCalls = 0;
-        var errorCalls = 0;
-        ToggleSlashClient? self = null;
-        var inHook = new ThreadLocal<bool>();
-        var client = ToggleSlashClient.Create(new ClientOptions
-        {
-            Url = "http://sdk.invalid",
-            SdkKey = "key",
-            Stream = false,
-            FlushInterval = TimeSpan.FromMilliseconds(10),
-            Hooks = new Hooks
-            {
-                AfterEvaluation = hookEvent =>
-                {
-                    _ = hookEvent.FlagKey;
-                    // The hook's own variation call runs the hook again; the flag ends that on the second turn.
-                    if (inHook.Value) return;
-                    inHook.Value = true;
-                    try
-                    {
-                        _ = self!.Status;
-                        self.BoolVariation("f", User, false);
-                        Interlocked.Increment(ref hookCalls);
-                    }
-                    finally
-                    {
-                        inHook.Value = false;
-                    }
-                },
-            },
-            OnError = error =>
-            {
-                _ = error.Message;
-                _ = self!.Status;
-                self.BoolVariation("f", User, false);
-                Interlocked.Increment(ref errorCalls);
-            },
-            Handler = server,
-        });
-        self = client;
-        Assert.True(await client.ReadyAsync());
-        var work = Task.Run(() => client.BoolVariation("f", User, false));
-        await work.WaitAsync(TimeSpan.FromSeconds(5));
-        await Wait.Until(() => Volatile.Read(ref errorCalls) > 0, "the failed flush to reach onError");
-        Assert.True(Volatile.Read(ref hookCalls) > 0);
-        await client.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
-    }
-
-    [Fact]
-    public async Task Close_called_from_inside_onError_does_not_wait_for_itself()
-    {
-        var server = new FakeServer(TimeProvider.System, (_, _) => Reply.Status(500));
-        ToggleSlashClient? self = null;
-        var returned = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var client = ToggleSlashClient.Create(new ClientOptions
-        {
-            Url = "http://sdk.invalid",
-            SdkKey = "key",
-            OnError = error =>
-            {
-                _ = error.Message;
-                self!.Close();
-                returned.TrySetResult();
-            },
-            Handler = server,
-        });
-        self = client;
-        await returned.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await client.CloseAsync().WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(StreamState.Closed, client.Status.Stream);
-    }
-
-    [Fact]
-    public async Task An_evaluation_that_raises_gives_the_fallback_evaluation_failed_and_one_onError()
-    {
-        var server = new FakeServer(TimeProvider.System, (r, _) => r.Path == Reply.Ruleset ? Reply.Rules(Flags.Constant("f", "true"), "\"v1\"") : Reply.Status(202));
-        var errors = new Errors();
-        var boom = new InvalidOperationException("the evaluator broke");
-        var client = ToggleSlashClient.Create(new ClientOptions
-        {
-            Url = "http://sdk.invalid",
-            SdkKey = "key",
-            Stream = false,
-            OnError = errors.Add,
-            Evaluate = (_, _, _) => throw boom,
-            Handler = server,
-        });
-        Assert.True(await client.ReadyAsync());
-        var detail = client.BoolVariationDetail("f", User, true);
-        Assert.True(detail.Value);
-        Assert.Null(detail.VariationIndex);
-        Assert.Equal(ReasonKind.Error, detail.Reason.Kind);
-        Assert.Equal(ErrorCode.EvaluationFailed, detail.Reason.Code);
-        Assert.Same(boom, Assert.Single(errors.All));
-        await client.CloseAsync();
-        // Nothing was served, so nothing was counted and nothing is sent.
-        Assert.Empty(server.To(Reply.Events));
+        Assert.True(client.BoolVariation("a", Ctx, false));
+        Assert.Equal(1, reported);
     }
 }

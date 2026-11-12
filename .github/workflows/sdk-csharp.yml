@@ -35,12 +35,11 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      # The toolchain step: the .NET SDK at the version sdks/csharp/mise.toml pins (global.json pins the same
-      # one). Limited to that one tool, so the root .tool-versions (a second .NET, a second Bun) is not installed.
-      - uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
+      # The toolchain step: the .NET SDK at the version sdks/csharp/global.json pins (10.0.404, the newest LTS),
+      # which is also what sdks/csharp/mise.toml names. setup-dotnet reads the one file, so the two cannot drift here.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          working_directory: sdks/csharp
-          install_args: dotnet
+          global-json-file: sdks/csharp/global.json
       - run: bun install --frozen-lockfile
       - run: sdks/csharp/bin/lint
       - run: sdks/csharp/bin/test

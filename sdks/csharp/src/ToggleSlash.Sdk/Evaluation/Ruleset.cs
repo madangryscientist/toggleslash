@@ -1,16 +1,16 @@
-using System.Globalization;
-using System.Text.Json;
+using ToggleSlash.Sdk.Json;
 
 namespace ToggleSlash.Sdk.Evaluation;
 
 /// <summary>
-/// One environment's flags and segments, validated and indexed once so each evaluation skips that work.
-/// <see cref="Load(JsonElement)"/> never throws: a bad flag becomes an <c>ERROR</c> result when it is
-/// evaluated. The ruleset copies what it needs, so it does not depend on the document it came from.
+/// One environment's flags and segments, validated and indexed once so each evaluation skips that work. <c>Load</c>
+/// never throws: a bad flag becomes an <c>ERROR</c> result when it is evaluated. The ruleset holds only immutable
+/// data, so it is shared between threads without a lock.
 /// </summary>
 internal sealed class Ruleset
 {
     private readonly Dictionary<string, FlagEntry> _flags;
+
     // A null segment is a malformed one.
     private readonly Dictionary<string, Segment?> _segments;
 
@@ -20,380 +20,105 @@ internal sealed class Ruleset
         _segments = segments;
     }
 
-    internal bool TryGetFlag(string key, out FlagEntry entry) => _flags.TryGetValue(key, out entry!);
+    /// <summary>An empty ruleset.</summary>
+    internal static Ruleset Empty { get; } = Load(JsonValue.Null);
 
-    /// <summary>The flag's version, or null when the ruleset has no such flag or the flag is malformed.</summary>
-    internal double? VersionOf(string key) =>
-        _flags.TryGetValue(key, out var entry) && entry is ReadyEntry ready ? ready.Flag.Version : null;
+    internal bool TryGetFlag(string key, out FlagEntry entry) => _flags.TryGetValue(key, out entry!);
 
     internal bool TryGetSegment(string key, out Segment? segment) => _segments.TryGetValue(key, out segment);
 
+    /// <summary>
+    /// The <c>version</c> of the flag when it is well formed enough to carry one: not for an unknown flag, one that is
+    /// malformed by shape, or one that refers to a missing or malformed segment. A flag that only sits in a
+    /// prerequisite cycle keeps its version.
+    /// </summary>
+    internal double? VersionOf(string key) =>
+        _flags.TryGetValue(key, out var entry) && entry is ReadyEntry ready ? ready.Flag.Version : null;
+
     /// <summary>Loads a ruleset from its JSON form. A root that is not an object is an empty ruleset.</summary>
-    public static Ruleset Load(JsonElement root)
+    internal static Ruleset Load(JsonValue root)
     {
-        JsonElement? rawFlags = null, rawSegments = null;
-        if (root.ValueKind == JsonValueKind.Object)
+        JsonValue? rawFlags = null, rawSegments = null;
+        if (root is JsonObject obj)
         {
-            rawFlags = Property(root, "flags");
-            rawSegments = Property(root, "segments");
+            rawFlags = Validation.Get(obj, "flags");
+            rawSegments = Validation.Get(obj, "segments");
         }
-        var segments = IndexByKey(rawSegments, item => Validation.ReadSegment(item));
+
+        var segments = IndexByKey(rawSegments, Validation.ReadSegment);
         var flags = IndexByKey(rawFlags, item => CompileFlag(item, segments));
         return new Ruleset(flags, segments);
     }
 
-    private static JsonElement? Property(JsonElement obj, string name) =>
-        obj.TryGetProperty(name, out var value) ? value : null;
-
     /// <summary>First entry per key wins, even when it is the malformed one; an entry with no string key is dropped.</summary>
-    private static Dictionary<string, T> IndexByKey<T>(JsonElement? items, Func<JsonElement, T> compile)
+    private static Dictionary<string, T> IndexByKey<T>(JsonValue? items, Func<JsonValue, T> compile)
     {
         var index = new Dictionary<string, T>(StringComparer.Ordinal);
-        if (items is not { ValueKind: JsonValueKind.Array } array) return index;
-        foreach (var item in array.EnumerateArray())
+        if (items is not JsonArray array)
         {
-            if (item.ValueKind != JsonValueKind.Object) continue;
-            if (!item.TryGetProperty("key", out var key) || key.ValueKind != JsonValueKind.String) continue;
-            var name = JsonStrings.Read(key);
-            if (!index.ContainsKey(name)) index[name] = compile(item);
+            return index;
         }
+
+        foreach (var item in array.Items)
+        {
+            if (item is not JsonObject obj || !obj.TryGetValue("key", out var key) || key is not JsonString name)
+            {
+                continue;
+            }
+
+            if (!index.ContainsKey(name.Value))
+            {
+                index[name.Value] = compile(item);
+            }
+        }
+
         return index;
     }
 
-    private static FlagEntry CompileFlag(JsonElement value, Dictionary<string, Segment?> segments)
+    private static FlagEntry CompileFlag(JsonValue value, Dictionary<string, Segment?> segments)
     {
         var header = Validation.ReadHeader(value);
-        if (header is null) return new MalformedEntry();
-        var flag = Validation.ReadBody(value, header);
-        if (flag is null) return new BrokenEntry(header, ErrorCode.MalformedFlag);
-        var problem = SegmentProblem(flag, segments);
-        return problem is { } code ? new BrokenEntry(header, code) : new ReadyEntry(flag);
+        if (header is null)
+        {
+            return new MalformedEntry();
+        }
+
+        var flag = Validation.ReadBody((JsonObject)value, header);
+        if (flag is null)
+        {
+            return new BrokenEntry(header, ErrorCode.MALFORMED_FLAG);
+        }
+
+        return SegmentProblem(flag, segments) is { } code ? new BrokenEntry(header, code) : new ReadyEntry(flag);
     }
 
     /// <summary>The first reference to a segment that is missing or malformed, in rule, clause, value order.</summary>
     private static ErrorCode? SegmentProblem(Flag flag, Dictionary<string, Segment?> segments)
     {
         foreach (var rule in flag.Rules)
+        {
             foreach (var clause in rule.Clauses)
             {
-                if (clause.Op != Op.SegmentMatch) continue;
+                if (clause.Op != Op.SegmentMatch)
+                {
+                    continue;
+                }
+
                 foreach (var key in clause.SegmentKeys)
                 {
-                    if (!segments.TryGetValue(key, out var segment)) return ErrorCode.SegmentNotFound;
-                    if (segment is null) return ErrorCode.MalformedSegment;
+                    if (!segments.TryGetValue(key, out var segment))
+                    {
+                        return ErrorCode.SEGMENT_NOT_FOUND;
+                    }
+
+                    if (segment is null)
+                    {
+                        return ErrorCode.MALFORMED_SEGMENT;
+                    }
                 }
             }
+        }
+
         return null;
-    }
-}
-
-/// <summary>The shape of a ruleset, checked at runtime because rulesets arrive as JSON. docs/evaluation.md is normative.</summary>
-internal static class Validation
-{
-    public static bool IsAbsent(JsonElement? value) => value is null or { ValueKind: JsonValueKind.Null or JsonValueKind.Undefined };
-
-    private static JsonElement? Get(JsonElement obj, string name) =>
-        obj.TryGetProperty(name, out var value) ? value : null;
-
-    /// <summary>JSON numbers are binary64; <c>1e999</c> overflows to Infinity rather than failing.</summary>
-    public static bool TryNumber(JsonElement value, out double number)
-    {
-        number = 0;
-        if (value.ValueKind != JsonValueKind.Number) return false;
-        if (value.TryGetDouble(out number)) return true;
-        number = double.Parse(value.GetRawText(), NumberStyles.Float, CultureInfo.InvariantCulture);
-        return true;
-    }
-
-    private static bool IsInteger(double number) => double.IsFinite(number) && number == Math.Floor(number);
-
-    private static bool TryCount(JsonElement? value, out double count)
-    {
-        count = 0;
-        return value is { } v && TryNumber(v, out count) && IsInteger(count) && count >= 0;
-    }
-
-    private static bool TryIndex(JsonElement? value, int variationCount, out int index)
-    {
-        index = 0;
-        if (!TryCount(value, out var count) || count >= variationCount) return false;
-        index = (int)count;
-        return true;
-    }
-
-    private static bool TryKey(JsonElement? value, out string key)
-    {
-        key = "";
-        if (value is not { ValueKind: JsonValueKind.String } v) return false;
-        key = JsonStrings.Read(v);
-        return key.Length > 0;
-    }
-
-    private static bool TryString(JsonElement? value, out string text)
-    {
-        text = "";
-        if (value is not { ValueKind: JsonValueKind.String } v) return false;
-        text = JsonStrings.Read(v);
-        return true;
-    }
-
-    private static bool TryNegate(JsonElement? value, out bool negate)
-    {
-        negate = false;
-        if (IsAbsent(value)) return true;
-        if (value!.Value.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return false;
-        negate = value.Value.ValueKind == JsonValueKind.True;
-        return true;
-    }
-
-    private static bool TryStrings(JsonElement? value, out List<string> strings)
-    {
-        strings = [];
-        if (value is not { ValueKind: JsonValueKind.Array } array) return false;
-        foreach (var item in array.EnumerateArray())
-        {
-            if (!TryString(item, out var text)) return false;
-            strings.Add(text);
-        }
-        return true;
-    }
-
-    private static bool TryClauseValue(JsonElement value, out ClauseValue clauseValue)
-    {
-        clauseValue = default;
-        switch (value.ValueKind)
-        {
-            case JsonValueKind.String:
-                clauseValue = new ClauseValue(ValueKind.String, JsonStrings.Read(value), 0, false);
-                return true;
-            case JsonValueKind.True or JsonValueKind.False:
-                clauseValue = new ClauseValue(ValueKind.Boolean, "", 0, value.ValueKind == JsonValueKind.True);
-                return true;
-            case JsonValueKind.Number when TryNumber(value, out var number) && double.IsFinite(number):
-                clauseValue = new ClauseValue(ValueKind.Number, "", number, false);
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    private static Op? AttributeOp(string? op) => op switch
-    {
-        "in" => Op.In,
-        "contains" => Op.Contains,
-        "startsWith" => Op.StartsWith,
-        "endsWith" => Op.EndsWith,
-        "lt" => Op.Lt,
-        "lte" => Op.Lte,
-        "gt" => Op.Gt,
-        "gte" => Op.Gte,
-        "semverEq" => Op.SemverEq,
-        "semverLt" => Op.SemverLt,
-        "semverLte" => Op.SemverLte,
-        "semverGt" => Op.SemverGt,
-        "semverGte" => Op.SemverGte,
-        "before" => Op.Before,
-        "after" => Op.After,
-        "matches" => Op.Matches,
-        _ => null,
-    };
-
-    private static string? OpName(JsonElement value) =>
-        value.TryGetProperty("op", out var op) && op.ValueKind == JsonValueKind.String ? JsonStrings.Read(op) : null;
-
-    /// <summary>An optional kind: absent is valid and null, anything but a valid kind is not.</summary>
-    private static bool TryOptionalKind(JsonElement? value, out string? kind)
-    {
-        kind = null;
-        if (IsAbsent(value)) return true;
-        if (!TryString(value, out var text) || !ContextKinds.IsKind(text)) return false;
-        kind = text;
-        return true;
-    }
-
-    private static Clause? ReadAttributeClause(JsonElement value)
-    {
-        if (value.ValueKind != JsonValueKind.Object || AttributeOp(OpName(value)) is not { } op) return null;
-        if (!TryOptionalKind(Get(value, "contextKind"), out var contextKind)) return null;
-        if (!TryKey(Get(value, "attribute"), out var attribute)) return null;
-        if (attribute.StartsWith('/') && AttributeReference.Parse(attribute) is null) return null;
-        if (!TryNegate(Get(value, "negate"), out var negate)) return null;
-        if (Get(value, "values") is not { ValueKind: JsonValueKind.Array } values) return null;
-        var parsed = new List<ClauseValue>();
-        foreach (var item in values.EnumerateArray())
-        {
-            if (!TryClauseValue(item, out var clauseValue)) return null;
-            parsed.Add(clauseValue);
-        }
-        return new Clause(op, attribute, parsed, [], negate, contextKind);
-    }
-
-    private static Clause? ReadSegmentClause(JsonElement value)
-    {
-        if (value.ValueKind != JsonValueKind.Object || OpName(value) != "segmentMatch") return null;
-        if (!TryNegate(Get(value, "negate"), out var negate)) return null;
-        if (!TryStrings(Get(value, "values"), out var keys)) return null;
-        return new Clause(Op.SegmentMatch, "", [], keys, negate);
-    }
-
-    private static List<T>? ReadAll<T>(JsonElement? value, Func<JsonElement, T?> read) where T : class
-    {
-        if (value is not { ValueKind: JsonValueKind.Array } array) return null;
-        var items = new List<T>();
-        foreach (var item in array.EnumerateArray())
-        {
-            if (read(item) is not { } parsed) return null;
-            items.Add(parsed);
-        }
-        return items;
-    }
-
-    private static bool TryRollout(JsonElement? value, int variationCount, out List<WeightedVariation> rollout, out string? kind)
-    {
-        rollout = [];
-        kind = null;
-        if (value is not { ValueKind: JsonValueKind.Object } obj) return false;
-        if (!TryOptionalKind(Get(obj, "contextKind"), out kind)) return false;
-        if (Get(obj, "variations") is not { ValueKind: JsonValueKind.Array } variations || variations.GetArrayLength() == 0) return false;
-        double total = 0;
-        foreach (var item in variations.EnumerateArray())
-        {
-            if (item.ValueKind != JsonValueKind.Object) return false;
-            if (!TryIndex(Get(item, "variation"), variationCount, out var index)) return false;
-            if (!TryCount(Get(item, "weight"), out var weight) || weight > Bucketing.BucketCount) return false;
-            rollout.Add(new WeightedVariation(index, weight));
-            total += weight;
-        }
-        return total == Bucketing.BucketCount;
-    }
-
-    /// <summary>Exactly one of <c>variation</c> or <c>rollout</c>.</summary>
-    private static Serve? ReadServe(JsonElement value, int variationCount)
-    {
-        if (value.ValueKind != JsonValueKind.Object) return null;
-        var variation = Get(value, "variation");
-        var rollout = Get(value, "rollout");
-        if (IsAbsent(rollout))
-        {
-            return TryIndex(variation, variationCount, out var index) ? new Serve(index, null) : null;
-        }
-        return IsAbsent(variation) && TryRollout(rollout, variationCount, out var weighted, out var kind) ? new Serve(null, weighted, kind) : null;
-    }
-
-    private static Rule? ReadRule(JsonElement value, int variationCount)
-    {
-        if (value.ValueKind != JsonValueKind.Object) return null;
-        var clauses = ReadAll(Get(value, "clauses"), clause => ReadAttributeClause(clause) ?? ReadSegmentClause(clause));
-        if (clauses is null || ReadServe(value, variationCount) is not { } serve) return null;
-        return new Rule(clauses, serve);
-    }
-
-    /// <summary>What serving the off variation needs: key, on, variations and offVariation.</summary>
-    public static FlagHeader? ReadHeader(JsonElement value)
-    {
-        if (value.ValueKind != JsonValueKind.Object) return null;
-        var on = Get(value, "on");
-        if (on is not { ValueKind: JsonValueKind.True or JsonValueKind.False }) return null;
-        if (!TryKey(Get(value, "key"), out var key)) return null;
-        if (Get(value, "variations") is not { ValueKind: JsonValueKind.Array } variations || variations.GetArrayLength() == 0) return null;
-        var values = variations.EnumerateArray().Select(item => item.Clone()).ToList();
-        var offVariation = Get(value, "offVariation");
-        int? off = null;
-        if (!IsAbsent(offVariation))
-        {
-            if (!TryIndex(offVariation, values.Count, out var index)) return null;
-            off = index;
-        }
-        return new FlagHeader(key, on.Value.ValueKind == JsonValueKind.True, values, off);
-    }
-
-    /// <summary>The rest of the flag, or null when anything in it is invalid.</summary>
-    public static Flag? ReadBody(JsonElement value, FlagHeader header)
-    {
-        var count = header.Variations.Count;
-        if (!TryString(Get(value, "salt"), out var salt)) return null;
-        if (!TryCount(Get(value, "version"), out var version)) return null;
-
-        var targets = new Dictionary<string, Dictionary<string, TargetHit>>(StringComparer.Ordinal);
-        var rawTargets = ReadAll(Get(value, "targets"), item => ReadTarget(item, count));
-        if (rawTargets is null) return null;
-        for (var order = 0; order < rawTargets.Count; order++)
-        {
-            var target = rawTargets[order];
-            if (!targets.TryGetValue(target.Kind, out var keys)) targets[target.Kind] = keys = new(StringComparer.Ordinal);
-            foreach (var contextKey in target.ContextKeys) keys.TryAdd(contextKey, new TargetHit(order, target.Variation));
-        }
-
-        var prerequisites = ReadAll(Get(value, "prerequisites"), ReadPrerequisite);
-        var rules = ReadAll(Get(value, "rules"), item => ReadRule(item, count));
-        if (prerequisites is null || rules is null) return null;
-        var fallthrough = Get(value, "fallthrough") is { } raw ? ReadServe(raw, count) : null;
-        return fallthrough is null ? null : new Flag(header, salt, targets, prerequisites, rules, fallthrough, version);
-    }
-
-    private static Target? ReadTarget(JsonElement value, int variationCount)
-    {
-        if (value.ValueKind != JsonValueKind.Object) return null;
-        if (!TryIndex(Get(value, "variation"), variationCount, out var variation)) return null;
-        if (!TryOptionalKind(Get(value, "contextKind"), out var kind)) return null;
-        return TryStrings(Get(value, "contextKeys"), out var keys) ? new Target(variation, keys, kind ?? ContextKinds.Default) : null;
-    }
-
-    private static Prerequisite? ReadPrerequisite(JsonElement value)
-    {
-        if (value.ValueKind != JsonValueKind.Object) return null;
-        if (!TryKey(Get(value, "flagKey"), out var flagKey) || !TryCount(Get(value, "variation"), out var variation)) return null;
-        return new Prerequisite(flagKey, variation);
-    }
-
-    private static SegmentRule? ReadSegmentRule(JsonElement value)
-    {
-        if (value.ValueKind != JsonValueKind.Object) return null;
-        var weight = Get(value, "weight");
-        double? parsedWeight = null;
-        if (!IsAbsent(weight))
-        {
-            if (!TryCount(weight, out var count) || count > Bucketing.BucketCount) return null;
-            parsedWeight = count;
-        }
-        if (!TryOptionalKind(Get(value, "rolloutContextKind"), out var rolloutKind)) return null;
-        var clauses = ReadAll(Get(value, "clauses"), ReadAttributeClause);
-        return clauses is null ? null : new SegmentRule(clauses, parsedWeight, rolloutKind);
-    }
-
-    /// <summary>
-    /// Keys by kind: <paramref name="userKeys"/> under <c>user</c>, merged with an optional array of
-    /// <c>{ contextKind, values }</c>. Null when the array is present and malformed.
-    /// </summary>
-    private static Dictionary<string, HashSet<string>>? ReadKeysByKind(List<string> userKeys, JsonElement? lists)
-    {
-        var index = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal)
-        {
-            [ContextKinds.Default] = userKeys.ToHashSet(StringComparer.Ordinal),
-        };
-        if (IsAbsent(lists)) return index;
-        if (lists is not { ValueKind: JsonValueKind.Array } array) return null;
-        foreach (var item in array.EnumerateArray())
-        {
-            if (item.ValueKind != JsonValueKind.Object) return null;
-            if (!TryString(Get(item, "contextKind"), out var kind) || !ContextKinds.IsKind(kind)) return null;
-            if (!TryStrings(Get(item, "values"), out var values)) return null;
-            if (!index.TryGetValue(kind, out var keys)) index[kind] = keys = new(StringComparer.Ordinal);
-            keys.UnionWith(values);
-        }
-        return index;
-    }
-
-    /// <summary>A segment, or null when it is malformed.</summary>
-    public static Segment? ReadSegment(JsonElement value)
-    {
-        if (value.ValueKind != JsonValueKind.Object) return null;
-        if (!TryKey(Get(value, "key"), out var key) || !TryString(Get(value, "salt"), out var salt)) return null;
-        if (!TryStrings(Get(value, "included"), out var included) || !TryStrings(Get(value, "excluded"), out var excluded)) return null;
-        var includedByKind = ReadKeysByKind(included, Get(value, "includedContexts"));
-        var excludedByKind = ReadKeysByKind(excluded, Get(value, "excludedContexts"));
-        if (includedByKind is null || excludedByKind is null) return null;
-        var rules = ReadAll(Get(value, "rules"), ReadSegmentRule);
-        return rules is null ? null : new Segment(key, salt, includedByKind, excludedByKind, rules);
     }
 }

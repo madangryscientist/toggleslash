@@ -1,3 +1,7 @@
+# Style and analyzer rules for `dotnet format` and the compiler (bin/lint). The rule set is the .NET analyzers at
+# AnalysisMode Recommended (Directory.Build.props) with code style enforced in the build (EnforceCodeStyleInBuild),
+# plus the style rules below. Every rule set to none has its reason beside it. Build warnings are errors
+# (Directory.Build.props), so a rule left on is enforced.
 root = true
 
 [*]
@@ -8,17 +12,70 @@ indent_style = space
 indent_size = 4
 trim_trailing_whitespace = true
 
-[*.{csproj,props,slnx,xml,json,toml,yml,yaml}]
+[*.{csproj,props,slnx,json,yml,yaml,toml}]
 indent_size = 2
 
 [*.cs]
 csharp_style_namespace_declarations = file_scoped:warning
+dotnet_style_qualification_for_field = false:warning
 dotnet_sort_system_directives_first = true
-dotnet_style_qualification_for_field = false:suggestion
-csharp_style_var_for_built_in_types = true:suggestion
-csharp_style_var_when_type_is_apparent = true:suggestion
-csharp_style_var_elsewhere = true:suggestion
-# The public API keeps the contract's names; the evaluator copies keep their comments.
+csharp_new_line_before_open_brace = all
+
+# CA1707: the contract's closed sets keep their wire spelling (ReasonKind.RULE_MATCH, ErrorCode.TYPE_MISMATCH), so a
+# caller reads the same word in every language and in the logs. The names are fixed by the contract.
 dotnet_diagnostic.CA1707.severity = none
-# Library code: no synchronization context to configure.
+
+# CA1716 and CA1720 would rename members whose names the contract fixes (a `Stream` option, the `Int` accessor family).
+dotnet_diagnostic.CA1716.severity = none
+dotnet_diagnostic.CA1720.severity = none
+
+# CA1711: the contract's `Stream` states are spelled `off`, `connecting`, ...; the enum is named StreamState and a
+# suffix rule on type names adds nothing here.
+dotnet_diagnostic.CA1711.severity = none
+
+# CA1032, CA1064: ToggleSlashException exists only to hand OnError a message and a code; it is built by the SDK, never
+# thrown at a caller, so the full exception constructor set and the public-visibility rule add nothing.
+dotnet_diagnostic.CA1032.severity = none
+dotnet_diagnostic.CA1064.severity = none
+
+# CA1031: catching Exception is the point. The contract says the SDK never throws at a caller, and a callback the
+# caller supplied may throw anything; every such catch is at a documented boundary.
+dotnet_diagnostic.CA1031.severity = none
+
+# CA2007: the SDK is a library with no synchronisation context of its own, and ConfigureAwait(false) on every await
+# is noise; the code that blocks (Ready(), Close()) does so on a thread-pool task, never a context.
 dotnet_diagnostic.CA2007.severity = none
+
+# CA1848, CA1873: the SDK logs nothing (privacy, contract section 12), so there is no logger call to optimise.
+dotnet_diagnostic.CA1848.severity = none
+dotnet_diagnostic.CA1873.severity = none
+
+# CA1062: parameters are nullable-annotated and the compiler checks them; a caller passing null is answered, not thrown at.
+dotnet_diagnostic.CA1062.severity = none
+
+# CA1305, CA1307, CA1309, CA1310, CA1304: the SDK sets InvariantGlobalization and uses ordinal comparison and the
+# invariant culture by hand wherever text is compared or formatted; the rules would add arguments the code already passes.
+dotnet_diagnostic.CA1305.severity = suggestion
+dotnet_diagnostic.CA1307.severity = suggestion
+dotnet_diagnostic.CA1310.severity = suggestion
+
+# CA1819, CA1002, CA1024, CA1051, CA1815: shape rules for general-purpose public API; the public surface here is small
+# and fixed by DESIGN.md (records for results, a sealed options class).
+dotnet_diagnostic.CA1819.severity = none
+dotnet_diagnostic.CA1002.severity = none
+dotnet_diagnostic.CA1024.severity = none
+dotnet_diagnostic.CA1815.severity = none
+
+[tests/**.cs]
+# The tests are not the product: public-API and disposal-shape rules add noise, and a test may block on a task.
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA1861.severity = none
+dotnet_diagnostic.CA2000.severity = none
+dotnet_diagnostic.CA1816.severity = none
+dotnet_diagnostic.CA1852.severity = none
+dotnet_diagnostic.CA1822.severity = none
+dotnet_diagnostic.CA2201.severity = none
+dotnet_diagnostic.CA5394.severity = none
+dotnet_diagnostic.CA5359.severity = none
+dotnet_diagnostic.CA5400.severity = none
+dotnet_diagnostic.CA1812.severity = none

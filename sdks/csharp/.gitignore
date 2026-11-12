@@ -1,5 +1,10 @@
-# dotnet build and test output (UseArtifactsOutput in Directory.Build.props)
+# Build output (UseArtifactsOutput puts all of it here) and the per-project intermediates.
 artifacts/
-TestResults/
+bin/*
+!bin/lint
+!bin/test
+!bin/test-service
+obj/
 *.user
 .vs/
+TestResults/

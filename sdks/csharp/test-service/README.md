@@ -1,37 +1,33 @@
 # The C# SDK's test service
 
-`Program.cs` wraps the SDK in the protocol of [`docs/sdk-test-service.md`](../../../docs/sdk-test-service.md), so
-the conformance harness can drive the SDK from outside. It is an ASP.NET Core (Kestrel) app on `127.0.0.1` and a
-port the OS picks, with one request delegate and no routing library. It prints `listening http://127.0.0.1:<port>`
-and flushes stdout, then serves concurrently (Kestrel's thread pool).
+`Program.cs` wraps `ToggleSlashClient` in the protocol of [`docs/sdk-test-service.md`](../../../docs/sdk-test-service.md),
+so the conformance harness can drive the SDK from outside. It is a `Microsoft.NET.Sdk.Web` project (Kestrel from the
+shared framework, no package) and one more project in `ToggleSlash.Sdk.slnx`; `bin/test` builds it last, and
+`bin/test-service` runs the built output (and builds it only if it is missing):
 
-```bash
-sdks/csharp/bin/test    # builds everything, the test service included, last
+```sh
 bun run conformance -- --service sdks/csharp/bin/test-service
 ```
 
-**Where it lives.** `test-service/ToggleSlash.Sdk.TestService.csproj` is a project of
-`ToggleSlash.Sdk.slnx`, next to the SDK, its tests and `tests/NeverClosed`. `bin/test` builds the solution
-and then this project last, so `bin/test-service` runs the output `bin/test` left
-(`artifacts/bin/ToggleSlash.Sdk.TestService/debug/ToggleSlash.Sdk.TestService.dll`) and builds only when it is
-missing, because the harness waits 30 s for the `listening` line.
-
-It advertises `integer-accessor`: C# has `long` next to `double`, so the `int` accessor is real.
+It listens on a port the OS picks on `127.0.0.1` and prints `listening http://127.0.0.1:<port>`. It advertises the
+capability `integer-accessor`: `IntVariation` returns a `long`, and a fractional or out-of-int64 value is
+`TYPE_MISMATCH`.
 
 | Protocol | C# SDK |
 | --- | --- |
-| `POST /clients` | `ToggleSlashClient.Create(new ClientOptions { ... })`; `stream`, `pollIntervalMs`, `flushIntervalMs` and `requestTimeoutMs` become `Stream`, `PollInterval`, `FlushInterval` and `RequestTimeout` (`TimeSpan`); `OnError` always records the exception's message, and throws after recording when `onErrorThrows` is set |
-| `ready` | `await client.ReadyAsync()` |
-| `evaluate`, accessor `bool` | `client.BoolVariationDetail(key, context, fallback)` |
-| `evaluate`, accessor `string` | `client.StringVariationDetail(key, context, fallback)` |
-| `evaluate`, accessor `number` | `client.DoubleVariationDetail(key, context, fallback)` |
-| `evaluate`, accessor `int` | `client.IntVariationDetail(key, context, fallback)`, the JSON fallback number taken as a `long` |
-| `evaluate`, accessors `json` and `any` | `client.JsonVariationDetail(key, context, fallback)`, the fallback passed through as the JSON value it arrived as |
-| `status` | `client.Status`, written as the four keys of the protocol (`LastSyncAt` as epoch milliseconds) |
-| `hook-events` | the `EvaluationEvent`s `Hooks.AfterEvaluation` received (installed when `hook` or `hookThrows` is set; `hookThrows` throws after recording) |
-| `errors` | what `ClientOptions.OnError` received, each as its message |
-| `close` | `await client.CloseAsync()` |
+| `POST /clients` | `ToggleSlashClient.Create(options)`; `pollIntervalMs`, `flushIntervalMs`, `requestTimeoutMs` and `stream` pass through as `TimeSpan?` and `bool?`; `onError` always records, and `onErrorThrows` makes it throw after recording |
+| `ready` | `client.ReadyAsync()` |
+| `evaluate`, accessor `bool` | `BoolVariationDetail(flagKey, context, fallback)` |
+| `evaluate`, accessor `string` | `StringVariationDetail(flagKey, context, fallback)` |
+| `evaluate`, accessor `number` | `FloatVariationDetail(flagKey, context, fallback)` (a `double`) |
+| `evaluate`, accessor `int` | `IntVariationDetail(flagKey, context, fallback)` (a `long`, written back through a `double`, so a value past 2^53 is not exact on the wire, which the protocol allows) |
+| `evaluate`, accessor `json` | `JsonVariationDetail(flagKey, context, fallback)` with the fallback as the `JsonValue` the SDK's own parser read |
+| `evaluate`, accessor `any` | `JsonVariationDetail(...)`: a `null` fallback accepts any served kind, so it returns whatever the flag serves |
+| `status` | `client.Status()`; `lastSyncAt` is epoch milliseconds or `null` |
+| `hook-events` | the `EvaluationEvent`s `AfterEvaluation` received, as the SDK built them; `hookThrows` makes the hook throw after recording |
+| `errors` | what `OnError` received, each as its message |
+| `close` | `client.CloseAsync()` |
 
-The context goes in as raw JSON (`Context.FromElement`), valid or not: an invalid one is a case the SDK answers
-with `ERROR INVALID_CONTEXT`. A call that fails or throws answers 500 with its text (the one `try` is in the request
-delegate, only to send that 500), and the harness fails the scenario. A client stays answerable after `close`.
+The context is handed to the SDK as the `JsonValue` its parser made from the request body, so a lone surrogate or
+`1e999` reaches the evaluator as it was sent. The service catches nothing the SDK throws: a call that raises answers
+500 with the exception text. It creates no `TaskCompletionSource` of its own; the SDK's every one uses `TaskCreationOptions.RunContinuationsAsynchronously`, because `Close()` from a continuation that ran inline would deadlock.

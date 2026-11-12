@@ -1,186 +1,168 @@
 using System.Globalization;
-using System.Net;
-using System.Net.Http.Headers;
-using System.Text.Json;
+using System.Text;
+using ToggleSlash.Sdk.Json;
 
 namespace ToggleSlash.Sdk;
 
-/// <summary>One line of <c>POST /sdk/v1/events</c>: counts only, never a context or anything about an end user.</summary>
-internal readonly record struct UsageEntry(string Flag, int VariationIndex, long Count, string Day);
-
-/// <summary>
-/// Counts how often each flag variation was served, per UTC day, and sends the totals in batches. Recording
-/// is a dictionary add under a lock that is never held across I/O, so it is safe on a request path. A batch
-/// that fails for a reason that can pass (the server is down or busy) is put back; one the server refused is
-/// dropped, since it would be refused again. After a 429 with a <c>Retry-After</c>, nothing is sent until
-/// that has passed.
-/// </summary>
-internal sealed class UsageReporter(
-    string baseUrl,
-    string sdkKey,
-    HttpClient http,
-    TimeProvider time,
-    TimeSpan requestTimeout,
-    Action<Exception> onError) : IDisposable
+public sealed partial class ToggleSlashClient
 {
-    /// <summary>
-    /// The server accepts 1000 events and 128 KiB a request; an entry is at most about 140 bytes, so 500
-    /// stay under both.
-    /// </summary>
-    internal const int MaxBatch = 500;
+    private const int MaxEntriesPerRequest = 500;
 
-    private readonly Lock _gate = new();
-    private readonly SemaphoreSlim _flushing = new(1, 1);
-    private Dictionary<(string Flag, int Index, string Day), long> _pending = [];
+    private readonly object _usageLock = new();
+    private readonly SemaphoreSlim _flushGate = new(1, 1);
+    private Dictionary<(string Flag, int Index, string Day), long> _counts = [];
 
-    // The server's 429 asked for nothing to reach it before this time. Read and written under _flushing.
-    private DateTimeOffset _retryAt = DateTimeOffset.MinValue;
+    // The Retry-After hold of the usage reports (separate from the ruleset's).
+    private long _usageHoldTicks;
 
-    public void Dispose() => _flushing.Dispose();
+    /// <summary>When the usage hold ends (a test reads it to see the cap).</summary>
+    internal DateTimeOffset UsageHoldUntil => new(Interlocked.Read(ref _usageHoldTicks), TimeSpan.Zero);
 
-    public void Record(string flag, int variationIndex)
+    /// <summary>Counts one served evaluation: an in-memory add under a lock that is never held across the network.</summary>
+    private void Record(string flagKey, int index)
     {
-        var day = time.GetUtcNow().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        // JSON text cannot hold a lone surrogate, and one entry the body cannot be written for would be kept
-        // and fail for ever, taking every later entry with it.
-        flag = WellFormed(flag);
-        Add(new UsageEntry(flag, variationIndex, 1, day));
-    }
-
-    private static string WellFormed(string text)
-    {
-        for (var i = 0; i < text.Length; i++)
+        var key = (flagKey, index, Day(_time.GetUtcNow()));
+        lock (_usageLock)
         {
-            if (char.IsHighSurrogate(text[i]) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1])) i++;
-            else if (char.IsSurrogate(text[i])) return string.Concat(text.EnumerateRunes().Select(r => r.ToString()));
-        }
-        return text;
-    }
+            if (_closing)
+            {
+                return;
+            }
 
-    private void Add(UsageEntry entry)
-    {
-        var key = (entry.Flag, entry.VariationIndex, entry.Day);
-        lock (_gate)
-        {
-            _pending[key] = _pending.GetValueOrDefault(key) + entry.Count;
+            _counts[key] = _counts.GetValueOrDefault(key) + 1;
         }
     }
 
-    internal int PendingCount
+    private Dictionary<(string Flag, int Index, string Day), long> TakeCounts()
     {
-        get
+        lock (_usageLock)
         {
-            lock (_gate) return _pending.Count;
+            var taken = _counts;
+            _counts = [];
+            return taken;
         }
     }
 
-    private bool Holding() => time.GetUtcNow() < _retryAt;
-
-    /// <summary>Sends what is pending. It never throws; a call during a send waits for that send first.</summary>
-    public async Task FlushAsync()
+    private void Merge(IEnumerable<KeyValuePair<(string Flag, int Index, string Day), long>> kept)
     {
-        await _flushing.WaitAsync().ConfigureAwait(false);
+        lock (_usageLock)
+        {
+            foreach (var (key, count) in kept)
+            {
+                _counts[key] = _counts.GetValueOrDefault(key) + count;
+            }
+        }
+    }
+
+    private bool UsageHeld() => Interlocked.Read(ref _usageHoldTicks) > _time.GetUtcNow().UtcTicks;
+
+    private async Task FlushLoopAsync()
+    {
+        var stop = _flushStop.Token;
         try
         {
-            await SendAsync().ConfigureAwait(false);
+            while (await DelayAsync(_flushInterval, stop).ConfigureAwait(false))
+            {
+                await FlushAsync(final: false).ConfigureAwait(false);
+            }
         }
-        catch (Exception error)
+        catch (OperationCanceledException)
         {
-            onError(error);
+            // close stopped the loop.
+        }
+        catch (Exception e)
+        {
+            if (!_closing)
+            {
+                ReportError(e);
+            }
+        }
+    }
+
+    private Task FinalFlushAsync() => FlushAsync(final: true);
+
+    /// <summary>Flushes the pending counts (9). Flushes are serial. The final one does not wait out a hold.</summary>
+    internal async Task FlushAsync(bool final)
+    {
+        await _flushGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (UsageHeld())
+            {
+                if (final)
+                {
+                    var lost = TakeCounts().Count;
+                    if (lost > 0)
+                    {
+                        ReportError(new ToggleSlashException(
+                            "closed with " + lost.ToString(CultureInfo.InvariantCulture) + " usage counts unsent: the server asked to wait",
+                            "usage_unsent"));
+                    }
+                }
+
+                return;
+            }
+
+            var pending = TakeCounts();
+            if (pending.Count == 0)
+            {
+                return;
+            }
+
+            var entries = pending.ToArray();
+            for (var start = 0; start < entries.Length; start += MaxEntriesPerRequest)
+            {
+                var chunk = entries.AsMemory(start, Math.Min(MaxEntriesPerRequest, entries.Length - start));
+                var result = await _transport.PostEventsAsync(Body(chunk.Span)).ConfigureAwait(false);
+                if (result.Outcome == EventsOutcome.Sent)
+                {
+                    continue;
+                }
+
+                if (result.RetryAfter is { } wait)
+                {
+                    Lengthen(ref _usageHoldTicks, _time.GetUtcNow() + wait);
+                }
+
+                var code = result.Error!;
+                if (result.Outcome == EventsOutcome.Keep)
+                {
+                    // This request's entries and the untried rest go back; the flush stops.
+                    Merge(entries.Skip(start));
+                    ReportError(new ToggleSlashException("the usage request failed: " + code, code));
+                    return;
+                }
+
+                ReportError(new ToggleSlashException("the usage request failed: " + code, code));
+            }
         }
         finally
         {
-            _flushing.Release();
+            _flushGate.Release();
         }
     }
 
-    /// <summary>
-    /// The last flush, on closing. It will not wait out a <c>Retry-After</c>, and it will not ignore one, so
-    /// counts still held back then are lost, and that is reported.
-    /// </summary>
-    public async Task FinishAsync()
+    /// <summary>The events body, written by hand so the four fields are exactly those and nothing else.</summary>
+    private static string Body(ReadOnlySpan<KeyValuePair<(string Flag, int Index, string Day), long>> entries)
     {
-        await FlushAsync().ConfigureAwait(false);
-        await _flushing.WaitAsync().ConfigureAwait(false);
-        int unsent;
-        try
+        var text = new StringBuilder("{\"events\":[");
+        for (var i = 0; i < entries.Length; i++)
         {
-            unsent = Holding() ? PendingCount : 0;
-        }
-        finally
-        {
-            _flushing.Release();
-        }
-        if (unsent > 0) onError(new InvalidOperationException($"closed with {unsent} usage counts unsent: the server asked to wait"));
-    }
-
-    private async Task SendAsync()
-    {
-        if (Holding()) return;
-        List<UsageEntry> entries;
-        lock (_gate)
-        {
-            entries = [.. _pending.Select(p => new UsageEntry(p.Key.Flag, p.Key.Index, p.Value, p.Key.Day))];
-            _pending = [];
-        }
-        for (var start = 0; start < entries.Count; start += MaxBatch)
-        {
-            var batch = entries.GetRange(start, Math.Min(MaxBatch, entries.Count - start));
-            if (await PostAsync(batch).ConfigureAwait(false)) continue;
-            foreach (var entry in entries.Skip(start)) Add(entry);
-            return;
-        }
-    }
-
-    /// <summary>What to do with a batch the server did not take: try it again later, or give up on it.</summary>
-    private static bool Retryable(int status) => status >= 500 || status is 408 or 429;
-
-    /// <summary>False when the batch should be kept for another try.</summary>
-    private async Task<bool> PostAsync(List<UsageEntry> batch)
-    {
-        using var deadline = new Deadline(requestTimeout, time, CancellationToken.None);
-        try
-        {
-            using var request = Http.Request(HttpMethod.Post, baseUrl + "/sdk/v1/events", sdkKey, "application/json");
-            request.Content = new ByteArrayContent(Body(batch));
-            request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
-            var status = (int)response.StatusCode;
-            if (status is >= 200 and < 300) return true;
-            if (Http.RetryAfter(response) is { } wait)
+            var ((flag, index, day), count) = entries[i];
+            if (i > 0)
             {
-                var until = time.GetUtcNow() + wait;
-                if (until > _retryAt) _retryAt = until;
+                text.Append(',');
             }
-            onError(new HttpStatusException((HttpStatusCode)status, $"POST /sdk/v1/events answered {status}"));
-            return !Retryable(status);
-        }
-        catch (Exception error)
-        {
-            onError(deadline.TimedOut ? new TimeoutException("POST /sdk/v1/events did not answer in time", error) : error);
-            return false;
-        }
-    }
 
-    private static byte[] Body(List<UsageEntry> batch)
-    {
-        using var stream = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(stream))
-        {
-            writer.WriteStartObject();
-            writer.WriteStartArray("events");
-            foreach (var entry in batch)
-            {
-                writer.WriteStartObject();
-                writer.WriteString("flag", entry.Flag);
-                writer.WriteNumber("variationIndex", entry.VariationIndex);
-                writer.WriteNumber("count", entry.Count);
-                writer.WriteString("day", entry.Day);
-                writer.WriteEndObject();
-            }
-            writer.WriteEndArray();
-            writer.WriteEndObject();
+            text.Append("{\"flag\":");
+            JsonValue.WriteString(text, flag);
+            text.Append(",\"variationIndex\":").Append(index.ToString(CultureInfo.InvariantCulture));
+            text.Append(",\"count\":").Append(count.ToString(CultureInfo.InvariantCulture));
+            text.Append(",\"day\":");
+            JsonValue.WriteString(text, day);
+            text.Append('}');
         }
-        return stream.ToArray();
+
+        return text.Append("]}").ToString();
     }
 }

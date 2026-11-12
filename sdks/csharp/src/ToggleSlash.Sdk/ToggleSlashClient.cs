@@ -1,376 +1,455 @@
-using System.Text.Json;
-using Eval = ToggleSlash.Sdk.Evaluation;
+using ToggleSlash.Sdk.Evaluation;
+using ToggleSlash.Sdk.Json;
 
 namespace ToggleSlash.Sdk;
 
-/// <summary>
-/// A ToggleSlash server SDK client. It keeps a ruleset current in the background, evaluates flags locally, and
-/// reports usage counts. Nothing it does throws at the caller; every failure goes to
-/// <see cref="ClientOptions.OnError"/>. A client that is never closed does not keep the process alive.
-/// </summary>
-public sealed class ToggleSlashClient : IDisposable, IAsyncDisposable
-{
-    // Set inside the SDK's own loops and shutdown, so a Close called from a callback there does not wait for itself.
-    private static readonly AsyncLocal<bool> InsideSdk = new();
+/// <summary>Everything a reader needs, as one immutable value: it is swapped whole, so a reader never sees a mix.</summary>
+internal sealed record ClientState(Ruleset? Ruleset, string? Etag, DateTimeOffset? LastSyncAt, StreamState Stream, string? LastError);
 
-    private readonly StateHolder _state;
-    private readonly UsageReporter? _usage;
-    private readonly HttpClient? _http;
-    private readonly TimeProvider _time;
-    private readonly Action<Exception>? _onError;
+/// <summary>
+/// The ToggleSlash server SDK client (contract <c>docs/sdk-contract.md</c>). <see cref="Create"/> starts two background
+/// tasks, one that follows the server and one that sends usage counts; nothing here throws at a caller, and
+/// <c>variation</c>, <c>status</c> never do I/O or wait. Call <see cref="Close"/> (or dispose) to flush the counts.
+/// </summary>
+public sealed partial class ToggleSlashClient : IDisposable, IAsyncDisposable
+{
+    private static readonly TimeSpan DefaultInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan DefaultWatchdog = TimeSpan.FromSeconds(60);
+
+    // True while this execution context is inside an OnError call, which runs on the SDK's own thread (or the caller's).
+    // Close() and Ready() called there must not wait for the work that is calling them.
+    private static readonly AsyncLocal<bool> InCallback = new();
+
     private readonly Action<EvaluationEvent>? _afterEvaluation;
-    private readonly Func<Eval.Ruleset, string, JsonElement, Eval.EvaluationResult> _evaluate;
-    private readonly CancellationTokenSource _lifetime = new();
+    private readonly Func<EvaluationEvent, Task>? _afterEvaluationAsync;
+    private readonly Action<Exception>? _onError;
+    private readonly Func<Ruleset, string, JsonValue?, EvaluationResult> _evaluate;
+    private readonly TimeProvider _time;
+    private readonly Func<double> _jitter;
+    private readonly bool _stream;
+    private readonly TimeSpan _pollInterval;
+    private readonly TimeSpan _flushInterval;
+    private readonly TimeSpan _watchdog;
+    private readonly Transport _transport;
+    private readonly CancellationTokenSource _stop = new();
+    private readonly CancellationTokenSource _flushStop = new();
     private readonly TaskCompletionSource<bool> _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly Lazy<Task> _shutdown;
-    private readonly Task _syncLoop;
-    private readonly Task _flushLoop;
+
+    private ClientState _state;
     private volatile bool _closing;
+    private Task? _closeTask;
+    private Task _syncTask = Task.CompletedTask;
+    private Task _flushTask = Task.CompletedTask;
 
     private ToggleSlashClient(ClientOptions options)
     {
-        _time = options.Time ?? TimeProvider.System;
+        _afterEvaluation = options.AfterEvaluation;
+        _afterEvaluationAsync = options.AfterEvaluationAsync;
         _onError = options.OnError;
-        _afterEvaluation = options.Hooks?.AfterEvaluation;
-        _evaluate = options.Evaluate ?? Eval.Evaluator.Evaluate;
-        _shutdown = new Lazy<Task>(() => Task.Run(ShutDownAsync), LazyThreadSafetyMode.ExecutionAndPublication);
-
-        var stream = options.Stream;
-        _state = new StateHolder(new SyncState(null, null, null, stream ? StreamState.Connecting : StreamState.Off, null));
-        var problem = Problem(options);
-        if (problem is not null)
-        {
-            // Nothing is requested: the first load fails with this, `ready` answers false and the client waits for close.
-            _syncLoop = Task.Run(() => Reject(problem));
-            _flushLoop = Task.CompletedTask;
-            return;
-        }
-
-        var url = options.Url!.TrimEnd('/');
-        var requestTimeout = Positive(options.RequestTimeout, Defaults.RequestTimeout);
-        _http = Http.CreateClient(options.Handler);
-        _usage = new UsageReporter(url, options.SdkKey!, _http, _time, requestTimeout, Report);
-        var sync = new RulesetSync(
-            new SyncOptions
-            {
-                BaseUrl = url,
-                SdkKey = options.SdkKey!,
-                Http = _http,
-                Time = _time,
-                Jitter = options.Jitter ?? Random.Shared.NextDouble,
-                Stream = stream,
-                PollInterval = Positive(options.PollInterval, Defaults.Interval),
-                RequestTimeout = requestTimeout,
-                StreamIdle = options.StreamIdleTimeout ?? Defaults.StreamIdle,
-                OnError = Report,
-            },
-            _state,
-            _lifetime.Token);
-        var flushInterval = Positive(options.FlushInterval, Defaults.Interval);
-        _syncLoop = Task.Run(() => RunSyncAsync(sync));
-        _flushLoop = Task.Run(() => RunFlushAsync(flushInterval));
+        _evaluate = options.Evaluator ?? Evaluation.Evaluator.Evaluate;
+        _time = options.TimeProvider ?? TimeProvider.System;
+        _jitter = options.Jitter ?? Random.Shared.NextDouble;
+        _stream = options.Stream ?? true;
+        _pollInterval = Positive(options.PollInterval, DefaultInterval);
+        _flushInterval = Positive(options.FlushInterval, DefaultInterval);
+        _watchdog = Positive(options.StreamWatchdog, DefaultWatchdog);
+        var timeout = Positive(options.RequestTimeout, DefaultTimeout);
+        var url = (options.Url ?? string.Empty).TrimEnd('/');
+        _transport = new Transport(url, options.SdkKey, timeout, _time, options.Handler);
+        _state = new ClientState(null, null, null, _stream ? StreamState.connecting : StreamState.off, null);
     }
+
+    private static TimeSpan Positive(TimeSpan? value, TimeSpan fallback) => value is { } v && v > TimeSpan.Zero ? v : fallback;
 
     /// <summary>
-    /// Creates a client and starts loading its ruleset in the background. It does not wait for the network
-    /// and never throws: bad options are reported through <see cref="ClientOptions.OnError"/> and
-    /// <see cref="Status"/>, and <see cref="ReadyAsync"/> answers false.
+    /// Creates a client and returns it at once: the first load runs in the background and <see cref="ReadyAsync"/> says when
+    /// it has finished. It never throws; an unusable <see cref="ClientOptions.Url"/> or key makes every request a
+    /// <c>network</c> error.
     /// </summary>
-    /// <param name="options">The server URL, the SDK key and the rest.</param>
-    /// <returns>The client.</returns>
-    public static ToggleSlashClient Create(ClientOptions options) => new(options ?? new ClientOptions());
-
-    private static TimeSpan Positive(TimeSpan value, TimeSpan fallback) => value > TimeSpan.Zero ? value : fallback;
-
-    private static string? Problem(ClientOptions options)
+    /// <param name="options">The options; null is the same as no options.</param>
+    /// <returns>The running client.</returns>
+    public static ToggleSlashClient Create(ClientOptions? options)
     {
-        if (string.IsNullOrWhiteSpace(options.SdkKey)) return "ToggleSlash: SdkKey is required";
-        if (!Uri.TryCreate(options.Url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
-            return "ToggleSlash: Url must be an absolute http or https URL";
-        return null;
+        var client = new ToggleSlashClient(options ?? new ClientOptions());
+        client.Start();
+        return client;
     }
 
-    /// <summary>Completes after the first load attempt: true if a ruleset loaded, false if not. It never faults.</summary>
-    /// <returns>A task whose answer is fixed by the first attempt; <see cref="CloseAsync"/> completes an unsettled one false.</returns>
+    private void Start()
+    {
+        _syncTask = Task.Run(SyncLoopAsync);
+        _flushTask = Task.Run(FlushLoopAsync);
+    }
+
+    // ---- ready ---------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Completes after the first load attempt (bounded by the request timeout) with whether a ruleset is held. The answer is
+    /// fixed then, and is false if <see cref="Close"/> came first. The task never faults.
+    /// </summary>
+    /// <returns>A task of the answer.</returns>
     public Task<bool> ReadyAsync() => _ready.Task;
 
-    /// <summary>What the client has loaded and how its stream is doing, as one snapshot.</summary>
-    public ClientStatus Status
+    /// <summary>
+    /// Blocks until <see cref="ReadyAsync"/> completes. Called from an <see cref="ClientOptions.OnError"/> callback it does not
+    /// wait: it answers from the state held.
+    /// </summary>
+    /// <returns>Whether a ruleset is held.</returns>
+    public bool Ready()
     {
-        get
+        if (InCallback.Value && !_ready.Task.IsCompleted)
         {
-            var s = _state.Current;
-            return new ClientStatus(s.Etag, s.LastSyncAt, s.Stream, s.LastError);
+            return Volatile.Read(ref _state).Ruleset is not null;
         }
+
+        return _ready.Task.GetAwaiter().GetResult();
     }
 
-    /// <summary>Calls the <c>OnError</c> option's callback, ignoring anything it throws.</summary>
-    private void Report(Exception error)
+    private void SettleReady() => _ready.TrySetResult(Volatile.Read(ref _state).Ruleset is not null);
+
+    // ---- status --------------------------------------------------------------------------------------------
+
+    /// <summary>One consistent snapshot, read from memory.</summary>
+    /// <returns>The snapshot.</returns>
+    public ClientStatus Status()
     {
-        try
-        {
-            _onError?.Invoke(error);
-        }
-        catch (Exception)
-        {
-            // A faulty error callback must not break the SDK.
-        }
+        var state = Volatile.Read(ref _state);
+        return new ClientStatus(state.Etag, state.LastSyncAt, state.Stream, state.LastError);
     }
 
-    private async Task Reject(string problem)
+    /// <summary>Swaps the state with compare-and-swap. After close began the stream state stays <c>closed</c>.</summary>
+    private void Update(Func<ClientState, ClientState> change)
     {
-        InsideSdk.Value = true;
-        _state.Update(s => s with { LastError = LastErrorCodes.Network });
-        Report(new ArgumentException(problem));
-        _ready.TrySetResult(false);
-        try
+        while (true)
         {
-            await Task.Delay(Timeout.InfiniteTimeSpan, _lifetime.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            // Closing.
-        }
-    }
-
-    private async Task RunSyncAsync(RulesetSync sync)
-    {
-        InsideSdk.Value = true;
-        try
-        {
-            await sync.RunAsync(() => _ready.TrySetResult(_state.Current.Ruleset is not null)).ConfigureAwait(false);
-        }
-        catch (Exception error)
-        {
-            Report(error);
-        }
-        finally
-        {
-            _ready.TrySetResult(_state.Current.Ruleset is not null);
-        }
-    }
-
-    private async Task RunFlushAsync(TimeSpan interval)
-    {
-        InsideSdk.Value = true;
-        var token = _lifetime.Token;
-        while (!token.IsCancellationRequested)
-        {
-            try
+            var current = Volatile.Read(ref _state);
+            var next = change(current);
+            if (current.Stream == StreamState.closed && next.Stream != StreamState.closed)
             {
-                await Task.Delay(interval, _time, token).ConfigureAwait(false);
+                next = next with { Stream = StreamState.closed };
             }
-            catch (OperationCanceledException)
+
+            if (ReferenceEquals(Interlocked.CompareExchange(ref _state, next, current), current))
             {
                 return;
             }
-            await _usage!.FlushAsync().ConfigureAwait(false);
         }
     }
 
-    // ---- evaluation ----
-
-    /// <summary>The bool value of a flag, or <paramref name="fallback"/>.</summary>
-    /// <param name="flagKey">The flag.</param>
-    /// <param name="context">Who it is for.</param>
-    /// <param name="fallback">What to return when no value can be served.</param>
-    /// <returns>The served value or the fallback.</returns>
-    public bool BoolVariation(string flagKey, Context context, bool fallback) =>
-        BoolVariationDetail(flagKey, context, fallback).Value;
-
-    /// <summary>The bool value of a flag with how it was reached.</summary>
-    /// <param name="flagKey">The flag.</param>
-    /// <param name="context">Who it is for.</param>
-    /// <param name="fallback">What to return when no value can be served.</param>
-    /// <returns>The value, its variation index and the reason.</returns>
-    public VariationDetail<bool> BoolVariationDetail(string flagKey, Context context, bool fallback) =>
-        Detail(flagKey, context, fallback, Accessors.Bool);
-
-    /// <summary>The string value of a flag, or <paramref name="fallback"/>.</summary>
-    /// <param name="flagKey">The flag.</param>
-    /// <param name="context">Who it is for.</param>
-    /// <param name="fallback">What to return when no value can be served.</param>
-    /// <returns>The served value or the fallback.</returns>
-    public string StringVariation(string flagKey, Context context, string fallback) =>
-        StringVariationDetail(flagKey, context, fallback).Value;
-
-    /// <summary>The string value of a flag with how it was reached.</summary>
-    /// <param name="flagKey">The flag.</param>
-    /// <param name="context">Who it is for.</param>
-    /// <param name="fallback">What to return when no value can be served.</param>
-    /// <returns>The value, its variation index and the reason.</returns>
-    public VariationDetail<string> StringVariationDetail(string flagKey, Context context, string fallback) =>
-        Detail(flagKey, context, fallback, Accessors.String);
-
-    /// <summary>The integer value of a flag, or <paramref name="fallback"/>. A fractional number or one outside 64 bits is a mismatch.</summary>
-    /// <param name="flagKey">The flag.</param>
-    /// <param name="context">Who it is for.</param>
-    /// <param name="fallback">What to return when no value can be served.</param>
-    /// <returns>The served value or the fallback.</returns>
-    public long IntVariation(string flagKey, Context context, long fallback) =>
-        IntVariationDetail(flagKey, context, fallback).Value;
-
-    /// <summary>The integer value of a flag with how it was reached.</summary>
-    /// <param name="flagKey">The flag.</param>
-    /// <param name="context">Who it is for.</param>
-    /// <param name="fallback">What to return when no value can be served.</param>
-    /// <returns>The value, its variation index and the reason.</returns>
-    public VariationDetail<long> IntVariationDetail(string flagKey, Context context, long fallback) =>
-        Detail(flagKey, context, fallback, Accessors.Int);
-
-    /// <summary>The number value of a flag, or <paramref name="fallback"/>.</summary>
-    /// <param name="flagKey">The flag.</param>
-    /// <param name="context">Who it is for.</param>
-    /// <param name="fallback">What to return when no value can be served.</param>
-    /// <returns>The served value or the fallback.</returns>
-    public double DoubleVariation(string flagKey, Context context, double fallback) =>
-        DoubleVariationDetail(flagKey, context, fallback).Value;
-
-    /// <summary>The number value of a flag with how it was reached.</summary>
-    /// <param name="flagKey">The flag.</param>
-    /// <param name="context">Who it is for.</param>
-    /// <param name="fallback">What to return when no value can be served.</param>
-    /// <returns>The value, its variation index and the reason.</returns>
-    public VariationDetail<double> DoubleVariationDetail(string flagKey, Context context, double fallback) =>
-        Detail(flagKey, context, fallback, Accessors.Double);
-
-    /// <summary>
-    /// The JSON value of a flag, or <paramref name="fallback"/>. The served value must be of the fallback's JSON kind;
-    /// a fallback of JSON <c>null</c> (or a default one) accepts any value.
-    /// </summary>
-    /// <param name="flagKey">The flag.</param>
-    /// <param name="context">Who it is for.</param>
-    /// <param name="fallback">What to return when no value can be served.</param>
-    /// <returns>The served value or the fallback.</returns>
-    public JsonElement JsonVariation(string flagKey, Context context, JsonElement fallback) =>
-        JsonVariationDetail(flagKey, context, fallback).Value;
-
-    /// <summary>The JSON value of a flag with how it was reached.</summary>
-    /// <param name="flagKey">The flag.</param>
-    /// <param name="context">Who it is for.</param>
-    /// <param name="fallback">What to return when no value can be served.</param>
-    /// <returns>The value, its variation index and the reason.</returns>
-    public VariationDetail<JsonElement> JsonVariationDetail(string flagKey, Context context, JsonElement fallback) =>
-        Detail(flagKey, context, fallback, Accessors.Json);
-
-    private VariationDetail<T> Detail<T>(string flagKey, Context context, T fallback, Accessor<T> accessor)
+    private DateTimeOffset Now()
     {
-        var snapshot = _state.Current;
-        var ruleset = snapshot.Ruleset;
-        VariationDetail<T> detail;
-        JsonElement? served = null;
-        try
-        {
-            (detail, served) = Compute(ruleset, flagKey, context, fallback, accessor);
-        }
-        catch (Exception error)
-        {
-            Report(error);
-            detail = Fallback(fallback, ErrorCode.EvaluationFailed);
-        }
-        if (_afterEvaluation is not null)
-        {
-            RunHook(new EvaluationEvent(flagKey, context, JsonOf(detail, served, accessor), detail.VariationIndex, detail.Reason, snapshot.Etag, ruleset?.VersionOf(flagKey)));
-        }
-        return detail;
+        var now = _time.GetUtcNow();
+        return new DateTimeOffset(now.UtcTicks - (now.UtcTicks % TimeSpan.TicksPerMillisecond), TimeSpan.Zero);
     }
 
-    private static JsonElement JsonOf<T>(VariationDetail<T> detail, JsonElement? served, Accessor<T> accessor)
+    // ---- errors --------------------------------------------------------------------------------------------
+
+    /// <summary>Passes a failure to <c>OnError</c>. No SDK lock is held; an exception the callback throws is ignored.</summary>
+    private void ReportError(Exception error)
     {
+        var callback = _onError;
+        if (callback is null)
+        {
+            return;
+        }
+
+        var previous = InCallback.Value;
+        InCallback.Value = true;
         try
         {
-            return served ?? accessor.ToJson(detail.Value);
+            callback(error);
         }
         catch (Exception)
         {
-            return Eval.EvaluationResult.JsonNull;
+            // A callback that raises is ignored (contract 10).
         }
-    }
-
-    private static VariationDetail<T> Fallback<T>(T fallback, ErrorCode code) =>
-        new(fallback, null, new Reason(ReasonKind.Error, code));
-
-    private (VariationDetail<T> Detail, JsonElement? Served) Compute<T>(
-        Eval.Ruleset? ruleset, string flagKey, Context context, T fallback, Accessor<T> accessor)
-    {
-        if (ruleset is null) return (Fallback(fallback, ErrorCode.NotReady), null);
-        var result = _evaluate(ruleset, flagKey, context.Json);
-        var reason = ToReason(result.Reason);
-        if (result.VariationIndex is not { } index) return (new VariationDetail<T>(fallback, null, reason), null);
-        if (!accessor.TryConvert(result.Value, fallback, out var value)) return (Fallback(fallback, ErrorCode.TypeMismatch), null);
-        if (!_closing) _usage?.Record(flagKey, index);
-        return (new VariationDetail<T>(value, index, reason), result.Value);
-    }
-
-    private static Reason ToReason(Eval.Reason reason) =>
-        new(
-            ReasonKind.FromName(reason.KindName),
-            reason.CodeName is { } code ? ErrorCode.FromName(code) : null,
-            reason.RuleIndex,
-            reason.FlagKey);
-
-    private void RunHook(EvaluationEvent hookEvent)
-    {
-        try
+        finally
         {
-            _afterEvaluation!(hookEvent);
-        }
-        catch (Exception error)
-        {
-            Report(error);
+            InCallback.Value = previous;
         }
     }
 
-    // ---- close ----
+    // ---- evaluation ----------------------------------------------------------------------------------------
+
+    /// <summary>Evaluates a boolean flag.</summary>
+    /// <param name="flagKey">The flag.</param>
+    /// <param name="context">The context: a <see cref="JsonValue"/> or native values (dictionary, list, string, number, bool).</param>
+    /// <param name="fallback">What to return when the flag does not serve a boolean.</param>
+    /// <returns>The value or the fallback.</returns>
+    public bool BoolVariation(string flagKey, object? context, bool fallback) => Variation(flagKey, context, fallback);
+
+    /// <summary>Evaluates a string flag.</summary>
+    /// <param name="flagKey">The flag.</param>
+    /// <param name="context">The context.</param>
+    /// <param name="fallback">The fallback.</param>
+    /// <returns>The value or the fallback.</returns>
+    public string? StringVariation(string flagKey, object? context, string? fallback) => Variation(flagKey, context, fallback);
+
+    /// <summary>Evaluates an integer flag: a fractional or out-of-int64 served number is a type mismatch.</summary>
+    /// <param name="flagKey">The flag.</param>
+    /// <param name="context">The context.</param>
+    /// <param name="fallback">The fallback.</param>
+    /// <returns>The value or the fallback.</returns>
+    public long IntVariation(string flagKey, object? context, long fallback) => Variation(flagKey, context, fallback);
+
+    /// <summary>Evaluates a number flag.</summary>
+    /// <param name="flagKey">The flag.</param>
+    /// <param name="context">The context.</param>
+    /// <param name="fallback">The fallback.</param>
+    /// <returns>The value or the fallback.</returns>
+    public double FloatVariation(string flagKey, object? context, double fallback) => Variation(flagKey, context, fallback);
+
+    /// <summary>Evaluates a flag of any kind. A null fallback accepts any served value.</summary>
+    /// <param name="flagKey">The flag.</param>
+    /// <param name="context">The context.</param>
+    /// <param name="fallback">The fallback.</param>
+    /// <returns>The value or the fallback.</returns>
+    public JsonValue? JsonVariation(string flagKey, object? context, JsonValue? fallback) => Variation(flagKey, context, fallback);
 
     /// <summary>
-    /// Stops the background work, sends the last usage counts and waits for both. Safe to call more than once and
-    /// from several threads; every call returns when the one shutdown is done. Called from inside one of the
-    /// SDK's own callbacks (<see cref="ClientOptions.OnError"/>), it starts the shutdown and returns without
-    /// waiting for it.
+    /// Evaluates a flag and reads it as <typeparamref name="T"/>: <c>bool</c>, <c>string</c>, an integer type (a whole number in
+    /// that type's range), <c>float</c>, <c>double</c>, <see cref="JsonValue"/> or the <c>Nullable&lt;&gt;</c> of a value type.
+    /// Any other <typeparamref name="T"/> has no JSON kind, so the caller gets the fallback with <c>TYPE_MISMATCH</c>.
+    /// </summary>
+    /// <typeparam name="T">The static type wanted.</typeparam>
+    /// <param name="flagKey">The flag.</param>
+    /// <param name="context">The context.</param>
+    /// <param name="fallback">The fallback.</param>
+    /// <returns>The value or the fallback.</returns>
+    public T Variation<T>(string flagKey, object? context, T fallback) => VariationDetail(flagKey, context, fallback).Value;
+
+    /// <summary>Evaluates a boolean flag with its variation index and reason.</summary>
+    /// <param name="flagKey">The flag.</param>
+    /// <param name="context">The context.</param>
+    /// <param name="fallback">The fallback.</param>
+    /// <returns>The detail.</returns>
+    public Detail<bool> BoolVariationDetail(string flagKey, object? context, bool fallback) => VariationDetail(flagKey, context, fallback);
+
+    /// <summary>Evaluates a string flag with its variation index and reason.</summary>
+    /// <param name="flagKey">The flag.</param>
+    /// <param name="context">The context.</param>
+    /// <param name="fallback">The fallback.</param>
+    /// <returns>The detail.</returns>
+    public Detail<string?> StringVariationDetail(string flagKey, object? context, string? fallback) => VariationDetail(flagKey, context, fallback);
+
+    /// <summary>Evaluates an integer flag with its variation index and reason.</summary>
+    /// <param name="flagKey">The flag.</param>
+    /// <param name="context">The context.</param>
+    /// <param name="fallback">The fallback.</param>
+    /// <returns>The detail.</returns>
+    public Detail<long> IntVariationDetail(string flagKey, object? context, long fallback) => VariationDetail(flagKey, context, fallback);
+
+    /// <summary>Evaluates a number flag with its variation index and reason.</summary>
+    /// <param name="flagKey">The flag.</param>
+    /// <param name="context">The context.</param>
+    /// <param name="fallback">The fallback.</param>
+    /// <returns>The detail.</returns>
+    public Detail<double> FloatVariationDetail(string flagKey, object? context, double fallback) => VariationDetail(flagKey, context, fallback);
+
+    /// <summary>Evaluates a flag of any kind with its variation index and reason.</summary>
+    /// <param name="flagKey">The flag.</param>
+    /// <param name="context">The context.</param>
+    /// <param name="fallback">The fallback.</param>
+    /// <returns>The detail.</returns>
+    public Detail<JsonValue?> JsonVariationDetail(string flagKey, object? context, JsonValue? fallback) => VariationDetail(flagKey, context, fallback);
+
+    /// <summary>The generic form of <c>VariationDetail</c>; see <see cref="Variation{T}"/> for the types read.</summary>
+    /// <typeparam name="T">The static type wanted.</typeparam>
+    /// <param name="flagKey">The flag.</param>
+    /// <param name="context">The context.</param>
+    /// <param name="fallback">The fallback.</param>
+    /// <returns>The detail.</returns>
+    public Detail<T> VariationDetail<T>(string flagKey, object? context, T fallback)
+    {
+        var state = Volatile.Read(ref _state);
+        var value = fallback;
+        int? index = null;
+        Reason reason;
+        Exception? failure = null;
+        var counted = false;
+        long? flagVersion = null;
+        try
+        {
+            if (state.Ruleset is null)
+            {
+                reason = Reason.Error(ErrorCode.NOT_READY);
+            }
+            else
+            {
+                flagVersion = VersionOf(state.Ruleset, flagKey);
+                var result = _evaluate(state.Ruleset, flagKey, ContextConverter.Convert(context));
+                if (result.VariationIndex is null)
+                {
+                    reason = result.Reason;
+                }
+                else if (!Accessor<T>.TryConvert(result.Value, fallback, out var converted))
+                {
+                    reason = Reason.Error(ErrorCode.TYPE_MISMATCH);
+                }
+                else
+                {
+                    value = converted;
+                    index = result.VariationIndex;
+                    reason = result.Reason;
+                    counted = true;
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            value = fallback;
+            index = null;
+            counted = false;
+            reason = Reason.Error(ErrorCode.EVALUATION_FAILED);
+            failure = e;
+        }
+
+        if (counted)
+        {
+            Record(flagKey, index!.Value);
+        }
+
+        if (failure is not null)
+        {
+            ReportError(failure);
+        }
+
+        RunHooks(new EvaluationEvent(flagKey, context, value, index, reason, state.Etag, flagVersion));
+        return new Detail<T>(value, index, reason);
+    }
+
+    private static long? VersionOf(Ruleset ruleset, string flagKey)
+    {
+        var version = ruleset.VersionOf(flagKey);
+        return version is { } v && v == Math.Floor(v) && v >= -9223372036854775808.0 && v < 9223372036854775808.0 ? (long)v : null;
+    }
+
+    private void RunHooks(EvaluationEvent evaluation)
+    {
+        if (_afterEvaluation is { } hook)
+        {
+            try
+            {
+                hook(evaluation);
+            }
+            catch (Exception e)
+            {
+                ReportError(e);
+            }
+        }
+
+        if (_afterEvaluationAsync is { } asyncHook)
+        {
+            try
+            {
+                var task = asyncHook(evaluation);
+                if (task is not null)
+                {
+                    if (task.IsCompleted)
+                    {
+                        if (task.IsFaulted)
+                        {
+                            ReportError(task.Exception!.GetBaseException());
+                        }
+                    }
+                    else
+                    {
+                        _ = task.ContinueWith(
+                            t => ReportError(t.Exception!.GetBaseException()),
+                            CancellationToken.None,
+                            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                            TaskScheduler.Default);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                ReportError(e);
+            }
+        }
+    }
+
+    // ---- close ---------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Stops following the server and the flush loop, waits for them and for a flush already running, then sends the final
+    /// usage flush. Safe to call twice or concurrently; every call waits for the same shutdown. Called from an
+    /// <see cref="ClientOptions.OnError"/> callback it starts the shutdown and returns without waiting. Evaluation still
+    /// answers afterwards, with nothing counted. It returns within about twice the request timeout.
     /// </summary>
     public void Close()
     {
         var task = CloseAsync();
-        if (InsideSdk.Value) return;
-        task.GetAwaiter().GetResult();
+        if (InCallback.Value)
+        {
+            return;
+        }
+
+        try
+        {
+            task.GetAwaiter().GetResult();
+        }
+        catch (Exception)
+        {
+            // CloseAsync never faults; nothing here may throw either.
+        }
     }
 
-    /// <summary>The asynchronous <see cref="Close"/>.</summary>
+    /// <summary>The asynchronous <see cref="Close"/>. The task never faults.</summary>
     /// <returns>A task that completes when the shutdown is done.</returns>
     public Task CloseAsync()
     {
-        // The first part is synchronous, so nothing is counted and no ready answer is left open once this returns.
+        var existing = Volatile.Read(ref _closeTask);
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        existing = Interlocked.CompareExchange(ref _closeTask, done.Task, null);
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        // Nothing is counted from here on, and the stream state reads closed at once.
         _closing = true;
-        _state.Close();
-        _ready.TrySetResult(false);
-        try
-        {
-            _lifetime.Cancel();
-        }
-        catch (Exception error)
-        {
-            Report(error);
-        }
-        return _shutdown.Value;
+        Update(s => s with { Stream = StreamState.closed });
+        _ = Task.Run(() => ShutDownAsync(done));
+        return done.Task;
     }
 
-    private async Task ShutDownAsync()
+    private async Task ShutDownAsync(TaskCompletionSource done)
     {
-        InsideSdk.Value = true;
         try
         {
-            await Task.WhenAll(_syncLoop, _flushLoop).ConfigureAwait(false);
-            if (_usage is not null) await _usage.FinishAsync().ConfigureAwait(false);
+            await _stop.CancelAsync().ConfigureAwait(false);
+            await _flushStop.CancelAsync().ConfigureAwait(false);
+            await Task.WhenAll(Quiet(_syncTask), Quiet(_flushTask)).ConfigureAwait(false);
+            _ready.TrySetResult(false);
+            await FinalFlushAsync().ConfigureAwait(false);
         }
-        catch (Exception error)
+        catch (Exception)
         {
-            Report(error);
+            // Close never fails.
         }
         finally
         {
-            _usage?.Dispose();
-            _http?.Dispose();
+            _ready.TrySetResult(false);
+            done.TrySetResult();
+        }
+    }
+
+    private static async Task Quiet(Task task)
+    {
+        try
+        {
+            await task.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // The loops catch everything themselves; this is the last net.
         }
     }
 
@@ -378,62 +457,5 @@ public sealed class ToggleSlashClient : IDisposable, IAsyncDisposable
     public void Dispose() => Close();
 
     /// <inheritdoc />
-    public async ValueTask DisposeAsync() => await CloseAsync().ConfigureAwait(false);
-}
-
-/// <summary>How one typed accessor reads a served JSON value, and writes its fallback back as JSON for a hook.</summary>
-internal sealed class Accessor<T>(TryConvert<T> convert, Func<T, JsonElement> toJson)
-{
-    public bool TryConvert(JsonElement served, T fallback, out T value) => convert(served, fallback, out value);
-
-    public JsonElement ToJson(T value) => toJson(value);
-}
-
-internal delegate bool TryConvert<T>(JsonElement served, T fallback, out T value);
-
-internal static class Accessors
-{
-    public static readonly Accessor<bool> Bool = new(
-        (JsonElement served, bool _, out bool value) =>
-        {
-            value = served.ValueKind == JsonValueKind.True;
-            return served.ValueKind is JsonValueKind.True or JsonValueKind.False;
-        },
-        value => JsonSerializer.SerializeToElement(value));
-
-    public static readonly Accessor<string> String = new(
-        (JsonElement served, string _, out string value) =>
-        {
-            value = served.ValueKind == JsonValueKind.String ? Eval.JsonStrings.Read(served) : "";
-            return served.ValueKind == JsonValueKind.String;
-        },
-        value => JsonSerializer.SerializeToElement(value));
-
-    public static readonly Accessor<double> Double = new(
-        (JsonElement served, double _, out double value) => Eval.Validation.TryNumber(served, out value),
-        value => double.IsFinite(value) ? JsonSerializer.SerializeToElement(value) : Eval.EvaluationResult.JsonNull);
-
-    public static readonly Accessor<long> Int = new(
-        (JsonElement served, long _, out long value) =>
-        {
-            value = 0;
-            if (!Eval.Validation.TryNumber(served, out var number)) return false;
-            // 2^63 is the first double past long.MaxValue, and -2^63 is long.MinValue exactly.
-            if (!double.IsFinite(number) || number != Math.Floor(number) || number < -9223372036854775808.0 || number >= 9223372036854775808.0) return false;
-            value = (long)number;
-            return true;
-        },
-        value => JsonSerializer.SerializeToElement(value));
-
-    public static readonly Accessor<JsonElement> Json = new(
-        (JsonElement served, JsonElement fallback, out JsonElement value) =>
-        {
-            value = served;
-            var wanted = fallback.ValueKind;
-            if (wanted is JsonValueKind.Undefined or JsonValueKind.Null) return true;
-            return Kind(served.ValueKind) == Kind(wanted);
-        },
-        value => value.ValueKind == JsonValueKind.Undefined ? Eval.EvaluationResult.JsonNull : value);
-
-    private static JsonValueKind Kind(JsonValueKind kind) => kind == JsonValueKind.False ? JsonValueKind.True : kind;
+    public ValueTask DisposeAsync() => new(CloseAsync());
 }

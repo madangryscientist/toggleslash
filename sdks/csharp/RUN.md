@@ -2,270 +2,144 @@
 
 ## Prompt version
 
-- Prompt: e3b07b5311284e08d3f4ecec6f10903250730c65
-- Model: claude-sonnet-5-5 (Sonnet 5.5), run as a spun-off builder thread
-- Date: 2026-11-10
-- Input: language C#; runtime chosen: .NET (CoreCLR); minimum version chosen: net10.0; package manager chosen:
-  NuGet through the `dotnet` CLI
-- Toolchain: .NET SDK 10.0.403, pinned in `mise.toml` (`dotnet = "10.0.403"`) and in `global.json`
-  (`rollForward: disable`); `mise exec -- dotnet --version` prints `10.0.403`; mise 2026.11.0 linux-x64.
-  Test packages: xunit 2.9.3, xunit.runner.visualstudio 3.1.5, Microsoft.NET.Test.Sdk 18.11.0,
-  Microsoft.Extensions.TimeProvider.Testing (tests only). Runtime dependencies of the SDK: none.
+- Prompt: 26598eee3b61a0b44edc1c6d50c5d4e4ad08b813 (`git log -1 --format=%H -- docs/sdk-authoring`, taken at the start, and again after the last `git fetch origin`: `origin/main` had not moved, so no rebase and no change)
+- Model: Claude Sonnet 5.5 (`claude-sonnet-5-5`)
+- Date: 2026-11-12
+- Input: language C#; runtime chosen: .NET 10 (`net10.0`, the newest LTS); minimum version chosen: `net10.0` (.NET 8 and 9 both left support on 2026-11-10, the day before this run); package manager chosen: the `dotnet` CLI and NuGet (nothing is published, so no registry is named)
+- Toolchain: `mise.toml` pins `dotnet = "10.0.404"` (`mise exec -- dotnet --version` prints `10.0.404`); `global.json` pins the same number with `rollForward: disable`; mise 2026.11.0. The conformance harness runs on Bun 1.4.2 (the repository's pin, `BUN_VERSION` in the workflow). Runtime dependencies of the library: none. Test project: `Microsoft.NET.Test.Sdk` 18.11.0, `xunit` 2.9.3, `xunit.runner.visualstudio` 3.1.5, `Microsoft.Extensions.TimeProvider.Testing` 10.0.0. The test service is a `Microsoft.NET.Sdk.Web` project (Kestrel from the shared framework, no package). Analyzers: the SDK's own, `AnalysisMode` Recommended, with `dotnet format` run by `bin/lint`.
 
 ## Results
 
-- Vectors: 1371 passed of 1371; bucket pins: 17 passed of 17 (`bin/test`, which prints both from
-  `artifacts/vector-counts.txt`)
-- Conformance: `scenarios: 81 passed, 0 failed, 0 skipped; vectors: 1369 passed, 0 failed, 2 skipped`
-  (`bun run conformance -- --service sdks/csharp/bin/test-service`, exit 0)
+- Vectors: 1371 passed of 1371; bucket pins: 17 passed of 17 (`bin/test` prints `vectors: 1371 pins: 17`; the phase 2 count command prints `1371 17`)
+- Conformance: `scenarios: 83 passed, 0 failed, 0 skipped; vectors: 1369 passed, 0 failed, 2 skipped` (exit 0; the only skips are the 2 named vectors, and no scenario is skipped because `integer-accessor` is advertised)
 - Capabilities advertised: `integer-accessor`
-- Native tests: 34 passed of 34 (`dotnet test`, the vector test counted as one)
+- Native tests: 73 passed of 73 (xunit counts a theory case as a test: 45 test methods, 73 cases, of which `HoldTests` has 17 cases from 5 methods and `NumericTests` 19 from 3). `VectorTests.EveryVectorAndPinPasses` is one test over the 1371 vectors and 17 pins counted above. The other two projects (`ToggleSlash.Sdk.NeverClosed`, which a test runs as a process, and the test service) have no tests of their own.
+- `bin/test` ten runs in a row on the committed tree: runs 1 to 10 each exit 0 with 73 passed of 73 and `vectors: 1371 pins: 17` (10 to 16 s each). Eleventh run with the CPU loaded (12 busy shell loops for `nproc` = 12, started before `bin/test` and killed after it ended): exit 0, 73 passed of 73, 13.1 s.
+- Earlier flakes, fixed before those runs (see Decisions 24 and 25): without the fix, 3 of 6 full runs failed one or two of two timing tests.
 
 ## Decisions
 
-1. Runtime: .NET (CoreCLR) over Mono and .NET Framework, because it is the mainstream runtime and the
-   only one with `TimeProvider`, `Lock` and `SocketsHttpHandler` as the SDK uses them.
-2. Minimum version net10.0 over net8.0 and net9.0: both reach end of support on 2026-11-10, the day of the run,
-   so only .NET 10 (LTS to 2028-11-14) is certainly in support.
-3. Toolchain manager: mise, because the prompt names `mise.toml`. SDK 10.0.403 pinned (the newest 10.0 SDK),
-   with a `global.json` of the same number and `rollForward: disable` so the repository root's `10.0.402` is
-   never picked in this directory.
-4. Package manager and build tool: NuGet with `dotnet` and one `.slnx` solution, over Paket or a Makefile;
-   central package management is not used because three projects do not need it.
-5. Lint and format: `dotnet format --verify-no-changes` plus the SDK's Roslyn analyzers
-   (`AnalysisLevel` latest, `AnalysisMode` recommended) as build errors, over StyleCop.Analyzers and CSharpier:
-   nothing extra to install, only what `mise.toml` pins.
-6. Test framework: xunit 2.9.3 over xunit v3, NUnit and MSTest, because it is what the repository's own C# tests
-   use and nothing here needs v3's runner model.
-7. Fake time: `Microsoft.Extensions.TimeProvider.Testing` (`FakeTimeProvider`), the standard fake-time facility,
-   plus internal seams on `ClientOptions` (`Handler`, `Time`, `Jitter`, `StreamIdleTimeout`, `Evaluate`).
-8. Dependencies: none at runtime. HTTP, JSON and SHA-256 come from the base class library. The regular
-   expression matcher is a Pike VM written for the spec, not `System.Text.RegularExpressions`.
-9. Test service: `Microsoft.NET.Sdk.Web` with Kestrel from the shared framework (no package), in
-   `test-service/`, over a hand-written `HttpListener` or `TcpListener` server.
-10. CI action for the toolchain: `jdx/mise-action` over `actions/setup-dotnet`, so CI and a developer use the
-    same pin from `mise.toml`. Actions are pinned by commit SHA (checkout v7.0.1, setup-bun v2.2.0,
-    mise-action v5.2.7), with Bun 1.4.2.
-11. Integer accessor: `IntVariation` returns `long`. A served fraction or a number outside signed 64 bits is
-    `TYPE_MISMATCH`, and `2.0` counts as `2`; `integer-accessor` is advertised.
-12. Build output: `UseArtifactsOutput` puts everything under `sdks/csharp/artifacts/` (ignored), so `bin/` holds
-    only the three entry-point scripts.
-13. Race detector: .NET has none. `ConcurrencyTests.Every_operation_from_many_threads_with_close_racing_does_not_raise_or_hang`
-    stands in (see the checklist).
-14. Hooks and `onError` are plain `Action` delegates, not functions returning a task, so the "future" line of the
-    checklist is `n/a`.
-15. Timer tests step the fake clock only when the SDK is waiting on it: `Clock`, a `FakeTimeProvider` that counts
-    its armed timers (`tests/ToggleSlash.Sdk.Tests/Support.cs`), and `Wait.Advance`, which waits for the poll or
-    hold loop and the flush loop to be armed before and after every step. Over a fixed real pause between steps,
-    which was the first version and flaked (guess 11).
-16. Skeptical review: not run. The `ob-skeptical-review` skill belongs to the omnibus spinoff procedure; this
-    brief is the toggleslash prompt-test and names no review step, so the PR carries no `## Skeptical review`
-    section.
+1. Version lookup: `mise ls-remote dotnet` and Microsoft's `releases-index.json` give 10.0.404 as the newest 10.0 SDK, and 10 as the newest LTS; the support-policy dates put .NET 8 and 9 out of support on 2026-11-10, so `net10.0` is the minimum. Pinned in `mise.toml` and `global.json` (same number, `rollForward: disable`) as `docs/sdk-authoring/language-notes/csharp.md` says.
+2. Test framework: xunit 2.9.3 over MSTest and NUnit: it is the framework `apps/server` already uses, and its `[Theory]` gives the vectors and numeric types their cases.
+3. Lint and format: `dotnet format` (whitespace, style, analyzers, each `--verify-no-changes`) plus a warnings-as-errors build with the analyzers at `AnalysisMode` Recommended over a third-party linter, because it is the toolchain's own and needs no extra install. Each rule set to `none` has its reason in `.editorconfig` (a test, `SourceTests.EveryDisabledLintRuleHasAReasonCommentAboveIt`, holds that). `bin/lint` fails on a planted violation (checked by hand: exit 2).
+4. CI toolchain: `actions/setup-dotnet` at the SHA the prompt gives, with `global-json-file: sdks/csharp/global.json`, so the workflow and `bin/*` read one number. `mise-action` was not used because the one file already names the SDK.
+5. Namespace and package id: `ToggleSlash.Sdk` for both, with no host in the id (the NuGet convention); the entry class is `ToggleSlashClient`.
+6. JSON: the SDK has its own JSON value type and parser (`Json/`) instead of `System.Text.Json`, because the evaluation spec needs the lone surrogate and `1e999` to survive and the standard type throws on a lone surrogate. DESIGN.md "JSON" says so and `SourceTests.NoSourceFileOfTheLibraryUsesSystemTextJsonOrRegex` holds it.
+7. Redirects are not followed (`AllowAutoRedirect = false`) and cookies and automatic decompression are off, so the only headers the client adds are `Host` and `Content-Length` (language notes; the capture table below shows it).
+8. Fake time: a `FakeTimeProvider` subclass that counts armed timers (`tests/ToggleSlash.Sdk.Tests/Support/CountingTimeProvider.cs`); a test advances only after `WaitForArmedAsync`, never after a fixed pause.
+9. No race detector exists for .NET: `StressTests.EveryOperationFromManyThreadsWithCloseRacingNeverThrowsOrHangs` stands in (16 threads on every operation, `Close`, `CloseAsync` and `Dispose` racing, stream on, 5 ms intervals, three rounds, a 60 s bound on every wait).
+10. A native context value the SDK cannot send as a JSON value (an object of another type, a cycle, nesting past 512) gives the fallback with `INVALID_CONTEXT`. Supported: a dictionary with string keys, an enumerable, strings, booleans, `null`, every .NET integer and floating-point width, `decimal`, `JsonValue`.
+11. The generic `Variation<T>` maps the listed types only (`bool`, `string`, the ten integer and float types, `JsonValue`, and the `Nullable<>` of a listed value type); any other `T` gives the fallback with `TYPE_MISMATCH` (contract 4, "Typed languages").
+12. Both blocking and asynchronous forms exist: `Ready()` and `ReadyAsync()`, `Close()` and `CloseAsync()`, `Dispose` and `DisposeAsync`, and a hook may be an `Action` or a `Func<_, Task>` (contract 13 allows idiomatic extras, and none of these weakens contract 5).
+13. Callbacks are marked with an `AsyncLocal` flag on the SDK's own threads, so a `Close()` inside `OnError` starts the shutdown and returns, and a `Ready()` there answers from the state held, as `language-notes/csharp.md` allows. The README and DESIGN.md say all `TaskCompletionSource` creation must use `RunContinuationsAsynchronously`; the SDK, the tests and the test service do (`ToggleSlashClient.cs` lines 37 and 409; the test service creates none).
+14. The 300 s `Retry-After` cap has no seam: a test reads the client's own hold time (`SyncHoldUntil`, `UsageHoldUntil`, internal) against a fake clock, so the real constant is tested (`HoldTests`).
+15. `requestTimeout` and every interval are clamped to what a .NET timer can take (about 49.7 days) and long waits are cut into chunks, so a huge option cannot throw from the timer API.
+16. The ready/close variants are both `public`; `FlushAsync` is `internal` (the stress test calls it) and is not an extra on the public surface.
+17. Reading the other SDKs under `sdks/` and the C# reference evaluator under `apps/server/ToggleSlash.Evaluation` is committed code in the working tree, not something to guess, so the evaluator is a port of it onto the SDK's own JSON type (DESIGN.md "Evaluator (phase 2)"); the vectors and `SourceTests` hold the result.
+18. A tool or config the prompt does not name (the `.slnx` format, `Directory.Build.rsp` that stops the compiler server and MSBuild node reuse, `UseArtifactsOutput`) is a decision here, not a guess: `UseArtifactsOutput` keeps `bin/` to the three scripts, as the language notes say.
+19. The test service reads the reference `packages/sdk/test-service/main.ts` and its README for the shape of the protocol mapping. It hands the SDK the context and fallback as the `JsonValue` its parser made, so a lone surrogate reaches the evaluator.
+20. `ToggleSlash.Sdk.NeverClosed` (a console program) is a project of the solution: a test runs it as a process and checks it exits with the client open. The tests project references it with `ReferenceOutputAssembly="false"` so it is built first.
+21. Tests use a hand-written loopback HTTP/1.1 server (`Support/LoopbackServer.cs`) over a raw `TcpListener` instead of Kestrel, because they need to hold, reset and half-write connections, and to see header order.
+22. The stream watchdog seam (`StreamWatchdog`) is an internal option; the 60 s default is the contract's, and the tests set 1.5 s over a real loopback socket (`StreamTests`).
+23. Hold and cap tests read the internal hold times, not the wire, because the hold is a time and the contract's bound is on that time.
+24. Found by repeated full runs, not by a single one: `LifecycleTests.EvaluationAnswersWhileARulesetRequestHangsAndWhileAUsageFlushHangs` took 8 s for a close bounded by about 4 s, and `StreamTests.AQuietStreamIsDroppedAsATimeoutAfterTheWatchdog` saw a drop 4 ms after the server wrote. Both were the suite loading itself: the 16 spinning stress threads starved the thread pool, which delayed other tests' real timers (a 2 s request timeout seen at 4 s). Fix: the stress test moved to its own class in a collection with `DisableParallelization = true`, so nothing runs beside it (`StressTests.cs`).
+25. Same stream tests: the watchdog is now 1.5 s (was 0.8 s), the keep-alive server stays up for 3.2 s so the stream outlives the watchdog twice, and the server restarts its stopwatch before it writes, so the measured quiet time is an upper bound on what the client saw. Recorded as a test bug (the tests assumed a speed they did not control), not a guess.
+26. Header capture: `dotnet` does not add `User-Agent`, `Accept-Encoding` or `Connection` when decompression is off, so only `Host` and `Content-Length` are in the table below.
+
+### Header capture table
+
+Captured by `ProtocolTests.EveryRouteSendsOnlyTheAllowedHeadersAndNoContext` on a loopback listener (the test prints a `HEADERS` line per route, and asserts the set). `Host` is `127.0.0.1:<port>` taken from the URL the caller gave; `Content-Length` is the length of the events body. Neither identifies a user or a machine.
+
+| Route | Headers on the wire, in order | Added by the HTTP client |
+| --- | --- | --- |
+| `GET /sdk/v1/ruleset` | `Host`, `Authorization` | `Host` (from the URL) |
+| `GET /sdk/v1/ruleset` (conditional) | `Host`, `Authorization`, `If-None-Match` | `Host` (from the URL) |
+| `GET /sdk/v1/stream` | `Host`, `Authorization`, `Accept` | `Host` (from the URL) |
+| `POST /sdk/v1/events` | `Host`, `Authorization`, `Content-Type`, `Content-Length` | `Host` (from the URL), `Content-Length` (the body's length) |
 
 ## Guesses
 
-1. The prompt's phase order puts the phase 2 check (vectors) before the client, but nothing says the client
-   code may not be written first. Where: PROMPT.md, phases 2 and 3. Assumed: the evaluator and the vector test
-   came first and passed (phase 2) before the sync loop was written; the client's types were drafted earlier,
-   in phase 1, as the mapping table.
-2. No `language-notes/csharp.md` exists, and the prompt does not say what to do for a language without one.
-   Where: PROMPT.md, the "language notes" step. Assumed: there are no notes to read; every language choice is a
-   decision above.
-3. The prompt says to look up current versions but not how. Where: PROMPT.md, phase 1 ("pin the toolchain").
-   Assumed: ask the toolchain manager (mise) for the newest SDK and read Microsoft's support-policy page for end-of-support dates.
-4. The prompt does not say where the test service goes in a language whose build is a solution of several
-   projects. Where: PROMPT.md, "Entry points"; sdk-test-service.md. Assumed: a project of its own in the
-   solution at `test-service/`, built by `bin/test` last and by `bin/test-service` only when its binary is
-   missing.
-5. Whether an end-of-support date is inclusive was unclear (.NET 8 and 9 end on 2026-11-10, the run date).
-   Where: PROMPT.md, phase 1 ("minimum version... in support"). Assumed: supported until the end of that day is
-   not "clearly in support", so the minimum is net10.0.
-6. The checklist asks for a race detector "where the language has one" but does not say how to judge a stress
-   test as standing in for it. Where: CHECKLIST.md, native tests, first line. Assumed: a test that runs every
-   operation on many threads with `Close` racing, repeated, and fails on any raise or on a hang past a bound.
-7. Where `Close` is called by code that runs inline from the SDK's own `onError`, the contract does not say
-   whether `close` must return. Where: sdk-contract.md, 6.4 and 11. Assumed: `Close()` called on the SDK's own
-   thread does not wait for itself (an `AsyncLocal` marker), and the caller that completes a
-   `TaskCompletionSource` inline is documented in the README. See stuck points 1.
-8. What `lastError` and the stream state read during a hold after a failed first load is not spelled out.
-   Where: sdk-contract.md, 7.3 and 8. Assumed: the state is `disconnected` and `lastError` keeps the last code
-   until a success replaces it.
-9. Headers a .NET `HttpClient` adds itself were not listed in the prompt's header rule before the checklist
-   ("allowed when `RUN.md` lists each"). Assumed: list them from a wire capture (see the checklist).
-10. The shape of the stream-drop the harness does (clean close or an abrupt reset) is not stated. Where:
-    sdk-test-service.md, "Running it". Assumed: either ends the read, and the SDK treats both as a stream that
-    ended and reconnects with backoff.
-11. Flaky timer tests, found by the planner's gate (one failure in four runs of `bin/test` on the first head;
-    `TimerTests.Counts_either_side_of_a_utc_midnight_go_out_as_two_days`). Where: PROMPT.md phase 3 and
-    CHECKLIST.md, the timer lines say "tested through a seam, not by waiting" but not how to step a fake clock
-    safely. Cause: my `Wait.Advance` moved the `FakeTimeProvider` in steps with a fixed real pause (8 ms) between
-    them, assuming the SDK's poll and flush loops had re-armed their delay by then. On a loaded machine a loop
-    that is still between waking and re-arming misses the step, arms its delay from the later clock reading and
-    is then due after the test has stopped advancing (the test timed out waiting for the usage report), or
-    comes out late enough to break an upper bound on a gap. xunit runs the test classes in parallel, so a full
-    `bin/test` is loaded by its own other tests. I reproduced it only under CPU load: the single test alone passed 30 of 30
-    with 8 busy loops running, and with 12 busy loops running 15 of 15 full runs failed, in one of several
-    timer tests each time (the usage `Retry-After` test failed in the runs I looked at). Assumed: the fault is
-    in the tests, not the SDK (its loops were correct; the tests raced them). Fix: `Clock` counts armed timers and
-    `Wait.Advance` waits for them (decision 15). Proof: 12 full test runs under 12 busy loops with no failure, and
-    `bin/test` 10 passes of 10 in a row on the fixed head.
+None. Every point where the prompt left a choice was one the prompt says to decide (tools, versions, naming: Decisions above) or one a document or the working tree settles (Decisions 1, 6, 7, 13, 17). No question was asked of the planner.
 
 ## Stuck points
 
-None that needed outside help. One finding about the contract's reach, not a blocker:
-
-1. A synchronous `Close()` called from code that runs inline from the SDK's `onError` deadlocks if that code
-   is a continuation that was not told to run asynchronously. It showed up in my own watchdog test: a
-   `TaskCompletionSource` completed inside `onError`, whose awaiting test body then called `Close()`, ran on
-   the SDK's thread, and `Close()` waited for that very thread. Contract 6.4 says a hook and `onError` may
-   call back into the client "without deadlock" as a SHOULD and names `status` and `variation`, not `close`.
-   The SDK handles a direct `Close()` call in a callback; it cannot handle one made from a continuation. The
-   README says to create such a source with `TaskCreationOptions.RunContinuationsAsynchronously`. The
-   contract could say whether `close` from a callback must return.
+None.
 
 ## Proposed prompt changes
 
-1. For guess 1, in `PROMPT.md` phase 2, after the phase 2 check, add: "Do not write the client before this
-   check has passed." (or say that order does not matter).
-2. For guess 2, in `PROMPT.md`, in the step that reads `language-notes/<lang>.md`, add: "If there is none,
-   say so in `RUN.md` and carry on: every language choice is then a decision."
-3. For guess 3, in `PROMPT.md` phase 1, after "pin the toolchain", add: "Look versions up with the toolchain
-   manager (`mise ls-remote <tool>`) and the vendor's release page for support dates; record what you used."
-4. For guess 4, in `PROMPT.md`, "Entry points", add: "Where the build is several projects, the test service
-   is one more project. `bin/test` builds it last; `bin/test-service` builds it only when missing."
-5. For guess 5, in `PROMPT.md` phase 1, after "in security support", add: "A release whose support ends
-   on the run date or earlier is not in support."
-6. For guess 6, in `CHECKLIST.md`, first native-tests line, after "names the stress test that stands in", add:
-   "(many threads, every operation, `close` racing, a bound on the wait)".
-7. For guess 7 and stuck point 1, in `sdk-contract.md` 6.4, after "do not deadlock", add: "`close` called from a
-   hook or `onError` returns without waiting for itself (a language where a continuation can run inline on
-   the SDK's thread says how a caller avoids it)." Aimed at the contract, to the planner.
-8. For guess 8, in `sdk-contract.md` 8, add a row for the state and `lastError` while a backoff is running.
-9. For guess 9, in `CHECKLIST.md`, the header line, add: "Capture one request on the wire (a loopback
-   listener that prints the head) and list what the client added."
-10. For guess 10, in `sdk-test-service.md`, "Running it", say how the harness drops a stream.
-11. For guess 11, in `PROMPT.md` phase 3, after "through a seam", add: "Step a fake clock only when the SDK is
-    waiting on it (count the clock's armed timers), never after a fixed real pause: a pause passes on a quiet
-    machine and fails on a loaded one." And in `CHECKLIST.md`, under the two executable checks, add: "`$L/bin/test`
-    passes 10 times in a row, and once more with the CPU loaded (for example one busy loop per core), because a
-    timer test that races the SDK's loops fails only under load."
+1. For decisions 24 and 25, in `language-notes/csharp.md`, after "xunit runs test classes in parallel, so the suite loads itself.", add: "Put the stress test (many busy threads) in its own class with `[CollectionDefinition(DisableParallelization = true)]`: it starves the thread pool for every test beside it, and a real 2 s request timeout was seen at 4 s. A real-time bound in another test then holds when it is run alone and fails in the full suite, and only repeated full runs show it."
+2. For decision 24, in `CHECKLIST.md`, "The two executable checks", after "a timer test that races the SDK's loops fails only under load.", add: "A test whose bound is real time and whose body is not the load also fails when another test class is the load; run the suite several times before the ten that count."
+3. For decision 4, in `PROMPT.md` phase 5, after "(the toolchain step)", add: "`global-json-file` on `setup-dotnet` is a valid way to read a tree-local SDK pin."
 
 ## Checklist
 
-The two executable checks
+Evidence is the test name (all in `tests/ToggleSlash.Sdk.Tests` unless said), or a command and what it printed.
 
-- [x] `bin/test` runs every vector but `buckets.json` and every pin; count equals the phase 2 count: the
-  phase 2 count command printed 1371 vectors and 17 pins; `VectorTests.Every_vector_and_every_pin_matches`
-  reads `fixtures/evaluation/*.json` at test time and `bin/test` printed `1371` and `17`.
-- [x] `bin/test` is stable: 10 passes of 10 in a row on the final head, and 12 full runs with no failure under 12
-  busy loops (see guess 11).
-- [x] The harness exits 0 with only the named skips: `scenarios: 81 passed, 0 failed, 0 skipped; vectors:
-  1369 passed, 0 failed, 2 skipped`. `integer-accessor` is advertised, so no scenario is skipped.
+### The two executable checks
 
-What the harness checks
+- [x] `bin/test` runs every vector but `buckets.json` and every pin: `VectorTests.EveryVectorAndPinPasses`; prints `vectors: 1371 pins: 17`, equal to the phase 2 count command (`1371 17`).
+- [x] `bin/test` ten times in a row plus one CPU-loaded run: Results above (10 runs, each 73 of 73; the loaded run 73 of 73 with 12 busy loops, 13.1 s).
+- [x] Harness exit 0, only the 2 named vector skips: `bun run conformance -- --service sdks/csharp/bin/test-service` printed `scenarios: 83 passed, 0 failed, 0 skipped; vectors: 1369 passed, 0 failed, 2 skipped`, exit 0.
 
-- [x] Both context shapes: harness `privacy.json` and the `kinds.json` vectors; the service builds the context
-  with `Context.FromElement`.
-- [x] Order of contract 4 and the mismatch rule: harness `evaluation.json`, `usage.json`.
-- [x] Integer accessor, fraction is `TYPE_MISMATCH`, `2.0` is `2`: harness `evaluation.json`, and
-  `AccessorTests.A_whole_number_in_signed_64_bits_is_an_integer`,
-  `A_fraction_a_number_outside_64_bits_or_another_kind_is_a_type_mismatch`.
-- [x] No operation raises: harness, every scenario (the service answers 500 with the error text on any raise).
-- [x] `NOT_READY` at once before the first load: harness `load.json`.
-- [x] `ready` settles after the first attempt, bounded, callable again, false after `close`: harness
-  `load.json`, `close.json`.
-- [x] An answer that is not a ruleset never replaces the one held: harness `status.json`, and
-  `AccessorTests.A_body_that_is_not_a_ruleset_never_replaces_the_one_held`.
-- [x] The ruleset request, `If-None-Match`, the ETag kept exactly, URL joining: harness `load.json`,
-  `status.json`.
-- [x] The stream, SSE parsing, refresh on change, a failed refresh ends the stream: harness `stream.json`,
-  `load.json`, `status.json`.
-- [x] The loop and jittered backoff: harness `backoff.json`, `stream.json`.
-- [x] `429` and `Retry-After` on every route: harness `rate-limit.json`.
-- [x] Status fields, states and `lastError` codes: harness `status.json` and its shape check.
-- [x] Usage counts: harness `usage.json`, `rate-limit.json`.
-- [x] Hook events and `onError`, a raising hook and a raising `onError`: harness `hooks.json` (the service has
-  `onErrorThrows` and `hookThrows` switches).
-- [x] `close` in order, twice at once, during a hold, final flush: harness `close.json`, `rate-limit.json`,
-  `usage.json`, `status.json`.
-- [x] No context, context key or attribute in any request or `onError` message, and no extra header: harness
-  `privacy.json` and the checks after every scenario. Source search: `grep -rn "ILogger\|Console\.\|Debug\.\|Trace\." src`
-  finds nothing, so no log line exists; error values are built from the HTTP status, the exception type
-  and the route (`Sync.cs`, `Usage.cs`, `Http.cs`) and never from a `Context`.
+### What the harness checks
 
-Native tests
+- [x] Both context shapes (contract 3): the harness, `privacy.json`, `kinds.json` vectors; no typed builder rejects a non-finite number.
+- [x] Result order and mismatch rule (contract 4): the harness, `evaluation.json`, `usage.json`; `ClientTests.EveryAccessorServesItsKind`.
+- [x] `integer-accessor` (contract 4): the harness, `evaluation.json`; `ClientTests.IntegerAccessorAcceptsAWholeFloatAndRefusesAFractionOrARangeOverflow`.
+- [x] No operation raises: the harness (every scenario; the service answers 500 on anything raised); `StressTests`.
+- [x] `NOT_READY` at once before the first load: the harness `load.json`; `ClientTests.ServesTheFallbackWithNotReadyUntilARulesetIsHeld`.
+- [x] `ready` settles after the first attempt, false after `close` if unsettled: the harness `load.json`, `close.json`; `ClientTests.ReadyIsTrueAfterTheFirstLoadAndFalseWhenItFails`.
+- [x] A non-ruleset answer never replaces the one held: the harness `status.json`; `ProtocolTests.ABadRulesetBodyIsBadRuleset`.
+- [x] The ruleset request, `If-None-Match`, ETag kept exactly, URL joining: the harness `load.json`, `status.json`; `ProtocolTests.TheConditionalRequestIsSentOnlyWhenARulesetAndTagAreHeld`, `A304WithNoRulesetHeldIsHttp304`.
+- [x] The stream: the harness `stream.json`, `load.json`, `status.json`.
+- [x] The loop and the jittered backoff: the harness `backoff.json`, `stream.json`.
+- [x] `429` and `Retry-After` on every route: the harness `rate-limit.json`; `HoldTests` (cap and parse).
+- [x] Status fields, states, `lastError` codes: the harness `status.json`; `ProtocolTests.AnUnreachableServerIsNetworkAndAHangIsTimeout`.
+- [x] Usage counts: the harness `usage.json`, `rate-limit.json`; `ProtocolTests.UsageIsKeptOnA5xxAndDroppedOnAnother4xx`.
+- [x] Hook events and `onError`: the harness `hooks.json`; `ConcurrencyTests.AThrowingHookAndAThrowingOnErrorChangeNothing`.
+- [x] `close` in order, twice at once, during a hold, final flush: the harness `close.json`, `rate-limit.json`, `usage.json`, `status.json`; `HoldTests` (the final flush reports "closed with 2 usage counts unsent: the server asked to wait").
+- [x] No context, key or attribute in any request or `onError` message; no header beyond the protocol's: the harness `privacy.json`; source search named: `SourceTests.TheLibraryLogsNothingAndPutsNoContextInAnErrorOrAMessage` (no logging API, and no exception constructor names a context, flag key or SDK key).
 
-- [x] Many threads, `close` racing, two `close` racing, no error or deadlock: `ConcurrencyTests.
-  Every_operation_from_many_threads_with_close_racing_does_not_raise_or_hang`. .NET has no race detector;
-  this stress test stands in for it (decision 13).
-- [x] `variation` returns within a bound while a ruleset request hangs and while a usage flush hangs:
-  `ConcurrencyTests.Evaluation_returns_within_a_bound_while_the_first_ruleset_request_hangs`,
-  `Evaluation_returns_within_a_bound_while_a_usage_flush_hangs`.
-- [x] A reader sees one ruleset across a swap (the `etag` and `flagVersion` of a hook belong together):
-  `ConcurrencyTests.A_hook_never_sees_an_etag_and_a_version_from_two_rulesets`. The state is one immutable
-  `SyncState` swapped under a lock.
-- [x] A hook and an `onError` that call back into the client do not deadlock:
-  `ConcurrencyTests.A_hook_and_an_onError_can_call_back_into_the_client`, and
-  `Close_called_from_inside_onError_does_not_wait_for_itself`.
-- [x] A stream with no bytes for the idle limit is dropped as `timeout`; a keep-alive restarts it; on a real
-  loopback socket, the length through the `StreamIdleTimeout` seam: `WatchdogTests.
-  A_stream_that_goes_quiet_is_dropped_as_a_timeout_after_the_idle_limit`, `A_keep_alive_restarts_the_idle_limit`,
-  and `A_stream_that_never_answers_its_request_is_dropped_by_the_request_timeout`.
-- [x] A `Retry-After` above 300 is held for 300 s on the ruleset, stream and events routes (through
-  `Clock`, a `FakeTimeProvider` that counts armed timers): `TimerTests.A_retry_after_above_300_holds_the_ruleset_route_for_300_seconds`,
-  `A_retry_after_above_300_holds_the_stream_and_the_ruleset_for_300_seconds`,
-  `A_retry_after_above_300_holds_usage_reports_for_300_seconds_and_keeps_the_counts`, and
-  `A_retry_after_under_the_cap_is_held_as_given_and_a_date_is_ignored`.
-- [x] Counts either side of a UTC midnight go out as two days: `TimerTests.
-  Counts_either_side_of_a_utc_midnight_go_out_as_two_days`; batches of 500: `More_than_500_entries_go_out_in_batches_of_at_most_500`.
-- [x] An evaluation that raises gives the fallback, `ERROR EVALUATION_FAILED` and one `onError`:
-  `ConcurrencyTests.An_evaluation_that_raises_gives_the_fallback_evaluation_failed_and_one_onError` (through
-  the `Evaluate` seam).
-- [x] A hook that returns a future fails later: `n/a: no futures`. `Hooks.AfterEvaluation` is an `Action`.
-- [x] A number outside signed 64 bits is `TYPE_MISMATCH` on the integer accessor: `AccessorTests.
-  A_fraction_a_number_outside_64_bits_or_another_kind_is_a_type_mismatch` and the harness `huge` scenario.
-- [x] A client never closed does not keep the process from exiting: `ProcessTests.
-  A_client_that_is_never_closed_does_not_keep_the_process_from_exiting` runs `tests/NeverClosed` as a child
-  process and asserts it exits. The loops are background tasks on pool threads.
+### Native tests
 
-Code and documents
+- [x] Every operation from many threads, `close` racing `variation`, two `close` calls racing: `StressTests.EveryOperationFromManyThreadsWithCloseRacingNeverThrowsOrHangs` (covers both the many-thread race and three racing closes; there is no race detector for .NET, so this stands in, with a 60 s bound on every wait).
+- [x] SHOULD: an `https` URL reaches the TLS path with a local certificate: `LifecycleTests.ATlsServerWithALocalCertificateIsReachableAndTheDefaultRefusesIt` (a trusting handler works; the default refuses with `network`).
+- [x] `variation` and `variationDetail` return within a bound while a ruleset request hangs and a flush hangs: `LifecycleTests.EvaluationAnswersWhileARulesetRequestHangsAndWhileAUsageFlushHangs` (2000 evaluations plus status reads under 5 s each time; close under 8 s with a 2 s request timeout).
+- [x] A reader sees one ruleset or the other across a swap: `ConcurrencyTests.AHooksEtagAndFlagVersionBelongToTheSameRulesetUnderConcurrentSwaps`.
+- [x] Hooks and `onError` that call back into the client do not deadlock; `ready` from a callback returns at once: `ConcurrencyTests.CallbacksThatCallBackIntoTheClientDoNotDeadlock` (`OnError` calling `Status`, `Variation`, `Ready`, `Close`) and `AHookThatCallsBackIntoTheClientDoesNotDeadlock`. The first load runs `OnError` (if it fails) before it settles `ready`, so the unsettled case can arise and is handled: `Ready()` on the SDK's own thread answers from the state held without waiting (Decision 13).
+- [x] A silent stream dropped as `timeout` after the watchdog, and a keep-alive restarts it, through a seam on a real socket: `StreamTests.AQuietStreamIsDroppedAsATimeoutAfterTheWatchdog`, `AKeepAliveRestartsTheWatchdog`.
+- [x] A `Retry-After` above 300 is held for 300 s on the ruleset, stream and events routes: `HoldTests.TheRulesetRouteCapsTheHoldAtThreeHundredSeconds`, `TheStreamRouteCapsTheHoldAtThreeHundredSeconds`, `TheEventsRouteCapsItsOwnHoldAndLeavesTheRulesetHoldAlone`.
+- [x] Counts either side of UTC midnight go out as two days: `ProtocolTests.UsageIsSplitAtUtcMidnightAndSentInChunksOf500`.
+- [x] An evaluation that raises: fallback, `ERROR EVALUATION_FAILED`, one `onError`: `ClientTests.ADeadEvaluatorGivesTheFallbackWithOneOnErrorAndNoCount`.
+- [x] A hook that returns a task and fails later goes to `onError` and changes neither the answer nor the count: `ConcurrencyTests.ATaskHookThatFailsLaterGoesToOnErrorAndChangesNeitherTheAnswerNorTheCount`.
+- [x] A served number outside signed 64 bits is `TYPE_MISMATCH` on the integer accessor: `ClientTests.IntegerAccessorAcceptsAWholeFloatAndRefusesAFractionOrARangeOverflow`; the `huge` scenario.
+- [x] A client never closed does not keep the process from exiting: `LifecycleTests.AClientThatIsNeverClosedDoesNotKeepTheProcessFromExiting` (runs `ToggleSlash.Sdk.NeverClosed` as a process; the SDK's loops are background tasks on the thread pool, started in `ToggleSlashClient.Create`).
+- [x] A nullable-string accessor with a null fallback and another kind served gives `TYPE_MISMATCH`: `ClientTests.NullableStringAccessorWithANullFallbackRefusesAnotherKind`.
+- [x] The generic accessor with an integer fallback type: a served `2.0` is `2`, a fraction or out-of-range value `TYPE_MISMATCH`; a type with no JSON kind gives the fallback and `TYPE_MISMATCH`: `ClientTests.GenericAccessorReadsIntegerTypesAndRefusesATypeWithNoJsonKind`.
+- [x] The hook event's `value` for the integer accessor has the mapping table's type (`long`): `ClientTests.HookValueForTheIntegerAccessorIsALong`.
+- [x] A context attribute of each numeric type matches as the JSON number of its value: `NumericTests.ANumericAttributeOfAnyCSharpNumericTypeMatchesAsTheJsonNumber` (17 types), `ANumericAttributeThatIsNotFiveDoesNotMatch`; the nesting limit of 512 is `ADeeplyNestedContextIsRefusedAsInvalidAtFiveHundredAndTwelveLevels`.
 
-- [x] `DESIGN.md` passes the phase 1 row check and `README.md` links to the mapping table
-  (`DESIGN.md` section 1; README links `#1-the-mapping-table`).
-- [x] Names keep the canonical meaning and defaults; reason kinds, error codes, stream states and `lastError`
-  codes keep their spelling (`ReasonKind.PrerequisiteFailed`, `ErrorCode.NotReady`, `StreamState.Connected`; `Name`
-  prints the contract's spelling). `Types.cs`, `DESIGN.md` section 1.
-- [x] No platform regular expression in the evaluator: `grep -rn "Regex\|System.Text.RegularExpressions" src`
-  finds only a comment in `Evaluation/Pattern.cs` that says the evaluator does not use it.
-- [x] Every runtime dependency has a line in `DESIGN.md`: there are none (`DESIGN.md` section 4,
-  "Runtime: none").
-- [x] No telemetry and no extra header: source search for request headers finds `Authorization` and `Accept`
-  (`Http.cs:85-86`), `If-None-Match` (`Sync.cs:143`) and `Content-Type` (`Usage.cs:146`). A wire capture
-  of one ruleset request from the SDK against a loopback listener showed `Host`, `Authorization`, `Accept`
-  and nothing else. The HTTP library adds `Host` (the server's own name, which the request URL already
-  carries) and, on the usage POST, `Content-Length` (the body's size); it sends no `User-Agent`, no
-  `Accept-Encoding` (automatic decompression is off) and no `Connection` header. None identifies a user or a
-  machine.
-- [x] Every extra beyond the contract is one contract 13 allows: the extras are `IDisposable`/`IAsyncDisposable`
-  on the client and `CloseAsync`, typed accessors, and the internal seams (`DESIGN.md`, "Test seams"). None sends
-  anything new.
-- [x] Test seams are internal options on `ClientOptions` or `FakeTimeProvider`, never a global or an
-  environment variable the SDK reads (`TOGGLESLASH_COUNTS_FILE` is read by `bin/test` and the vector test,
-  not by the SDK).
-- [x] `bin/lint`, `bin/test` and `bin/test-service` exist, are executable, `cd` to the SDK and run with only
-  the toolchain `mise.toml` pins (`mise exec -- ...` when mise is present).
-- [x] `test-service/README.md` maps every accessor of the protocol to an SDK method (`bool`, `string`,
-  `number`, `int`, `json`, `any`).
-- [x] `.github/workflows/sdk-csharp.yml` follows the skeleton, filters on its paths and pins every action by
-  commit SHA.
+### Code and documents
 
-Repository
+- [x] `DESIGN.md` passes the phase 1 row check, and `README.md` links the mapping table: `DESIGN.md` "Mapping table (contract section 2)"; `README.md` "The mapping".
+- [x] Names keep canonical meaning and defaults; closed sets keep their spelling: DESIGN.md "The closed sets keep their spelling"; `ReasonKind`, `ErrorCode` and `StreamState` members are spelled as the contract spells them (`Reason.cs`, `Types.cs`).
+- [x] The evaluator has no platform regular expression: `SourceTests.TheEvaluatorUsesNoPlatformRegexAndNoSystemTextJson` (searches `Evaluation/` for `System.Text.RegularExpressions`, `Regex` and `System.Text.Json`, ignoring comment lines).
+- [x] The lint configuration names its rule set and each ignored rule has a reason: `.editorconfig` header names it (AnalysisMode Recommended plus the style rules); `SourceTests.EveryDisabledLintRuleHasAReasonCommentAboveIt`.
+- [x] Every runtime dependency has a line in DESIGN.md: there are none; DESIGN.md "Dependencies" says so.
+- [x] No telemetry and no identifying header: `SourceTests.TheLibraryAddsOnlyTheFourAllowedRequestHeaders` (only `Accept`, `Authorization`, `ContentType`, `If-None-Match` appear in the source), and the capture table above (`Host` and `Content-Length` only, added by the client).
+- [x] Every extra is one contract 13 allows: Decisions 12 and 16 (typed and generic accessors, blocking and async forms, a hook that returns a task, internal seams); none weakens contract 5 or sends anything new.
+- [x] Test seams are `internal` options on `create`, or the standard fake-time facility, never a global or an environment variable: `ClientOptions.cs` (`TimeProvider`, `Jitter`, `Handler`, `StreamWatchdog`, `Evaluator`, internal); DESIGN.md "Test seams".
+- [x] `bin/lint`, `bin/test` and `bin/test-service` exist, are executable, `cd` to the SDK and run with only the toolchain `mise.toml` pins: `ls -l sdks/csharp/bin`, each begins `set -eu` and `cd "$(dirname "$0")/.."` and uses `mise exec --` when mise is on PATH.
+- [x] `test-service/README.md` maps every accessor of the protocol to an SDK method: `bool`, `string`, `number`, `int`, `json`, `any` rows in `test-service/README.md`.
+- [x] The workflow follows the skeleton, filters on its paths, pins every action by SHA: `.github/workflows/sdk-csharp.yml`; `bun scripts/check-workflows.ts .github/workflows/*.yml` printed `8 workflow(s) read, 0 failure(s)`.
+- [x] A `status` read racing a stream failure never shows its `lastError` beside `connected`: `ConcurrencyTests.StatusNeverShowsALastErrorBesideAConnectedStream`.
 
-- [x] No em dash or en dash: `bun scripts/check-dashes.ts` passes with this file included.
-- [x] `bun run format:check` passes.
-- [x] Only `sdks/csharp/` and the one workflow changed: the phase 6 scope check prints `scope ok`.
-- [x] No package was published and no name reserved. `ToggleSlash.Sdk` is only a project name; nothing was pushed
-  to NuGet.
-- [x] The commit subject is `chore(sdk-csharp): ...`, not `feat`, with no `Co-Authored-By` and no AI
-  attribution.
-- [x] `RUN.md` follows `RUN-TEMPLATE.md`: every heading is present (the heading check prints nothing).
+### Repository
+
+- [x] No em dash or en dash: `bun scripts/check-dashes.ts` exits 0; `SourceTests.NoSourceFileHoldsAnEmOrEnDash` for `.cs` and `.md` under `sdks/csharp`.
+- [x] `bun run format:check` passes: `All matched files use the correct format.`
+- [x] Only `sdks/csharp/` and the one workflow file changed: the phase 6 scope check prints `scope ok` (run before the commit).
+- [x] No package published and no name reserved: nothing pushed to any registry; `IsPackable` is false in `Directory.Build.props`.
+- [x] Commit subjects are Conventional Commits, none `feat`, no `Co-Authored-By` or AI attribution: one commit, `chore(sdk-csharp): the C# server SDK regenerated cold from the authoring prompt`.
+- [x] The workflow's job is `runs-on: ubuntu-latest` with no `if:`, triggers only `pull_request` and `push`, installs its own toolchain: `.github/workflows/sdk-csharp.yml`; `check-workflows.ts` passes.
+- [x] `RUN.md` follows `RUN-TEMPLATE.md`, with evidence for every line: this file.

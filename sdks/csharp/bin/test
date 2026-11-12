@@ -1,7 +1,6 @@
 #!/bin/sh
-# Builds everything (the SDK, its tests and the test service), runs every native test (the evaluation
-# vectors and bucket pins included) and prints how many vectors and pins ran. The test service is built last,
-# so bin/test-service finds it; bin/test-service builds only when the binary is missing.
+# Build everything (the test service last) and run the unit tests plus the evaluation vectors, every time: the build
+# is never skipped and a cached test result is never reported (no --no-build, and the vstest result is not cached).
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -13,18 +12,8 @@ run() {
   fi
 }
 
-export DOTNET_CLI_TELEMETRY_OPTOUT=1
-export DOTNET_NOLOGO=1
-mkdir -p artifacts
-counts="$PWD/artifacts/vector-counts.txt"
-rm -f "$counts"
-export TOGGLESLASH_COUNTS_FILE="$counts"
-
-# Build every time, so a stale build never hides a failure. The race detector that other languages have does
-# not exist for .NET; the stress tests in tests/ToggleSlash.Sdk.Tests/ConcurrencyTests.cs stand in for it.
-run dotnet build ToggleSlash.Sdk.slnx --nologo -v quiet
-run dotnet test tests/ToggleSlash.Sdk.Tests/ToggleSlash.Sdk.Tests.csproj --no-build --nologo -v quiet
-
-cat "$counts"
-# Last, so the binary bin/test-service runs is the one just built.
-run dotnet build test-service/ToggleSlash.Sdk.TestService.csproj --nologo -v quiet
+run dotnet build src/ToggleSlash.Sdk/ToggleSlash.Sdk.csproj --nologo -v q
+run dotnet test tests/ToggleSlash.Sdk.Tests/ToggleSlash.Sdk.Tests.csproj --nologo -v q --logger "console;verbosity=detailed"
+if [ -f test-service/ToggleSlash.Sdk.TestService.csproj ]; then
+  run dotnet build test-service/ToggleSlash.Sdk.TestService.csproj --nologo -v q
+fi

@@ -1,8 +1,10 @@
 #!/bin/sh
-# Starts the conformance test service and prints "listening http://127.0.0.1:<port>" once it does.
-# It runs the built binary; it builds it only when there is none (bin/test rebuilds every time).
+# Starts the conformance test service on the output bin/test built, and builds it only when that output is missing
+# (the harness waits 30 s for the "listening" line). Roots read: test-service/ and src/ToggleSlash.Sdk/.
 set -eu
 cd "$(dirname "$0")/.."
+
+OUT=artifacts/bin/ToggleSlash.Sdk.TestService/debug/ToggleSlash.Sdk.TestService.dll
 
 run() {
   if command -v mise >/dev/null 2>&1; then
@@ -12,13 +14,10 @@ run() {
   fi
 }
 
-export DOTNET_CLI_TELEMETRY_OPTOUT=1
-export DOTNET_NOLOGO=1
-SERVICE=artifacts/bin/ToggleSlash.Sdk.TestService/debug/ToggleSlash.Sdk.TestService.dll
-if [ ! -f "$SERVICE" ]; then
-  run dotnet build test-service/ToggleSlash.Sdk.TestService.csproj --nologo -v quiet >&2
+if [ ! -f "$OUT" ]; then
+  run dotnet build test-service/ToggleSlash.Sdk.TestService.csproj --nologo -v q >&2
 fi
 if command -v mise >/dev/null 2>&1; then
-  exec mise exec -- dotnet "$SERVICE"
+  exec mise exec -- dotnet "$OUT"
 fi
-exec dotnet "$SERVICE"
+exec dotnet "$OUT"

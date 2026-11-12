@@ -1,13 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <RootNamespace>ToggleSlash.Sdk.TestService</RootNamespace>
     <AssemblyName>ToggleSlash.Sdk.TestService</AssemblyName>
-    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <!-- Not the product: the analyzers that guard public API shape stay on the library. -->
+    <AnalysisMode>Default</AnalysisMode>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\src\ToggleSlash.Sdk\ToggleSlash.Sdk.csproj" />
+    <ProjectReference Include="../src/ToggleSlash.Sdk/ToggleSlash.Sdk.csproj" />
   </ItemGroup>
 
 </Project>

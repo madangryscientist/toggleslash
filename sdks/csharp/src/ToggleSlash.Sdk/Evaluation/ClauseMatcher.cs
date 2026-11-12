@@ -1,4 +1,4 @@
-using System.Text.Json;
+using ToggleSlash.Sdk.Json;
 
 namespace ToggleSlash.Sdk.Evaluation;
 
@@ -6,22 +6,37 @@ namespace ToggleSlash.Sdk.Evaluation;
 internal static class ClauseMatcher
 {
     /// <summary>
-    /// The value a name or a <c>/</c> reference reaches, or null when it is missing or null. Only the context's
-    /// own <c>attributes</c> count, <c>key</c> always reads the context key, and a step goes into an object only.
+    /// The value a name or a <c>/</c> reference reaches, or null when it is missing or null. Only the context's own
+    /// <c>attributes</c> count, <c>key</c> always reads the context key, and a step goes into an object only.
     /// </summary>
-    private static JsonElement? ReadAttribute(KindContext context, string name)
+    private static JsonValue? ReadAttribute(KindContext context, string name)
     {
         // Load refused an invalid reference, so Parse does not return null here.
         var components = name.StartsWith('/') ? AttributeReference.Parse(name) ?? [] : [name];
-        if (components.Count == 0) return null;
-        JsonElement current;
-        if (components[0] == "key") current = context.KeyElement;
-        else if (context.Attributes is not { } attributes || !attributes.TryGetProperty(components[0], out current)) return null;
+        if (components.Count == 0)
+        {
+            return null;
+        }
+
+        JsonValue current;
+        if (components[0] == "key")
+        {
+            current = context.KeyValue;
+        }
+        else if (context.Attributes is not { } attributes || !attributes.TryGetValue(components[0], out current!))
+        {
+            return null;
+        }
+
         for (var i = 1; i < components.Count; i++)
         {
-            if (current.ValueKind != JsonValueKind.Object || !current.TryGetProperty(components[i], out current)) return null;
+            if (current is not JsonObject obj || !obj.TryGetValue(components[i], out current!))
+            {
+                return null;
+            }
         }
-        return current.ValueKind == JsonValueKind.Null ? null : current;
+
+        return current is JsonNull ? null : current;
     }
 
     /// <summary>
@@ -30,59 +45,87 @@ internal static class ClauseMatcher
     /// </summary>
     public static bool AttributeClauseMatches(Clause clause, IReadOnlyDictionary<string, KindContext> contexts)
     {
-        if (!contexts.TryGetValue(clause.ContextKind ?? ContextKinds.Default, out var context)) return false;
-        if (ReadAttribute(context, clause.Attribute) is not { } attribute) return false;
-        var matched = attribute.ValueKind == JsonValueKind.Array
-            ? attribute.EnumerateArray().Any(candidate => AnyValueMatches(clause, candidate))
+        if (!contexts.TryGetValue(clause.ContextKind ?? ContextKinds.Default, out var context))
+        {
+            return false;
+        }
+
+        if (ReadAttribute(context, clause.Attribute) is not { } attribute)
+        {
+            return false;
+        }
+
+        var matched = attribute is JsonArray array
+            ? array.Items.Any(candidate => AnyValueMatches(clause, candidate))
             : AnyValueMatches(clause, attribute);
         return clause.Negate ? !matched : matched;
     }
 
-    private static bool AnyValueMatches(Clause clause, JsonElement candidate)
+    private static bool AnyValueMatches(Clause clause, JsonValue candidate)
     {
         foreach (var value in clause.Values)
         {
-            if (Matches(clause.Op, candidate, value)) return true;
+            if (Matches(clause.Op, candidate, value))
+            {
+                return true;
+            }
         }
+
         return false;
     }
 
-    private static bool Matches(Op op, JsonElement attribute, ClauseValue value)
+    private static bool Matches(Op op, JsonValue attribute, ClauseValue value)
     {
         switch (op)
         {
             case Op.In:
-                return attribute.ValueKind switch
+                return attribute switch
                 {
-                    JsonValueKind.String => value.Kind == ValueKind.String
-                        && string.Equals(JsonStrings.Read(attribute), value.String, StringComparison.Ordinal),
-                    JsonValueKind.True or JsonValueKind.False => value.Kind == ValueKind.Boolean
-                        && (attribute.ValueKind == JsonValueKind.True) == value.Boolean,
-                    JsonValueKind.Number => value.Kind == ValueKind.Number
-                        && Validation.TryNumber(attribute, out var number) && double.IsFinite(number) && number == value.Number,
+                    JsonString text => value.Kind == ValueKind.String && string.Equals(text.Value, value.String, StringComparison.Ordinal),
+                    JsonBool flag => value.Kind == ValueKind.Boolean && flag.Value == value.Boolean,
+                    JsonNumber number => value.Kind == ValueKind.Number && double.IsFinite(number.Value) && number.Value == value.Number,
                     _ => false,
                 };
             case Op.Contains or Op.StartsWith or Op.EndsWith:
-                if (attribute.ValueKind != JsonValueKind.String || value.Kind != ValueKind.String) return false;
-                var text = JsonStrings.Read(attribute);
+                if (attribute is not JsonString subject || value.Kind != ValueKind.String)
+                {
+                    return false;
+                }
+
                 // Ordinal every time: the culture-sensitive defaults are exactly what the vectors catch.
                 return op switch
                 {
-                    Op.Contains => text.Contains(value.String, StringComparison.Ordinal),
-                    Op.StartsWith => text.StartsWith(value.String, StringComparison.Ordinal),
-                    _ => text.EndsWith(value.String, StringComparison.Ordinal),
+                    Op.Contains => subject.Value.Contains(value.String, StringComparison.Ordinal),
+                    Op.StartsWith => subject.Value.StartsWith(value.String, StringComparison.Ordinal),
+                    _ => subject.Value.EndsWith(value.String, StringComparison.Ordinal),
                 };
             case Op.SemverEq or Op.SemverLt or Op.SemverLte or Op.SemverGt or Op.SemverGte:
-                if (attribute.ValueKind != JsonValueKind.String || value.Kind != ValueKind.String) return false;
-                if (SemanticVersion.Parse(JsonStrings.Read(attribute)) is not { } candidate || SemanticVersion.Parse(value.String) is not { } target) return false;
+                if (attribute is not JsonString versionText || value.Kind != ValueKind.String)
+                {
+                    return false;
+                }
+
+                if (SemanticVersion.Parse(versionText.Value) is not { } candidate || SemanticVersion.Parse(value.String) is not { } target)
+                {
+                    return false;
+                }
+
                 var versionOrder = candidate.CompareTo(target);
                 return op == Op.SemverEq ? versionOrder == 0 : MatchesOrder(op, versionOrder);
             case Op.Matches:
                 // Compiled per call; an invalid pattern does not match.
-                if (attribute.ValueKind != JsonValueKind.String || value.Kind != ValueKind.String) return false;
-                return Pattern.Compile(value.String) is { } pattern && pattern.IsMatch(JsonStrings.Read(attribute));
+                if (attribute is not JsonString input || value.Kind != ValueKind.String)
+                {
+                    return false;
+                }
+
+                return Pattern.Compile(value.String) is { } pattern && pattern.IsMatch(input.Value);
             case Op.Before or Op.After:
-                if (ToInstant(attribute) is not { } instant || ToInstant(value) is not { } limit) return false;
+                if (ToInstant(attribute) is not { } instant || ToInstant(value) is not { } limit)
+                {
+                    return false;
+                }
+
                 return op == Op.Before ? instant < limit : instant > limit;
             default:
                 return Compare(attribute, value) is { } order && MatchesOrder(op, order);
@@ -90,10 +133,10 @@ internal static class ClauseMatcher
     }
 
     /// <summary>A finite number is Unix milliseconds, a string is parsed, anything else is not an instant.</summary>
-    private static double? ToInstant(JsonElement attribute) => attribute.ValueKind switch
+    private static double? ToInstant(JsonValue attribute) => attribute switch
     {
-        JsonValueKind.Number => Validation.TryNumber(attribute, out var number) && double.IsFinite(number) ? number : null,
-        JsonValueKind.String => RfcInstant.Parse(JsonStrings.Read(attribute)),
+        JsonNumber number => double.IsFinite(number.Value) ? number.Value : null,
+        JsonString text => RfcInstant.Parse(text.Value),
         _ => null,
     };
 
@@ -105,17 +148,23 @@ internal static class ClauseMatcher
     };
 
     /// <summary>-1, 0 or 1 for two finite numbers or two strings (by UTF-16 code unit); otherwise null.</summary>
-    private static int? Compare(JsonElement attribute, ClauseValue value)
+    private static int? Compare(JsonValue attribute, ClauseValue value)
     {
-        if (attribute.ValueKind == JsonValueKind.Number && value.Kind == ValueKind.Number)
+        if (attribute is JsonNumber number && value.Kind == ValueKind.Number)
         {
-            if (!Validation.TryNumber(attribute, out var number) || !double.IsFinite(number)) return null;
-            return number < value.Number ? -1 : number > value.Number ? 1 : 0;
+            if (!double.IsFinite(number.Value))
+            {
+                return null;
+            }
+
+            return number.Value < value.Number ? -1 : number.Value > value.Number ? 1 : 0;
         }
-        if (attribute.ValueKind == JsonValueKind.String && value.Kind == ValueKind.String)
+
+        if (attribute is JsonString text && value.Kind == ValueKind.String)
         {
-            return Math.Sign(string.CompareOrdinal(JsonStrings.Read(attribute), value.String));
+            return Math.Sign(string.CompareOrdinal(text.Value, value.String));
         }
+
         return null;
     }
 
