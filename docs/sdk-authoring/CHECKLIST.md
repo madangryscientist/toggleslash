@@ -76,7 +76,7 @@ Each line is a native test in `$L`, named in `RUN.md`.
   same ruleset under concurrent swaps (contract 6.3; the swap is a MUST, the `etag` pairing a SHOULD).
 - [ ] An `afterEvaluation` hook and an `onError` that call back into the client (`status`, `variation`) do
   not deadlock, and a `ready` called from inside such a callback on the SDK's own thread returns without
-  waiting (contract 6.4, SHOULD).
+  waiting (contract 6.4, SHOULD). Where the SDK settles `ready` before it calls any callback on its own thread, the unsettled case cannot arise: the test calls `ready` from each callback those threads run and checks it returns at once, and `RUN.md` names the order that rules the unsettled case out.
 - [ ] A stream that gets no bytes for 60 s is dropped as `timeout`, and a keep-alive restarts the 60 s,
   tested through a seam, not by waiting: the seam sets the watchdog's length, and the test
   reads a real loopback socket that goes quiet, because a seam-only test can pass while the timeout never
@@ -99,7 +99,7 @@ Each line is a native test in `$L`, named in `RUN.md`.
   cannot hold null` where it cannot (Go's `StringVariation` takes a `string`).
 - [ ] A generic accessor with an integer fallback type gives that type for a whole served number (a served
   `2.0` is `2`) and `TYPE_MISMATCH` for a fraction or a value outside the type's range (contract 4, "Typed
-  languages"). `n/a: no generic method` where the language has none.
+  languages"). A fallback of a class with no JSON kind gives the fallback and `TYPE_MISMATCH` (contract 4, "Typed languages"). `n/a: no generic method` where the language has none.
 - [ ] The hook event's `value` for the integer accessor has the type the SDK's mapping table names, the
   language's JSON value type or the accessor's own integer type (contract 10, the `value` row).
 - [ ] A context attribute of each of the language's numeric types (every integer width, every float width)
@@ -135,6 +135,7 @@ Each line is a native test in `$L`, named in `RUN.md`.
   (sdk-test-service.md, "Accessors").
 - [ ] `.github/workflows/sdk-<lang>.yml` follows the skeleton, filters on its paths, and pins every action by
   commit SHA (PROMPT.md, phase 5).
+- [ ] Languages with threads: a `status` read on another thread racing a stream failure never shows that failure's `lastError` beside `stream: connected` (contract 6.5), under the race detector where the language has one. `n/a: single-threaded` otherwise.
 
 ## Repository
 

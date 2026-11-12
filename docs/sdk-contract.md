@@ -117,7 +117,7 @@ integer accessor: if the served number has a fractional part, or is outside the 
 the caller gets its fallback with `TYPE_MISMATCH`. A language whose integer type is unbounded (Python,
 Ruby) uses the signed 64-bit range. `2.0` counts as the integer `2`. This is deliberately
 stricter than the TypeScript SDK, which has one number type. A served number is read as binary64, so the largest
-integer within signed 64 bits that a test can serve is `2^63 - 1024`; the literal `2^63 - 1` reads as `2^63`, out of range. A generic method whose result has the fallback's static type (Java, C#) treats a fallback of an integer type as an integer accessor: a whole served number in that type's range comes back in that type, and anything else is `TYPE_MISMATCH`.
+integer within signed 64 bits that a test can serve is `2^63 - 1024`; the literal `2^63 - 1` reads as `2^63`, out of range. A generic method whose result has the fallback's static type (Java, C#) treats a fallback of an integer type as an integer accessor: a whole served number in that type's range comes back in that type, and anything else is `TYPE_MISMATCH`. A fallback whose class maps to no JSON kind (a `StringBuilder`, an array type the SDK does not read as an array) matches no served value: the caller gets the fallback with `TYPE_MISMATCH`.
 
 A language MAY choose any of these shapes, and its mapping table names the one it chose: typed methods
 (`boolVariation`, `stringVariation`, `intVariation`, `floatVariation`, `jsonVariation` or the language's
@@ -169,7 +169,7 @@ New, and a MUST for every language it names.
    callback on the SDK's own thread SHOULD NOT wait for the load that thread runs: it returns at once with the
    state held. A `close` called on the SDK's own thread (from such a callback or otherwise) SHOULD NOT wait for the work that thread is doing: it stops
    the rest and returns.
-5. `status` SHOULD be one consistent snapshot, not four reads at four moments.
+5. `status` SHOULD be one consistent snapshot, not four reads at four moments. In particular a stream attempt's end sets `lastError` (on a failure) and `stream` together, so a read from another thread never shows a stream failure's `lastError` beside `connected`. When `onError` runs relative to that change is not specified: the TypeScript SDK calls it first.
 6. A client that is never closed SHOULD NOT keep a process alive by itself where the runtime has the idea
    (a daemon thread, a background task).
 
