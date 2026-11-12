@@ -1,16 +1,13 @@
 #!/bin/sh
-# Runs every native test (the evaluation vectors included), then builds the test service.
+# Builds and tests the SDK, test service included. It always builds; it never reports a cached result.
+# Prints "vectors: <n> pins: <n>" from the vector test, which writes the line to target/vectors.txt.
 set -eu
-cd "$(dirname "$0")/.."
-
-run() {
-  if command -v mise >/dev/null 2>&1; then
-    mise exec -- "$@"
-  else
-    "$@"
-  fi
-}
-
-# `clean test` compiles main, the tests and the test service every time, so a stale build never hides a
-# failure. The test service's classes are in target/test-classes.
-run mvn -B -q clean test
+here="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$here"
+rm -f target/vectors.txt
+if command -v mise >/dev/null 2>&1; then
+  mise exec -- mvn --batch-mode --no-transfer-progress clean verify
+else
+  mvn --batch-mode --no-transfer-progress clean verify
+fi
+cat target/vectors.txt

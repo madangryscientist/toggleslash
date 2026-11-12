@@ -1,212 +1,185 @@
-# Java SDK: design
+# ToggleSlash server SDK for Java: design
 
-This is the design of the ToggleSlash server SDK for Java, written before the code, to
-[`docs/sdk-contract.md`](../../docs/sdk-contract.md) (the contract) and
-[`docs/evaluation.md`](../../docs/evaluation.md) (the spec). It is built from
-[`docs/sdk-authoring/PROMPT.md`](../../docs/sdk-authoring/PROMPT.md); the run report is [`RUN.md`](RUN.md).
+This is the design of `sdks/java`, written before any code. It follows `docs/sdk-contract.md` (the
+contract) and `docs/evaluation.md` (the spec). Nothing here is published and no name is registered.
 
-Inputs: language Java. Runtime, minimum version and build tool were not given, so each is a decision (see
-"The minimum runtime and the toolchain").
+Package root: `com.github.madangryscientist.toggleslash.sdks.java` (Maven group
+`com.github.madangryscientist.toggleslash`, artifact `toggleslash-sdk-java`). The code below uses `P` for it.
 
-## The mapping table
+## 1. The mapping table (contract section 2)
 
-The Maven coordinates are `com.github.madangryscientist.toggleslash:toggleslash-sdk-java:0.1.0-SNAPSHOT`
-and the root package is `com.github.madangryscientist.toggleslash.sdks.java` (the repository path
-`github.com/madangryscientist/toggleslash/sdks/java` in Java's reverse-domain form). Everything below is in
-that package unless it says otherwise. Durations are `java.time.Duration`.
-
-| Name | In Java |
+| Contract name | Java |
 | --- | --- |
-| `create` | `Client.create(Options options)` returns a `Client`. It starts two daemon threads and returns without waiting for the network. It never throws: a URL that cannot be used shows up as a `network` failure in `status()` and `onError`, like any unreachable server. `Options.builder(url, sdkKey)` makes the options. |
-| `ready` | `boolean Client.ready()`. Blocks the calling thread until the first load has finished (bounded by `requestTimeout`), then answers whether a ruleset is held. Any number of calls from any thread; the answer is fixed when the first attempt settles; after `close()` it answers `false` if nothing had loaded. |
-| `variation` | Typed methods, no generic method: `boolean boolVariation(String flagKey, Context context, boolean fallback)`, `String stringVariation(...)`, `long intVariation(...)`, `double doubleVariation(...)` and `Object jsonVariation(String flagKey, Context context, Object fallback)`. A `null` fallback to `jsonVariation` accepts any served value. |
-| `variationDetail` | One `...Detail` twin per typed method: `boolVariationDetail`, `stringVariationDetail`, `intVariationDetail`, `doubleVariationDetail` and `jsonVariationDetail`, each returning `Detail<T>`, a record of `T value`, `OptionalInt variationIndex` (empty when the value is the fallback) and `Reason reason`. |
-| `status` | `Status Client.status()`, a record of `Optional<String> etag`, `Optional<Instant> lastSyncAt`, `StreamState stream` and `Optional<String> lastError`. One consistent snapshot, read from memory under one small lock. |
-| `close` | `Client.close()` (the client is `AutoCloseable`, and `close()` declares no checked exception). Idempotent and safe from any thread and from a callback; every call returns when the same shutdown is done. |
-| `url` | the first argument of `Options.builder(url, sdkKey)`. Trailing `/` characters are removed; nothing else is validated. Required. |
-| `sdkKey` | the second argument of `Options.builder(url, sdkKey)`. Required. |
-| `stream` | `Options.Builder.stream(boolean)`. The default is on. |
-| `pollInterval` | `Options.Builder.pollInterval(Duration)`; default 30 s; a zero, negative or null `Duration` is the default. |
-| `flushInterval` | `Options.Builder.flushInterval(Duration)`; default 30 s; a zero, negative or null `Duration` is the default. |
-| `requestTimeout` | `Options.Builder.requestTimeout(Duration)`; default 10 s; a zero, negative or null `Duration` is the default. |
-| `hooks.afterEvaluation` | `Options.Builder.afterEvaluation(Consumer<EvaluationEvent>)`; default none. A `null` is ignored. The event is a record of `flagKey`, `context`, `value`, `variationIndex` (`OptionalInt`), `reason`, `etag` (`Optional<String>`) and `flagVersion` (`Optional<Double>`). |
-| `onError` | `Options.Builder.onError(Consumer<Throwable>)`; default none (ignore). The errors the SDK builds are `ToggleSlashException` values (a `RuntimeException` that is only ever passed to `onError`, never thrown at a caller) with a fixed message and a `code()`. A hook's exception arrives as it was thrown. |
-| `accessor shape` | Typed methods only, because Java has no generic method over the fallback's type that survives erasure for `long` versus `double` versus `boolean`, and a second spelling of the same five would add nothing. The accessors are `bool`, `string`, `int` (a `long`), `double` and `json` (an `Object` from the JSON tree, whose `null` fallback is the `any` accessor). Each has a `Detail` twin. A typed method needs the served value to be of its own kind, whatever the fallback is. `intVariation` is the integer accessor (below). |
-| `onError thread` | The thread that met the failure: the SDK's sync thread (`toggleslash-sync`) for a failed ruleset or stream attempt, its flush thread (`toggleslash-flush`) for a failed usage request, the thread that called `close()` for the final flush and for the counts lost at close, and the caller's own thread for an evaluation that raised and for a hook that raised. No SDK lock is held during the call. |
+| `create` | `Client.create(Options)`, a static factory. It starts two daemon threads and returns at once; it never throws (a bad option falls back to its default, a URL the HTTP client cannot use makes each request a `network` error). `Options` is built with `Options.builder()...build()`. |
+| `ready` | `boolean Client.ready()`. Blocks until the first load attempt has ended (bounded by `requestTimeout`, the load's own bound) and answers whether a ruleset is held; the answer is fixed at that moment. Called again it answers the same. After `close` it answers `false` if it had not settled. Called on one of the SDK's own threads (from `onError`, which the sync thread calls) it never waits: it answers the settled answer, or `false` if unsettled. |
+| `variation` | `<T> T Client.variation(String flagKey, Object context, T fallback)`, the generic method, plus the typed accessors below. Never throws, never does I/O. |
+| `variationDetail` | `<T> Detail<T> Client.variationDetail(String flagKey, Object context, T fallback)`, and a `...Detail` for each typed accessor. `Detail<T>` is a record `(T value, Integer variationIndex, Reason reason)`; `variationIndex` is `null` for a fallback. |
+| `status` | `Status Client.status()`, one immutable snapshot record `(String etag, Long lastSyncAt, StreamState stream, String lastError)`. `etag`, `lastSyncAt` (epoch milliseconds) and `lastError` are `null` for "none". |
+| `close` | `void Client.close()`. Also `AutoCloseable`, but declares no exception. Idempotent; concurrent calls wait for the one shutdown. Returns within about two times `requestTimeout` (section 2). |
+| `url` | `Options.Builder.url(String)`. Required. Trailing `/` characters are removed. |
+| `sdkKey` | `Options.Builder.sdkKey(String)`. Required. |
+| `stream` | `Options.Builder.stream(boolean)`. Default `true`. The builder holds a `Boolean`, `null` meaning "not given", so `false` is told from "absent". |
+| `pollInterval` | `Options.Builder.pollInterval(Duration)`. Default 30 seconds. `null` means "not given"; a zero or negative duration falls back to the default (contract 2 SHOULD). |
+| `flushInterval` | `Options.Builder.flushInterval(Duration)`. Default 30 seconds, same handling. |
+| `requestTimeout` | `Options.Builder.requestTimeout(Duration)`. Default 10 seconds, same handling. |
+| `hooks.afterEvaluation` | `Options.Builder.afterEvaluation(Consumer<EvaluationEvent>)`. Default none. `EvaluationEvent` is a record `(flagKey, context, value, variationIndex, reason, etag, flagVersion)`, with `Integer variationIndex`, `String etag` and `Long flagVersion` nullable. The hook runs on the caller's thread, synchronously; its return value does not exist (a `Consumer`). |
+| `onError` | `Options.Builder.onError(Consumer<Throwable>)`. Default: ignore. Values are `ToggleSlashException` (a `RuntimeException` with a `code()`) for failures the SDK builds, or the exception a hook or the evaluator raised, as raised. |
+| `accessor shape` | Both: one generic method and typed methods. Generic: `variation` and `variationDetail`, `T` being the fallback's type (`Boolean`, `String`, any `Number`, `List`, `Map`, or `null` for "any kind"). Typed: `boolVariation` (`boolean`), `stringVariation` (`String`), `numberVariation` (`double`), `intVariation` (`long`, the signed 64-bit integer), `jsonVariation` (`Object`, any JSON kind, a `null` fallback accepted), each with a `...Detail` twin. Every one applies contract 4's order and mismatch rule. `intVariation` also answers `TYPE_MISMATCH` for a served number with a fractional part or outside int64 (`2.0` is `2`). |
+| `onError thread` | The thread that met the failure: the SDK's sync thread for a failed ruleset or stream attempt, the SDK's flush thread (or the thread that called `flush` or `close`) for a usage failure and for counts lost at `close`, and the caller's own thread for a hook that raised or an evaluation that raised. No SDK lock is held when it is called. An `onError` that throws is caught and ignored. |
 
-**The closed sets** keep their spelling as enums whose constants carry the canonical text, so
-`ReasonKind.OFF` has `value()` of `"OFF"` (`Reason`, `ReasonKind` and `ErrorCode` are public types of the
-`evaluation` package, because the evaluator returns them and the SDK passes them through unchanged): `ReasonKind` (`OFF`, `PREREQUISITE_FAILED`,
-`TARGET_MATCH`, `RULE_MATCH`, `FALLTHROUGH`, `ERROR`), `ErrorCode` (the evaluator's seven and the SDK's
-`NOT_READY`, `TYPE_MISMATCH`, `EVALUATION_FAILED`) and `StreamState` (`OFF("off")`, `CONNECTING("connecting")`,
-`CONNECTED("connected")`, `DISCONNECTED("disconnected")`, `CLOSED("closed")`). `Reason` is a record
-`(ReasonKind kind, OptionalInt ruleIndex, Optional<String> flagKey, Optional<ErrorCode> code)`; `ruleIndex`
-means something only for `RULE_MATCH`, `flagKey` only for `PREREQUISITE_FAILED` and `code` only for
-`ERROR`. `lastError` is an `Optional<String>` holding `http_<status>`, `timeout`, `bad_ruleset` or `network`.
-The errors handed to `onError` are `ToggleSlashException` values whose `code()` is one of those four, or
-`usage` for a failed usage request.
+Reasons, error codes, stream states and `lastError` keep their canonical spelling:
 
-**An option whose default is on or non-zero.** `Options.Builder` starts with the defaults in its fields, so
-an option that is not called keeps its default and `stream(false)` is `false`. A duration that is zero,
-negative or null is replaced by the default, as contract section 2 suggests.
+- `ReasonKind` is an enum `OFF, PREREQUISITE_FAILED, TARGET_MATCH, RULE_MATCH, FALLTHROUGH, ERROR`. `Reason` is a
+  record `(ReasonKind kind, Integer ruleIndex, String flagKey, ErrorCode code)`, with the fields that do not
+  apply `null`.
+- `ErrorCode` is an enum with the constants `INVALID_CONTEXT, FLAG_NOT_FOUND, SEGMENT_NOT_FOUND, MALFORMED_FLAG,
+  MALFORMED_SEGMENT, PREREQUISITE_CYCLE, PREREQUISITE_DEPTH_EXCEEDED, NOT_READY, TYPE_MISMATCH,
+  EVALUATION_FAILED`; `toString()` is the constant's name.
+- `StreamState` is an enum `OFF, CONNECTING, CONNECTED, DISCONNECTED, CLOSED`. The contract's spelling is lower
+  case (`off`, `connecting`, ...), which Java style forbids for a constant, so `value()` and `toString()` answer
+  the lower-case spelling and the constants are the usual upper-case names.
+- `lastError` is a `String`: `http_<status>` is open-ended, so it is not an enum. The other three are the
+  constants `Status.TIMEOUT`, `Status.BAD_RULESET`, `Status.NETWORK` (`"timeout"`, `"bad_ruleset"`, `"network"`).
 
-**The integer accessor.** `intVariation` returns a `long`. A served number that has a fractional part, is
-not finite, or is outside the signed 64-bit range is `ERROR TYPE_MISMATCH` and the caller gets the
-fallback; `2.0` is the integer `2`. The test service advertises the `integer-accessor` capability.
+How "not given" is told from false or zero: `Options.Builder` stores `Boolean stream`, `Duration pollInterval`,
+`Duration flushInterval` and `Duration requestTimeout` as boxed or reference types that start `null`; `build()` applies
+the default only for `null` (and for a non-positive duration). `stream(false)` is therefore kept.
 
-## Concurrency
+A context is passed as `Object`: the JSON value, as `Map<String,Object>` (`"key"`, `"attributes"`, `"kind"`,
+`"contexts"`), with `String`, `Boolean`, `Double` or any `Number`, `List`, `Map` and `null` inside. A `Number` is read as
+its `double` value. Anything else (a `Date`, an array) is an invalid attribute type and is simply never equal to a
+clause value. `Context.single(key)`/`Context.builder()` helpers build the map for callers who want them
+(contract 13). A context that is not valid gets `ERROR INVALID_CONTEXT`.
 
-The JVM runs threads on several cores, so everything is written for that. The JDK has no race detector; the
-native tests stress every operation from many threads instead (`ClientTest`, see `RUN.md`).
+## 2. Concurrency (contract 6)
 
-- **The held ruleset.** One immutable `Snapshot(ruleset, etag)` in a `volatile` field of `Sync`. Evaluation
-  reads the field once into a local and uses only that, so a hook's `etag` and `flagVersion` belong to
-  the ruleset the evaluation used. A load builds a new `Snapshot` and stores it under the `state` monitor
-  together with `lastSyncAt` and `lastError`, so `status()` sees them from one moment. `variation` takes no
-  lock to read it.
-- **Locks.** Each is held for a few in-memory operations and never across I/O or a callback:
-  1. `Sync.state` (a monitor): the snapshot store, `lastSyncAt`, `lastError` and the stream state.
-     `status()` takes it for a few field reads. `variation` never takes it.
-  2. `Usage.lock` (a monitor): the pending-count map and the "recording stopped" flag. `variation` takes it
-     for one map add. A flush takes it only to swap the map out and to merge kept counts back in.
-  3. `Usage.flushLock` (`ReentrantLock`): makes flushes serial. Only the flush thread and `close()` take it;
-     a flush holds it across its requests, and evaluation never touches it.
-  4. `Hold` (a monitor on two longs): the `Retry-After` deadline of a route.
-  A hung server or a hung flush therefore cannot slow `variation` down. The first `close()` flips an
-  `AtomicBoolean`; every other call waits on a `CountDownLatch` that the shutdown releases.
-- **Callbacks.** `afterEvaluation` and `onError` run with no SDK lock held, so a callback may call
-  `status()`, `variation` and `close()` on the same client without a deadlock. A `close()` made from the
-  closing thread's own callback, or from the sync or flush thread, returns at once instead of waiting for
-  itself. `ClientTest` has the hook and `onError` re-entrancy test.
-- **Threads.** Two, started by `create`, both daemon: `toggleslash-sync` (the first load, then the stream
-  and poll loop) and `toggleslash-flush`. A client that is never closed does not keep the JVM alive
-  (`ClientTest` runs a child JVM that does exactly that and expects it to exit). The JDK's own
-  `HttpClient` selector thread is a daemon too.
-- **Waits.** The sync loop waits on a stop `CountDownLatch` (`await` with the delay or the hold), the flush
-  loop on another, so `close()` wakes both at once. A request in flight is abandoned by cancelling its
-  `CompletableFuture`; for the stream, by aborting its body subscriber (below).
-- **Close**, in this order: usage stops recording; the sync loop is told to stop and its requests
-  (ruleset and stream) are cancelled; the flush loop is told to stop; both threads are joined; `ready()` is
-  settled (`false` if nothing loaded); then the final flush runs on the caller's thread, with the usage
-  HTTP client, which is not cancelled, so the last counts can go out. The final flush does not wait out a
-  hold: counts it could not send because the server asked to wait go to `onError` as "closed with N usage
-  counts unsent: the server asked to wait". The done latch is released last.
+- **The state.** `Sync` holds one immutable `View(ruleset, etag, lastSyncAt, stream, lastError)` in a `volatile`
+  field. A reader (`variation`, `status`) reads the field once and uses that object, so it sees one ruleset with the
+  ETag that names it and one consistent status (contract 6.3, 6.5). The sync thread replaces the whole record in
+  one assignment; the code that builds the new record does no callback. A ruleset and its ETag swap together.
+- **Threads.** Two daemon threads per client, both `SdkThread` (a `Thread` subclass the client can recognise):
+  `toggleslash-sync` (the first load, then the loop of contract 7.3) and `toggleslash-flush` (sleep
+  `flushInterval`, flush, repeat). Both are daemon, so a client that is never closed does not hold the process
+  (contract 6.6). A `flush` called by the application runs on the application's thread.
+- **Waiting without interrupts.** Sleeps go through `Wake`, a small monitor with a woken flag, so `close` wakes a
+  sleeper by setting the flag and never interrupts a thread. A blocked request is ended by cancelling its
+  `CompletableFuture`.
+- **Locks.** The flush lock serialises flushes and is held across usage I/O; evaluation never takes it. Usage counts
+  live in a `ConcurrentHashMap`: recording is `merge`, a flush drains with `remove` per key and re-adds what a
+  failed request kept. An evaluation therefore takes no lock a network call holds and waits for none (contract
+  6.2). Shutdown happens once, guarded by an `AtomicBoolean` and a `CountDownLatch`.
+- **Callbacks.** `afterEvaluation` and `onError` are called with no SDK lock held, so a callback may call `status`,
+  `variation`, `ready` or `close` without a deadlock.
+- **`ready`** waits on a `CountDownLatch` counted down at the end of the first attempt (or by `close`); a `ready`
+  on an `SdkThread` of this client does not wait.
+- **`close`** order (contract 11): mark closing (so no count is added after this); stop following (the sync thread is
+  woken and its in-flight future is cancelled); stop the flush loop (its wake is set); join both threads, each for at
+  most `requestTimeout` (a thread never joins itself, so a `close` made on an `SdkThread` skips its own join); send
+  the final flush; release waiters. Every other caller waits on the same completion latch.
+  The bound: the joins take at most two `requestTimeout` (one per thread) in the worst case and in practice
+  return at once, because the in-flight request is cancelled; the final flush is serial requests, each bounded by
+  `requestTimeout`, and a flush of more than 500 entries is more than one request. A server that never answers
+  therefore ends `close` after about `requestTimeout` for the one flush request plus the joins.
+- **Time.** Waits use `System.nanoTime`. Tests reach the clock, the jitter, the stream idle timeout and the evaluation
+  through package-private seams on `Options.Builder`.
 
-## HTTP and SSE
+## 3. HTTP and SSE (contract 7)
 
-**Client.** `java.net.http.HttpClient`, forced to HTTP/1.1 (so the JDK sends no `Connection: Upgrade` or
-`HTTP2-Settings` header on a cleartext request), redirects off (a `3xx` is `http_<status>`, which the
-contract allows). A `Client` owns two `Http` wrappers, each over its own `HttpClient`: one for the ruleset and
-the stream, which `close()` aborts, and one for usage, which it does not abort so the final flush can go out.
-A JDK 17 `HttpClient` cannot be closed; its threads are daemons and it is garbage collected with the `Client`.
-The headers the SDK sets are exactly `Authorization` (every request), `Accept` (stream only), `If-None-Match`
-(ruleset only, when a ruleset and an ETag are held) and `Content-Type` (events only). The JDK adds `Host`,
-`User-Agent` (`Java-http-client/<jdk version>`) and `Content-Length`; `RUN.md` lists them with why none
-identifies a user or a machine, and `ClientTest.everyRequestCarriesOnlyTheProtocolsHeadersAndTheJdksThree`
-holds it on a real loopback socket.
+- **The client.** The JDK's `java.net.http.HttpClient` (no dependency), forced to HTTP/1.1 (no `Upgrade: h2c`
+  header on cleartext, no `HTTP2-Settings`), redirects off (a `3xx` is `http_<status>`; the contract leaves
+  redirects open), one `HttpClient` for all three routes. Requests carry `Authorization: Bearer <key>`;
+  the ruleset request adds `If-None-Match` only with a ruleset and an ETag held; the stream adds `Accept:
+  text/event-stream`; the events request adds `Content-Type: application/json`. The JDK adds `User-Agent`,
+  `Host`, `Content-Length` (POST) and `Connection`/`Accept-Encoding` where it does; `RUN.md` lists what a
+  loopback listener saw.
+- **Whole-request bound.** `HttpRequest.timeout` ends at the response headers, so it is not enough. Every request
+  except the stream is `sendAsync`; the caller thread waits on the `CompletableFuture` for the remaining time of
+  `requestTimeout` measured from just before the call (headers and body read inside the bound), and on expiry
+  cancels the future (which aborts the exchange) and reports `timeout`. The ruleset body is read with
+  `BodySubscribers.ofByteArray()`.
+- **The stream.** `StreamBody` is a hand-written `BodySubscriber<StreamBody>` that hands itself over the moment the
+  headers arrive (the language notes: `BodyHandlers.fromSubscriber` answers only at the end of the body). It
+  queues each chunk in a `LinkedBlockingQueue` and requests one more only after the reader took one, so memory is
+  bounded. The open is bounded by `requestTimeout` (`future.get(timeout)`), and the 60 second watchdog is simply
+  `queue.poll(watchdog)`: every chunk, a keep-alive comment included, restarts it, and a `null` from `poll` is
+  `timeout`. The watchdog length is a seam (`Options.streamIdleTimeout`), and its test reads a real loopback
+  socket that goes quiet. `close` cancels the subscription and the future and wakes the reader.
+- **No in-flight request survives close.** The JDK before 21 has no closable `HttpClient`, so the sync thread keeps
+  the `CompletableFuture` of its current ruleset or stream request in a field and `close` cancels it.
+- **Errors.** `Errors` maps a failure to the `lastError` spelling (`http_<status>`, `timeout`, `bad_ruleset`,
+  `network`); an `HttpTimeoutException`, a cancelled-by-timeout future and a stalled stream are all `timeout`.
+- **SSE.** A hand-written incremental parser (`SseParser`) over decoded text: it feeds on `String` chunks from a
+  streaming UTF-8 decoder (below), holds a trailing CR until the next character (a CRLF split across reads), ends
+  a line on LF, CRLF or CR, ignores a line starting with `:`, splits `field:value` at the first colon and removes
+  one leading space from the value, joins several `data` lines with LF, drops an event with no `data` line, names an
+  event `message` when none is given, and discards an event still incomplete at the end of the stream. It acts on
+  `connected` and `changed` only. A line may be any length: no cap.
+- **UTF-8.** `Utf8` is a hand-written WHATWG decoder (one U+FFFD per maximal invalid subpart; incremental for the
+  stream, with the partial sequence held across chunks) and encoder (a lone surrogate encodes as U+FFFD, used
+  only when hashing). The JDK's `CharsetDecoder` and `String.getBytes` differ from the WHATWG rules the contract
+  names, so they are not used for the spec's cases.
+- **Retry-After.** Read on a `429` only, decimal digits only after trimming, capped at 300 s, held as a monotonic
+  deadline (`AtomicLong`, only lengthens) for the ruleset and stream together; the usage hold is a second one.
 
-**The whole-request bound (7.1).** A ruleset or usage request is `HttpClient.sendAsync(request, handler)`,
-and the SDK waits `future.get(requestTimeout)`. Past the limit it calls `future.cancel(true)` and the failure
-is `timeout`. That bounds the connect, the headers and the whole body together, which `HttpRequest.timeout`
-alone does not (it ends at the headers). The body is read only for a `200`; any other answer's body is
-dropped unread.
+## 4. Dependencies
 
-**The stream (7.2).** The stream is its own `HttpResponse.BodySubscriber` (`Http.Stream`): it hands itself
-over as soon as the headers arrive, requests one chunk at a time from the JDK (back-pressure) and puts each
-on a `LinkedBlockingQueue`. The sync thread reads the queue with `poll(streamIdle)`, so the 60 s watchdog is
-that one call: any chunk, a keep-alive comment included, restarts it, and an empty poll is `timeout`. The
-open is bounded by `requestTimeout`; after it the stream is bounded only by the watchdog. Aborting pushes a
-sentinel and cancels the subscription, so a blocked reader wakes at once. (`BodyHandlers.fromSubscriber`
-would hold the answer until the body ended, which is why the subscriber is written out.) A status other than
-200 is `http_<status>`; a `429` is also read for `Retry-After`. A body that ends cleanly is not an error and
-counts as never connected unless a `connected` event arrived.
+Runtime dependencies: none. The JDK has `java.net.http`, `java.security.MessageDigest` (SHA-256) and `java.time`;
+JSON, UTF-8, the SSE parser and the pattern matcher are written in this package because the spec requires
+behaviour the platform's versions do not have (section 5 and the language notes).
 
-**Server-Sent Events.** A hand-written parser in `SseParser` to the WHATWG rules the contract names. It
-decodes UTF-8 incrementally, so a character split across reads survives. LF, CRLF and a lone CR end a line
-(a CR at the end of one read is remembered so the LF that starts the next is not a second line end); a line
-that starts with `:` is a comment; a field with no `:` has an empty value; one leading space of a value is
-dropped; a leading BOM is dropped; several `data` lines are joined with LF; an event with no `data` line is
-dropped; the event name is `message` when none was given; and an event incomplete when the stream ends is
-never delivered. No SSE library is used.
+Build and test: `junit-jupiter` (JUnit 6, the test framework), Maven with `maven-compiler-plugin`,
+`maven-surefire-plugin`, `maven-resources-plugin`, `maven-jar-plugin` and `build-helper-maven-plugin` (adds
+`test-service/src` as a test source root). Lint: Checkstyle 14.4.0 and google-java-format 2.0.0, both pinned in
+`mise.toml`.
 
-## Dependencies
+## 5. JSON
 
-Runtime: none. The JDK has HTTP (`java.net.http`), SHA-256 (`MessageDigest`), time and synchronisation.
-The JSON reader is hand-written (see "JSON") because the JDK has no JSON parser and the spec pins number
-and string behaviour no common library keeps.
+- `P.json.Json.parse(String)` is a hand-written recursive-descent parser to plain Java values: `Map<String,Object>`
+  (a `LinkedHashMap`), `List<Object>`, `Double` for every number, `String`, `Boolean` and `null`. Numbers go
+  through `Double.parseDouble`, which rounds correctly, so `1e999` is `Infinity` (not an error),
+  `9007199254740993` is `9007199254740992` and `-0` is `-0.0`. The grammar is checked by the parser, not by
+  `parseDouble`, so `NaN`, `0x10` and `+1` are rejected.
+- A duplicate key keeps the last value; a leading byte order mark is skipped; there is no size cap. The depth limit
+  is 1000 levels (the contract requires at least 512), as `bad_ruleset`.
+- A Java `String` is UTF-16, so a lone surrogate (`"\ud800"`) is held as itself, as the spec wants; it becomes
+  U+FFFD only when `Bucket` encodes the hash input. Bodies are decoded with `Utf8.decode` (WHATWG).
+- The public API accepts a context as `Map`/`List`/`Double`/`String`/`Boolean`/`null`, which keeps `1e999` and lone
+  surrogates; `Json.parse` gives the test service exactly that.
 
-Build, test and lint (none ship in the SDK): Maven and its compiler, surefire and build-helper plugins;
-JUnit Jupiter for the tests (no third-party assertion library); `google-java-format` for layout; Checkstyle
-for a short rule list; `javac -Xlint:all -Werror` for warnings. The test service and the fake server in the
-tests use the JDK's `com.sun.net.httpserver`.
+## 6. Minimum runtime and toolchain
 
-## JSON
+- **Pinned toolchain:** Temurin 25 LTS (newest LTS on the run date). `mise.toml` pins `java`, `maven`,
+  `checkstyle`, `google-java-format`.
+- **Minimum:** Java 17, set with `maven.compiler.release` 17. It is the oldest LTS Temurin still supports and has
+  records, `instanceof` patterns, text blocks and the `java.net.http` client; the code uses nothing newer. Java 21
+  would give a closable `HttpClient`, which the in-flight future cancel replaces.
+- **Test framework:** JUnit Jupiter, the mainstream one. **Build tool:** Maven. **Lint:** Checkstyle with a
+  rule set written in `checkstyle.xml` plus a google-java-format check (`--set-exit-if-changed`).
+- **Evaluator limits:** `matches` uses the spec's Pike VM (`P.evaluation.Pattern`), not `java.util.regex`.
 
-The JDK has no JSON parser, so the SDK has its own, in the evaluator package (`evaluation.Json`). It reads
-into a plain tree: `LinkedHashMap<String,Object>`, `ArrayList<Object>`, `String`, `Double`, `Boolean` and
-`null`. It is also what a caller's context and a `jsonVariation` value are made of.
-
-- **Numbers** are `Double`, read with `Double.parseDouble` after a grammar check of RFC 8259, so `1e999`
-  is `Infinity` (not an error), `9007199254740993` is `9007199254740992`, and `-0.0` is kept as negative
-  zero. Writing a value back out spells `Infinity` as `1e999`, `-Infinity` as `-1e999` and negative zero as
-  `-0`.
-- **Strings** are Java `String`s, which are UTF-16, so a lone surrogate (`"\ud800"`) is held natively and a
-  valid escaped pair is the pair. Raw bytes that are not valid UTF-8 in the input are read as U+FFFD.
-  Writing a value back out escapes a lone surrogate as `\udXXX`.
-- **Objects** are ordered maps, and a duplicate key keeps the last value. A leading byte order mark is
-  skipped. Nesting deeper than 512 levels is an error (so a ruleset that deep is `bad_ruleset`, and a
-  stack overflow cannot happen).
-- **Contexts.** The public `Context` wraps a tree, so it can hold `1e999` and lone surrogates. It is built
-  from `Context.of(Map)`, `Context.user(key)`, `Context.kind(kind, key)`, `Context.with(attribute, value)`,
-  `Context.multi(...)` or from raw JSON with `Context.fromJson(String)`, which never fails: text that is not
-  JSON gives a context the evaluator answers with `INVALID_CONTEXT`, like any other invalid one.
-
-**Strings in the evaluator.** The spec compares by UTF-16 code unit, which is `String.compareTo` and
-`String.equals`, and matches patterns by code point (`String.codePointAt`; a lone surrogate is the code point
-with that value). Hashing replaces a lone surrogate with U+FFFD, then hashes the UTF-8 bytes. The patterns
-run on `evaluation.Pattern`, a parser plus a Pike VM, so no `java.util.regex` is used anywhere in the
-evaluator.
-
-## The minimum runtime and the toolchain
-
-- **Runtime.** The JVM, Temurin builds (the OpenJDK distribution mise installs). GraalVM native image is not
-  tested.
-- **Minimum version: Java 17**, the oldest LTS that has records, pattern matching for `instanceof` and a
-  `java.net.http` with cancellable `sendAsync`. Compiled with `--release 17` (`maven.compiler.release` in
-  `pom.xml`), so the compiler rejects an API newer than 17.
-- **Developed and tested on** the version `mise.toml` pins (Temurin 25, the latest LTS). CI runs that one only.
-- **Build tool: Maven**, pinned by mise; no wrapper jar is committed.
-- **Lint and format:** `google-java-format` (`--dry-run --set-exit-if-changed`), Checkstyle with
-  `checkstyle.xml` (unused and star imports, braces, modifier order, missing `@Override`, a switch without
-  `default`, `equals` without `hashCode`, naming, tabs, trailing whitespace, and Javadoc on every public type
-  and method), and `javac -Xlint:all -Werror` through the pom. Checkstyle is a bare JAR under mise, so
-  `bin/lint` runs it with `java -jar`.
-- **Tests: JUnit Jupiter** run by surefire; `VectorsTest` reads `fixtures/evaluation` at test time and
-  `ClientTest` is the native test set. Test seams are package-private methods of `Options.Builder`: `clock`
-  (`java.time.Clock`, for the UTC day), `nanoTime` (the hold deadlines), `jitter` (the backoff), `streamIdle`
-  (the watchdog's length) and `evaluator` (so a test can make an evaluation raise). None is a global or an
-  environment variable.
-- **Build output.** `target/` (ignored by git). `bin/test` runs `mvn clean test` every time, which also
-  compiles the test service; `bin/test-service` runs the built classes and builds only if there are none.
-- **The integer accessor** is `intVariation`, a `long`, bounded to the signed 64-bit range.
-
-## The package layout
+## 7. Package layout
 
 ```
 sdks/java/
-  pom.xml                 Maven build: release 17, no runtime dependencies, JUnit for tests
-  mise.toml               java, maven, google-java-format and checkstyle pins
-  checkstyle.xml          the Checkstyle configuration
+  mise.toml  pom.xml  checkstyle.xml  .gitignore  README.md  DESIGN.md  RUN.md
   bin/lint  bin/test  bin/test-service
   src/main/java/com/github/madangryscientist/toggleslash/sdks/java/
-    Client  Options  Context  Detail  Status  StreamState  EvaluationEvent  ToggleSlashException   (public)
-    Sync  Usage  Http  Hold  SseParser                       (package-private: the loops, the HTTP, the parser)
-    evaluation/           the evaluator, no network code: Json, Ruleset, Contexts, Clauses, Pattern and
-                          PatternParser, Semver, Dates, Validate, Reference, Result, Reason, ReasonKind, ErrorCode
-  src/test/java/.../      ClientTest and FakeServer (native tests), UnclosedMain (a child JVM for one test);
-                          evaluation/VectorsTest runs fixtures/evaluation
-  test-service/src/       the conformance test service (main class TestService) and README.md
+    Client, Options, Status, StreamState, Detail, Reason, ReasonKind, ErrorCode, EvaluationEvent,
+    ToggleSlashException, Context        public API
+    Sync, Usage, Http, StreamBody, SseParser, Hold, Wake, Errors   internals of the client
+    json/        Json, Utf8, JsonException
+    evaluation/  Evaluator, Ruleset, Pattern (Pike VM), PatternParser, Semver, Dates, Bucket, ...
+  src/test/java/.../java/   VectorTest, evaluator and JSON tests, FakeServer, client, sync, TLS, stress and source tests
+  test-service/src/.../     the conformance test service, README.md maps the accessors
 ```
 
-The test service sources are added to the test compile by `build-helper-maven-plugin`, so one `mvn` run
-builds and checks everything; `bin/test-service` runs `java -cp target/classes:target/test-classes`.
+`evaluation` has no network code and no dependency on the client, except for the three small root types it returns
+(`Reason`, `ReasonKind`, `ErrorCode`), which are part of the public API and so live in the root package. That is a
+package cycle by one direction of use only (the root uses `evaluation`, `evaluation` uses these three enums and
+records); it is deliberate and the alternative, duplicating the types, was worse.
+The test service is compiled with the tests (build-helper adds `test-service/src`); `bin/test-service` runs
+`java -cp target/classes:target/test-classes ...testservice.Main`, building first only when the classes are missing.
+
+## 8. Spec disagreements between implementations
+
+None found so far; any found while porting is recorded here with both readings.

@@ -1,22 +1,17 @@
 package com.github.madangryscientist.toggleslash.sdks.java.evaluation;
 
-import com.github.madangryscientist.toggleslash.sdks.java.evaluation.PatternParser.AltNode;
-import com.github.madangryscientist.toggleslash.sdks.java.evaluation.PatternParser.AnchorNode;
 import com.github.madangryscientist.toggleslash.sdks.java.evaluation.PatternParser.CharSet;
-import com.github.madangryscientist.toggleslash.sdks.java.evaluation.PatternParser.ConcatNode;
 import com.github.madangryscientist.toggleslash.sdks.java.evaluation.PatternParser.Item;
 import com.github.madangryscientist.toggleslash.sdks.java.evaluation.PatternParser.Node;
-import com.github.madangryscientist.toggleslash.sdks.java.evaluation.PatternParser.RepeatNode;
-import com.github.madangryscientist.toggleslash.sdks.java.evaluation.PatternParser.SetNode;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 /**
- * Patterns for the {@code matches} op, to the "Patterns" section of {@code docs/evaluation.md}.
- * {@link PatternParser} reads a pattern into a tree; this compiles the tree to a small program and
- * runs it on a Pike VM over code points: no backtracking and no platform regular expression, so a
- * match costs O(program x input) whatever the pattern.
+ * A compiled {@code matches} pattern, to the "Patterns" section of the spec. {@link PatternParser}
+ * reads a pattern into a tree; this compiles the tree to a small program and runs it on a Pike VM
+ * over code points: no backtracking and no {@code java.util.regex}, so a match costs O(program
+ * times input) whatever the pattern.
  */
 final class Pattern {
   private static final int CHAR = 0;
@@ -25,7 +20,7 @@ final class Pattern {
   private static final int END = 3;
   private static final int MATCH = 4;
 
-  /** One instruction. A jump is a split whose two targets are the same. */
+  /** One instruction; {@code x} and {@code y} are the two targets of a split. */
   private static final class Inst {
     final int op;
     final CharSet set;
@@ -46,9 +41,9 @@ final class Pattern {
     this.program = program;
   }
 
-  /** The compiled pattern, or null when {@code pattern} is not a valid pattern. */
+  /** The compiled pattern, or null when the text is not a valid pattern. */
   static Pattern compile(String pattern) {
-    Node node = PatternParser.parse(PatternParser.codePoints(pattern));
+    Node node = PatternParser.parse(CodePoints.of(pattern));
     if (node == null) {
       return null;
     }
@@ -67,14 +62,13 @@ final class Pattern {
   private static void emitAlt(List<Node> sides, List<Inst> program) {
     List<Inst> jumps = new ArrayList<>();
     int last = sides.size() - 1;
-    for (int i = 0; i < sides.size(); i++) {
+    for (int i = 0; i <= last; i++) {
       Inst choice = i < last ? split(program, program.size() + 1) : null;
       emit(sides.get(i), program);
-      if (choice == null) {
-        continue;
+      if (choice != null) {
+        jumps.add(split(program, 0));
+        choice.y = program.size();
       }
-      jumps.add(split(program, 0));
-      choice.y = program.size();
     }
     for (Inst jump : jumps) {
       jump.x = program.size();
@@ -84,14 +78,14 @@ final class Pattern {
 
   private static void emitRepeat(Node body, int min, int max, List<Inst> program) {
     // A body of size 0 is empty groups only and matches just the empty string, so repeating it
-    // emits nothing. Its copies would otherwise cost instructions that the size does not count.
+    // emits nothing.
     if (body.size == 0) {
       return;
     }
     for (int i = 0; i < min; i++) {
       emit(body, program);
     }
-    if (max < 0) {
+    if (max == -1) {
       int top = program.size();
       Inst loop = split(program, top + 1);
       emit(body, program);
@@ -110,18 +104,29 @@ final class Pattern {
   }
 
   private static void emit(Node node, List<Inst> program) {
-    if (node instanceof SetNode set) {
-      program.add(new Inst(CHAR, set.set, 0));
-    } else if (node instanceof AnchorNode anchor) {
-      program.add(new Inst(anchor.start ? START : END, null, 0));
-    } else if (node instanceof ConcatNode concat) {
-      for (Node part : concat.parts) {
-        emit(part, program);
-      }
-    } else if (node instanceof AltNode alt) {
-      emitAlt(alt.sides, program);
-    } else if (node instanceof RepeatNode repeat) {
-      emitRepeat(repeat.body, repeat.min, repeat.max, program);
+    switch (node.kind) {
+      case SET:
+        program.add(new Inst(CHAR, node.set, 0));
+        return;
+      case START:
+        program.add(new Inst(START, null, 0));
+        return;
+      case END:
+        program.add(new Inst(END, null, 0));
+        return;
+      case CONCAT:
+        for (Node part : node.parts) {
+          emit(part, program);
+        }
+        return;
+      case ALT:
+        emitAlt(node.parts, program);
+        return;
+      case REPEAT:
+        emitRepeat(node.body, node.min, node.max, program);
+        return;
+      default:
+        throw new IllegalStateException("unknown node kind");
     }
   }
 
@@ -145,74 +150,27 @@ final class Pattern {
     return any != set.negate();
   }
 
-  /**
-   * Does the pattern match somewhere in {@code text}? Each instruction is visited once per
-   * position.
-   */
-  boolean matches(String text) {
-    int[] input = PatternParser.codePoints(text);
-    int length = input.length;
-    int[] seen = new int[program.length];
-    Arrays.fill(seen, -1);
-    int[] stack = new int[program.length * 2 + 2];
-    int[] current = new int[program.length];
-    int[] next = new int[program.length];
-    int currentSize = 0;
-    int nextSize;
+  /** The state of one run: each instruction is visited once per position. */
+  private final class Run {
+    final int[] seen = new int[program.length];
+    final int[] stack = new int[2 * program.length + 2];
+    final int length;
 
-    for (int pos = 0; ; pos++) {
-      Adder adder = new Adder(seen, stack, length);
-      currentSize = adder.add(current, currentSize, 0, pos);
-      if (currentSize < 0) {
-        return true;
-      }
-      if (pos >= length) {
-        return false;
-      }
-      int c = input[pos];
-      nextSize = 0;
-      adder = new Adder(seen, stack, length);
-      for (int i = 0; i < currentSize; i++) {
-        Inst inst = program[current[i]];
-        if (inst.op == CHAR && inSet(inst.set, c)) {
-          nextSize = adder.add(next, nextSize, current[i] + 1, pos + 1);
-          if (nextSize < 0) {
-            return true;
-          }
-        }
-      }
-      int[] swap = current;
-      current = next;
-      next = swap;
-      currentSize = nextSize;
-    }
-  }
-
-  /** Follows the instructions that read nothing, from a start point, into a thread list. */
-  private final class Adder {
-    private final int[] seen;
-    private final int[] stack;
-    private final int length;
-
-    Adder(int[] seen, int[] stack, int length) {
-      this.seen = seen;
-      this.stack = stack;
+    Run(int length) {
       this.length = length;
+      Arrays.fill(seen, -1);
     }
 
     /**
-     * Adds {@code pc} and everything it reaches without reading to {@code list}. Returns the new
-     * size of the list, or -1 when that reaches a match.
+     * Adds the instruction and all it reaches without reading; the new count, or -1 on reaching a
+     * match.
      */
-    int add(int[] list, int size, int pc, int pos) {
-      int top = 0;
-      int count = size;
-      stack[top++] = pc;
-      while (top > 0) {
-        int at = stack[--top];
-        if (at >= program.length) {
-          continue;
-        }
+    int add(int[] list, int count, int pc, int pos) {
+      int sp = 0;
+      stack[sp++] = pc;
+      int n = count;
+      while (sp > 0) {
+        int at = stack[--sp];
         Inst inst = program[at];
         if (seen[at] == pos) {
           continue;
@@ -222,25 +180,58 @@ final class Pattern {
           case MATCH:
             return -1;
           case CHAR:
-            list[count++] = at;
+            list[n++] = at;
             break;
           case SPLIT:
-            stack[top++] = inst.y;
-            stack[top++] = inst.x;
+            stack[sp++] = inst.y;
+            stack[sp++] = inst.x;
             break;
           case START:
             if (pos == 0) {
-              stack[top++] = at + 1;
+              stack[sp++] = at + 1;
             }
             break;
           default:
             if (pos == length) {
-              stack[top++] = at + 1;
+              stack[sp++] = at + 1;
             }
             break;
         }
       }
-      return count;
+      return n;
+    }
+  }
+
+  /** Whether the pattern matches somewhere in the text. */
+  boolean matches(String text) {
+    int[] input = CodePoints.of(text);
+    Run run = new Run(input.length);
+    int[] current = new int[program.length];
+    int[] next = new int[program.length];
+    int currentCount = 0;
+    for (int pos = 0; ; pos++) {
+      currentCount = run.add(current, currentCount, 0, pos);
+      if (currentCount < 0) {
+        return true;
+      }
+      if (pos == input.length) {
+        return false;
+      }
+      int c = input[pos];
+      int nextCount = 0;
+      for (int i = 0; i < currentCount; i++) {
+        int pc = current[i];
+        if (inSet(program[pc].set, c)) {
+          nextCount = run.add(next, nextCount, pc + 1, pos + 1);
+          if (nextCount < 0) {
+            return true;
+          }
+        }
+      }
+      int[] swap = current;
+      current = next;
+      next = swap;
+      currentCount = nextCount;
     }
   }
 }

@@ -1,18 +1,27 @@
 #!/bin/sh
-# The native lint and format check. Any finding fails; there is no warning level. Nothing is rewritten.
-#   google-java-format: layout, in --dry-run so it only reports
-#   Checkstyle: the rules in checkstyle.xml, over the SDK's own sources (not the tests)
-#   javac with -Xlint:all -Werror: set in pom.xml, so compiling main and test sources is the check
+# The native lint and format check, with no warnings allowed.
+#   google-java-format 2.0.0 or later formats nothing under --set-exit-if-changed unless it is told to, so it
+#   runs over src/main/java, src/test/java and test-service/src and fails on any file it would change.
+#   Checkstyle (checkstyle.xml names the rule set and the reason for each rule left out) runs over src/main/java.
 set -eu
-cd "$(dirname "$0")/.."
-if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
+here="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$here"
+
+if command -v mise >/dev/null 2>&1; then
   run() { mise exec -- "$@"; }
 else
   run() { "$@"; }
 fi
-FILES=$(find src test-service -name '*.java' | sort)
-run google-java-format --dry-run --set-exit-if-changed $FILES
-# The checkstyle that mise installs is a bare jar, so it is run through java.
-CHECKSTYLE=$(run sh -c 'command -v checkstyle')
-run java -jar "$CHECKSTYLE" -c checkstyle.xml src/main/java
-run mvn -B -q clean test-compile
+
+files=$(find src/main/java src/test/java test-service/src -name '*.java' | sort)
+# shellcheck disable=SC2086
+run google-java-format --set-exit-if-changed --dry-run $files >/dev/null || {
+  echo "google-java-format would change files; run google-java-format --replace on them" >&2
+  # shellcheck disable=SC2086
+  run google-java-format --set-exit-if-changed --dry-run $files >&2 || true
+  exit 1
+}
+
+# Checkstyle installs as a bare JAR, not a script: find its path inside mise's environment and run it with java.
+jar=$(run sh -c 'command -v checkstyle')
+run java -jar "$jar" -c checkstyle.xml src/main/java

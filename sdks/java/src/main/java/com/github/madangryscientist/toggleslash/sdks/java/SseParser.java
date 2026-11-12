@@ -1,58 +1,28 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
-import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.charset.CharsetDecoder;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A server-sent events parser, to the WHATWG rules: lines end in LF, CRLF or a lone CR; a line that
- * starts with a colon is a comment; the event name defaults to {@code message}; several {@code
- * data} lines are joined with LF; an event with no {@code data} line is dropped; an event still
- * open when the input ends is discarded (it is never flushed). Bytes are decoded as UTF-8 across
- * chunk boundaries, with U+FFFD for bad bytes.
+ * An incremental Server-Sent Events parser, to the WHATWG rules. A line ends at LF, CRLF or a lone
+ * CR (a CRLF split across two pieces of text is one ending), a line starting with a colon is a
+ * comment, several {@code data} lines join with LF, an event with no {@code data} line is dropped,
+ * and an event name is {@code message} when none is given. An event still incomplete when the
+ * stream ends is never emitted.
  */
 final class SseParser {
-  /** One dispatched event. */
+  /** One event: its name and its data. */
   record Event(String name, String data) {}
 
-  private final CharsetDecoder decoder =
-      StandardCharsets.UTF_8
-          .newDecoder()
-          .onMalformedInput(CodingErrorAction.REPLACE)
-          .onUnmappableCharacter(CodingErrorAction.REPLACE);
-  private ByteBuffer pending = ByteBuffer.allocate(0);
   private final StringBuilder line = new StringBuilder();
   private final StringBuilder data = new StringBuilder();
   private String name = "";
   private boolean hasData;
   private boolean skipLf;
-  private boolean atStart = true;
 
-  /** Feeds the next bytes and returns the events they completed. */
-  List<Event> feed(byte[] chunk, int length) {
-    ByteBuffer input = ByteBuffer.allocate(pending.remaining() + length);
-    input.put(pending);
-    input.put(chunk, 0, length);
-    input.flip();
-    CharBuffer out = CharBuffer.allocate(input.remaining() + 1);
-    decoder.decode(input, out, false);
-    pending = ByteBuffer.allocate(input.remaining());
-    pending.put(input);
-    pending.flip();
-    out.flip();
-    List<Event> events = new ArrayList<>();
-    while (out.hasRemaining()) {
-      char c = out.get();
-      if (atStart) {
-        atStart = false;
-        if (c == '﻿') {
-          continue;
-        }
-      }
+  /** Feeds decoded text and appends each event it completes to {@code out}. */
+  void feed(CharSequence text, List<Event> out) {
+    for (int i = 0; i < text.length(); i++) {
+      char c = text.charAt(i);
       if (skipLf) {
         skipLf = false;
         if (c == '\n') {
@@ -60,37 +30,37 @@ final class SseParser {
         }
       }
       if (c == '\r') {
+        endLine(out);
         skipLf = true;
-        endLine(events);
       } else if (c == '\n') {
-        endLine(events);
+        endLine(out);
       } else {
         line.append(c);
       }
     }
-    return events;
   }
 
-  private void endLine(List<Event> events) {
-    String text = line.toString();
+  private void endLine(List<Event> out) {
+    if (line.length() == 0) {
+      dispatch(out);
+      return;
+    }
+    if (line.charAt(0) != ':') {
+      field();
+    }
     line.setLength(0);
-    if (text.isEmpty()) {
-      if (hasData) {
-        events.add(new Event(name.isEmpty() ? "message" : name, data.toString()));
+  }
+
+  private void field() {
+    int colon = line.indexOf(":");
+    String field = colon < 0 ? line.toString() : line.substring(0, colon);
+    String value = "";
+    if (colon >= 0) {
+      int start = colon + 1;
+      if (start < line.length() && line.charAt(start) == ' ') {
+        start++;
       }
-      name = "";
-      data.setLength(0);
-      hasData = false;
-      return;
-    }
-    if (text.charAt(0) == ':') {
-      return;
-    }
-    int colon = text.indexOf(':');
-    String field = colon < 0 ? text : text.substring(0, colon);
-    String value = colon < 0 ? "" : text.substring(colon + 1);
-    if (value.startsWith(" ")) {
-      value = value.substring(1);
+      value = line.substring(start);
     }
     if (field.equals("event")) {
       name = value;
@@ -101,5 +71,14 @@ final class SseParser {
       data.append(value);
       hasData = true;
     }
+  }
+
+  private void dispatch(List<Event> out) {
+    if (hasData) {
+      out.add(new Event(name.isEmpty() ? "message" : name, data.toString()));
+    }
+    name = "";
+    data.setLength(0);
+    hasData = false;
   }
 }

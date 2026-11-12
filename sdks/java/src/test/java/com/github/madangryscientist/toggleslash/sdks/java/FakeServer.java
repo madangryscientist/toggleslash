@@ -2,138 +2,207 @@ package com.github.madangryscientist.toggleslash.sdks.java;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import com.sun.net.httpserver.HttpsConfigurator;
+import com.sun.net.httpserver.HttpsServer;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.TreeMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import javax.net.ssl.SSLContext;
 
-/** A ToggleSlash server on a real loopback socket, answering what each test tells it to. */
+/**
+ * A scripted ToggleSlash server for the SDK's own tests, on the JDK's HTTP server and a loopback
+ * port. Each route has a handler a test replaces; the defaults serve a ruleset with an ETag and
+ * 304, a stream that stays open, and events.
+ */
 final class FakeServer implements AutoCloseable {
-  /** What one route does with one request. */
+  /** One request as the server received it; header names are lower case. */
+  record Request(String method, String path, Map<String, String> headers, String body) {}
+
+  /** Answers one request. */
   @FunctionalInterface
   interface Handler {
-    void handle(HttpExchange exchange) throws Exception;
+    void handle(HttpExchange exchange, Request request) throws Exception;
   }
 
-  /** A request the server saw. */
-  record Seen(String method, String path, Map<String, List<String>> headers, String body) {}
+  private record Served(String body, String etag) {}
 
-  static final String FLAG_TEMPLATE =
-      "{\"key\":\"%s\",\"variations\":[%s,%s],\"on\":true,\"offVariation\":0,\"targets\":[],"
-          + "\"prerequisites\":[],\"rules\":[],\"fallthrough\":{\"variation\":0},\"salt\":\"s\","
-          + "\"version\":%d}";
-
-  /** A flag that serves {@code value} (JSON text) to everyone, as variation 0. */
-  static String flag(String key, String value, int version) {
-    return String.format(FLAG_TEMPLATE, key, value, "null", version);
-  }
-
-  static String ruleset(String... flags) {
-    return "{\"flags\":[" + String.join(",", flags) + "],\"segments\":[]}";
-  }
-
+  final List<Request> requests = new CopyOnWriteArrayList<>();
+  volatile Handler ruleset = this::rulesetAnswer;
+  volatile Handler stream = this::streamAnswer;
+  volatile Handler events = (exchange, request) -> send(exchange, 200, Map.of(), "{}");
   private final HttpServer server;
-  private final ExecutorService executor = Executors.newCachedThreadPool();
-  private final Map<String, Handler> routes = new ConcurrentHashMap<>();
-  private final List<Seen> seen = Collections.synchronizedList(new ArrayList<>());
+  private final List<OutputStream> open = new CopyOnWriteArrayList<>();
+  private final CountDownLatch released = new CountDownLatch(1);
+  private final boolean tls;
+  private volatile Served served = new Served(rulesetJson(1, "checkout"), "\"v1\"");
 
-  /** Released at close, so a handler that hangs on purpose lets go. */
-  final CountDownLatch released = new CountDownLatch(1);
+  FakeServer() {
+    this(null);
+  }
 
-  FakeServer() throws IOException {
-    server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
-    server.setExecutor(executor);
-    server.createContext(
-        "/",
-        exchange -> {
-          byte[] body = exchange.getRequestBody().readAllBytes();
-          seen.add(
-              new Seen(
-                  exchange.getRequestMethod(),
-                  exchange.getRequestURI().getPath(),
-                  Map.copyOf(exchange.getRequestHeaders()),
-                  new String(body, StandardCharsets.UTF_8)));
-          Handler handler = routes.get(exchange.getRequestURI().getPath());
-          try {
-            if (handler == null) {
-              send(exchange, 404, "");
-            } else {
-              handler.handle(exchange);
-            }
-          } catch (IOException e) {
-            // the client went away
-          } catch (Exception e) {
-            exchange.close();
-          }
-        });
+  FakeServer(SSLContext tlsContext) {
+    try {
+      InetSocketAddress address = new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0);
+      if (tlsContext == null) {
+        server = HttpServer.create(address, 0);
+        tls = false;
+      } else {
+        HttpsServer secure = HttpsServer.create(address, 0);
+        secure.setHttpsConfigurator(new HttpsConfigurator(tlsContext));
+        server = secure;
+        tls = true;
+      }
+    } catch (IOException e) {
+      throw new IllegalStateException(e);
+    }
+    server.setExecutor(
+        Executors.newCachedThreadPool(runnable -> {
+          Thread thread = new Thread(runnable, "fake-server");
+          thread.setDaemon(true);
+          return thread;
+        }));
+    server.createContext("/", this::dispatch);
     server.start();
   }
 
   String url() {
-    return "http://127.0.0.1:" + server.getAddress().getPort();
+    return (tls ? "https" : "http") + "://127.0.0.1:" + server.getAddress().getPort();
   }
 
-  FakeServer on(String path, Handler handler) {
-    routes.put(path, handler);
-    return this;
+  /** A ruleset of boolean flags that all serve {@code true}, each at the given version. */
+  static String rulesetJson(int version, String... flagKeys) {
+    StringBuilder json = new StringBuilder("{\"flags\":[");
+    for (int i = 0; i < flagKeys.length; i++) {
+      if (i > 0) {
+        json.append(',');
+      }
+      json.append(flag(flagKeys[i], "[false,true]", 1, version));
+    }
+    return json.append("],\"segments\":[]}").toString();
   }
 
-  /** The ruleset route answers {@code body} with the ETag {@code etag}, whatever is asked. */
-  FakeServer ruleset(String body, String etag) {
-    return on(
-        "/sdk/v1/ruleset",
-        x -> {
-          x.getResponseHeaders().set("ETag", etag);
-          send(x, 200, body);
-        });
+  /** A flag whose fallthrough serves {@code variation} out of the {@code variations} JSON array. */
+  static String flag(String key, String variations, int variation, int version) {
+    return "{\"key\":\""
+        + key
+        + "\",\"variations\":"
+        + variations
+        + ",\"on\":true,\"offVariation\":0,\"targets\":[],\"prerequisites\":[],\"rules\":[],"
+        + "\"fallthrough\":{\"variation\":"
+        + variation
+        + "},\"salt\":\"s\",\"version\":"
+        + version
+        + "}";
   }
 
-  FakeServer events(int status) {
-    return on("/sdk/v1/events", x -> send(x, status, "{}"));
+  /** Replaces what the default ruleset route serves. */
+  void serve(String json, String tag) {
+    this.served = new Served(json, tag);
   }
 
-  List<Seen> requests(String path) {
-    synchronized (seen) {
-      return seen.stream().filter(s -> s.path().equals(path)).toList();
+  String etag() {
+    return served.etag();
+  }
+
+  /** Requests to one route, in arrival order. */
+  List<Request> to(String path) {
+    List<Request> found = new ArrayList<>();
+    for (Request request : requests) {
+      if (request.path().equals(path)) {
+        found.add(request);
+      }
+    }
+    return found;
+  }
+
+  /** Writes raw text to every open stream. */
+  void push(String raw) throws IOException {
+    for (OutputStream out : open) {
+      out.write(raw.getBytes(StandardCharsets.UTF_8));
+      out.flush();
     }
   }
 
-  List<Seen> all() {
-    synchronized (seen) {
-      return new ArrayList<>(seen);
-    }
-  }
-
-  static void send(HttpExchange exchange, int status, String body) throws IOException {
-    byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-    if (!exchange.getResponseHeaders().containsKey("Content-Type")) {
-      exchange.getResponseHeaders().set("Content-Type", "application/json");
-    }
-    exchange.sendResponseHeaders(status, bytes.length == 0 ? -1 : bytes.length);
-    if (bytes.length > 0) {
-      exchange.getResponseBody().write(bytes);
-    }
-    exchange.close();
-  }
-
-  /** Holds the request until the server closes. */
-  void hang(HttpExchange exchange) throws InterruptedException, IOException {
+  /** Blocks the calling handler until the server is closed. */
+  void hang() throws InterruptedException {
     released.await();
+  }
+
+  static void send(HttpExchange exchange, int status, Map<String, String> headers, String text)
+      throws IOException {
+    byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+    headers.forEach((name, value) -> exchange.getResponseHeaders().set(name, value));
+    if (status == 304 || bytes.length == 0) {
+      exchange.sendResponseHeaders(status, -1);
+    } else {
+      exchange.sendResponseHeaders(status, bytes.length);
+      try (OutputStream out = exchange.getResponseBody()) {
+        out.write(bytes);
+      }
+    }
     exchange.close();
+  }
+
+  private void dispatch(HttpExchange exchange) throws IOException {
+    Map<String, String> headers = new TreeMap<>();
+    exchange
+        .getRequestHeaders()
+        .forEach((name, values) -> headers.put(name.toLowerCase(Locale.ROOT), values.get(0)));
+    String text = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+    Request request =
+        new Request(exchange.getRequestMethod(), exchange.getRequestURI().getPath(), headers, text);
+    requests.add(request);
+    Handler handler =
+        switch (request.path()) {
+          case "/sdk/v1/ruleset" -> ruleset;
+          case "/sdk/v1/stream" -> stream;
+          case "/sdk/v1/events" -> events;
+          default -> (e, r) -> send(e, 404, Map.of(), "no such route");
+        };
+    try {
+      handler.handle(exchange, request);
+    } catch (IOException | InterruptedException gone) {
+      exchange.close();
+    } catch (Exception failure) {
+      exchange.close();
+      throw new IllegalStateException(failure);
+    }
+  }
+
+  private void rulesetAnswer(HttpExchange exchange, Request request) throws IOException {
+    Served now = served;
+    if (now.etag().equals(request.headers().get("if-none-match"))) {
+      send(exchange, 304, Map.of(), "");
+      return;
+    }
+    send(exchange, 200, Map.of("ETag", now.etag(), "Content-Type", "application/json"), now.body());
+  }
+
+  private void streamAnswer(HttpExchange exchange, Request request)
+      throws IOException, InterruptedException {
+    exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+    exchange.sendResponseHeaders(200, 0);
+    OutputStream out = exchange.getResponseBody();
+    open.add(out);
+    out.write(
+        ("event: connected\ndata: " + served.etag() + "\n\n").getBytes(StandardCharsets.UTF_8));
+    out.flush();
+    released.await();
   }
 
   @Override
   public void close() {
     released.countDown();
     server.stop(0);
-    executor.shutdownNow();
   }
 }

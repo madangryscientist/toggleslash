@@ -35,13 +35,13 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      # The toolchain step: java, maven, google-java-format and checkstyle at the versions sdks/java/mise.toml
-      # pins. Limited to those four tools, so the root .tool-versions (.NET, a second Bun) is not installed.
-      # One file names the versions, which setup-java plus separate installs of the other three would split.
+      # The toolchain step: Temurin, Maven, Checkstyle and google-java-format at the versions
+      # sdks/java/mise.toml pins. Limited to those tools, so the root .tool-versions (.NET, a second Bun)
+      # is not installed. One file names the versions, which setup-java plus separate installs would split.
       - uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
         with:
           working_directory: sdks/java
-          install_args: java maven google-java-format checkstyle
+          install_args: java maven checkstyle google-java-format
       - run: bun install --frozen-lockfile
       - run: sdks/java/bin/lint
       - run: sdks/java/bin/test
