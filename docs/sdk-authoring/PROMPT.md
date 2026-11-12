@@ -62,6 +62,11 @@ These hold for every file you write, code, comments, docs, commit messages and t
 8. **Branch from `origin/main`** and land as the "Landing" section of [`AGENTS.md`](../../AGENTS.md) says;
    where your brief adds landing steps (a ticket line, a handoff), follow those too. Your gate is the checks
    of phases 0 to 6, not the `AGENTS.md` gate.
+9. **Read narrowly.** Find what you need with a search first (`grep -n` for the symbol, the heading or the
+   field), then read only the lines you need (`sed -n '<from>,<to>p'`, or a read with an offset and a limit), a
+   section or a function at a time. Never `cat` a whole file, never print a whole file a page at a time, and
+   never read two files in one command. A document's section is found by its heading, then read. This holds for
+   the repository's docs, the other SDKs and your own files alike.
 
 ## Entry points
 
@@ -86,25 +91,35 @@ compiled language `bin/test` builds the test service's binary as its last step (
 it only when it is missing (the harness waits 30 s for `listening`, which a cold compile can exceed). `chmod +x`
 all three and commit them with the executable bit.
 
+
+## How a run is split
+
+A run is seven phases, 0 to 6, and each is one session.
+
+- **The brief names the phase** a session runs (0 to 6). The session runs that phase only and stops. A brief
+  that names no phase means all seven, in order, in one session, with the same phase log.
+- **A session reads, in this order:** the sections of this prompt before "Phase 0" (they are short and hold
+  for every phase), the phase log in `$L/RUN.md` (absent in phase 0), its own phase's section, and only the
+  sources that section names in its "Reads" list. No phase reads a whole document: it reads the sections it
+  names, found and read as rule 9 says.
+- **It ends by writing its phase's entry** in `$L/RUN.md` under a `## Phase log` heading (the template has
+  it). The entry holds: the phase; the check it ran and that check's last output line; the files it wrote;
+  the decisions it made (which also go under Decisions); open items; and what the next phase must read first.
+  The entry is all that passes between sessions: a fresh session must be able to start the next phase from the
+  entry plus that phase's own section, without reading earlier phases' sources again. Uncommitted work stays
+  in the worktree between sessions; the one commit is still made in phase 6.
+- **A question** works as now (the brief's Questions section); it pauses that phase's session.
+
 ## Phase 0: read and set up
 
-Read these in this order. Read the contract and the test-service page in full; you will come back to them.
+**Reads.**
 
-1. [`docs/sdk-contract.md`](../sdk-contract.md): every rule your SDK keeps. Sections 4 to 12 are the work.
-2. [`docs/evaluation.md`](../evaluation.md): the evaluator you port in phase 2. Read "Reading JSON",
-   "Patterns", "Bucketing" and "The vectors" twice: they say what a JSON parser, a regex engine and a hash
-   input must and must not do, and those are where ports go wrong.
-3. `fixtures/evaluation/*.json`: open two files (`clauses.json`, `buckets.json`) to see the shapes.
-4. [`docs/sdk-test-service.md`](../sdk-test-service.md): the protocol your test service speaks, how the
-   harness runs, and "What a scenario cannot reach".
-5. `fixtures/sdk/*.json`: skim the scenario names; they are the contract as tests.
-6. `packages/sdk/test-service/main.ts` and its `README.md`: the reference test service, about 140 lines.
-7. [`docs/sdk.md`](../sdk.md): the TypeScript SDK's page, an example of the mapping table you will write.
-8. [`docs/api.md`](../api.md), "SDK read API" only: the wire, where the contract leaves a detail open.
-9. `docs/sdk-authoring/language-notes/<lang>.md`, if it exists: what earlier runs learned. It never
-   overrides the contract. If there is none, say so in `RUN.md`: every language choice is then a decision.
-   A brief that tests the prompt without the notes says so, and then you skip this item.
-10. [`CHECKLIST.md`](CHECKLIST.md) and [`RUN-TEMPLATE.md`](RUN-TEMPLATE.md): what you are checked against.
+- `docs/sdk-authoring/language-notes/<lang>.md`, if it exists (find its headings with `grep -n '^#'`, then read
+  them): what earlier runs learned. It never overrides the contract. If there is none, say so in `RUN.md`:
+  every language choice is then a decision. A brief that tests the prompt without the notes says so, and then
+  you skip this item. Put what later phases need from it in the phase log entry, by heading.
+- [`RUN-TEMPLATE.md`](RUN-TEMPLATE.md): copy it to `$L/RUN.md` to start the report, and fill "Prompt version"
+  and the first phase log entry.
 
 Record the prompt version for your report before you change anything:
 
@@ -128,6 +143,15 @@ bun install --frozen-lockfile
 **Check.** `(cd "$L" && <version command>)`, such as `go version`, prints the pinned version.
 
 ## Phase 1: design
+
+**Reads.**
+
+- [`docs/sdk-contract.md`](../sdk-contract.md), sections 2 (naming), 4 (evaluation results, for the accessor shape),
+  6 (concurrency), 7.1 and 7.2 (the ruleset and the stream, for the HTTP and SSE design), 10 (hooks and errors)
+  and 12 (privacy).
+- [`docs/sdk.md`](../sdk.md): the mapping table example of the TypeScript SDK (find it with `grep -n`).
+- [`docs/evaluation.md`](../evaluation.md), "Reading JSON" only, for the JSON item.
+
 
 Write `$L/DESIGN.md` before any code. It holds:
 
@@ -185,6 +209,18 @@ test "$missing" = 0
 
 ## Phase 2: evaluator
 
+**Reads.**
+
+- [`docs/evaluation.md`](../evaluation.md): "Data model", "Evaluation", "Result", "Prerequisites", "Clauses"
+  and "Bucketing" (its subsections included), and "The vectors". Read "Reading JSON", "Patterns", "Bucketing" and
+  "The vectors" twice: they say what a JSON parser, a regex engine and a hash input must and must not do, and
+  those are where ports go wrong.
+- `fixtures/evaluation/clauses.json` and `fixtures/evaluation/buckets.json`, one at a time and only enough lines
+  to see the shapes (`ls fixtures/evaluation` lists the others).
+- The JSON and layout items of `$L/DESIGN.md`.
+- Optionally the references named below: `packages/engine/src` and `apps/server/ToggleSlash.Evaluation`.
+
+
 Port [`docs/evaluation.md`](../evaluation.md) into the SDK as its own module with no network code in it.
 The spec and the vectors are normative. You MAY read the two existing implementations as references,
 `packages/engine/src` (TypeScript) and `apps/server/ToggleSlash.Evaluation` (C#). Where either, or any
@@ -223,6 +259,15 @@ bun -e 'const d="fixtures/evaluation/",f=require("fs"),r=n=>JSON.parse(f.readFil
 
 ## Phase 3: client
 
+**Reads.**
+
+- [`docs/sdk-contract.md`](../sdk-contract.md), sections 2 to 12, one section at a time as you build it.
+  Sections 4 to 12 are the work.
+- [`docs/api.md`](../api.md), "SDK read API (`/sdk/v1`)" only: the wire, where the contract leaves a detail open.
+- [`CHECKLIST.md`](CHECKLIST.md), "Native tests" only.
+- `$L/DESIGN.md`: the concurrency, HTTP and SSE, and layout items.
+
+
 Build the client on the evaluator, to the contract, section by section: options and naming (2), contexts
 (3), results and the mismatch rule (4), the guarantees (5), concurrency (6), the sync protocol with the
 stream, the loop, the backoff and `Retry-After` (7), status (8), usage counts (9), hooks and `onError`
@@ -246,7 +291,18 @@ machine and fails on a loaded one.
 
 ## Phase 4: test service
 
-Read the status shape in [`docs/sdk-test-service.md`](../sdk-test-service.md) before the first run
+**Reads.**
+
+- [`docs/sdk-test-service.md`](../sdk-test-service.md): "Running it", "The protocol", "Scenarios" (its
+  subsections included), "Evaluation vectors" and "What a scenario cannot reach".
+- [`docs/sdk-contract.md`](../sdk-contract.md), section 8 (status).
+- `fixtures/sdk/*.json`: the scenario names only (`grep -n '"name"'` on one file at a time).
+- `packages/sdk/test-service/main.ts` and `packages/sdk/test-service/README.md`: the reference test service,
+  about 140 lines, one function at a time.
+- `$L/DESIGN.md`: the layout item.
+
+
+Read the status shape in the "Reads" page above before the first run
 (`lastSyncAt` is whole epoch milliseconds or `null`). Write `$L/test-service/` to its protocol, and
 `$L/bin/test-service` to start it. Put the test service where your build tool compiles it with the
 tests (where the build is several projects, it is one more project), and say where in `$L/test-service/README.md`. The reference is `packages/sdk/test-service/main.ts`.
@@ -283,6 +339,14 @@ To work on one area, add `--only "<text>"`. A failing scenario prints its steps 
 server recorded; read those before you change code.
 
 ## Phase 5: package
+
+**Reads.**
+
+- `.github/workflows/ci.yml`: the checkout and Bun lines and `BUN_VERSION` (find them with `grep -n`).
+- [`docs/sdk-contract.md`](../sdk-contract.md), section 5 (guarantees), for the README list.
+- `$L/DESIGN.md`: the mapping table and the toolchain item. `$L/mise.toml`.
+- A sibling `.github/workflows/sdk-<lang>.yml`, only if the toolchain step needs `jdx/mise-action` inputs.
+
 
 1. `$L/.gitignore`: the language's build and cache output (phase 6's scope check stages with `git add -A`).
 2. `$L/README.md`: a quickstart (install from a checkout of this repository, with no tag, create, `variation`, `close`), the
@@ -361,11 +425,20 @@ files git tracks, hence the `git add`):
 
 ## Phase 6: review and report
 
+**Reads.**
+
+- [`CHECKLIST.md`](CHECKLIST.md): a section at a time, walked line by line.
+- [`RUN-TEMPLATE.md`](RUN-TEMPLATE.md): the headings `RUN.md` must keep.
+- [`docs/sdk-contract.md`](../sdk-contract.md), the "Bounds" bullets (`grep -n 'Bounds'`).
+- For the guesses: the contract, the protocol page, the checklist and the language notes, and then
+  `packages/sdk/src` and the `RUN.md` files under `sdks/`, each searched by `grep -n`, never read whole.
+
+
 1. Walk [`CHECKLIST.md`](CHECKLIST.md) line by line: check it, fix what fails, note the evidence (a test
    name, a command, a file and line). Read the contract's "Bounds" bullets again against your parser and your
    client: a limit the contract does not name, added in phase 3 to be safe, is a deviation to remove. A line
    that does not apply says why; one you cannot meet is a stuck point.
-2. Write `$L/RUN.md` from [`RUN-TEMPLATE.md`](RUN-TEMPLATE.md). Be candid: a guess you leave out is a gap
+2. Complete `$L/RUN.md`, started from [`RUN-TEMPLATE.md`](RUN-TEMPLATE.md) in phase 0. Be candid: a guess you leave out is a gap
    the next run falls into again. A decision is a choice this prompt left open on purpose; a guess is a
    point where the prompt or a document should have told you and did not. Before listing one, search the
    contract, the protocol page, the checklist and the language notes for it. Where those are silent, search the
@@ -381,7 +454,7 @@ files git tracks, hence the `git add`):
 **Check.** The report has every section, and nothing outside your two paths changed:
 
 ```sh
-for s in 'Prompt version' Results Decisions Guesses 'Stuck points' 'Proposed prompt changes' Checklist; do
+for s in 'Prompt version' Results Decisions Guesses 'Stuck points' 'Proposed prompt changes' Checklist 'Phase log'; do
   grep -q "^## $s" "$L/RUN.md" || echo "RUN.md lacks: $s"
 done
 W=".github/workflows/sdk-${L#sdks/}.yml"

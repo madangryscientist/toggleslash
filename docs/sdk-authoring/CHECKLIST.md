@@ -107,6 +107,7 @@ Each line is a native test in `$L`, named in `RUN.md`.
 
 ## Code and documents
 
+- [ ] `RUN.md` has a phase log entry for each of phases 0 to 6.
 - [ ] `DESIGN.md` passes the phase 1 row check, and `README.md` has the mapping table or links to it
   (contract 2: the mapping is documented in a table).
 - [ ] The names in the mapping table keep the canonical meaning and defaults, and the reason kinds, error
