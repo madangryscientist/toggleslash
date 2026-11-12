@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>ToggleSlash.Sdk.NeverClosed</RootNamespace>
+    <!-- A throwaway program for one test, not the product. -->
+    <AnalysisMode>Default</AnalysisMode>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/ToggleSlash.Sdk/ToggleSlash.Sdk.csproj" />
+  </ItemGroup>
+
+</Project>

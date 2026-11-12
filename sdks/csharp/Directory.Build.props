@@ -1,17 +1,18 @@
 <Project>
+  <!-- No compiler server left running after a build: the gate runs in many worktrees on one desktop. -->
   <PropertyGroup>
+    <UseSharedCompilation>false</UseSharedCompilation>
     <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <InvariantGlobalization>true</InvariantGlobalization>
-    <AnalysisLevel>latest-recommended</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-    <!-- All build output goes under artifacts/, which .gitignore ignores (bin/ here holds the scripts). -->
+    <AnalysisMode>Recommended</AnalysisMode>
+    <IsPackable>false</IsPackable>
+    <!-- Build output goes under artifacts/, so bin/ holds only the three scripts. -->
     <UseArtifactsOutput>true</UseArtifactsOutput>
     <ArtifactsPath>$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
-    <!-- No compiler server left running after a build. -->
-    <UseSharedCompilation>false</UseSharedCompilation>
   </PropertyGroup>
 </Project>

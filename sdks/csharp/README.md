@@ -1,79 +1,86 @@
 # ToggleSlash server SDK for C#
 
-Feature flags evaluated locally, in your process, from a ruleset the ToggleSlash server keeps current. It
-meets [`docs/sdk-contract.md`](../../docs/sdk-contract.md), has no runtime dependency outside the .NET base
-class library (net10.0) and is **not published**: there is no package to install from a feed.
+The C# server SDK for ToggleSlash. It evaluates flags locally, to [`docs/evaluation.md`](../../docs/evaluation.md),
+over a ruleset it keeps current from the server, and keeps the contract in
+[`docs/sdk-contract.md`](../../docs/sdk-contract.md). Assembly and package id `ToggleSlash.Sdk`, namespace
+`ToggleSlash.Sdk`, target `net10.0`, no dependency beyond the shared framework. Nothing is published and no
+registry is named: use it from a checkout of this repository.
 
 ## Quickstart
 
-Install from a checkout of this repository: reference the project from your own.
+From a checkout, reference the project (the install):
 
 ```sh
-cd sdks/csharp
-mise install            # the pinned .NET SDK, once
-dotnet add <your project> reference sdks/csharp/src/ToggleSlash.Sdk/ToggleSlash.Sdk.csproj
+dotnet add <your project> reference /path/to/toggleslash/sdks/csharp/src/ToggleSlash.Sdk/ToggleSlash.Sdk.csproj
 ```
-
-Then:
 
 ```csharp
 using ToggleSlash.Sdk;
 
-// Read the key from the environment, never from source.
-await using var client = ToggleSlashClient.Create(new ClientOptions
+using var client = ToggleSlashClient.Create(new ClientOptions
 {
-    Url = "https://flags.example.com",
+    Url = "https://flags.example.test",
     SdkKey = Environment.GetEnvironmentVariable("TOGGLESLASH_SDK_KEY"),
 });
 
-await client.ReadyAsync(); // optional: waits for the first load, never longer than the request timeout
+client.Ready(); // optional: waits for the first load, bounded by the request timeout
 
-var user = Context.ForKey("user-42", attributes: new Dictionary<string, object?> { ["plan"] = "pro" });
-if (client.BoolVariation("new-checkout", user, fallback: false))
+var user = new Dictionary<string, object?> { ["key"] = "u1", ["plan"] = "pro" };
+if (client.BoolVariation("new-checkout", user, false))
 {
-    // ...
+    Console.WriteLine("new checkout");
 }
-// leaving the scope closes the client, which sends the last usage counts
+
+var detail = client.StringVariationDetail("banner", user, "none");
+Console.WriteLine($"{detail.Value} {detail.VariationIndex} {detail.Reason.Kind}");
 ```
 
-`ToggleSlashClient.Create` returns at once and never throws. The `...Variation` methods and their `...VariationDetail`
-twins never wait for the network: before the first load they answer your fallback with the reason `ERROR` /
-`NOT_READY`. A client is safe to use from many threads. Options are `Stream`, `PollInterval`, `FlushInterval`,
-`RequestTimeout`, `Hooks.AfterEvaluation` and `OnError`.
+`Create` returns at once. Before the first load, and when a flag is missing, malformed or of another type, an
+accessor answers the fallback, and the `Detail` form says why. The leaving `using` calls `Close`.
 
-`OnError` runs on the SDK's own threads, and `Close()` waits for them. Calling `Close()` inside `OnError` is
-fine (it starts the shutdown and returns), but if `OnError` completes a `TaskCompletionSource` whose awaiting
-code then calls `Close()`, create it with `TaskCreationOptions.RunContinuationsAsynchronously`: the awaiting
-code would otherwise run inline on the SDK's thread and `Close()` would wait for the very thread it is on.
+A context is a dictionary with string keys and a `key` entry, with strings, booleans, every .NET number type and
+nested lists and dictionaries as attribute values. A value the SDK cannot send as JSON
+gives the fallback with `INVALID_CONTEXT`.
 
-## The API
+## The mapping
 
-Every name in the contract and its C# spelling is in the table in [`DESIGN.md`](DESIGN.md#1-the-mapping-table),
-along with the design choices behind it.
+The canonical names of the contract map to C# in the table in [`DESIGN.md`](DESIGN.md#mapping-table-contract-section-2),
+with the closed sets (reason kinds, error codes, stream states, `lastError` codes) and their spelling.
+`DESIGN.md` also holds the concurrency model, the HTTP and stream handling, the dependencies (none), the JSON type
+and the package layout.
 
 ## Guarantees
 
-The contract's section 5, as this SDK keeps it:
+From contract section 5:
 
-1. It never throws at a caller, whatever the server, the network, a context, a hook or `OnError` does.
-2. `...Variation`, `...VariationDetail` and `Status` never do I/O and never wait.
-3. `ReadyAsync` settles after the first attempt and gives the same answer every time.
-4. While the server is unreachable it keeps evaluating from the last good ruleset.
-5. Only something with the shape of a ruleset replaces a ruleset.
+- No operation throws at the caller, whatever the server, the network or the context does.
+- An evaluation never waits on the network: it reads the ruleset held, or answers `NOT_READY` before the first load.
+- `Ready` settles after the first attempt, bounded, and may be called again.
+- An answer that is not a ruleset never replaces the one held, and a ruleset and its ETag are swapped together.
+- Every operation is safe from many threads at once, and `Close` is safe to call twice or concurrently.
+- A callback that throws, or calls back into the client, neither breaks the client nor deadlocks it.
+- No context, context key or attribute appears in a request, an error or a log line.
+- Usage counts are batched, kept through a failure the server may recover from, and flushed once more on `Close`.
 
-It also sends no context, context key or attribute anywhere: usage counts carry a flag, a variation index and
-a day.
+## Callbacks and `Close`
 
-## Running the checks
+`OnError` and the hooks run on the SDK's own threads (or the caller's), and a synchronous `Close()` joins those
+threads. A direct `Close()` inside `OnError` is safe: the SDK marks its own thread, starts the shutdown and returns.
+A `TaskCompletionSource` completed inside a callback would run its awaiting code inline on that thread, and a
+`Close()` there would wait for itself. **Create each such source with
+`TaskCreationOptions.RunContinuationsAsynchronously`**, as the SDK, its tests and its test service do.
 
-The toolchain is pinned in [`mise.toml`](mise.toml) and [`global.json`](global.json) (`mise install` from this
-directory). The `bin` scripts find it themselves.
+## Toolchain and checks
 
 ```sh
-sdks/csharp/bin/lint      # dotnet format --verify-no-changes, and a build with the analyzers as errors
-sdks/csharp/bin/test      # builds the solution, runs every evaluation vector and the native tests, builds the test service
-bun run conformance -- --service sdks/csharp/bin/test-service   # from the repository root: the conformance harness
+(cd sdks/csharp && mise trust && mise install)   # the .NET SDK, as sdks/csharp/mise.toml and global.json pin it
+
+sdks/csharp/bin/lint            # dotnet format (whitespace, style, analyzers) and a build with warnings as errors
+sdks/csharp/bin/test            # builds everything (the test service last), runs the unit tests and every evaluation vector
+bun run conformance -- --service sdks/csharp/bin/test-service    # from the repository root, after bun install
 ```
 
-The test service is described in [`test-service/README.md`](test-service/README.md). A report of the run that
-built this SDK is in [`RUN.md`](RUN.md).
+Build output goes under `sdks/csharp/artifacts/` (ignored), so `bin/` holds only the three scripts. There is no race
+detector for .NET; a stress test of every operation from many threads with `Close` racing stands in
+(`StressTests.EveryOperationFromManyThreadsWithCloseRacingNeverThrowsOrHangs`). `sdks/csharp/test-service` is the
+conformance test service; see its [`README.md`](test-service/README.md) for the accessor mapping.

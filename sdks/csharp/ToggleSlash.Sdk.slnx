@@ -1,6 +1,6 @@
 <Solution>
   <Project Path="src/ToggleSlash.Sdk/ToggleSlash.Sdk.csproj" />
   <Project Path="tests/ToggleSlash.Sdk.Tests/ToggleSlash.Sdk.Tests.csproj" />
-  <Project Path="tests/NeverClosed/NeverClosed.csproj" />
+  <Project Path="tests/ToggleSlash.Sdk.NeverClosed/ToggleSlash.Sdk.NeverClosed.csproj" />
   <Project Path="test-service/ToggleSlash.Sdk.TestService.csproj" />
 </Solution>

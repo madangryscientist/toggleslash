@@ -1,20 +1,19 @@
 #!/bin/sh
-# The native lint and format check. Any finding fails; there is no warning level. Nothing is rewritten.
-#   dotnet format --verify-no-changes: layout, style and the analyzer fixes the .editorconfig asks for
-#   dotnet build -warnaserror: the analyzers (AnalysisLevel latest-recommended) over the SDK, its tests and the
-#     test service; Directory.Build.props already makes a warning an error, and this keeps it so
+# The native lint and format check, with no warnings allowed: `dotnet format` must find nothing to change in
+# whitespace, code style or analyzer fixes, and a build with warnings as errors (Directory.Build.props, the rules
+# and the reasons for each rule left off in .editorconfig) must be clean.
+# Roots read: src/ToggleSlash.Sdk (the library), tests/* (the unit tests and NeverClosed) and test-service (the
+# conformance test service), all listed by ToggleSlash.Sdk.slnx.
 set -eu
 cd "$(dirname "$0")/.."
 
-run() {
-  if command -v mise >/dev/null 2>&1; then
-    mise exec -- "$@"
-  else
-    "$@"
-  fi
-}
+if command -v mise >/dev/null 2>&1; then
+  run() { mise exec -- "$@"; }
+else
+  run() { "$@"; }
+fi
 
-export DOTNET_CLI_TELEMETRY_OPTOUT=1
-export DOTNET_NOLOGO=1
-run dotnet format ToggleSlash.Sdk.slnx --verify-no-changes --verbosity quiet
-run dotnet build ToggleSlash.Sdk.slnx --nologo -v quiet -warnaserror
+run dotnet format whitespace ToggleSlash.Sdk.slnx --verify-no-changes
+run dotnet format style ToggleSlash.Sdk.slnx --verify-no-changes
+run dotnet format analyzers ToggleSlash.Sdk.slnx --verify-no-changes
+run dotnet build ToggleSlash.Sdk.slnx --nologo -v q -warnaserror

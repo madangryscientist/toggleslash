@@ -2,53 +2,62 @@ using System.Text;
 
 namespace ToggleSlash.Sdk.Sse;
 
-/// <summary>One server-sent event: its name (<c>message</c> when none was given) and its data.</summary>
+/// <summary>One dispatched Server-Sent Event.</summary>
 internal readonly record struct SseEvent(string Name, string Data);
 
 /// <summary>
-/// An incremental Server-Sent Events parser (WHATWG): feed it bytes in any chunking and it returns the events
-/// completed so far. Lines end at LF, CRLF or a lone CR; a comment line and every field but <c>event</c> and
-/// <c>data</c> are ignored; several <c>data</c> lines join with LF; an event with no <c>data</c> line is dropped;
-/// one still incomplete when the stream ends is never returned.
+/// A WHATWG-style Server-Sent Events parser over decoded text, in any chunking. LF, CRLF and a lone CR end a line (a CR at
+/// the end of a chunk is remembered, so a CRLF split across chunks is one line end); a line starting with <c>:</c> is a
+/// comment; only <c>event</c> and <c>data</c> are read; several <c>data</c> lines are joined with LF; an event with no
+/// <c>data</c> line is dropped; the name is <c>message</c> when none was given; an event incomplete at the end is discarded
+/// (nothing here dispatches on the end). A leading U+FEFF is skipped.
 /// </summary>
 internal sealed class SseParser
 {
-    private readonly Decoder _decoder = new UTF8Encoding(false, false).GetDecoder();
     private readonly StringBuilder _line = new();
-    private readonly List<string> _data = [];
-    private string _name = "";
-    private bool _afterCr;
-    private bool _first = true;
+    private readonly StringBuilder _data = new();
+    private string? _name;
+    private bool _hasData;
+    private bool _lastWasCarriageReturn;
+    private bool _atStart = true;
 
-    /// <summary>Feeds a chunk of the stream and returns the events it completed.</summary>
-    public List<SseEvent> Feed(ReadOnlySpan<byte> bytes)
+    /// <summary>Feeds a chunk of decoded text and appends each event it completes to <paramref name="events"/>.</summary>
+    internal void Feed(ReadOnlySpan<char> chunk, List<SseEvent> events)
     {
-        var chars = new char[_decoder.GetCharCount(bytes, false)];
-        var count = _decoder.GetChars(bytes, chars, false);
-        var events = new List<SseEvent>();
-        var start = 0;
-        if (_first && count > 0)
+        foreach (var c in chunk)
         {
-            _first = false;
-            if (chars[0] == '﻿') start = 1;
-        }
-        for (var i = start; i < count; i++)
-        {
-            var c = chars[i];
-            if (_afterCr)
+            if (_atStart)
             {
-                _afterCr = false;
-                if (c == '\n') continue;
+                _atStart = false;
+                if (c == '﻿')
+                {
+                    continue;
+                }
             }
+
+            if (_lastWasCarriageReturn)
+            {
+                _lastWasCarriageReturn = false;
+                if (c == '\n')
+                {
+                    continue;
+                }
+            }
+
             if (c == '\r')
             {
-                _afterCr = true;
+                EndLine(events);
+                _lastWasCarriageReturn = true;
+            }
+            else if (c == '\n')
+            {
                 EndLine(events);
             }
-            else if (c == '\n') EndLine(events);
-            else _line.Append(c);
+            else
+            {
+                _line.Append(c);
+            }
         }
-        return events;
     }
 
     private void EndLine(List<SseEvent> events)
@@ -57,17 +66,58 @@ internal sealed class SseParser
         _line.Clear();
         if (line.Length == 0)
         {
-            if (_data.Count > 0) events.Add(new SseEvent(_name.Length == 0 ? "message" : _name, string.Join('\n', _data)));
-            _data.Clear();
-            _name = "";
+            Dispatch(events);
             return;
         }
-        if (line[0] == ':') return;
+
+        if (line[0] == ':')
+        {
+            return;
+        }
+
+        string field;
+        string value;
         var colon = line.IndexOf(':', StringComparison.Ordinal);
-        var field = colon < 0 ? line : line[..colon];
-        var value = colon < 0 ? "" : line[(colon + 1)..];
-        if (value.StartsWith(' ')) value = value[1..];
-        if (field == "event") _name = value;
-        else if (field == "data") _data.Add(value);
+        if (colon < 0)
+        {
+            field = line;
+            value = string.Empty;
+        }
+        else
+        {
+            field = line[..colon];
+            value = line[(colon + 1)..];
+            if (value.StartsWith(' '))
+            {
+                value = value[1..];
+            }
+        }
+
+        if (field == "event")
+        {
+            _name = value;
+        }
+        else if (field == "data")
+        {
+            _data.Append(value).Append('\n');
+            _hasData = true;
+        }
+    }
+
+    private void Dispatch(List<SseEvent> events)
+    {
+        if (_hasData)
+        {
+            if (_data.Length > 0)
+            {
+                _data.Length--;
+            }
+
+            events.Add(new SseEvent(string.IsNullOrEmpty(_name) ? "message" : _name, _data.ToString()));
+        }
+
+        _name = null;
+        _data.Clear();
+        _hasData = false;
     }
 }

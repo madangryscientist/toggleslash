@@ -1,8 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <IsPackable>false</IsPackable>
+    <RootNamespace>ToggleSlash.Sdk.Tests</RootNamespace>
     <IsTestProject>true</IsTestProject>
+    <!-- The tests are not the product: the analyzers that guard public API shape stay on the library. -->
+    <AnalysisMode>Default</AnalysisMode>
   </PropertyGroup>
 
   <ItemGroup>
@@ -13,13 +15,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Using Include="Xunit" />
+    <ProjectReference Include="../../src/ToggleSlash.Sdk/ToggleSlash.Sdk.csproj" />
+    <!-- Built first so the process-exit test can run it; its assembly is not referenced. -->
+    <ProjectReference Include="../ToggleSlash.Sdk.NeverClosed/ToggleSlash.Sdk.NeverClosed.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\ToggleSlash.Sdk\ToggleSlash.Sdk.csproj" />
-    <!-- Built first, run by ProcessTests as a separate process; its assembly is not referenced. -->
-    <ProjectReference Include="..\NeverClosed\NeverClosed.csproj" ReferenceOutputAssembly="false" />
+    <Using Include="Xunit" />
   </ItemGroup>
 
 </Project>

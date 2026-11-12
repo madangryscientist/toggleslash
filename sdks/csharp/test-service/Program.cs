@@ -1,304 +1,311 @@
+// The C# SDK's conformance test service: an HTTP server that wraps ToggleSlashClient so the harness in
+// packages/sdk-conformance can drive it from outside. The protocol is docs/sdk-test-service.md and the accessor
+// mapping is in README.md. It catches nothing the SDK throws except to answer 500 with the error text.
 using System.Collections.Concurrent;
 using System.Globalization;
-using System.Text.Json;
-using Microsoft.AspNetCore.Builder;
+using System.Text;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using ToggleSlash.Sdk;
+using ToggleSlash.Sdk.Json;
 
-// The test service of docs/sdk-test-service.md: the SDK behind a small HTTP server, driven by the conformance
-// harness. It listens on 127.0.0.1 and a port the OS picks, and prints `listening <url>` once it does.
 var builder = WebApplication.CreateSlimBuilder(args);
 builder.Logging.ClearProviders();
 builder.WebHost.UseUrls("http://127.0.0.1:0");
-var app = builder.Build();
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.KeepAliveTimeout = TimeSpan.FromHours(1);
+    options.Limits.RequestHeadersTimeout = TimeSpan.FromMinutes(5);
+    options.Limits.MaxRequestBodySize = null;
+});
 
-var clients = new ConcurrentDictionary<string, Entry>(StringComparer.Ordinal);
+var app = builder.Build();
+var clients = new ConcurrentDictionary<string, Entry>();
 var created = 0;
 
-app.Run(async http =>
+app.Run(async context =>
 {
     try
     {
-        await Route(http);
+        await Route(context);
     }
     catch (Exception error)
     {
-        // The SDK must not throw; when anything does, the harness is told, not spared.
-        http.Response.StatusCode = StatusCodes.Status500InternalServerError;
-        http.Response.ContentType = "text/plain";
-        await http.Response.WriteAsync(error.ToString());
+        context.Response.StatusCode = 500;
+        context.Response.ContentType = "text/plain; charset=utf-8";
+        await context.Response.WriteAsync(error.ToString());
     }
 });
 
 await app.StartAsync();
 var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First();
-await Console.Out.WriteLineAsync($"listening {address}");
-await Console.Out.FlushAsync();
+var port = new Uri(address).Port;
+Console.Out.WriteLine(string.Create(CultureInfo.InvariantCulture, $"listening http://127.0.0.1:{port}"));
+Console.Out.Flush();
 await app.WaitForShutdownAsync();
 return 0;
 
-async Task Route(HttpContext http)
+async Task Route(HttpContext context)
 {
-    var method = http.Request.Method;
-    var path = http.Request.Path.Value ?? "/";
+    var path = context.Request.Path.Value ?? "/";
+    var method = context.Request.Method;
     if (method == "GET" && path == "/")
     {
-        await Reply(http, w =>
-        {
-            w.WriteStartObject();
-            w.WriteString("name", "csharp");
-            w.WriteStartArray("capabilities");
-            w.WriteStringValue("integer-accessor");
-            w.WriteEndArray();
-            w.WriteEndObject();
-        });
+        await Reply(context, Obj(
+            ("name", JsonValue.From("toggleslash-sdk (C#)")),
+            ("capabilities", new JsonArray([JsonValue.From("integer-accessor")]))), 200);
         return;
     }
+
     if (method == "POST" && path == "/clients")
     {
-        using var body = await JsonDocument.ParseAsync(http.Request.Body);
-        var id = Interlocked.Increment(ref created).ToString(CultureInfo.InvariantCulture);
-        var entry = new Entry();
-        entry.Client = ToggleSlashClient.Create(OptionsFrom(body.RootElement, entry));
-        clients[id] = entry;
-        http.Response.StatusCode = StatusCodes.Status201Created;
-        await Reply(http, w =>
-        {
-            w.WriteStartObject();
-            w.WriteString("id", id);
-            w.WriteEndObject();
-        });
+        await Create(context);
         return;
     }
-    var parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-    if (parts is ["clients", var clientId, var action] && clients.TryGetValue(clientId, out var found))
-    {
-        await ClientRoute(http, found, $"{method} {action}");
-        return;
-    }
-    http.Response.StatusCode = StatusCodes.Status404NotFound;
-}
 
-async Task ClientRoute(HttpContext http, Entry entry, string route)
-{
-    var client = entry.Client!;
-    switch (route)
+    var parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+    if (parts.Length != 3 || parts[0] != "clients" || !clients.TryGetValue(parts[1], out var entry))
+    {
+        context.Response.StatusCode = 404;
+        await context.Response.WriteAsync("no such client");
+        return;
+    }
+
+    switch ($"{method} {parts[2]}")
     {
         case "POST ready":
-            var ready = await client.ReadyAsync();
-            await Reply(http, w =>
-            {
-                w.WriteStartObject();
-                w.WriteBoolean("ready", ready);
-                w.WriteEndObject();
-            });
+            await Reply(context, Obj(("ready", JsonValue.From(await entry.Client.ReadyAsync()))), 200);
             break;
         case "POST evaluate":
-            using (var body = await JsonDocument.ParseAsync(http.Request.Body))
-            {
-                var answer = Evaluate(client, body.RootElement);
-                await Reply(http, answer);
-            }
+            await Evaluate(context, entry);
             break;
         case "GET status":
-            var status = client.Status;
-            await Reply(http, w =>
-            {
-                w.WriteStartObject();
-                WriteNullable(w, "etag", status.Etag);
-                if (status.LastSyncAt is { } at) w.WriteNumber("lastSyncAt", at.ToUnixTimeMilliseconds());
-                else w.WriteNull("lastSyncAt");
-                w.WriteString("stream", status.Stream.Name);
-                WriteNullable(w, "lastError", status.LastError);
-                w.WriteEndObject();
-            });
+            await Reply(context, StatusJson(entry.Client.Status()), 200);
             break;
         case "GET hook-events":
-            var events = entry.HookEvents();
-            await Reply(http, w =>
+            lock (entry.Lock)
             {
-                w.WriteStartObject();
-                w.WriteStartArray("events");
-                foreach (var e in events) WriteEvent(w, e);
-                w.WriteEndArray();
-                w.WriteEndObject();
-            });
+                var events = new JsonArray(entry.HookEvents.Select(EventJson));
+                Reply(context, Obj(("events", events)), 200).GetAwaiter().GetResult();
+            }
+
             break;
         case "GET errors":
-            var messages = entry.Errors();
-            await Reply(http, w =>
+            lock (entry.Lock)
             {
-                w.WriteStartObject();
-                w.WriteNumber("count", messages.Count);
-                w.WriteStartArray("messages");
-                foreach (var m in messages) w.WriteStringValue(m);
-                w.WriteEndArray();
-                w.WriteEndObject();
-            });
+                var messages = new JsonArray(entry.Errors.Select(m => JsonValue.From(m)));
+                Reply(context, Obj(("count", JsonValue.From(entry.Errors.Count)), ("messages", messages)), 200).GetAwaiter().GetResult();
+            }
+
             break;
         case "POST close":
-            await client.CloseAsync();
-            await Reply(http, w =>
-            {
-                w.WriteStartObject();
-                w.WriteEndObject();
-            });
+            await entry.Client.CloseAsync();
+            await Reply(context, Obj(), 200);
             break;
         default:
-            http.Response.StatusCode = StatusCodes.Status404NotFound;
+            context.Response.StatusCode = 404;
+            await context.Response.WriteAsync("no such route");
             break;
     }
 }
 
-static ClientOptions OptionsFrom(JsonElement body, Entry entry)
+async Task Create(HttpContext context)
 {
-    var onErrorThrows = Flag(body, "onErrorThrows");
-    var hookThrows = Flag(body, "hookThrows");
-    var defaults = new ClientOptions();
-    return new ClientOptions
+    var body = await ReadBody(context);
+    var entry = new Entry();
+    var options = new ClientOptions
     {
-        Url = body.GetProperty("url").GetString(),
-        SdkKey = body.GetProperty("sdkKey").GetString(),
-        Stream = body.TryGetProperty("stream", out var stream) && stream.ValueKind is JsonValueKind.True or JsonValueKind.False
-            ? stream.GetBoolean()
-            : true,
-        PollInterval = Millis(body, "pollIntervalMs") ?? defaults.PollInterval,
-        FlushInterval = Millis(body, "flushIntervalMs") ?? defaults.FlushInterval,
-        RequestTimeout = Millis(body, "requestTimeoutMs") ?? defaults.RequestTimeout,
+        Url = Text(body, "url"),
+        SdkKey = Text(body, "sdkKey"),
         OnError = error =>
         {
-            entry.AddError(error.Message);
-            if (onErrorThrows) throw new InvalidOperationException("onError threw, as the test asked");
-        },
-        Hooks = Flag(body, "hook") || hookThrows
-            ? new Hooks
+            lock (entry.Lock)
             {
-                AfterEvaluation = e =>
-                {
-                    entry.AddEvent(e);
-                    if (hookThrows) throw new InvalidOperationException("the hook threw, as the test asked");
-                },
+                entry.Errors.Add(error.Message);
             }
-            : null,
+
+            if (Flag(body, "onErrorThrows"))
+            {
+                throw new InvalidOperationException("onError threw, as the test asked");
+            }
+        },
     };
+    if (body.TryGetValue("stream", out var stream) && stream is JsonBool streamBool)
+    {
+        options.Stream = streamBool.Value;
+    }
+
+    options.PollInterval = Millis(body, "pollIntervalMs");
+    options.FlushInterval = Millis(body, "flushIntervalMs");
+    options.RequestTimeout = Millis(body, "requestTimeoutMs");
+    if (Flag(body, "hook") || Flag(body, "hookThrows"))
+    {
+        var throws = Flag(body, "hookThrows");
+        options.AfterEvaluation = evaluation =>
+        {
+            lock (entry.Lock)
+            {
+                entry.HookEvents.Add(evaluation);
+            }
+
+            if (throws)
+            {
+                throw new InvalidOperationException("the hook threw, as the test asked");
+            }
+        };
+    }
+
+    entry.Client = ToggleSlashClient.Create(options);
+    var id = Interlocked.Increment(ref created).ToString(CultureInfo.InvariantCulture);
+    clients[id] = entry;
+    await Reply(context, Obj(("id", JsonValue.From(id))), 201);
 }
 
-static bool Flag(JsonElement body, string name) => body.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
-
-static TimeSpan? Millis(JsonElement body, string name) =>
-    body.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? TimeSpan.FromMilliseconds(v.GetDouble()) : null;
-
-static Action<Utf8JsonWriter> Evaluate(ToggleSlashClient client, JsonElement body)
+async Task Evaluate(HttpContext context, Entry entry)
 {
-    var flag = body.GetProperty("flagKey").GetString()!;
-    var context = Context.FromElement(body.GetProperty("context").Clone());
-    var fallback = body.GetProperty("fallback");
-    switch (body.GetProperty("accessor").GetString())
+    var body = await ReadBody(context);
+    var flagKey = Text(body, "flagKey") ?? string.Empty;
+    var evaluationContext = body.TryGetValue("context", out var c) ? c : JsonValue.Null;
+    var fallback = body.TryGetValue("fallback", out var f) ? f : JsonValue.Null;
+    var accessor = Text(body, "accessor") ?? "any";
+    var client = entry.Client;
+    JsonValue value;
+    int? index;
+    Reason reason;
+    switch (accessor)
     {
         case "bool":
-            return Answer(client.BoolVariationDetail(flag, context, fallback.GetBoolean()), (w, v) => w.WriteBooleanValue(v));
+            {
+                var detail = client.BoolVariationDetail(flagKey, evaluationContext, fallback is JsonBool b && b.Value);
+                (value, index, reason) = (JsonValue.From(detail.Value), detail.VariationIndex, detail.Reason);
+                break;
+            }
+
         case "string":
-            return Answer(client.StringVariationDetail(flag, context, fallback.GetString()!), (w, v) => w.WriteStringValue(v));
+            {
+                var detail = client.StringVariationDetail(flagKey, evaluationContext, (fallback as JsonString)?.Value);
+                (value, index, reason) = (JsonValue.From(detail.Value), detail.VariationIndex, detail.Reason);
+                break;
+            }
+
         case "number":
-            return Answer(client.DoubleVariationDetail(flag, context, fallback.GetDouble()), (w, v) => w.WriteNumberValue(v));
+            {
+                var detail = client.FloatVariationDetail(flagKey, evaluationContext, (fallback as JsonNumber)?.Value ?? 0);
+                (value, index, reason) = (JsonValue.From(detail.Value), detail.VariationIndex, detail.Reason);
+                break;
+            }
+
         case "int":
-            var whole = fallback.TryGetInt64(out var l) ? l : (long)fallback.GetDouble();
-            return Answer(client.IntVariationDetail(flag, context, whole), (w, v) => w.WriteNumberValue(v));
+            {
+                var detail = client.IntVariationDetail(flagKey, evaluationContext, (long)((fallback as JsonNumber)?.Value ?? 0));
+                (value, index, reason) = (JsonValue.From((double)detail.Value), detail.VariationIndex, detail.Reason);
+                break;
+            }
+
+        case "json":
+        case "any":
+            {
+                var detail = client.JsonVariationDetail(flagKey, evaluationContext, fallback);
+                (value, index, reason) = (detail.Value ?? JsonValue.Null, detail.VariationIndex, detail.Reason);
+                break;
+            }
+
         default:
-            return Answer(client.JsonVariationDetail(flag, context, fallback.Clone()), (w, v) => v.WriteTo(w));
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsync("unknown accessor " + accessor);
+            return;
     }
+
+    await Reply(context, Obj(
+        ("value", value),
+        ("variationIndex", index is { } i ? JsonValue.From(i) : JsonValue.Null),
+        ("reason", ReasonJson(reason))), 200);
 }
 
-static Action<Utf8JsonWriter> Answer<T>(VariationDetail<T> detail, Action<Utf8JsonWriter, T> writeValue) =>
-    w =>
+static async Task<JsonObject> ReadBody(HttpContext context)
+{
+    using var reader = new StreamReader(context.Request.Body, new UTF8Encoding(false), false);
+    var text = await reader.ReadToEndAsync();
+    if (text.Length == 0)
     {
-        w.WriteStartObject();
-        w.WritePropertyName("value");
-        writeValue(w, detail.Value);
-        if (detail.VariationIndex is { } index) w.WriteNumber("variationIndex", index);
-        else w.WriteNull("variationIndex");
-        w.WritePropertyName("reason");
-        WriteReason(w, detail.Reason);
-        w.WriteEndObject();
-    };
-
-static void WriteReason(Utf8JsonWriter w, Reason reason)
-{
-    w.WriteStartObject();
-    w.WriteString("kind", reason.Kind.Name);
-    if (reason.Code is { } code) w.WriteString("code", code.Name);
-    if (reason.RuleIndex is { } rule) w.WriteNumber("ruleIndex", rule);
-    if (reason.FlagKey is { } flagKey) w.WriteString("flagKey", flagKey);
-    w.WriteEndObject();
-}
-
-static void WriteEvent(Utf8JsonWriter w, EvaluationEvent e)
-{
-    w.WriteStartObject();
-    w.WriteString("flagKey", e.FlagKey);
-    w.WritePropertyName("context");
-    e.Context.Json.WriteTo(w);
-    w.WritePropertyName("value");
-    e.Value.WriteTo(w);
-    if (e.VariationIndex is { } index) w.WriteNumber("variationIndex", index);
-    else w.WriteNull("variationIndex");
-    w.WritePropertyName("reason");
-    WriteReason(w, e.Reason);
-    WriteNullable(w, "etag", e.Etag);
-    if (e.FlagVersion is { } version) w.WriteNumber("flagVersion", version);
-    else w.WriteNull("flagVersion");
-    w.WriteEndObject();
-}
-
-static void WriteNullable(Utf8JsonWriter w, string name, string? value)
-{
-    if (value is null) w.WriteNull(name);
-    else w.WriteString(name, value);
-}
-
-static async Task Reply(HttpContext http, Action<Utf8JsonWriter> write)
-{
-    using var stream = new MemoryStream();
-    await using (var writer = new Utf8JsonWriter(stream))
-    {
-        write(writer);
+        return new JsonObject([]);
     }
-    http.Response.ContentType = "application/json";
-    stream.Position = 0;
-    await stream.CopyToAsync(http.Response.Body);
+
+    return JsonValue.Parse(text) as JsonObject ?? throw new InvalidDataException("the body is not a JSON object");
 }
 
-/// <summary>One client the service holds, with what its callbacks recorded.</summary>
+static string? Text(JsonObject body, string name) => body.TryGetValue(name, out var v) && v is JsonString s ? s.Value : null;
+
+static bool Flag(JsonObject body, string name) => body.TryGetValue(name, out var v) && v is JsonBool { Value: true };
+
+static TimeSpan? Millis(JsonObject body, string name) =>
+    body.TryGetValue(name, out var v) && v is JsonNumber n ? TimeSpan.FromMilliseconds(n.Value) : null;
+
+static JsonObject Obj(params (string Name, JsonValue Value)[] fields) =>
+    new(fields.Select(f => new KeyValuePair<string, JsonValue>(f.Name, f.Value)));
+
+static async Task Reply(HttpContext context, JsonValue body, int status)
+{
+    context.Response.StatusCode = status;
+    context.Response.ContentType = "application/json; charset=utf-8";
+    await context.Response.WriteAsync(body.ToJson(), new UTF8Encoding(false));
+}
+
+static JsonValue ReasonJson(Reason reason)
+{
+    var fields = new List<(string, JsonValue)> { ("kind", JsonValue.From(reason.Kind.ToString())) };
+    if (reason.RuleIndex is { } rule)
+    {
+        fields.Add(("ruleIndex", JsonValue.From(rule)));
+    }
+
+    if (reason.FlagKey is { } flagKey)
+    {
+        fields.Add(("flagKey", JsonValue.From(flagKey)));
+    }
+
+    if (reason.ErrorCode is { } code)
+    {
+        fields.Add(("code", JsonValue.From(code.ToString())));
+    }
+
+    return Obj([.. fields]);
+}
+
+static JsonValue StatusJson(ClientStatus status) => Obj(
+    ("etag", JsonValue.From(status.Etag)),
+    ("lastSyncAt", status.LastSyncAt is { } at ? JsonValue.From((double)at.ToUnixTimeMilliseconds()) : JsonValue.Null),
+    ("stream", JsonValue.From(status.Stream.ToString())),
+    ("lastError", JsonValue.From(status.LastError)));
+
+static JsonValue Boxed(object? value) => value switch
+{
+    null => JsonValue.Null,
+    JsonValue json => json,
+    bool b => JsonValue.From(b),
+    string s => JsonValue.From(s),
+    double d => JsonValue.From(d),
+    long l => JsonValue.From((double)l),
+    _ => JsonValue.From(Convert.ToString(value, CultureInfo.InvariantCulture)),
+};
+
+static JsonValue EventJson(EvaluationEvent e) => Obj(
+    ("flagKey", JsonValue.From(e.FlagKey)),
+    ("context", Boxed(e.Context)),
+    ("value", Boxed(e.Value)),
+    ("variationIndex", e.VariationIndex is { } i ? JsonValue.From(i) : JsonValue.Null),
+    ("reason", ReasonJson(e.Reason)),
+    ("etag", JsonValue.From(e.Etag)),
+    ("flagVersion", e.FlagVersion is { } v ? JsonValue.From((double)v) : JsonValue.Null));
+
 internal sealed class Entry
 {
-    private readonly Lock _gate = new();
-    private readonly List<EvaluationEvent> _events = [];
-    private readonly List<string> _errors = [];
+    public ToggleSlashClient Client { get; set; } = null!;
 
-    public ToggleSlashClient? Client { get; set; }
+    public object Lock { get; } = new();
 
-    public void AddEvent(EvaluationEvent e)
-    {
-        lock (_gate) _events.Add(e);
-    }
+    public List<EvaluationEvent> HookEvents { get; } = [];
 
-    public void AddError(string message)
-    {
-        lock (_gate) _errors.Add(message);
-    }
-
-    public List<EvaluationEvent> HookEvents()
-    {
-        lock (_gate) return [.. _events];
-    }
-
-    public List<string> Errors()
-    {
-        lock (_gate) return [.. _errors];
-    }
+    public List<string> Errors { get; } = [];
 }
