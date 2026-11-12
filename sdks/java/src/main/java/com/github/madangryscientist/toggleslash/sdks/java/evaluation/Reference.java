@@ -3,54 +3,40 @@ package com.github.madangryscientist.toggleslash.sdks.java.evaluation;
 import java.util.ArrayList;
 import java.util.List;
 
-/** An attribute reference, to "Reading the attribute" in {@code docs/evaluation.md}. */
+/**
+ * An attribute reference, to "Reading the attribute" in docs/evaluation.md: a name that starts with
+ * a slash. The components are what is left after dropping the leading slash, splitting on slashes
+ * and decoding {@code ~1} as a slash and {@code ~0} as a tilde in one left-to-right pass.
+ */
 final class Reference {
   private Reference() {}
 
-  /**
-   * The components of a name that starts with {@code /}: what is left after the first {@code /},
-   * split on {@code /}, with {@code ~1} as {@code /} and {@code ~0} as {@code ~} in one pass. Null
-   * when a component is empty or a {@code ~} is followed by anything but {@code 0} or {@code 1}.
-   */
+  /** The components, or null when one is empty or a tilde is followed by anything but 0 or 1. */
   static List<String> parse(String text) {
     List<String> components = new ArrayList<>();
-    int start = 1;
-    while (true) {
-      int slash = text.indexOf('/', start);
-      String part = slash < 0 ? text.substring(start) : text.substring(start, slash);
-      String decoded = decode(part);
-      if (decoded == null) {
+    for (String part : Text.split(text.substring(1), '/')) {
+      if (part.isEmpty()) {
         return null;
       }
-      components.add(decoded);
-      if (slash < 0) {
-        return components;
+      StringBuilder decoded = new StringBuilder();
+      for (int i = 0; i < part.length(); i++) {
+        char c = part.charAt(i);
+        if (c != '~') {
+          decoded.append(c);
+          continue;
+        }
+        char next = i + 1 < part.length() ? part.charAt(i + 1) : '\0';
+        if (next == '0') {
+          decoded.append('~');
+        } else if (next == '1') {
+          decoded.append('/');
+        } else {
+          return null;
+        }
+        i++;
       }
-      start = slash + 1;
+      components.add(decoded.toString());
     }
-  }
-
-  private static String decode(String part) {
-    if (part.isEmpty()) {
-      return null;
-    }
-    StringBuilder out = new StringBuilder(part.length());
-    for (int i = 0; i < part.length(); i++) {
-      char c = part.charAt(i);
-      if (c != '~') {
-        out.append(c);
-        continue;
-      }
-      char next = i + 1 < part.length() ? part.charAt(i + 1) : '\0';
-      if (next == '0') {
-        out.append('~');
-      } else if (next == '1') {
-        out.append('/');
-      } else {
-        return null;
-      }
-      i++;
-    }
-    return out.toString();
+    return components;
   }
 }

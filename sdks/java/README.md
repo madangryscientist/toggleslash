@@ -1,51 +1,51 @@
 # ToggleSlash server SDK for Java
 
 Feature flags evaluated locally, in your process, from a ruleset the ToggleSlash server keeps current. It
-meets [`docs/sdk-contract.md`](../../docs/sdk-contract.md), has no runtime dependency outside the JDK
-(Java 17 or later) and is **not published**: there is no version to install from a registry.
+meets [`docs/sdk-contract.md`](../../docs/sdk-contract.md), has no runtime dependency outside the JDK (Java 17
+or newer) and is **not published**: there is no artifact to fetch from a registry.
 
 ## Quickstart
 
-Install from a checkout of this repository: build it and put the jar on your class path.
+Use it from a checkout of this repository. Install the pinned toolchain once, then build the SDK and put its
+classes on your own class path:
 
 ```sh
-cd sdks/java
-mise install            # the pinned Java and Maven, once
-mise exec -- mvn -B -q -DskipTests package   # writes target/toggleslash-sdk-java-0.1.0-SNAPSHOT.jar
+(cd sdks/java && mise trust && mise install)   # Temurin, Maven, Checkstyle and google-java-format
+(cd sdks/java && mise exec -- mvn -q compile)  # classes go to sdks/java/target/classes
 ```
 
 Then:
 
 ```java
 import com.github.madangryscientist.toggleslash.sdks.java.Client;
-import com.github.madangryscientist.toggleslash.sdks.java.Context;
 import com.github.madangryscientist.toggleslash.sdks.java.Options;
+import java.util.Map;
 
-public final class Main {
-  public static void main(String[] args) {
-    // Read the key from the environment, never from source.
-    Options options =
-        Options.builder("https://flags.example.com", System.getenv("TOGGLESLASH_SDK_KEY")).build();
-    try (Client client = Client.create(options)) { // close() sends the last usage counts
-      client.ready(); // optional: waits for the first load, never longer than the request timeout
-      Context user = Context.user("user-42").with("plan", "pro");
-      if (client.boolVariation("new-checkout", user, false)) {
-        // ...
-      }
-    }
+// Read the key from the environment, never from source.
+try (Client client =
+    Client.create(
+        Options.builder("https://flags.example.com", System.getenv("TOGGLESLASH_SDK_KEY")).build())) {
+  client.ready(); // optional: waits for the first load, never longer than about twice the request timeout
+
+  Map<String, Object> user = Map.of("key", "user-42", "plan", "pro");
+  if (client.boolVariation("new-checkout", user, false)) {
+    // ...
   }
-}
+} // leaving the block closes the client, which sends the last usage counts
 ```
 
-`Client.create` returns at once and never throws. `...Variation` and its `...VariationDetail` twins never wait
-for the network: before the first load they answer your fallback with the reason `ERROR` / `NOT_READY`. A
-client is safe to use from many threads. Options are `stream`, `pollInterval`, `flushInterval`,
-`requestTimeout`, `afterEvaluation` and `onError`.
+`Client.create` returns at once and never throws. The `...Variation` methods and their `...VariationDetail`
+twins never wait for the network: before the first load they answer your fallback with the reason `ERROR` /
+`NOT_READY`. A client is safe to use from many threads. Options are `stream`, `pollInterval`,
+`flushInterval`, `requestTimeout`, `afterEvaluation` and `onError`.
+
+`onError` and the hook run on the SDK's own threads or the caller's, never with an SDK lock held, and may call
+back into the client, including `close`.
 
 ## The API
 
 Every name in the contract and its Java spelling is in the table in
-[`DESIGN.md`](DESIGN.md#the-mapping-table), along with the design choices behind it.
+[`DESIGN.md`](DESIGN.md#1-the-mapping-table), along with the design choices behind it.
 
 ## Guarantees
 
@@ -62,12 +62,11 @@ a day.
 
 ## Running the checks
 
-The toolchain is pinned in [`mise.toml`](mise.toml) (`mise install` from this directory). The `bin` scripts
-find it themselves.
+The toolchain is pinned in [`mise.toml`](mise.toml). The `bin` scripts find it themselves.
 
 ```sh
-sdks/java/bin/lint      # google-java-format --dry-run, Checkstyle, javac -Xlint:all -Werror
-sdks/java/bin/test      # mvn clean test: every evaluation vector, the native tests, and the test service's build
+sdks/java/bin/lint      # google-java-format (dry run), Checkstyle, and a compile with -Xlint:all -Werror
+sdks/java/bin/test      # builds, runs every evaluation vector and the native tests, builds the test service
 bun run conformance -- --service sdks/java/bin/test-service   # from the repository root: the conformance harness
 ```
 

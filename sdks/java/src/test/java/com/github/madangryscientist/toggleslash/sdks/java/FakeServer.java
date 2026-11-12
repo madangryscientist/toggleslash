@@ -2,138 +2,194 @@ package com.github.madangryscientist.toggleslash.sdks.java;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import com.sun.net.httpserver.HttpsConfigurator;
+import com.sun.net.httpserver.HttpsServer;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import javax.net.ssl.SSLContext;
 
-/** A ToggleSlash server on a real loopback socket, answering what each test tells it to. */
+/**
+ * A loopback ToggleSlash server for the native tests. It records every request with the headers the
+ * client sent, answers each route with the handler the test gave it, and can hold a request open
+ * until the test (or {@link #close}) lets it go.
+ */
 final class FakeServer implements AutoCloseable {
-  /** What one route does with one request. */
-  @FunctionalInterface
-  interface Handler {
-    void handle(HttpExchange exchange) throws Exception;
+  /** One request as the server saw it. */
+  record Req(String method, String path, Map<String, String> headers, byte[] body, long at) {
+    String text() {
+      return new String(body, StandardCharsets.UTF_8);
+    }
   }
 
-  /** A request the server saw. */
-  record Seen(String method, String path, Map<String, List<String>> headers, String body) {}
-
-  static final String FLAG_TEMPLATE =
-      "{\"key\":\"%s\",\"variations\":[%s,%s],\"on\":true,\"offVariation\":0,\"targets\":[],"
-          + "\"prerequisites\":[],\"rules\":[],\"fallthrough\":{\"variation\":0},\"salt\":\"s\","
-          + "\"version\":%d}";
-
-  /** A flag that serves {@code value} (JSON text) to everyone, as variation 0. */
-  static String flag(String key, String value, int version) {
-    return String.format(FLAG_TEMPLATE, key, value, "null", version);
-  }
-
-  static String ruleset(String... flags) {
-    return "{\"flags\":[" + String.join(",", flags) + "],\"segments\":[]}";
+  /** Answers one route. */
+  interface Route {
+    void handle(Req request, HttpExchange exchange) throws Exception;
   }
 
   private final HttpServer server;
-  private final ExecutorService executor = Executors.newCachedThreadPool();
-  private final Map<String, Handler> routes = new ConcurrentHashMap<>();
-  private final List<Seen> seen = Collections.synchronizedList(new ArrayList<>());
-
-  /** Released at close, so a handler that hangs on purpose lets go. */
-  final CountDownLatch released = new CountDownLatch(1);
+  private final boolean tls;
+  private final Map<String, Route> routes = new java.util.concurrent.ConcurrentHashMap<>();
+  private final List<Req> requests = new CopyOnWriteArrayList<>();
+  private final CountDownLatch released = new CountDownLatch(1);
 
   FakeServer() throws IOException {
-    server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
-    server.setExecutor(executor);
-    server.createContext(
-        "/",
-        exchange -> {
-          byte[] body = exchange.getRequestBody().readAllBytes();
-          seen.add(
-              new Seen(
-                  exchange.getRequestMethod(),
-                  exchange.getRequestURI().getPath(),
-                  Map.copyOf(exchange.getRequestHeaders()),
-                  new String(body, StandardCharsets.UTF_8)));
-          Handler handler = routes.get(exchange.getRequestURI().getPath());
-          try {
-            if (handler == null) {
-              send(exchange, 404, "");
-            } else {
-              handler.handle(exchange);
-            }
-          } catch (IOException e) {
-            // the client went away
-          } catch (Exception e) {
-            exchange.close();
-          }
-        });
+    this(null);
+  }
+
+  FakeServer(SSLContext tlsContext) throws IOException {
+    InetSocketAddress address = new InetSocketAddress(InetAddress.getByName("127.0.0.1"), 0);
+    if (tlsContext == null) {
+      server = HttpServer.create(address, 0);
+      tls = false;
+    } else {
+      HttpsServer https = HttpsServer.create(address, 0);
+      https.setHttpsConfigurator(new HttpsConfigurator(tlsContext));
+      server = https;
+      tls = true;
+    }
+    server.setExecutor(
+        Executors.newCachedThreadPool(r -> {
+          Thread t = new Thread(r, "fake-server");
+          t.setDaemon(true);
+          return t;
+        }));
+    server.createContext("/", this::dispatch);
     server.start();
   }
 
   String url() {
-    return "http://127.0.0.1:" + server.getAddress().getPort();
+    return (tls ? "https" : "http") + "://127.0.0.1:" + server.getAddress().getPort();
   }
 
-  FakeServer on(String path, Handler handler) {
-    routes.put(path, handler);
+  FakeServer route(String path, Route route) {
+    routes.put(path, route);
     return this;
   }
 
-  /** The ruleset route answers {@code body} with the ETag {@code etag}, whatever is asked. */
-  FakeServer ruleset(String body, String etag) {
-    return on(
-        "/sdk/v1/ruleset",
-        x -> {
-          x.getResponseHeaders().set("ETag", etag);
-          send(x, 200, body);
-        });
+  List<Req> requests(String path) {
+    List<Req> out = new ArrayList<>();
+    for (Req r : requests) {
+      if (r.path().equals(path)) {
+        out.add(r);
+      }
+    }
+    return out;
   }
 
-  FakeServer events(int status) {
-    return on("/sdk/v1/events", x -> send(x, status, "{}"));
-  }
-
-  List<Seen> requests(String path) {
-    synchronized (seen) {
-      return seen.stream().filter(s -> s.path().equals(path)).toList();
+  /** Holds the request open for a route, then lets it go when the server closes. */
+  void hangFor() throws IOException {
+    try {
+      hang();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
     }
   }
 
-  List<Seen> all() {
-    synchronized (seen) {
-      return new ArrayList<>(seen);
+  /** Blocks until the test calls {@link #close} (or the request's client gives up). */
+  void hang() throws InterruptedException {
+    released.await();
+  }
+
+  private void dispatch(HttpExchange exchange) throws IOException {
+    byte[] body;
+    try (InputStream in = exchange.getRequestBody()) {
+      body = in.readAllBytes();
+    }
+    Map<String, String> headers = new LinkedHashMap<>();
+    exchange
+        .getRequestHeaders()
+        .forEach(
+            (name, values) -> headers.put(name.toLowerCase(java.util.Locale.ROOT), values.get(0)));
+    Req req =
+        new Req(
+            exchange.getRequestMethod(),
+            exchange.getRequestURI().getPath(),
+            headers,
+            body,
+            System.currentTimeMillis());
+    requests.add(req);
+    Route route = routes.get(req.path());
+    try {
+      if (route == null) {
+        reply(exchange, 404, Map.of(), "");
+      } else {
+        route.handle(req, exchange);
+      }
+    } catch (Exception e) {
+      // the client went away, or the test is over: nothing to answer
+    } finally {
+      exchange.close();
     }
   }
 
-  static void send(HttpExchange exchange, int status, String body) throws IOException {
+  static void reply(HttpExchange exchange, int status, Map<String, String> headers, String body)
+      throws IOException {
+    headers.forEach((k, v) -> exchange.getResponseHeaders().set(k, v));
     byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-    if (!exchange.getResponseHeaders().containsKey("Content-Type")) {
-      exchange.getResponseHeaders().set("Content-Type", "application/json");
+    if (status == 304) {
+      exchange.sendResponseHeaders(status, -1);
+      return;
     }
     exchange.sendResponseHeaders(status, bytes.length == 0 ? -1 : bytes.length);
     if (bytes.length > 0) {
-      exchange.getResponseBody().write(bytes);
+      try (OutputStream out = exchange.getResponseBody()) {
+        out.write(bytes);
+      }
     }
-    exchange.close();
   }
 
-  /** Holds the request until the server closes. */
-  void hang(HttpExchange exchange) throws InterruptedException, IOException {
-    released.await();
-    exchange.close();
+  /** Opens an event stream and returns the body to write chunks to. */
+  static OutputStream openStream(HttpExchange exchange) throws IOException {
+    exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+    exchange.sendResponseHeaders(200, 0);
+    return exchange.getResponseBody();
+  }
+
+  /**
+   * A ruleset with one boolean flag {@code f} (variations false, true) and the given fallthrough.
+   */
+  static String ruleset(int fallthrough, long version) {
+    return "{\"flags\":[{\"key\":\"f\",\"variations\":[false,true],\"on\":true,\"offVariation\":0,"
+        + "\"targets\":[],\"prerequisites\":[],\"rules\":[],\"fallthrough\":{\"variation\":"
+        + fallthrough
+        + "},\"salt\":\"s\",\"version\":"
+        + version
+        + "}],\"segments\":[]}";
+  }
+
+  /** A ruleset with one flag {@code n} serving {@code literal} (any JSON) as its only variation. */
+  static String valueRuleset(String literal) {
+    return "{\"flags\":[{\"key\":\"n\",\"variations\":["
+        + literal
+        + "],\"on\":true,\"offVariation\":0,\"targets\":[],\"prerequisites\":[],\"rules\":[],"
+        + "\"fallthrough\":{\"variation\":0},\"salt\":\"s\",\"version\":1}],\"segments\":[]}";
+  }
+
+  /** Serves {@code body} with an ETag, and a 304 to a request that names that tag. */
+  static Route rulesetRoute(String etag, String body) {
+    return (req, ex) -> {
+      if (etag.equals(req.headers().get("if-none-match"))) {
+        reply(ex, 304, Map.of("ETag", etag), "");
+      } else {
+        reply(ex, 200, Map.of("ETag", etag, "Content-Type", "application/json"), body);
+      }
+    };
   }
 
   @Override
   public void close() {
     released.countDown();
     server.stop(0);
-    executor.shutdownNow();
   }
 }

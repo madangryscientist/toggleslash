@@ -4,9 +4,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The parser for {@code matches} patterns, to the "Patterns" section of {@code docs/evaluation.md}:
- * code points in, a tree with each node's size out, or {@code null} for a pattern that is not
- * valid. {@link Pattern} compiles the tree and runs it. No platform regular expression is involved.
+ * The parser for {@code matches} patterns, to the "Patterns" section of docs/evaluation.md: code
+ * points in, a tree with each node's size out, or null for a pattern that is not valid. {@link
+ * Regex} compiles the tree and runs it. No platform regular expression is involved.
  */
 final class PatternParser {
   private static final int MAX_LENGTH = 1024;
@@ -15,85 +15,34 @@ final class PatternParser {
   private static final int END = -1;
   private static final int NEWLINE = 0x0a;
 
-  /** Code point ranges as pairs {@code lo, hi}, inclusive, or their complement when negated. */
+  private static final String ESCAPABLE = "\\.[]()|*+?{}^$-";
+  private static final String NOT_AN_ATOM = "*+?{}]";
+  private static final String QUANTIFIERS = "*+?{";
+
+  private static final Item DIGIT = new Item(new int[] {0x30, 0x39}, false);
+  private static final Item WORD =
+      new Item(new int[] {0x30, 0x39, 0x41, 0x5a, 0x5f, 0x5f, 0x61, 0x7a}, false);
+  // U+0009 to U+000D are tab, newline, vertical tab, form feed and carriage return.
+  private static final Item SPACE = new Item(new int[] {0x09, 0x0d, 0x20, 0x20}, false);
+
+  /** Code point ranges as pairs lo, hi (inclusive), or their complement when {@code negate}. */
   record Item(int[] ranges, boolean negate) {}
 
   /** A class: any of its items, or none of them when {@code negate} is set. */
   record CharSet(List<Item> items, boolean negate) {}
 
-  /** A node of the tree. {@code size} is what the spec's size limit counts. */
-  abstract static sealed class Node {
-    final int size;
-
-    Node(int size) {
-      this.size = size;
-    }
+  /** The kinds of node. */
+  enum Kind {
+    SET,
+    START,
+    END,
+    CONCAT,
+    ALT,
+    REPEAT
   }
 
-  static final class SetNode extends Node {
-    final CharSet set;
-
-    SetNode(CharSet set) {
-      super(1);
-      this.set = set;
-    }
-  }
-
-  static final class AnchorNode extends Node {
-    final boolean start;
-
-    AnchorNode(boolean start) {
-      super(1);
-      this.start = start;
-    }
-  }
-
-  static final class ConcatNode extends Node {
-    final List<Node> parts;
-
-    ConcatNode(List<Node> parts, int size) {
-      super(size);
-      this.parts = parts;
-    }
-  }
-
-  static final class AltNode extends Node {
-    final List<Node> sides;
-
-    AltNode(List<Node> sides, int size) {
-      super(size);
-      this.sides = sides;
-    }
-  }
-
-  static final class RepeatNode extends Node {
-    final Node body;
-    final int min;
-
-    /** The upper bound, or -1 for none. */
-    final int max;
-
-    RepeatNode(Node body, int min, int max, int size) {
-      super(size);
-      this.body = body;
-      this.min = min;
-      this.max = max;
-    }
-  }
-
-  private static final Item DIGIT = new Item(new int[] {0x30, 0x39}, false);
-  private static final Item WORD =
-      new Item(new int[] {0x30, 0x39, 0x41, 0x5a, 0x5f, 0x5f, 0x61, 0x7a}, false);
-  // U+0009 to U+000D are \t \n \v \f \r.
-  private static final Item SPACE = new Item(new int[] {0x09, 0x0d, 0x20, 0x20}, false);
-
-  /** {@code \} before one of these is that character. */
-  private static final String ESCAPABLE = "\\.[]()|*+?{}^$-";
-
-  /** Code points that cannot start an atom outside a class. */
-  private static final String NOT_AN_ATOM = "*+?{}]";
-
-  private static final String QUANTIFIERS = "*+?{";
+  /** A node of the tree. {@code max} is -1 for no upper bound. */
+  record Node(Kind kind, CharSet set, List<Node> parts, Node body, int min, int max, int size) {}
 
   private static final class Invalid extends RuntimeException {
     private static final long serialVersionUID = 1L;
@@ -110,22 +59,7 @@ final class PatternParser {
     this.cps = cps;
   }
 
-  /** The code points of a UTF-16 string: a valid surrogate pair is one, a lone surrogate itself. */
-  static int[] codePoints(String text) {
-    int[] points = new int[text.length()];
-    int n = 0;
-    int i = 0;
-    while (i < text.length()) {
-      int cp = text.codePointAt(i);
-      points[n++] = cp;
-      i += Character.charCount(cp);
-    }
-    return java.util.Arrays.copyOf(points, n);
-  }
-
-  /**
-   * The tree for a pattern's code points, or null when it is not valid: too long, malformed or big.
-   */
+  /** The tree for a pattern's code points, or null when it is too long, malformed or too big. */
   static Node parse(int[] cps) {
     if (cps.length > MAX_LENGTH) {
       return null;
@@ -134,20 +68,24 @@ final class PatternParser {
       PatternParser parser = new PatternParser(cps);
       Node node = parser.alternation();
       if (parser.pos < cps.length) {
-        return null; // an unmatched ")"
+        return null; // an unmatched close parenthesis
       }
-      return node.size > MAX_SIZE ? null : node;
+      return node.size() > MAX_SIZE ? null : node;
     } catch (Invalid e) {
       return null;
     }
   }
 
-  private static Invalid fail() {
-    return new Invalid();
-  }
-
   private static int saturate(int size) {
     return Math.min(size, MAX_SIZE + 1);
+  }
+
+  private static Item single(int c) {
+    return new Item(new int[] {c, c}, false);
+  }
+
+  private static Node setOf(Item item) {
+    return new Node(Kind.SET, new CharSet(List.of(item), false), null, null, 0, 0, 1);
   }
 
   private static boolean isDigit(int c) {
@@ -163,20 +101,20 @@ final class PatternParser {
     return at < cps.length ? cps[at] : END;
   }
 
-  private int peek() {
-    return peek(0);
-  }
-
   private int take() {
-    int c = peek();
+    int c = peek(0);
     pos++;
     return c;
+  }
+
+  private static void fail() {
+    throw new Invalid();
   }
 
   private Node alternation() {
     List<Node> sides = new ArrayList<>();
     sides.add(concat());
-    while (peek() == '|') {
+    while (peek(0) == '|') {
       pos++;
       sides.add(concat());
     }
@@ -185,77 +123,72 @@ final class PatternParser {
     }
     int size = sides.size() - 1;
     for (Node side : sides) {
-      size += side.size;
+      size = saturate(size + side.size());
     }
-    return new AltNode(sides, saturate(size));
+    return new Node(Kind.ALT, null, sides, null, 0, 0, saturate(size));
   }
 
   private Node concat() {
     List<Node> parts = new ArrayList<>();
-    int size = 0;
-    for (int c = peek(); c != END && c != '|' && c != ')'; c = peek()) {
+    for (int c = peek(0); c != END && c != '|' && c != ')'; c = peek(0)) {
       Node atom = atom();
-      boolean anchor = atom instanceof AnchorNode;
-      Node part = !anchor && in(QUANTIFIERS, peek()) ? quantify(atom) : atom;
-      parts.add(part);
-      size += part.size;
+      boolean anchor = atom.kind() == Kind.START || atom.kind() == Kind.END;
+      parts.add(!anchor && in(QUANTIFIERS, peek(0)) ? quantify(atom) : atom);
     }
-    return new ConcatNode(parts, saturate(size));
+    int size = 0;
+    for (Node part : parts) {
+      size = saturate(size + part.size());
+    }
+    return new Node(Kind.CONCAT, null, parts, null, 0, 0, size);
   }
 
   private Node atom() {
     int c = take();
     if (c == '(') {
-      return group();
+      Node inner = alternation();
+      if (take() != ')') {
+        fail();
+      }
+      return inner;
     }
     if (c == '[') {
-      return new SetNode(charClass());
+      return new Node(Kind.SET, charClass(), null, null, 0, 0, 1);
     }
     if (c == '\\') {
-      return new SetNode(new CharSet(List.of(asItem(escape())), false));
+      return setOf(asItem(escape()));
     }
     if (in(NOT_AN_ATOM, c)) {
-      throw fail();
+      fail();
     }
     if (c == '.') {
-      return new SetNode(new CharSet(List.of(new Item(new int[] {NEWLINE, NEWLINE}, true)), false));
+      return setOf(new Item(new int[] {NEWLINE, NEWLINE}, true));
     }
     if (c == '^') {
-      return new AnchorNode(true);
+      return new Node(Kind.START, null, null, null, 0, 0, 1);
     }
     if (c == '$') {
-      return new AnchorNode(false);
+      return new Node(Kind.END, null, null, null, 0, 0, 1);
     }
-    return new SetNode(new CharSet(List.of(single(c)), false));
+    return setOf(single(c));
   }
 
-  private Node group() {
-    Node inner = alternation();
-    if (take() != ')') {
-      throw fail();
-    }
-    return inner;
-  }
-
-  /**
-   * After a backslash: one code point (an Integer), or one of the six shorthand classes (an Item).
-   */
+  /** After a backslash: one code point (an Integer), or one of the six shorthand classes. */
   private Object escape() {
     int c = take();
     if (in(ESCAPABLE, c)) {
-      return Integer.valueOf(c);
+      return c;
     }
     switch (c) {
       case 'n':
-        return Integer.valueOf(0x0a);
+        return 0x0a;
       case 't':
-        return Integer.valueOf(0x09);
+        return 0x09;
       case 'r':
-        return Integer.valueOf(0x0d);
+        return 0x0d;
       case 'f':
-        return Integer.valueOf(0x0c);
+        return 0x0c;
       case 'v':
-        return Integer.valueOf(0x0b);
+        return 0x0b;
       case 'd':
         return DIGIT;
       case 'w':
@@ -269,19 +202,20 @@ final class PatternParser {
       case 'S':
         return new Item(SPACE.ranges(), true);
       default:
-        throw fail();
+        fail();
+        return null;
     }
   }
 
-  /** After "[": the members up to "]". */
+  /** After the open bracket: the members up to the close bracket. */
   private CharSet charClass() {
-    boolean negate = peek() == '^';
+    boolean negate = peek(0) == '^';
     if (negate) {
       pos++;
     }
     List<Item> items = new ArrayList<>();
     items.add(member(true));
-    while (peek() != ']') {
+    while (peek(0) != ']') {
       items.add(member(false));
     }
     pos++;
@@ -291,32 +225,36 @@ final class PatternParser {
   /** One member: an atom, or a range of two single code points. */
   private Item member(boolean first) {
     Object from = classAtom(first);
-    boolean range = peek() == '-' && peek(1) != END && peek(1) != ']';
+    boolean range = peek(0) == '-' && peek(1) != END && peek(1) != ']';
     if (!range) {
       return asItem(from);
     }
     pos++;
     Object to = classAtom(false);
-    if (!(from instanceof Integer lo) || !(to instanceof Integer hi) || lo > hi) {
-      throw fail();
+    if (!(from instanceof Integer) || !(to instanceof Integer) || (Integer) from > (Integer) to) {
+      fail();
     }
-    return new Item(new int[] {lo, hi}, false);
+    return new Item(new int[] {(Integer) from, (Integer) to}, false);
   }
 
   private Object classAtom(boolean first) {
     int c = take();
-    // "]" here is a class with no members; END and "[" are never members.
+    // A close bracket here is a class with no members; END and an open bracket are never members.
     if (c == END || c == '[' || c == ']') {
-      throw fail();
+      fail();
     }
     if (c == '\\') {
       return escape();
     }
-    // An unescaped "-" is a literal only as the first member or directly before "]".
-    if (c == '-' && !first && peek() != ']') {
-      throw fail();
+    // An unescaped hyphen is a literal only as the first member or directly before a close bracket.
+    if (c == '-' && !first && peek(0) != ']') {
+      fail();
     }
-    return Integer.valueOf(c);
+    return c;
+  }
+
+  private static Item asItem(Object atom) {
+    return atom instanceof Integer ? single((Integer) atom) : (Item) atom;
   }
 
   private Node quantify(Node body) {
@@ -324,62 +262,55 @@ final class PatternParser {
     if (c != '{') {
       int min = c == '+' ? 1 : 0;
       int max = c == '?' ? 1 : -1;
-      return new RepeatNode(body, min, max, saturate(body.size + 1));
+      return new Node(Kind.REPEAT, null, null, body, min, max, saturate(body.size() + 1));
     }
     int min = count();
     int max = upper(min);
     if (take() != '}') {
-      throw fail();
+      fail();
     }
-    if (max < 0) {
+    if (max == -1) {
       return repeat(body, min, -1, min + 1);
     }
     if (min > max) {
-      throw fail();
+      fail();
     }
     return repeat(body, min, max, max);
   }
 
-  /** After "{n": n again for "{n}", -1 for "{n,}", m for "{n,m}". Leaves the "}". */
+  /** After the count n: n again for a bare count, -1 for a trailing comma, m for a range. */
   private int upper(int min) {
-    if (peek() != ',') {
+    if (peek(0) != ',') {
       return min;
     }
     pos++;
-    return peek() == '}' ? -1 : count();
+    return peek(0) == '}' ? -1 : count();
   }
 
   private static Node repeat(Node body, int min, int max, int times) {
-    return new RepeatNode(body, min, max, Math.max(1, saturate(times * body.size)));
+    int size = Math.max(1, saturate((int) Math.min((long) times * body.size(), MAX_SIZE + 1L)));
+    return new Node(Kind.REPEAT, null, null, body, min, max, size);
   }
 
   /** ASCII digits with no leading zero, at most 100. */
   private int count() {
     int c = take();
     if (!isDigit(c)) {
-      throw fail();
+      fail();
     }
     if (c == '0') {
-      if (isDigit(peek())) {
-        throw fail();
+      if (isDigit(peek(0))) {
+        fail();
       }
       return 0;
     }
     int value = c - 0x30;
-    while (isDigit(peek())) {
+    while (isDigit(peek(0))) {
       value = value * 10 + (take() - 0x30);
       if (value > MAX_COUNT) {
-        throw fail();
+        fail();
       }
     }
     return value;
-  }
-
-  private static Item single(int c) {
-    return new Item(new int[] {c, c}, false);
-  }
-
-  private static Item asItem(Object atom) {
-    return atom instanceof Integer c ? single(c) : (Item) atom;
   }
 }

@@ -1,429 +1,546 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
 import com.github.madangryscientist.toggleslash.sdks.java.evaluation.ErrorCode;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Evaluator;
 import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Reason;
 import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Result;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Ruleset;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.OptionalInt;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
- * A ToggleSlash server SDK client. It keeps a ruleset current in the background and evaluates flags
- * from it in memory. Every method is safe to call from many threads and none throws: a server that
- * is down, a bad answer or a bad context gives the fallback you passed and an {@code ERROR} reason.
- * Create one per process, and {@link #close()} it on the way out.
+ * The ToggleSlash server SDK for Java. It keeps a ruleset current from the server and evaluates
+ * flags locally against it, so {@code variation} never waits on the network. Nothing here throws at
+ * a caller: a failure becomes the caller's fallback with an {@code ERROR} reason, or goes to {@code
+ * onError}, or both. Every method is safe to call from many threads at once.
+ *
+ * <p>A context is a JSON value in Java types: a {@link Map} with {@code String} keys, a {@link
+ * List}, a {@link String}, a {@link Boolean}, a {@link Number} (read as a binary64 value) or null.
  */
 public final class Client implements AutoCloseable {
-  private final Options options;
-  private final Consumer<Throwable> report;
-  private final Http syncHttp;
-  private final Hold syncHold;
-  private final Hold usageHold;
+  private enum Kind {
+    BOOL,
+    STRING,
+    NUMBER,
+    LONG,
+    INTEGER,
+    JSON,
+    SAME_KIND
+  }
+
+  /** Marks an answer whose value does not fit the accessor. */
+  private static final Object MISMATCH = new Object();
+
+  private final Reporter reporter;
+  private final Consumer<EvaluationEvent> afterEvaluation;
+  private final Evaluate evaluator;
+  private final Stop stop = new Stop();
+  private final Http http;
   private final Sync sync;
   private final Usage usage;
+  private final long timeoutMs;
+  private final CompletableFuture<Boolean> firstLoad = new CompletableFuture<>();
+  private final AtomicBoolean closing = new AtomicBoolean();
+  private final AtomicReference<CompletableFuture<Void>> shutdown = new AtomicReference<>();
   private final Thread syncThread;
   private final Thread flushThread;
-  private final CountDownLatch flushStop = new CountDownLatch(1);
-  private final CountDownLatch firstLoad = new CountDownLatch(1);
-  private final AtomicBoolean firstLoadSettled = new AtomicBoolean();
-  private volatile boolean firstLoadResult;
-  private final AtomicBoolean closing = new AtomicBoolean();
-  private final CountDownLatch closed = new CountDownLatch(1);
-  private volatile Thread closer;
 
   private Client(Options options) {
-    this.options = options;
-    Consumer<Throwable> onError = options.onError();
-    this.report =
-        error -> {
-          if (onError == null) {
-            return;
-          }
-          try {
-            onError.accept(error);
-          } catch (RuntimeException | StackOverflowError ignored) {
-            // A faulty error hook must not break the SDK.
-          }
-        };
-    String baseUrl = stripSlashes(options.url());
-    this.syncHttp = new Http(Http.newClient(options.requestTimeout()));
-    Http usageHttp = new Http(Http.newClient(options.requestTimeout()));
-    this.syncHold = new Hold(options.nanoTime());
-    this.usageHold = new Hold(options.nanoTime());
-    this.usage =
-        new Usage(
-            usageHttp,
-            baseUrl,
-            options.sdkKey(),
-            options.requestTimeout(),
-            options.clock(),
-            usageHold,
-            report);
-    this.sync = new Sync(syncHttp, options, baseUrl, syncHold, report, this::settleFirstLoad);
-    this.syncThread = daemon("toggleslash-sync", this::runSync);
-    this.flushThread = daemon("toggleslash-flush", this::runFlush);
+    Options given = options;
+    String url = given.url == null ? "" : given.url;
+    int end = url.length();
+    while (end > 0 && url.charAt(end - 1) == '/') {
+      end--;
+    }
+    String base = url.substring(0, end);
+    String key = given.sdkKey == null ? "" : given.sdkKey;
+    this.reporter = new Reporter(given.onError);
+    this.afterEvaluation = given.afterEvaluation;
+    this.evaluator = given.evaluator != null ? given.evaluator : Evaluator::evaluate;
+    this.timeoutMs = Http.millis(positive(given.requestTimeout, Options.DEFAULT_REQUEST_TIMEOUT));
+    long pollMs = Http.millis(positive(given.pollInterval, Options.DEFAULT_INTERVAL));
+    long flushMs = Http.millis(positive(given.flushInterval, Options.DEFAULT_INTERVAL));
+    long idleMs = Http.millis(positive(given.streamIdle, Options.STREAM_IDLE));
+    long capMs = Http.millis(positive(given.retryAfterCap, Options.MAX_RETRY_AFTER));
+    Clock clock = given.clock != null ? given.clock : Clock.SYSTEM;
+    this.http = new Http(given.httpClient, given.sslContext);
+    this.usage = new Usage(base, key, http, clock, reporter, timeoutMs, capMs);
+    this.sync =
+        new Sync(
+            base,
+            key,
+            http,
+            clock,
+            given.jitter != null ? given.jitter : () -> ThreadLocalRandom.current().nextDouble(),
+            reporter,
+            stop,
+            given.stream == null || given.stream,
+            pollMs,
+            timeoutMs,
+            idleMs,
+            capMs);
+    this.syncThread =
+        new SdkThread(
+            this,
+            "toggleslash-sync",
+            () -> {
+              try {
+                sync.run(firstLoad::complete);
+              } catch (Throwable failure) {
+                reporter.report(failure);
+              } finally {
+                firstLoad.complete(false);
+              }
+            });
+    this.flushThread =
+        new SdkThread(
+            this,
+            "toggleslash-flush",
+            () -> {
+              try {
+                while (!stop.isSignalled()) {
+                  if (!clock.sleep(flushMs, stop)) {
+                    break;
+                  }
+                  usage.flush();
+                }
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+              } catch (Throwable failure) {
+                reporter.report(failure);
+              }
+            });
+  }
+
+  /**
+   * Creates a client and starts its first load. It does not wait for the load and never throws: a
+   * URL it cannot use gives a {@code network} error on {@link #status}.
+   *
+   * @param options the options, from {@link Options#builder}
+   * @return the client
+   */
+  public static Client create(Options options) {
+    Client client = new Client(options == null ? Options.builder("", "").build() : options);
+    client.start();
+    return client;
+  }
+
+  /** The given duration, or the default when it is null, zero or negative (contract section 2). */
+  private static Duration positive(Duration given, Duration fallback) {
+    return given == null || given.isZero() || given.isNegative() ? fallback : given;
+  }
+
+  private void start() {
     syncThread.start();
     flushThread.start();
   }
 
   /**
-   * Starts a client. It never throws and never waits: it returns at once and loads in the
-   * background.
+   * Waits for the first load to finish, bounded by {@code requestTimeout}. The answer is fixed when
+   * the first attempt settles: true if a ruleset had loaded, false if not (or after {@link #close}
+   * if it had not settled). Called from one of the SDK's own callbacks it returns at once with the
+   * state held.
+   *
+   * @return whether the first attempt loaded a ruleset
    */
-  public static Client create(Options options) {
-    return new Client(options);
-  }
-
-  private static String stripSlashes(String url) {
-    if (url == null) {
-      return "";
-    }
-    int end = url.length();
-    while (end > 0 && url.charAt(end - 1) == '/') {
-      end--;
-    }
-    return url.substring(0, end);
-  }
-
-  private static Thread daemon(String name, Runnable body) {
-    Thread thread = new Thread(body, name);
-    thread.setDaemon(true);
-    return thread;
-  }
-
-  private void runSync() {
+  public boolean ready() {
     try {
-      sync.run();
-    } catch (RuntimeException | Error e) {
-      // The loop is bounded by design; if it ever fails, say so once and leave the ruleset as it
-      // is.
-      report.accept(e);
-      settleFirstLoad();
-    }
-  }
-
-  private void runFlush() {
-    try {
-      while (!flushStop.await(options.flushInterval().toNanos(), TimeUnit.NANOSECONDS)) {
-        usage.flush();
+      if (firstLoad.isDone()) {
+        return firstLoad.getNow(false);
       }
+      if (SdkThread.isOwnedBy(this)) {
+        return sync.state.get().ruleset() != null;
+      }
+      long bound = timeoutMs > Long.MAX_VALUE / 4 ? Long.MAX_VALUE : 2 * timeoutMs + 1_000;
+      return firstLoad.get(bound, TimeUnit.MILLISECONDS);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-    } catch (RuntimeException | Error e) {
-      report.accept(e);
-    }
-  }
-
-  private void settleFirstLoad() {
-    settle(sync.snapshot() != null);
-  }
-
-  private void settle(boolean result) {
-    if (firstLoadSettled.compareAndSet(false, true)) {
-      firstLoadResult = result;
-      firstLoad.countDown();
+      return false;
+    } catch (ExecutionException | TimeoutException | RuntimeException e) {
+      return false;
     }
   }
 
   /**
-   * Blocks until the first ruleset load has finished, and returns true if it worked. It never
-   * throws and is bounded by the request timeout: false means flags serve fallbacks until the SDK
-   * reaches the server. It may be called again and gives the same answer; after {@link #close()} it
-   * is false if it had not settled.
+   * Evaluates a flag. The accessor follows the fallback's class: a {@link Boolean}, {@link String},
+   * {@link Double}, {@link Integer} or {@link Long} takes a value of that kind (a whole number in
+   * range for the last two), a {@link List} an array, a {@link Map} an object, and null takes any
+   * JSON value.
+   *
+   * @param <T> the fallback's type
+   * @param flagKey the flag
+   * @param context the context
+   * @param fallback what to answer when the flag cannot be served
+   * @return the served value, or the fallback
    */
-  public boolean ready() {
-    boolean interrupted = false;
-    while (true) {
-      try {
-        firstLoad.await();
-        break;
-      } catch (InterruptedException e) {
-        interrupted = true;
-      }
-    }
-    if (interrupted) {
-      Thread.currentThread().interrupt();
-    }
-    return firstLoadResult;
+  public <T> T variation(String flagKey, Object context, T fallback) {
+    return variationDetail(flagKey, context, fallback).value();
   }
 
-  /** What this SDK has loaded and how its stream is doing. Local, never waits, never throws. */
-  public Status status() {
-    return sync.status();
+  /**
+   * Like {@link #variation} with the variation index and the reason.
+   *
+   * @param <T> the fallback's type
+   * @param flagKey the flag
+   * @param context the context
+   * @param fallback what to answer when the flag cannot be served
+   * @return the answer
+   */
+  public <T> Detail<T> variationDetail(String flagKey, Object context, T fallback) {
+    return run(flagKey, context, kindOf(fallback), fallback);
   }
 
-  // ---- typed accessors ------------------------------------------------------------------------
-
-  /** The flag's boolean for a context, or {@code fallback}. */
-  public boolean boolVariation(String flagKey, Context context, boolean fallback) {
+  /**
+   * A boolean flag.
+   *
+   * @param flagKey the flag
+   * @param context the context
+   * @param fallback the fallback
+   * @return the value or the fallback
+   */
+  public boolean boolVariation(String flagKey, Object context, boolean fallback) {
     return boolVariationDetail(flagKey, context, fallback).value();
   }
 
-  /** Like {@link #boolVariation}, with the variation index and the reason. */
-  public Detail<Boolean> boolVariationDetail(String flagKey, Context context, boolean fallback) {
-    return cast(evaluate(flagKey, context, fallback, Kind.BOOL), Boolean.class);
+  /**
+   * A boolean flag with its reason.
+   *
+   * @param flagKey the flag
+   * @param context the context
+   * @param fallback the fallback
+   * @return the answer
+   */
+  public Detail<Boolean> boolVariationDetail(String flagKey, Object context, boolean fallback) {
+    return run(flagKey, context, Kind.BOOL, fallback);
   }
 
-  /** The flag's string for a context, or {@code fallback} (which may be null). */
-  public String stringVariation(String flagKey, Context context, String fallback) {
+  /**
+   * A string flag. The fallback must not be null.
+   *
+   * @param flagKey the flag
+   * @param context the context
+   * @param fallback the fallback
+   * @return the value or the fallback
+   */
+  public String stringVariation(String flagKey, Object context, String fallback) {
     return stringVariationDetail(flagKey, context, fallback).value();
   }
 
-  /** Like {@link #stringVariation}, with the variation index and the reason. */
-  public Detail<String> stringVariationDetail(String flagKey, Context context, String fallback) {
-    return cast(evaluate(flagKey, context, fallback, Kind.STRING), String.class);
+  /**
+   * A string flag with its reason.
+   *
+   * @param flagKey the flag
+   * @param context the context
+   * @param fallback the fallback
+   * @return the answer
+   */
+  public Detail<String> stringVariationDetail(String flagKey, Object context, String fallback) {
+    return run(flagKey, context, Kind.STRING, fallback);
   }
 
-  /** The flag's number for a context, or {@code fallback}. */
-  public double doubleVariation(String flagKey, Context context, double fallback) {
+  /**
+   * A number flag, as a binary64 value.
+   *
+   * @param flagKey the flag
+   * @param context the context
+   * @param fallback the fallback
+   * @return the value or the fallback
+   */
+  public double doubleVariation(String flagKey, Object context, double fallback) {
     return doubleVariationDetail(flagKey, context, fallback).value();
   }
 
-  /** Like {@link #doubleVariation}, with the variation index and the reason. */
-  public Detail<Double> doubleVariationDetail(String flagKey, Context context, double fallback) {
-    return cast(evaluate(flagKey, context, fallback, Kind.NUMBER), Double.class);
+  /**
+   * A number flag with its reason.
+   *
+   * @param flagKey the flag
+   * @param context the context
+   * @param fallback the fallback
+   * @return the answer
+   */
+  public Detail<Double> doubleVariationDetail(String flagKey, Object context, double fallback) {
+    return run(flagKey, context, Kind.NUMBER, fallback);
   }
 
   /**
-   * The flag's integer for a context, or {@code fallback}. A served number with a fraction, or
-   * outside the range of a {@code long}, is a {@code TYPE_MISMATCH}; {@code 2.0} is 2.
+   * A whole-number flag as a 64-bit signed integer. A served number with a fraction, or outside
+   * that range, is a {@code TYPE_MISMATCH} and the fallback.
+   *
+   * @param flagKey the flag
+   * @param context the context
+   * @param fallback the fallback
+   * @return the value or the fallback
    */
-  public long intVariation(String flagKey, Context context, long fallback) {
-    return intVariationDetail(flagKey, context, fallback).value();
-  }
-
-  /** Like {@link #intVariation}, with the variation index and the reason. */
-  public Detail<Long> intVariationDetail(String flagKey, Context context, long fallback) {
-    Detail<Object> detail = evaluate(flagKey, context, fallback, Kind.INTEGER);
-    Object value = detail.value();
-    Long number = value instanceof Double d ? Long.valueOf(d.longValue()) : (Long) value;
-    return new Detail<>(number, detail.variationIndex(), detail.reason());
+  public long longVariation(String flagKey, Object context, long fallback) {
+    return longVariationDetail(flagKey, context, fallback).value();
   }
 
   /**
-   * The flag's value as parsed JSON ({@code Map}, {@code List}, {@code String}, {@code Double},
-   * {@code Boolean} or null), or {@code fallback}. The value must have the JSON kind of the
-   * fallback; a null fallback accepts anything. Do not change what it returns: it is shared.
+   * A whole-number flag with its reason.
+   *
+   * @param flagKey the flag
+   * @param context the context
+   * @param fallback the fallback
+   * @return the answer
    */
-  public Object jsonVariation(String flagKey, Context context, Object fallback) {
+  public Detail<Long> longVariationDetail(String flagKey, Object context, long fallback) {
+    return run(flagKey, context, Kind.LONG, fallback);
+  }
+
+  /**
+   * A flag of any JSON kind, in the SDK's JSON types ({@code null}, {@link Boolean}, {@link
+   * Double}, {@link String}, {@link List}, {@link Map}). No kind is checked.
+   *
+   * @param flagKey the flag
+   * @param context the context
+   * @param fallback the fallback, any JSON value
+   * @return the value or the fallback
+   */
+  public Object jsonVariation(String flagKey, Object context, Object fallback) {
     return jsonVariationDetail(flagKey, context, fallback).value();
   }
 
-  /** Like {@link #jsonVariation}, with the variation index and the reason. */
-  public Detail<Object> jsonVariationDetail(String flagKey, Context context, Object fallback) {
-    return evaluate(flagKey, context, fallback, Kind.OF_FALLBACK);
+  /**
+   * A flag of any JSON kind with its reason.
+   *
+   * @param flagKey the flag
+   * @param context the context
+   * @param fallback the fallback, any JSON value
+   * @return the answer
+   */
+  public Detail<Object> jsonVariationDetail(String flagKey, Object context, Object fallback) {
+    return run(flagKey, context, Kind.JSON, fallback);
   }
 
-  private static <T> Detail<T> cast(Detail<Object> detail, Class<T> type) {
-    return new Detail<>(type.cast(detail.value()), detail.variationIndex(), detail.reason());
+  private static Kind kindOf(Object fallback) {
+    if (fallback instanceof Boolean) {
+      return Kind.BOOL;
+    }
+    if (fallback instanceof String) {
+      return Kind.STRING;
+    }
+    if (fallback instanceof Integer) {
+      return Kind.INTEGER;
+    }
+    if (fallback instanceof Long) {
+      return Kind.LONG;
+    }
+    if (fallback instanceof Number) {
+      return Kind.NUMBER;
+    }
+    return Kind.SAME_KIND;
   }
 
-  // ---- evaluation -----------------------------------------------------------------------------
-
-  /** The JSON kind a served value must have for the accessor that asked. */
-  private enum Kind {
+  private enum JsonKind {
+    NULL,
     BOOL,
-    STRING,
     NUMBER,
-    INTEGER,
-    OF_FALLBACK
+    STRING,
+    ARRAY,
+    OBJECT
   }
 
-  private static boolean accepts(Kind kind, Object value, Object fallback) {
+  private static JsonKind jsonKind(Object value) {
     if (value == null) {
-      return fallback == null;
+      return JsonKind.NULL;
     }
-    Kind wanted = kind;
-    if (kind == Kind.OF_FALLBACK) {
-      if (fallback == null) {
-        return true;
-      }
-      if (fallback instanceof Boolean) {
-        wanted = Kind.BOOL;
-      } else if (fallback instanceof String) {
-        wanted = Kind.STRING;
-      } else if (fallback instanceof Number) {
-        wanted = Kind.NUMBER;
-      } else if (fallback instanceof Map) {
-        return value instanceof Map;
-      } else {
-        return value instanceof List;
-      }
+    if (value instanceof Boolean) {
+      return JsonKind.BOOL;
     }
-    switch (wanted) {
+    if (value instanceof Number) {
+      return JsonKind.NUMBER;
+    }
+    if (value instanceof String) {
+      return JsonKind.STRING;
+    }
+    return value instanceof List ? JsonKind.ARRAY : JsonKind.OBJECT;
+  }
+
+  /** A whole served number as a long, or {@link #MISMATCH}. */
+  private static Object wholeNumber(Object served) {
+    if (!(served instanceof Number)) {
+      return MISMATCH;
+    }
+    double d = ((Number) served).doubleValue();
+    // 2^63 is the first double past the signed 64-bit range; -2^63 is its first value.
+    if (!(d >= -9.223372036854775808E18 && d < 9.223372036854775808E18) || d != Math.rint(d)) {
+      return MISMATCH;
+    }
+    return (long) d;
+  }
+
+  private static Object convert(Kind kind, Object served, Object fallback) {
+    switch (kind) {
       case BOOL:
-        return value instanceof Boolean;
+        return served instanceof Boolean ? served : MISMATCH;
       case STRING:
-        return value instanceof String;
+        return served instanceof String ? served : MISMATCH;
       case NUMBER:
-        return value instanceof Double;
+        return served instanceof Number ? (Object) ((Number) served).doubleValue() : MISMATCH;
+      case LONG:
+        return wholeNumber(served);
       case INTEGER:
-        return value instanceof Double d
-            && !d.isNaN()
-            && !d.isInfinite()
-            && d == Math.rint(d)
-            && d >= -0x1p63
-            && d < 0x1p63;
+        {
+          Object whole = wholeNumber(served);
+          if (whole == MISMATCH) {
+            return MISMATCH;
+          }
+          long value = (Long) whole;
+          return value >= Integer.MIN_VALUE && value <= Integer.MAX_VALUE
+              ? (Object) (int) value
+              : MISMATCH;
+        }
+      case SAME_KIND:
+        return fallback == null || jsonKind(served) == jsonKind(fallback) ? served : MISMATCH;
       default:
-        return false;
+        return served;
     }
   }
 
-  private Detail<Object> fallbackDetail(Object fallback, ErrorCode code) {
-    return new Detail<>(fallback, OptionalInt.empty(), Reason.error(code));
+  private <T> Detail<T> fallbackDetail(T fallback, ErrorCode code) {
+    return new Detail<>(fallback, null, Reason.error(code));
   }
 
-  private Detail<Object> evaluate(String flagKey, Context context, Object fallback, Kind kind) {
-    Sync.Snapshot held = sync.snapshot();
-    Detail<Object> detail;
+  private <T> Detail<T> run(String flagKey, Object context, Kind kind, T fallback) {
+    Snapshot held = sync.state.get();
+    Detail<T> detail;
     try {
-      detail = compute(held, flagKey, context, fallback, kind);
-    } catch (RuntimeException | StackOverflowError e) {
-      report.accept(e);
+      detail = detail(held.ruleset(), flagKey, context, kind, fallback);
+    } catch (Throwable failure) {
+      reporter.report(failure);
       detail = fallbackDetail(fallback, ErrorCode.EVALUATION_FAILED);
     }
-    Consumer<EvaluationEvent> hook = options.afterEvaluation();
-    if (hook != null) {
-      runHook(hook, held, flagKey, context, detail);
+    if (afterEvaluation != null) {
+      runHook(held, flagKey, context, detail);
     }
     return detail;
   }
 
-  private Detail<Object> compute(
-      Sync.Snapshot held, String flagKey, Context context, Object fallback, Kind kind) {
-    if (held == null) {
+  @SuppressWarnings("unchecked")
+  private <T> Detail<T> detail(
+      Ruleset ruleset, String flagKey, Object context, Kind kind, T fallback) {
+    if (ruleset == null) {
       return fallbackDetail(fallback, ErrorCode.NOT_READY);
     }
-    Result result =
-        options
-            .evaluator()
-            .evaluate(held.ruleset(), flagKey, context == null ? null : context.tree());
-    if (result.variationIndex().isEmpty()) {
-      return new Detail<>(fallback, OptionalInt.empty(), result.reason());
+    Result result = evaluator.evaluate(ruleset, flagKey, context);
+    if (result.variationIndex() == null) {
+      return new Detail<>(fallback, null, result.reason());
     }
-    if (!accepts(kind, result.value(), fallback)) {
+    Object value = convert(kind, result.value(), fallback);
+    if (value == MISMATCH) {
       return fallbackDetail(fallback, ErrorCode.TYPE_MISMATCH);
     }
-    if (!closing.get()) {
-      usage.record(flagKey, result.variationIndex().getAsInt());
-    }
-    return new Detail<>(result.value(), result.variationIndex(), result.reason());
+    usage.record(flagKey, result.variationIndex());
+    return new Detail<>((T) value, result.variationIndex(), result.reason());
   }
 
-  private void runHook(
-      Consumer<EvaluationEvent> hook,
-      Sync.Snapshot held,
-      String flagKey,
-      Context context,
-      Detail<Object> detail) {
+  private void runHook(Snapshot held, String flagKey, Object context, Detail<?> detail) {
     try {
-      Optional<String> etag = Optional.ofNullable(held == null ? null : held.etag());
-      Optional<Double> version =
-          held == null ? Optional.empty() : held.ruleset().flagVersion(flagKey);
-      hook.accept(
+      Long version = held.ruleset() == null ? null : held.ruleset().flagVersion(flagKey);
+      afterEvaluation.accept(
           new EvaluationEvent(
               flagKey,
               context,
               detail.value(),
               detail.variationIndex(),
               detail.reason(),
-              etag,
+              held.etag(),
               version));
-    } catch (RuntimeException | StackOverflowError e) {
-      report.accept(e);
+    } catch (Throwable failure) {
+      reporter.report(failure);
     }
   }
 
-  // ---- close ----------------------------------------------------------------------------------
+  /**
+   * What the client has loaded and how its stream is doing: one consistent snapshot, local to the
+   * process. It does no I/O and never waits.
+   *
+   * @return the status
+   */
+  public Status status() {
+    Snapshot held = sync.state.get();
+    return new Status(
+        held.etag(),
+        held.lastSyncAt() == null ? null : Instant.ofEpochMilli(held.lastSyncAt()),
+        closing.get() ? StreamState.CLOSED : held.stream(),
+        held.lastError());
+  }
 
   /**
-   * Stops following the server and sends the pending usage counts. It never throws, is safe to call
-   * twice or from many threads (each call returns once the shutdown has finished), and evaluation
-   * still answers afterwards. Counts that could not be sent because the server asked to wait are
-   * reported to {@code onError}.
+   * Stops following the server, sends the last usage counts and returns once that is done, within
+   * about twice {@code requestTimeout}. It is idempotent, and every call returns after the same
+   * shutdown. Called on one of the SDK's own threads (from a callback) it stops the rest and
+   * returns without waiting for that thread's work. Evaluation keeps answering from the held
+   * ruleset afterwards, and counts nothing.
    */
   @Override
   public void close() {
-    Thread self = Thread.currentThread();
-    if (closing.compareAndSet(false, true)) {
-      closer = self;
-      try {
-        shutDown(self);
-      } finally {
-        closed.countDown();
+    CompletableFuture<Void> mine = new CompletableFuture<>();
+    CompletableFuture<Void> existing = shutdown.compareAndExchange(null, mine);
+    if (existing == null) {
+      begin();
+      if (SdkThread.isOwnedBy(this)) {
+        Thread closer = new Thread(() -> finishShutdown(mine), "toggleslash-close");
+        closer.setDaemon(true);
+        closer.start();
+        return;
       }
+      finishShutdown(mine);
       return;
     }
-    if (self == closer || self == syncThread || self == flushThread) {
-      // A callback that closes the client from inside the shutdown, or from one of its own threads:
-      // waiting here would wait for itself.
+    if (SdkThread.isOwnedBy(this)) {
       return;
     }
-    boolean interrupted = false;
-    while (true) {
-      try {
-        closed.await();
-        break;
-      } catch (InterruptedException e) {
-        interrupted = true;
-      }
-    }
-    if (interrupted) {
-      self.interrupt();
-    }
-  }
-
-  private void shutDown(Thread self) {
-    usage.stopRecording();
-    sync.stop();
-    flushStop.countDown();
-    join(syncThread, self);
-    join(flushThread, self);
-    settle(false);
     try {
-      usage.finish();
-    } catch (RuntimeException | StackOverflowError e) {
-      report.accept(e);
+      existing.get(2 * timeoutMs + 5_000, TimeUnit.MILLISECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    } catch (ExecutionException | TimeoutException | RuntimeException e) {
+      // Shutdown is best effort and bounded: there is nothing more to wait for.
     }
   }
 
-  private static void join(Thread thread, Thread self) {
-    if (thread == self) {
+  /** Step 1 and 2: stop counting, stop following, stop the flush loop, cancel what is in flight. */
+  private void begin() {
+    closing.set(true);
+    usage.stopCounting();
+    stop.signal();
+    http.abortAll();
+    firstLoad.complete(false);
+  }
+
+  private void finishShutdown(CompletableFuture<Void> done) {
+    try {
+      long bound = 2 * timeoutMs + 5_000;
+      join(syncThread, bound);
+      join(flushThread, bound);
+      firstLoad.complete(false);
+      usage.finish();
+    } catch (Throwable failure) {
+      reporter.report(failure);
+    } finally {
+      done.complete(null);
+    }
+  }
+
+  private static void join(Thread thread, long boundMs) {
+    if (thread == Thread.currentThread()) {
       return;
     }
-    boolean interrupted = false;
-    while (thread.isAlive()) {
-      try {
-        thread.join();
-      } catch (InterruptedException e) {
-        interrupted = true;
-      }
+    try {
+      thread.join(boundMs);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
     }
-    if (interrupted) {
-      self.interrupt();
-    }
-  }
-
-  // ---- test seams -----------------------------------------------------------------------------
-
-  /** For the tests: the hold on the ruleset and stream routes. */
-  Duration syncHoldRemaining() {
-    return Duration.ofNanos(syncHold.remainingNanos());
-  }
-
-  /** For the tests: the hold on the events route. */
-  Duration usageHoldRemaining() {
-    return Duration.ofNanos(usageHold.remainingNanos());
-  }
-
-  /** For the tests: send the pending usage counts now. */
-  void flushNow() {
-    usage.flush();
   }
 }

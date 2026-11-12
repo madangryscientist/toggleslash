@@ -1,29 +1,28 @@
 package com.github.madangryscientist.toggleslash.sdks.java.evaluation;
 
 /**
- * The error codes of an {@code ERROR} result, spelled as in the contract. The first seven come from
- * the evaluator; the SDK adds {@link #NOT_READY}, {@link #TYPE_MISMATCH} and {@link
- * #EVALUATION_FAILED}.
+ * The error codes of an {@code ERROR} reason. The constant names are the wire spelling, so {@link
+ * #name()} is what the SDK reports and what a JSON answer carries.
  */
 public enum ErrorCode {
+  /** The context is not valid. */
   INVALID_CONTEXT,
+  /** No flag has the key. */
   FLAG_NOT_FOUND,
+  /** A flag names a segment that the ruleset does not have. */
   SEGMENT_NOT_FOUND,
+  /** The flag is not valid. */
   MALFORMED_FLAG,
+  /** A segment the flag names is not valid. */
   MALFORMED_SEGMENT,
+  /** Prerequisites lead back to a flag being evaluated. */
   PREREQUISITE_CYCLE,
+  /** Prerequisites go more than 32 links deep. */
   PREREQUISITE_DEPTH_EXCEEDED,
+  /** The SDK holds no ruleset yet. */
   NOT_READY,
+  /** The served value is not of the kind the accessor reads. */
   TYPE_MISMATCH,
-  EVALUATION_FAILED;
-
-  /** The canonical spelling, as it appears on the wire and in the specification. */
-  public String value() {
-    return name();
-  }
-
-  @Override
-  public String toString() {
-    return name();
-  }
+  /** The evaluator raised. */
+  EVALUATION_FAILED
 }

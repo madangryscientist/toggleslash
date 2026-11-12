@@ -1,15 +1,12 @@
 package com.github.madangryscientist.toggleslash.sdks.java.evaluation;
 
-import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
 
 /**
- * The shape of a ruleset, checked at run time because rulesets arrive as JSON. {@code
+ * The shape of a ruleset, checked at runtime because rulesets arrive as JSON. {@code
  * docs/evaluation.md} is normative for what counts as malformed. Null and absent are the same for
- * an optional field. A value here is a JSON tree: {@code Map}, {@code List}, {@code String}, {@code
- * Double}, {@code Boolean} or null.
+ * an optional member.
  */
 final class Validate {
   static final int BUCKET_COUNT = 100_000;
@@ -35,25 +32,20 @@ final class Validate {
 
   private Validate() {}
 
-  static boolean isRecord(Object value) {
-    return value instanceof Map;
-  }
-
-  /** The record's field, or null. The caller has checked {@link #isRecord}. */
-  static Object field(Object record, String name) {
-    return ((Map<?, ?>) record).get(name);
-  }
-
-  /** ASCII only: {@code [A-Za-z0-9._-]+}, and neither {@code kind} nor {@code multi}. */
+  /** ASCII {@code [A-Za-z0-9._-]+}, and neither {@code kind} nor {@code multi}. */
   static boolean isKind(Object value) {
-    if (!(value instanceof String text) || text.isEmpty()) {
+    if (!(value instanceof String)) {
       return false;
     }
-    for (int i = 0; i < text.length(); i++) {
-      char c = text.charAt(i);
+    String s = (String) value;
+    if (s.isEmpty() || s.equals("kind") || s.equals("multi")) {
+      return false;
+    }
+    for (int i = 0; i < s.length(); i++) {
+      char c = s.charAt(i);
       boolean ok =
-          (c >= 'A' && c <= 'Z')
-              || (c >= 'a' && c <= 'z')
+          (c >= 'a' && c <= 'z')
+              || (c >= 'A' && c <= 'Z')
               || (c >= '0' && c <= '9')
               || c == '.'
               || c == '_'
@@ -62,33 +54,36 @@ final class Validate {
         return false;
       }
     }
-    return !text.equals("kind") && !text.equals("multi");
+    return true;
   }
 
   private static boolean isOptionalKind(Object value) {
     return value == null || isKind(value);
   }
 
-  private static boolean isKey(Object value) {
-    return value instanceof String text && !text.isEmpty();
+  static boolean isKey(Object value) {
+    return value instanceof String && !((String) value).isEmpty();
   }
 
-  /** An integer of at least 0. */
   static boolean isCount(Object value) {
-    return value instanceof Double d && Double.isFinite(d) && d == Math.floor(d) && d >= 0;
+    if (!Js.isNumber(value)) {
+      return false;
+    }
+    double d = Js.number(value);
+    return Double.isFinite(d) && d == Math.rint(d) && d >= 0;
   }
 
-  private static boolean isVariationIndex(Object value, int variationCount) {
-    return isCount(value) && (Double) value < variationCount;
+  static boolean isVariationIndex(Object value, int variationCount) {
+    return isCount(value) && Js.number(value) < variationCount;
   }
 
   private static boolean isStringArray(Object value) {
-    return value instanceof List<?> list && list.stream().allMatch(item -> item instanceof String);
+    return everyItem(value, item -> item instanceof String);
   }
 
   private static boolean isClauseValue(Object value) {
-    if (value instanceof Double d) {
-      return Double.isFinite(d);
+    if (Js.isNumber(value)) {
+      return Js.isFinite(value);
     }
     return value instanceof String || value instanceof Boolean;
   }
@@ -101,61 +96,77 @@ final class Validate {
     if (!isKey(value)) {
       return false;
     }
-    String name = (String) value;
-    return !name.startsWith("/") || Reference.parse(name) != null;
+    String s = (String) value;
+    return !s.startsWith("/") || Reference.parse(s) != null;
+  }
+
+  private static boolean everyItem(Object value, Predicate<Object> check) {
+    if (!Js.isArray(value)) {
+      return false;
+    }
+    for (Object item : Js.array(value)) {
+      if (!check.test(item)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   static boolean isAttributeClause(Object value) {
-    if (!isRecord(value)
-        || !(field(value, "op") instanceof String op)
-        || !ATTRIBUTE_OPS.contains(op)) {
+    if (!Js.isRecord(value)) {
       return false;
     }
-    return isAttributeName(field(value, "attribute"))
-        && isNegate(field(value, "negate"))
-        && isOptionalKind(field(value, "contextKind"))
-        && field(value, "values") instanceof List<?> values
-        && values.stream().allMatch(Validate::isClauseValue);
+    Object op = Js.member(value, "op");
+    if (!(op instanceof String) || !ATTRIBUTE_OPS.contains(op)) {
+      return false;
+    }
+    return isAttributeName(Js.member(value, "attribute"))
+        && isNegate(Js.member(value, "negate"))
+        && isOptionalKind(Js.member(value, "contextKind"))
+        && everyItem(Js.member(value, "values"), Validate::isClauseValue);
   }
 
   private static boolean isSegmentClause(Object value) {
-    if (!isRecord(value) || !"segmentMatch".equals(field(value, "op"))) {
+    if (!Js.isRecord(value) || !"segmentMatch".equals(Js.member(value, "op"))) {
       return false;
     }
-    return isNegate(field(value, "negate")) && isStringArray(field(value, "values"));
+    return isNegate(Js.member(value, "negate")) && isStringArray(Js.member(value, "values"));
   }
 
   private static boolean isWeightedVariation(Object value, int variationCount) {
-    return isRecord(value)
-        && isVariationIndex(field(value, "variation"), variationCount)
-        && isCount(field(value, "weight"))
-        && (Double) field(value, "weight") <= BUCKET_COUNT;
+    if (!Js.isRecord(value)) {
+      return false;
+    }
+    Object weight = Js.member(value, "weight");
+    return isVariationIndex(Js.member(value, "variation"), variationCount)
+        && isCount(weight)
+        && Js.number(weight) <= BUCKET_COUNT;
   }
 
   private static boolean isRollout(Object value, int variationCount) {
-    if (!isRecord(value) || !isOptionalKind(field(value, "contextKind"))) {
+    if (!Js.isRecord(value) || !isOptionalKind(Js.member(value, "contextKind"))) {
       return false;
     }
-    if (!(field(value, "variations") instanceof List<?> variations) || variations.isEmpty()) {
+    Object variations = Js.member(value, "variations");
+    if (!Js.isArray(variations) || Js.array(variations).isEmpty()) {
       return false;
     }
     double total = 0;
-    for (Object item : variations) {
+    for (Object item : Js.array(variations)) {
       if (!isWeightedVariation(item, variationCount)) {
         return false;
       }
-      total += (Double) field(item, "weight");
+      total += Js.number(Js.member(item, "weight"));
     }
     return total == BUCKET_COUNT;
   }
 
-  /** {@code variation} (an index) or {@code rollout}, not both. */
   static boolean isServe(Object value, int variationCount) {
-    if (!isRecord(value)) {
+    if (!Js.isRecord(value)) {
       return false;
     }
-    Object variation = field(value, "variation");
-    Object rollout = field(value, "rollout");
+    Object variation = Js.member(value, "variation");
+    Object rollout = Js.member(value, "rollout");
     if (rollout == null) {
       return isVariationIndex(variation, variationCount);
     }
@@ -163,69 +174,76 @@ final class Validate {
   }
 
   private static boolean isRule(Object value, int variationCount) {
-    if (!isRecord(value) || !(field(value, "clauses") instanceof List<?> clauses)) {
+    if (!Js.isRecord(value)) {
       return false;
     }
-    return clauses.stream().allMatch(c -> isAttributeClause(c) || isSegmentClause(c))
+    return everyItem(
+            Js.member(value, "clauses"),
+            clause -> isAttributeClause(clause) || isSegmentClause(clause))
         && isServe(value, variationCount);
   }
 
   private static boolean isTarget(Object value, int variationCount) {
-    return isRecord(value)
-        && isVariationIndex(field(value, "variation"), variationCount)
-        && isStringArray(field(value, "contextKeys"))
-        && isOptionalKind(field(value, "contextKind"));
+    if (!Js.isRecord(value)) {
+      return false;
+    }
+    return isVariationIndex(Js.member(value, "variation"), variationCount)
+        && isStringArray(Js.member(value, "contextKeys"))
+        && isOptionalKind(Js.member(value, "contextKind"));
   }
 
   private static boolean isPrerequisite(Object value) {
-    return isRecord(value) && isKey(field(value, "flagKey")) && isCount(field(value, "variation"));
+    return Js.isRecord(value)
+        && isKey(Js.member(value, "flagKey"))
+        && isCount(Js.member(value, "variation"));
   }
 
-  /** What serving the off variation needs. It is checked apart so {@code on: false} survives. */
+  /**
+   * What serving the off variation needs. It is checked apart so {@code on: false} survives a bad
+   * rule.
+   */
   static boolean isFlagHeader(Object value) {
-    if (!isRecord(value) || !(field(value, "on") instanceof Boolean)) {
+    if (!Js.isRecord(value) || !(Js.member(value, "on") instanceof Boolean)) {
       return false;
     }
-    if (!isKey(field(value, "key"))
-        || !(field(value, "variations") instanceof List<?> variations)
-        || variations.isEmpty()) {
+    Object variations = Js.member(value, "variations");
+    if (!isKey(Js.member(value, "key"))
+        || !Js.isArray(variations)
+        || Js.array(variations).isEmpty()) {
       return false;
     }
-    Object offVariation = field(value, "offVariation");
-    return offVariation == null || isVariationIndex(offVariation, variations.size());
-  }
-
-  private static boolean everyItem(Object value, Predicate<Object> check) {
-    return value instanceof List<?> list && list.stream().allMatch(check);
+    Object offVariation = Js.member(value, "offVariation");
+    return offVariation == null || isVariationIndex(offVariation, Js.array(variations).size());
   }
 
   static boolean isFlagBody(Object value, int variationCount) {
-    if (!isRecord(value)) {
+    if (!Js.isRecord(value)) {
       return false;
     }
-    return field(value, "salt") instanceof String
-        && isCount(field(value, "version"))
-        && everyItem(field(value, "targets"), item -> isTarget(item, variationCount))
-        && everyItem(field(value, "prerequisites"), Validate::isPrerequisite)
-        && everyItem(field(value, "rules"), item -> isRule(item, variationCount))
-        && isServe(field(value, "fallthrough"), variationCount);
+    return Js.member(value, "salt") instanceof String
+        && isCount(Js.member(value, "version"))
+        && everyItem(Js.member(value, "targets"), item -> isTarget(item, variationCount))
+        && everyItem(Js.member(value, "prerequisites"), Validate::isPrerequisite)
+        && everyItem(Js.member(value, "rules"), item -> isRule(item, variationCount))
+        && isServe(Js.member(value, "fallthrough"), variationCount);
   }
 
   private static boolean isSegmentRule(Object value) {
-    if (!isRecord(value)) {
+    if (!Js.isRecord(value)) {
       return false;
     }
-    Object weight = field(value, "weight");
-    boolean weightIsValid = weight == null || (isCount(weight) && (Double) weight <= BUCKET_COUNT);
+    Object weight = Js.member(value, "weight");
+    boolean weightIsValid =
+        weight == null || (isCount(weight) && Js.number(weight) <= BUCKET_COUNT);
     return weightIsValid
-        && isOptionalKind(field(value, "rolloutContextKind"))
-        && everyItem(field(value, "clauses"), Validate::isAttributeClause);
+        && isOptionalKind(Js.member(value, "rolloutContextKind"))
+        && everyItem(Js.member(value, "clauses"), Validate::isAttributeClause);
   }
 
   private static boolean isContextList(Object value) {
-    return isRecord(value)
-        && isKind(field(value, "contextKind"))
-        && isStringArray(field(value, "values"));
+    return Js.isRecord(value)
+        && isKind(Js.member(value, "contextKind"))
+        && isStringArray(Js.member(value, "values"));
   }
 
   private static boolean isOptionalContextLists(Object value) {
@@ -233,15 +251,15 @@ final class Validate {
   }
 
   static boolean isSegment(Object value) {
-    if (!isRecord(value)) {
+    if (!Js.isRecord(value)) {
       return false;
     }
-    return isKey(field(value, "key"))
-        && field(value, "salt") instanceof String
-        && isStringArray(field(value, "included"))
-        && isStringArray(field(value, "excluded"))
-        && isOptionalContextLists(field(value, "includedContexts"))
-        && isOptionalContextLists(field(value, "excludedContexts"))
-        && everyItem(field(value, "rules"), Validate::isSegmentRule);
+    return isKey(Js.member(value, "key"))
+        && Js.member(value, "salt") instanceof String
+        && isStringArray(Js.member(value, "included"))
+        && isStringArray(Js.member(value, "excluded"))
+        && isOptionalContextLists(Js.member(value, "includedContexts"))
+        && isOptionalContextLists(Js.member(value, "excludedContexts"))
+        && everyItem(Js.member(value, "rules"), Validate::isSegmentRule);
   }
 }

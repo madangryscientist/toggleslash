@@ -1,21 +1,20 @@
 package com.github.madangryscientist.toggleslash.sdks.java.evaluation;
 
-/** Why a flag answered as it did, spelled as in the contract. */
+/**
+ * The kinds of reason an evaluation answers with. The constant names are the wire spelling, so
+ * {@link #name()} is what the SDK reports.
+ */
 public enum ReasonKind {
+  /** The flag is off. */
   OFF,
+  /** A target lists the context. */
   TARGET_MATCH,
+  /** A rule matched. */
   RULE_MATCH,
+  /** No target or rule matched. */
   FALLTHROUGH,
+  /** A prerequisite flag did not serve the variation required. */
   PREREQUISITE_FAILED,
-  ERROR;
-
-  /** The canonical spelling, as it appears on the wire and in the specification. */
-  public String value() {
-    return name();
-  }
-
-  @Override
-  public String toString() {
-    return name();
-  }
+  /** The evaluation failed; see {@link ErrorCode}. */
+  ERROR
 }

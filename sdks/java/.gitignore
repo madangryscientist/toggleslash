@@ -1,9 +1,2 @@
-# Maven output
+# Maven output: classes, test classes, surefire reports, the header audit and vector counts.
 target/
-# Editors and tools
-.idea/
-*.iml
-.vscode/
-.classpath
-.project
-.settings/

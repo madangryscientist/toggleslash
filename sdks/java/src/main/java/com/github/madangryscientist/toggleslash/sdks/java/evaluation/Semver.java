@@ -4,14 +4,22 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Semantic versions, to the "Semantic versions" section of {@code docs/evaluation.md}. A hand
- * written walk over the string: nothing converts a numeric part to a number.
+ * Semantic versions, to the "Semantic versions" section of docs/evaluation.md. A hand-written walk
+ * over the string: no regular expression and no library. Nothing here converts a numeric part to a
+ * number.
  */
 final class Semver {
-  /** A parsed version; the parts are digit strings with no leading zero. */
-  record Version(String major, String minor, String patch, List<String> prerelease) {}
+  private final String major;
+  private final String minor;
+  private final String patch;
+  private final List<String> prerelease;
 
-  private Semver() {}
+  private Semver(String major, String minor, String patch, List<String> prerelease) {
+    this.major = major;
+    this.minor = minor;
+    this.patch = patch;
+    this.prerelease = prerelease;
+  }
 
   private static boolean isDigit(char c) {
     return c >= '0' && c <= '9';
@@ -30,28 +38,14 @@ final class Semver {
     return true;
   }
 
-  /** {@code 0}, or digits with no leading zero. */
+  /** {@code 0} or digits with no leading zero. */
   private static boolean isNumericPart(String text) {
     return !text.isEmpty() && allDigits(text) && (text.equals("0") || text.charAt(0) != '0');
   }
 
-  private static List<String> split(String text, char separator) {
-    List<String> parts = new ArrayList<>();
-    int start = 0;
-    while (true) {
-      int at = text.indexOf(separator, start);
-      if (at < 0) {
-        parts.add(text.substring(start));
-        return parts;
-      }
-      parts.add(text.substring(start, at));
-      start = at + 1;
-    }
-  }
-
-  /** Dot-separated, none empty, each of ASCII letters, digits and {@code -}. */
+  /** Dot-separated, none empty, each of ASCII letters, digits and hyphens. */
   private static List<String> identifiers(String text) {
-    List<String> parts = split(text, '.');
+    List<String> parts = Text.split(text, '.');
     for (String part : parts) {
       if (part.isEmpty()) {
         return null;
@@ -65,7 +59,7 @@ final class Semver {
     return parts;
   }
 
-  /** Prerelease identifiers: valid ones, and a digits-only one has no leading zero. */
+  /** The prerelease identifiers: valid identifiers, and a digits-only one has no leading zero. */
   private static List<String> prereleaseIdentifiers(String text) {
     List<String> parts = identifiers(text);
     if (parts == null) {
@@ -83,7 +77,7 @@ final class Semver {
    * {@code MAJOR.MINOR.PATCH}, or a short form ({@code MAJOR}, {@code MAJOR.MINOR}) when allowed.
    */
   private static List<String> numericParts(String text, boolean allowShort) {
-    List<String> numbers = split(text, '.');
+    List<String> numbers = Text.split(text, '.');
     if (numbers.size() > 3 || (numbers.size() < 3 && !allowShort)) {
       return null;
     }
@@ -96,38 +90,42 @@ final class Semver {
   }
 
   /** The version {@code text} spells, or null when it is not one. */
-  static Version parse(String text) {
+  static Semver parse(String text) {
+    String withoutBuild = text;
+    String build = null;
     int plus = text.indexOf('+');
-    String withoutBuild = plus < 0 ? text : text.substring(0, plus);
-    boolean hasBuild = plus >= 0;
+    if (plus >= 0) {
+      withoutBuild = text.substring(0, plus);
+      build = text.substring(plus + 1);
+    }
     // Build metadata: identifiers only, and leading zeros are fine.
-    if (hasBuild && identifiers(text.substring(plus + 1)) == null) {
+    if (build != null && identifiers(build) == null) {
       return null;
     }
+    String core = withoutBuild;
+    String prerelease = null;
     int dash = withoutBuild.indexOf('-');
-    String core = dash < 0 ? withoutBuild : withoutBuild.substring(0, dash);
-    boolean hasPrerelease = dash >= 0;
-    List<String> prerelease = List.of();
-    if (hasPrerelease) {
-      prerelease = prereleaseIdentifiers(withoutBuild.substring(dash + 1));
-      if (prerelease == null) {
+    if (dash >= 0) {
+      core = withoutBuild.substring(0, dash);
+      prerelease = withoutBuild.substring(dash + 1);
+    }
+    List<String> parsedPrerelease = new ArrayList<>();
+    if (prerelease != null) {
+      parsedPrerelease = prereleaseIdentifiers(prerelease);
+      if (parsedPrerelease == null) {
         return null;
       }
     }
     // The short forms carry no suffix.
-    List<String> numbers = numericParts(core, !hasBuild && !hasPrerelease);
+    List<String> numbers = numericParts(core, build == null && prerelease == null);
     if (numbers == null) {
       return null;
     }
-    return new Version(
+    return new Semver(
         numbers.get(0),
         numbers.size() > 1 ? numbers.get(1) : "0",
         numbers.size() > 2 ? numbers.get(2) : "0",
-        prerelease);
-  }
-
-  private static int sign(int order) {
-    return Integer.signum(order);
+        parsedPrerelease);
   }
 
   /** Digit strings with no leading zero: the longer is larger, else by code unit. */
@@ -135,7 +133,7 @@ final class Semver {
     if (a.length() != b.length()) {
       return a.length() < b.length() ? -1 : 1;
     }
-    return sign(a.compareTo(b));
+    return Integer.signum(a.compareTo(b));
   }
 
   private static int compareIdentifier(String a, String b) {
@@ -150,13 +148,13 @@ final class Semver {
     if (bNumeric) {
       return 1;
     }
-    return sign(a.compareTo(b));
+    return Integer.signum(a.compareTo(b));
   }
 
   private static int comparePrerelease(List<String> a, List<String> b) {
     // No prerelease is above any prerelease of the same core.
     if (a.isEmpty() || b.isEmpty()) {
-      return sign(b.size() - a.size());
+      return Integer.signum(b.size() - a.size());
     }
     int shared = Math.min(a.size(), b.size());
     for (int i = 0; i < shared; i++) {
@@ -165,18 +163,18 @@ final class Semver {
         return order;
       }
     }
-    return sign(a.size() - b.size());
+    return Integer.signum(a.size() - b.size());
   }
 
   /** -1, 0 or 1 by SemVer 2.0.0 section 11; build metadata is already gone. */
-  static int compare(Version a, Version b) {
-    int core = compareNumeric(a.major(), b.major());
+  static int compare(Semver a, Semver b) {
+    int core = compareNumeric(a.major, b.major);
     if (core == 0) {
-      core = compareNumeric(a.minor(), b.minor());
+      core = compareNumeric(a.minor, b.minor);
     }
     if (core == 0) {
-      core = compareNumeric(a.patch(), b.patch());
+      core = compareNumeric(a.patch, b.patch);
     }
-    return core != 0 ? core : comparePrerelease(a.prerelease(), b.prerelease());
+    return core != 0 ? core : comparePrerelease(a.prerelease, b.prerelease);
   }
 }

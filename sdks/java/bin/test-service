@@ -1,8 +1,10 @@
 #!/bin/sh
-# Starts the conformance test service and prints "listening http://127.0.0.1:<port>" once it does.
-# It runs the built classes; it builds them only when there are none (bin/test rebuilds every time).
+# Starts the conformance test service on a port the OS picks and prints
+# "listening http://127.0.0.1:<port>". It runs the build that bin/test left in target/, and builds
+# only if that is missing. Reads: target/classes and target/test-classes.
 set -eu
-cd "$(dirname "$0")/.."
+here=$(cd "$(dirname "$0")/.." && pwd)
+cd "$here"
 
 run() {
   if command -v mise >/dev/null 2>&1; then
@@ -12,9 +14,15 @@ run() {
   fi
 }
 
-SERVICE=target/test-classes/com/github/madangryscientist/toggleslash/sdks/java/testservice/TestService.class
-if [ ! -f "$SERVICE" ]; then
-  run mvn -B -q -DskipTests test-compile >&2
+if [ ! -f target/test-classes/testservice/Main.class ] || [ ! -f target/classes/com/github/madangryscientist/toggleslash/sdks/java/Client.class ]; then
+  run mvn --batch-mode --no-transfer-progress -q test-compile >&2
 fi
-exec mise exec -- java -cp target/classes:target/test-classes \
-  com.github.madangryscientist.toggleslash.sdks.java.testservice.TestService
+
+exec_java() {
+  if command -v mise >/dev/null 2>&1; then
+    exec mise exec -- java "$@"
+  else
+    exec java "$@"
+  fi
+}
+exec_java -cp target/classes:target/test-classes testservice.Main

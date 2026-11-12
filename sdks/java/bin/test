@@ -1,5 +1,7 @@
 #!/bin/sh
-# Runs every native test (the evaluation vectors included), then builds the test service.
+# Builds everything (the SDK, its tests and the test service), runs every native test (the evaluation
+# vectors and bucket pins included) and prints how many vectors and pins ran. The test service is
+# compiled with the tests, so bin/test-service finds it; bin/test-service builds only when it is missing.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -11,6 +13,13 @@ run() {
   fi
 }
 
-# `clean test` compiles main, the tests and the test service every time, so a stale build never hides a
-# failure. The test service's classes are in target/test-classes.
-run mvn -B -q clean test
+mkdir -p target
+counts="$PWD/target/vector-counts.txt"
+rm -f "$counts"
+export TOGGLESLASH_COUNTS_FILE="$counts"
+
+# Build every time, so a stale build never hides a failure. Java has no race detector; the stress
+# tests in src/test/java/.../ConcurrencyTest.java stand in for it.
+run mvn --batch-mode --no-transfer-progress -q clean verify
+
+cat "$counts"

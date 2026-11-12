@@ -1,18 +1,28 @@
 #!/bin/sh
 # The native lint and format check. Any finding fails; there is no warning level. Nothing is rewritten.
-#   google-java-format: layout, in --dry-run so it only reports
-#   Checkstyle: the rules in checkstyle.xml, over the SDK's own sources (not the tests)
-#   javac with -Xlint:all -Werror: set in pom.xml, so compiling main and test sources is the check
+# Roots each tool reads:
+#   google-java-format --dry-run: src/main/java, src/test/java and test-service/src (every source)
+#   checkstyle (checkstyle.xml): src/main/java only, the public API (doc comments, naming, hygiene)
+#   javac -Xlint:all -Werror, through mvn test-compile: src/main/java, src/test/java and test-service/src
+# A line the JVM prints about a tool itself (a deprecation notice from google-java-format's code on a
+# newer JDK) is not a finding: it stays visible and RUN.md names it.
 set -eu
 cd "$(dirname "$0")/.."
-if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
-  run() { mise exec -- "$@"; }
-else
-  run() { "$@"; }
-fi
-FILES=$(find src test-service -name '*.java' | sort)
-run google-java-format --dry-run --set-exit-if-changed $FILES
-# The checkstyle that mise installs is a bare jar, so it is run through java.
-CHECKSTYLE=$(run sh -c 'command -v checkstyle')
-run java -jar "$CHECKSTYLE" -c checkstyle.xml src/main/java
-run mvn -B -q clean test-compile
+
+run() {
+  if command -v mise >/dev/null 2>&1; then
+    mise exec -- "$@"
+  else
+    "$@"
+  fi
+}
+
+files=$(find src/main/java src/test/java test-service/src -name '*.java' | sort)
+# shellcheck disable=SC2086
+run google-java-format --dry-run --set-exit-if-changed $files
+
+# Checkstyle is a bare jar: resolve its path under the toolchain, then run it with the same java.
+jar=$(run sh -c 'command -v checkstyle')
+run java -jar "$jar" -c checkstyle.xml src/main/java
+
+run mvn --batch-mode --no-transfer-progress -q test-compile
