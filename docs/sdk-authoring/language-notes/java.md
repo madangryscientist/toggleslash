@@ -1,6 +1,6 @@
 # Java
 
-What the first Java run learned. Each fact cites that run: prompt `7622421`, FS-97, 2026-11-10.
+What the Java runs learned. Each fact cites its run: prompt `7622421`, FS-97, 2026-11-10, unless it is marked (FS-151), the run at prompt `01bdb48` on 2026-11-12.
 
 - **Toolchain.** Pin the newest LTS (Temurin 25 in that run). A feature release such as the current
   non-LTS one leaves support after six months. Minimum Java 17 is separate, set with `--release 17`.
@@ -20,3 +20,5 @@ What the first Java run learned. Each fact cites that run: prompt `7622421`, FS-
 - **Test service layout.** `build-helper-maven-plugin` adds `test-service/src` as a test source root, so
   `mvn test` compiles it with the tests. `bin/test-service` runs `java -cp target/classes:target/test-classes`
   and builds only when the classes are missing.
+- **The formatter on the pinned JDK.** google-java-format 1.37.0 (the newest when the run wrote its pom) fails on JDK 25 under Spotless (it reaches into javac internals); set `<googleJavaFormat><version>` to 2.0.0 or later explicitly (FS-151).
+- **Do not rely on the JDK's UTF-8 codec for the spec.** A `CharsetDecoder` with `REPLACE` and `String.getBytes(UTF_8)` differ from the WHATWG rules the contract names (one U+FFFD per maximal invalid subpart; a lone surrogate must not become `?`). Write the decoder and encoder and test them against the examples in the Encoding standard (FS-151).
