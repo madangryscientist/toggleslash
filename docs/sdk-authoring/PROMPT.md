@@ -374,7 +374,7 @@ files git tracks, hence the `git add`):
    answers is not a guess (cite it in `DESIGN.md` if it mattered, or in Decisions with its file and line), even
    when you found the sentence only after assuming. Each guess quotes or names the sentence closest to it in the section its
    "Where" names and says why that sentence does not settle the point. A tool the prompt does not name (a test framework, a linter,
-   a type checker), and its configuration (a rule set, an ignore list), is a decision, not a guess. Something
+   a type checker), and its configuration (a rule set, an ignore list), is a decision, not a guess. So is a fact you learn by running that tool (an option's name, a check it does not have, a file it wants): fix the configuration, name the fact in Decisions, and put it in Proposed prompt changes for the language notes. Something
    the prompt asks for that is slow or costly is not a guess either. Before you hand off, re-read each
    guess's "Where" section once more.
 
