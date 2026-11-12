@@ -1,342 +1,328 @@
 package toggleslash
 
 import (
-	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
 
-// streamServer serves /sdk/v1/stream and lets a test push events down every open connection.
-type streamServer struct {
-	mu    sync.Mutex
-	conns []chan string
-	opens atomic.Int32
+func TestSendsIfNoneMatchOnlyWithRulesetAndETag(t *testing.T) {
+	s := newFakeServer(t, boolFlag("a", true))
+	c := newTestClient(t, s, WithStream(false))
+	c.Ready()
+	if got := s.requests("/sdk/v1/ruleset")[0].Header.Get("If-None-Match"); got != "" {
+		t.Fatalf("first request sent If-None-Match %q", got)
+	}
+	c.refresh(false)
+	reqs := s.requests("/sdk/v1/ruleset")
+	if got := reqs[len(reqs)-1].Header.Get("If-None-Match"); got != `"v1"` {
+		t.Fatalf("second request sent If-None-Match %q", got)
+	}
+	if c.Status().LastError != LastErrorNone {
+		t.Fatal("a 304 left an error")
+	}
 }
 
-func (s *streamServer) handler(initial string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		s.opens.Add(1)
-		ch := make(chan string, 16)
-		s.mu.Lock()
-		s.conns = append(s.conns, ch)
-		s.mu.Unlock()
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(200)
-		fl, _ := w.(http.Flusher)
-		if initial != "" {
-			_, _ = io.WriteString(w, initial)
-			fl.Flush()
+func TestNoETagMeansNoIfNoneMatch(t *testing.T) {
+	s := newFakeServer(t)
+	s.on("/sdk/v1/ruleset", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("ETag", "")
+		_, _ = w.Write([]byte(`{"flags":[],"segments":[]}`))
+	})
+	c := newTestClient(t, s, WithStream(false))
+	c.Ready()
+	c.refresh(false)
+	for _, r := range s.requests("/sdk/v1/ruleset") {
+		if _, ok := r.Header["If-None-Match"]; ok {
+			t.Fatal("If-None-Match sent with no ETag held")
 		}
-		for {
-			select {
-			case <-r.Context().Done():
-				return
-			case msg, ok := <-ch:
-				if !ok {
-					return
-				}
-				_, _ = io.WriteString(w, msg)
-				fl.Flush()
+	}
+}
+
+func TestBadRulesetKeepsTheLastGoodOne(t *testing.T) {
+	for name, body := range map[string]string{
+		"not json":       `{"flags":`,
+		"flags missing":  `{"segments":[]}`,
+		"segments wrong": `{"flags":[],"segments":{}}`,
+		"an array":       `[]`,
+		"null":           `null`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := newFakeServer(t, boolFlag("a", true))
+			var log errorLog
+			c := newTestClient(t, s, WithStream(false), WithOnError(log.add))
+			c.Ready()
+			s.on("/sdk/v1/ruleset", func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("ETag", `"v2"`)
+				_, _ = w.Write([]byte(body))
+			})
+			c.refresh(false)
+			st := c.Status()
+			if st.LastError != LastErrorBadRuleset || st.ETag != `"v1"` {
+				t.Fatalf("status = %+v", st)
 			}
+			if !c.BoolVariation("a", user("u"), false) {
+				t.Fatal("the last good ruleset was lost")
+			}
+			if log.count() != 1 {
+				t.Fatalf("errors = %v", log.messages())
+			}
+		})
+	}
+}
+
+func TestStatusCodes(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		want   LastError
+	}{{401, "http_401"}, {404, "http_404"}, {500, "http_500"}, {304, "http_304"}, {302, "http_302"}} {
+		s := newFakeServer(t)
+		s.on("/sdk/v1/ruleset", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(tc.status) })
+		var log errorLog
+		c := newTestClient(t, s, WithStream(false), WithOnError(log.add))
+		if c.Ready() {
+			t.Fatalf("%d: ready", tc.status)
 		}
-	}
-}
-
-func (s *streamServer) send(msg string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, ch := range s.conns {
-		select {
-		case ch <- msg:
-		default:
+		if got := c.Status().LastError; got != tc.want {
+			t.Fatalf("%d: lastError = %q", tc.status, got)
 		}
+		waitFor(t, "onError", func() bool { return log.count() == 1 })
+		if strings.Contains(log.messages()[0], s.URL) {
+			t.Fatalf("error text carries the URL: %q", log.messages()[0])
+		}
+		c.Close()
 	}
 }
 
-func (s *streamServer) dropAll() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, ch := range s.conns {
-		close(ch)
+func TestRedirectIsNotFollowed(t *testing.T) {
+	s := newFakeServer(t, boolFlag("a", true))
+	var hits atomic.Int32
+	s.on("/sdk/v1/ruleset", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Location", "/elsewhere")
+		w.WriteHeader(http.StatusFound)
+	})
+	s.on("/elsewhere", func(http.ResponseWriter, *http.Request) { hits.Add(1) })
+	c := newTestClient(t, s, WithStream(false))
+	c.Ready()
+	if hits.Load() != 0 || c.Status().LastError != "http_302" {
+		t.Fatalf("redirect followed (%d) or lastError = %q", hits.Load(), c.Status().LastError)
 	}
-	s.conns = nil
 }
 
-func TestStreamConnectsAndFollowsChanges(t *testing.T) {
-	var tag atomic.Value
-	tag.Store(`"a"`)
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", rulesetHandler(func() string { return tag.Load().(string) }, func() string { return flagRuleset }))
-	ss := &streamServer{}
-	f.handle("/sdk/v1/stream", ss.handler("event: connected\ndata: \"a\"\n\n"))
-	c := New(f.URL, "k", WithStream(true), WithPollInterval(time.Hour), WithFlushInterval(time.Hour))
-	defer c.Close()
+func TestTrailingSlashOnURL(t *testing.T) {
+	s := newFakeServer(t, boolFlag("a", true))
+	c := New(s.URL+"///", testKey, WithStream(false), WithRequestTimeout(2*time.Second))
+	t.Cleanup(c.Close)
 	if !c.Ready() {
 		t.Fatal("not ready")
 	}
-	eventually(t, "connected", func() bool { return c.Status().Stream == StreamConnected })
-	before := f.count("/sdk/v1/ruleset")
-	tag.Store(`"b"`)
-	ss.send("event: changed\ndata: \"b\"\n\n")
-	eventually(t, "the new tag", func() bool { return c.Status().ETag == `"b"` })
-	if f.count("/sdk/v1/ruleset") != before+1 {
-		t.Fatalf("one fetch expected for a change, got %d", f.count("/sdk/v1/ruleset")-before)
+}
+
+func TestNetworkErrorTextHasNoURL(t *testing.T) {
+	var log errorLog
+	c := New("http://127.0.0.1:1/secret-path", testKey, WithStream(false), WithOnError(log.add))
+	t.Cleanup(c.Close)
+	c.Ready()
+	waitFor(t, "onError", func() bool { return log.count() == 1 })
+	if m := log.messages()[0]; strings.Contains(m, "127.0.0.1") || strings.Contains(m, "secret-path") || strings.Contains(m, testKey) {
+		t.Fatalf("message leaks: %q", m)
 	}
-	// an event naming the held tag fetches nothing but counts as a sync
-	at := c.Status().LastSyncAt
-	time.Sleep(5 * time.Millisecond)
-	ss.send("event: changed\ndata: \"b\"\n\n")
-	eventually(t, "lastSyncAt to move", func() bool { return c.Status().LastSyncAt.After(at) })
-	if f.count("/sdk/v1/ruleset") != before+1 {
-		t.Fatal("an event naming the held tag fetched")
+}
+
+func TestStreamFlipArrivesAndTagEqualEventIsNoFetch(t *testing.T) {
+	s := newFakeServer(t, boolFlag("a", false))
+	c := newTestClient(t, s)
+	c.Ready()
+	waitFor(t, "connected", func() bool { return c.Status().Stream == StreamConnected })
+	before := len(s.requests("/sdk/v1/ruleset"))
+	synced := c.Status().LastSyncAt
+	s.write("event: changed\ndata: \"v1\"\n\n")
+	waitFor(t, "sync on equal tag", func() bool { return c.Status().LastSyncAt.After(synced) })
+	if got := len(s.requests("/sdk/v1/ruleset")); got != before {
+		t.Fatalf("a tag-equal event fetched (%d to %d)", before, got)
 	}
-	// keep-alive comments do not move lastSyncAt
-	at = c.Status().LastSyncAt
-	ss.send(": keep-alive\n\n")
-	time.Sleep(30 * time.Millisecond)
-	if !c.Status().LastSyncAt.Equal(at) {
+	s.setFlags(boolFlag("a", true))
+	waitFor(t, "flip", func() bool { return c.BoolVariation("a", user("u"), false) })
+	if st := c.Status(); st.ETag != `"v2"` || st.Stream != StreamConnected {
+		t.Fatalf("status = %+v", st)
+	}
+	if got := s.requests("/sdk/v1/stream")[0].Header.Get("Accept"); got != "text/event-stream" {
+		t.Fatalf("Accept = %q", got)
+	}
+}
+
+func TestKeepAliveDoesNotMoveLastSyncAt(t *testing.T) {
+	s := newFakeServer(t, boolFlag("a", true))
+	c := newTestClient(t, s)
+	c.Ready()
+	waitFor(t, "connected", func() bool { return c.Status().Stream == StreamConnected })
+	before := c.Status().LastSyncAt
+	s.write(": keep-alive\n\nevent: ping\ndata: x\n\n")
+	time.Sleep(100 * time.Millisecond)
+	if !c.Status().LastSyncAt.Equal(before) {
 		t.Fatal("a keep-alive moved lastSyncAt")
 	}
-	hdr := f.seen("/sdk/v1/stream")[0].header
-	if hdr.Get("Accept") != "text/event-stream" || hdr.Get("Authorization") != "Bearer k" {
-		t.Fatalf("stream headers %v", hdr)
-	}
 }
 
-func TestStreamDropFallsBackToPollingAndReconnects(t *testing.T) {
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", staticRuleset(`"a"`, flagRuleset))
-	ss := &streamServer{}
-	f.handle("/sdk/v1/stream", ss.handler("event: connected\ndata: \"a\"\n\n"))
-	c := New(f.URL, "k", WithStream(true), WithPollInterval(20*time.Millisecond), WithFlushInterval(time.Hour), withJitter(func() float64 { return 0.5 }))
-	defer c.Close()
-	c.Ready()
-	eventually(t, "connected", func() bool { return c.Status().Stream == StreamConnected })
-	ss.dropAll()
-	eventually(t, "a reconnect", func() bool { return ss.opens.Load() >= 2 && c.Status().Stream == StreamConnected })
-}
-
-func TestStreamFailedFetchEndsTheStream(t *testing.T) {
-	var failing atomic.Bool
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", func(w http.ResponseWriter, r *http.Request) {
-		if failing.Load() {
-			w.WriteHeader(500)
+func TestStreamNon200AndReconnect(t *testing.T) {
+	s := newFakeServer(t, boolFlag("a", true))
+	var mode atomic.Int32
+	s.on("/sdk/v1/stream", func(w http.ResponseWriter, r *http.Request) {
+		if mode.Load() == 0 {
+			w.WriteHeader(503)
 			return
 		}
-		staticRuleset(`"a"`, flagRuleset)(w, r)
+		s.serveStream(w, r)
 	})
-	ss := &streamServer{}
-	f.handle("/sdk/v1/stream", ss.handler("event: connected\ndata: \"a\"\n\n"))
-	log := &errorLog{}
-	c := New(f.URL, "k", WithStream(true), WithPollInterval(time.Hour), WithFlushInterval(time.Hour), WithOnError(log.add), withJitter(func() float64 { return 0.5 }))
-	defer c.Close()
+	clk := newFakeClock()
+	var log errorLog
+	c := newTestClient(t, s, withClock(clk), withRandom(func() float64 { return 1 }), WithOnError(log.add),
+		WithPollInterval(30*time.Second))
 	c.Ready()
-	eventually(t, "connected", func() bool { return c.Status().Stream == StreamConnected })
-	failing.Store(true)
-	ss.send("event: changed\ndata: \"b\"\n\n")
-	eventually(t, "the stream to end", func() bool { return c.Status().LastError == "http_500" })
-	if len(log.all()) == 0 {
-		t.Fatal("no onError for the failed fetch")
-	}
-	if !c.BoolVariation("f", user("u"), false) {
-		t.Fatal("the ruleset held was lost")
+	waitFor(t, "http_503", func() bool { return c.Status().LastError == "http_503" && c.Status().Stream == StreamDisconnected })
+	mode.Store(1)
+	waitFor(t, "backoff armed", func() bool { return clk.Armed() >= 2 })
+	clk.Advance(2 * time.Second)
+	waitFor(t, "connected", func() bool { return c.Status().Stream == StreamConnected })
+	if st := c.Status(); st.LastError != LastErrorNone {
+		t.Fatalf("connected left lastError %q", st.LastError)
 	}
 }
 
-func TestStreamHTTPErrorIsReported(t *testing.T) {
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", staticRuleset(`"a"`, flagRuleset))
-	f.handle("/sdk/v1/stream", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(401) })
-	c := New(f.URL, "k", WithStream(true), WithPollInterval(time.Hour), WithFlushInterval(time.Hour))
-	defer c.Close()
+func TestCleanStreamEndLeavesLastErrorAlone(t *testing.T) {
+	s := newFakeServer(t, boolFlag("a", true))
+	c := newTestClient(t, s)
 	c.Ready()
-	eventually(t, "http_401", func() bool { return c.Status().LastError == "http_401" })
-	if c.Status().Stream != StreamDisconnected {
-		t.Fatalf("stream %q", c.Status().Stream)
+	waitFor(t, "connected", func() bool { return c.Status().Stream == StreamConnected })
+	s.dropStreams()
+	waitFor(t, "disconnected", func() bool { return c.Status().Stream == StreamDisconnected })
+	if got := c.Status().LastError; got != LastErrorNone {
+		t.Fatalf("clean end set lastError %q", got)
 	}
 }
 
-// The watchdog runs on a real loopback socket: a stream that goes quiet drops with "timeout", and a
-// keep-alive restarts it.
-func TestStreamWatchdog(t *testing.T) {
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", staticRuleset(`"a"`, flagRuleset))
-	ss := &streamServer{}
-	f.handle("/sdk/v1/stream", ss.handler("event: connected\ndata: \"a\"\n\n"))
-	c := New(f.URL, "k", WithStream(true), WithPollInterval(time.Hour), WithFlushInterval(time.Hour),
-		withIdle(250*time.Millisecond), withJitter(func() float64 { return 0.5 }))
-	defer c.Close()
+func TestStreamWatchdogDropsAQuietStreamAndKeepAliveResetsIt(t *testing.T) {
+	s := newFakeServer(t, boolFlag("a", true))
+	c := newTestClient(t, s, withWatchdog(400*time.Millisecond), WithPollInterval(time.Hour))
 	c.Ready()
-	eventually(t, "connected", func() bool { return c.Status().Stream == StreamConnected })
-	// keep-alives every 100 ms for 700 ms: still connected
-	for i := 0; i < 7; i++ {
-		ss.send(": keep-alive\n\n")
-		time.Sleep(100 * time.Millisecond)
-		if c.Status().Stream != StreamConnected {
-			t.Fatalf("a keep-alive did not restart the watchdog (round %d, %q)", i, c.Status().Stream)
+	waitFor(t, "connected", func() bool { return c.Status().Stream == StreamConnected })
+	for i := 0; i < 4; i++ {
+		time.Sleep(200 * time.Millisecond)
+		s.write(": ka\n\n")
+	}
+	if c.Status().Stream != StreamConnected {
+		t.Fatal("keep-alives did not hold the stream open")
+	}
+	waitFor(t, "watchdog drop", func() bool {
+		st := c.Status()
+		return st.Stream == StreamDisconnected && st.LastError == LastErrorTimeout
+	})
+}
+
+func TestStreamOpenTimeout(t *testing.T) {
+	s := newFakeServer(t, boolFlag("a", true))
+	s.on("/sdk/v1/stream", func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() })
+	c := New(s.URL, testKey, WithRequestTimeout(300*time.Millisecond), WithPollInterval(time.Hour))
+	t.Cleanup(c.Close)
+	c.Ready()
+	waitFor(t, "open timeout", func() bool { return c.Status().LastError == LastErrorTimeout })
+}
+
+func TestDelay(t *testing.T) {
+	c := &Client{cfg: config{stream: true, pollInterval: 30 * time.Second}, random: func() float64 { return 1 }}
+	for failures, want := range map[int]time.Duration{0: time.Second, 1: 2 * time.Second, 4: 16 * time.Second, 5: 30 * time.Second, 40: 30 * time.Second} {
+		if got := c.delay(failures); got != want {
+			t.Errorf("delay(%d) = %v, want %v", failures, got, want)
 		}
 	}
-	// quiet: dropped with timeout
-	eventually(t, "the watchdog", func() bool { return c.Status().LastError == SyncTimeout })
-}
-
-func TestRetryAfterOnRulesetHoldsAndCaps(t *testing.T) {
-	cases := []struct {
-		header string
-		valid  bool
-		want   time.Duration
-	}{
-		{"7", true, 7 * time.Second},
-		{" 7 ", true, 7 * time.Second},
-		{"0", true, 0},
-		{"99999999", true, 300 * time.Second},
-		{"99999999999999999999999999", true, 300 * time.Second},
-		{"-1", false, 0},
-		{"1.5", false, 0},
-		{"Wed, 21 Oct 2026 07:28:00 GMT", false, 0},
-		{"", false, 0},
-		{"+5", false, 0},
+	c.random = func() float64 { return 0 }
+	if got := c.delay(2); got != 2*time.Second {
+		t.Errorf("jitter floor: %v", got)
 	}
-	for _, tc := range cases {
-		h := http.Header{}
-		if tc.header != "" {
-			h.Set("Retry-After", tc.header)
-		}
-		got, ok := parseRetryAfter(h)
-		if ok != tc.valid || (ok && got != tc.want) {
-			t.Errorf("%q: got %v %v, want %v %v", tc.header, got, ok, tc.want, tc.valid)
-		}
+	c.cfg.stream = false
+	if got := c.delay(3); got != 30*time.Second {
+		t.Errorf("stream off: %v", got)
 	}
 }
 
-func TestRetryAfterHoldsThePollOnAFakeClock(t *testing.T) {
-	clk := newFakeClock(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+func TestPollingWhenStreamOff(t *testing.T) {
+	s := newFakeServer(t, boolFlag("a", false))
+	clk := newFakeClock()
+	c := newTestClient(t, s, WithStream(false), withClock(clk), WithPollInterval(30*time.Second))
+	c.Ready()
+	waitFor(t, "armed", func() bool { return clk.Armed() >= 2 })
+	s.setFlags(boolFlag("a", true))
+	clk.Advance(30 * time.Second)
+	waitFor(t, "poll", func() bool { return c.BoolVariation("a", user("u"), false) })
+	if len(s.requests("/sdk/v1/stream")) != 0 {
+		t.Fatal("stream off opened a stream")
+	}
+}
+
+func TestRetryAfterHoldsRulesetAndStream(t *testing.T) {
+	s := newFakeServer(t, boolFlag("a", true))
 	var limited atomic.Bool
-	limited.Store(true)
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", func(w http.ResponseWriter, r *http.Request) {
+	s.on("/sdk/v1/stream", func(w http.ResponseWriter, r *http.Request) {
 		if limited.Load() {
-			w.Header().Set("Retry-After", "9999")
+			w.Header().Set("Retry-After", "99999")
 			w.WriteHeader(429)
 			return
 		}
-		staticRuleset(`"a"`, flagRuleset)(w, r)
+		s.serveStream(w, r)
 	})
-	c := New(f.URL, "k", WithStream(false), WithPollInterval(10*time.Second), WithFlushInterval(time.Hour), withClock(clk))
-	defer c.Close()
+	clk := newFakeClock()
+	c := newTestClient(t, s, withClock(clk), withRandom(func() float64 { return 0 }), WithPollInterval(time.Second))
 	c.Ready()
-	if got := c.Status().LastError; got != "http_429" {
-		t.Fatalf("lastError %q", got)
-	}
-	limited.Store(false)
-	clk.waitArmed(t, 2) // the poll timer and the flush timer
-	clk.Advance(11 * time.Second)
-	time.Sleep(50 * time.Millisecond)
-	if f.count("/sdk/v1/ruleset") != 1 {
-		t.Fatalf("the poll went out inside the Retry-After hold (%d requests)", f.count("/sdk/v1/ruleset"))
-	}
-	clk.Advance(300 * time.Second)
-	eventually(t, "the poll after the hold", func() bool { return f.count("/sdk/v1/ruleset") == 2 })
-	eventually(t, "ready", func() bool { return c.Status().ETag == `"a"` })
-}
-
-func TestPollingIntervalOnAFakeClock(t *testing.T) {
-	clk := newFakeClock(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", staticRuleset(`"a"`, flagRuleset))
-	c := New(f.URL, "k", WithStream(false), WithPollInterval(30*time.Second), WithFlushInterval(time.Hour), withClock(clk))
-	defer c.Close()
-	c.Ready()
-	clk.waitArmed(t, 2)
-	clk.Advance(29 * time.Second)
-	time.Sleep(30 * time.Millisecond)
-	if f.count("/sdk/v1/ruleset") != 1 {
-		t.Fatal("polled early")
-	}
+	waitFor(t, "connected", func() bool { return c.Status().Stream == StreamConnected })
+	limited.Store(true)
+	s.dropStreams()
+	waitFor(t, "backoff armed", func() bool { return clk.Armed() >= 2 })
 	clk.Advance(time.Second)
-	eventually(t, "the second poll", func() bool { return f.count("/sdk/v1/ruleset") == 2 })
-}
-
-func TestStreamBackoffDelayFormula(t *testing.T) {
-	c := &Client{cfg: defaultConfig()}
-	c.cfg.stream = true
-	c.cfg.pollInterval = 30 * time.Second
-	c.cfg.jitter = func() float64 { return 1 }
-	want := map[int]time.Duration{0: time.Second, 1: 2 * time.Second, 2: 4 * time.Second, 3: 8 * time.Second, 4: 16 * time.Second, 5: 30 * time.Second, 40: 30 * time.Second}
-	for failures, d := range want {
-		if got := c.delay(failures); got != d {
-			t.Errorf("failures %d: %v, want %v", failures, got, d)
-		}
+	waitFor(t, "429", func() bool { return c.Status().LastError == "http_429" })
+	// The header asked for 99999 s; the cap is 300 s.
+	if rem := c.holdRemaining(); rem <= 299*time.Second || rem > 300*time.Second {
+		t.Fatalf("hold = %v", rem)
 	}
-	c.cfg.jitter = func() float64 { return 0.5 }
-	if got := c.delay(5); got != 15*time.Second {
-		t.Errorf("jittered: %v", got)
-	}
-	c.cfg.stream = false
-	if got := c.delay(9); got != 30*time.Second {
-		t.Errorf("polling: %v", got)
+	n := len(s.requests("/sdk/v1/stream"))
+	clk.Advance(100 * time.Second)
+	time.Sleep(50 * time.Millisecond)
+	if got := len(s.requests("/sdk/v1/stream")); got != n {
+		t.Fatalf("stream retried during the hold (%d to %d)", n, got)
 	}
 }
 
-func TestTLSWithALocalCertificate(t *testing.T) {
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", staticRuleset(`"a"`, flagRuleset))
-	_ = f
-	tls := newFakeTLS(t)
-	tls.handle("/sdk/v1/ruleset", staticRuleset(`"a"`, flagRuleset))
-	// without the certificate the request fails
-	bad := New(tls.URL, "k", WithStream(false), WithPollInterval(time.Hour), WithFlushInterval(time.Hour))
-	defer bad.Close()
-	if bad.Ready() {
-		t.Fatal("an untrusted certificate was accepted")
-	}
-	good := New(tls.URL, "k", WithStream(false), WithPollInterval(time.Hour), WithFlushInterval(time.Hour), withTLSConfig(tls.Client().Transport.(*http.Transport).TLSClientConfig))
-	defer good.Close()
-	if !good.Ready() {
-		t.Fatalf("a trusted certificate failed: %q", good.Status().LastError)
+func TestFirstLoadIsNotHeldAndOnlyA429IsRead(t *testing.T) {
+	s := newFakeServer(t)
+	s.on("/sdk/v1/ruleset", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "100")
+		w.WriteHeader(503)
+	})
+	c := newTestClient(t, s, WithStream(false))
+	c.Ready()
+	if rem := c.holdRemaining(); rem > 0 {
+		t.Fatalf("a 503 Retry-After raised a hold of %v", rem)
 	}
 }
 
-func TestSSEParserRules(t *testing.T) {
-	var got []string
-	run := func(chunks ...string) []string {
-		got = nil
-		var p sseParser
-		for _, ch := range chunks {
-			p.feed([]byte(ch), func(e sseEvent) bool { got = append(got, e.name+"="+e.data); return true })
-		}
-		return got
-	}
-	eq := func(name string, have []string, want ...string) {
-		t.Helper()
-		if strings.Join(have, "|") != strings.Join(want, "|") {
-			t.Errorf("%s: got %q want %q", name, have, want)
+func TestParseRetryAfter(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want time.Duration
+	}{
+		{"0", 0}, {"5", 5 * time.Second}, {"\t7 ", 7 * time.Second}, {"300", 300 * time.Second}, {"301", 300 * time.Second},
+		{"99999999999999999999", 300 * time.Second}, {"007", 7 * time.Second},
+	} {
+		in, want := tc.in, tc.want
+		got, ok := parseRetryAfter(in)
+		if !ok || got != want {
+			t.Errorf("%q = %v %v", in, got, ok)
 		}
 	}
-	eq("simple", run("event: changed\ndata: x\n\n"), "changed=x")
-	eq("default name", run("data: x\n\n"), "message=x")
-	eq("split anywhere", run("eve", "nt: chan", "ged\nda", "ta: x\n", "\n"), "changed=x")
-	eq("crlf", run("event: a\r\ndata: 1\r\n\r\n"), "a=1")
-	eq("cr only", run("event: a\rdata: 1\r\r"), "a=1")
-	eq("cr then lf across chunks", run("data: 1\r", "\ndata: 2\r\n\r\n"), "message=1\n2")
-	eq("no data field", run("event: a\n\n"))
-	eq("comment", run(": hi\n\ndata: 1\n\n"), "message=1")
-	eq("one leading space", run("data:  x\n\n"), "message= x")
-	eq("no space", run("data:x\n\n"), "message=x")
-	eq("bom", run("\xef\xbb\xbfdata: 1\n\n"), "message=1")
-	eq("bom split", run("\xef", "\xbb\xbfdata: 1\n\n"), "message=1")
-	eq("unterminated event is dropped", run("data: 1\n"))
-	eq("name resets", run("event: a\ndata: 1\n\ndata: 2\n\n"), "a=1", "message=2")
-	eq("id and retry ignored", run("id: 1\nretry: 5\ndata: x\n\n"), "message=x")
-	var p sseParser
-	n := 0
-	cont := p.feed([]byte("data: 1\n\ndata: 2\n\n"), func(sseEvent) bool { n++; return false })
-	if cont || n != 1 {
-		t.Errorf("a false return should stop the feed (cont=%v n=%d)", cont, n)
+	for _, in := range []string{"", "-1", "1.5", "1e3", "abc", "Wed, 21 Oct 2015 07:28:00 GMT", "+5", "5s"} {
+		if _, ok := parseRetryAfter(in); ok {
+			t.Errorf("%q accepted", in)
+		}
 	}
 }

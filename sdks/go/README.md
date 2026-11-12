@@ -1,18 +1,18 @@
 # ToggleSlash server SDK for Go
 
-The Go server SDK for ToggleSlash. It evaluates flags locally, to [`docs/evaluation.md`](../../docs/evaluation.md),
-over a ruleset it keeps current from the server, and keeps the contract in
-[`docs/sdk-contract.md`](../../docs/sdk-contract.md). Module
-`github.com/madangryscientist/toggleslash/sdks/go`, package `toggleslash`. Nothing is published and no
-registry is named: use it from a checkout of this repository.
+The Go server SDK of [ToggleSlash](../../README.md). It follows the language-neutral
+[`docs/sdk-contract.md`](../../docs/sdk-contract.md) and evaluates flags locally, to
+[`docs/evaluation.md`](../../docs/evaluation.md), against a ruleset it keeps current from the server. It has no
+dependency outside the Go standard library (Go 1.26 or newer) and is not published anywhere: use it from a
+checkout of this repository.
 
 ## Quickstart
 
-From a checkout, with no tag, point a `replace` at the directory:
+From a checkout of this repository (no tag, no registry), point your module at the directory:
 
-```text
-require github.com/madangryscientist/toggleslash/sdks/go v0.0.0
-replace github.com/madangryscientist/toggleslash/sdks/go => /path/to/toggleslash/sdks/go
+```sh
+go mod edit -require=github.com/madangryscientist/toggleslash/sdks/go@v0.0.0 \
+  -replace=github.com/madangryscientist/toggleslash/sdks/go=path/to/checkout/sdks/go
 ```
 
 ```go
@@ -25,56 +25,69 @@ import (
 )
 
 func main() {
-	client := toggleslash.New("https://flags.example.test", "sdk-key-from-the-environment")
-	defer client.Close()
+	client := toggleslash.New(
+		"https://toggleslash.example.invalid", // the server's base URL
+		"sdk-key-from-the-dashboard",          // a server SDK key
+	)
+	defer client.Close() // sends the usage counts and stops the background goroutines
 
-	client.Ready() // optional: waits for the first load, bounded by the request timeout
+	if client.Ready() { // waits for the first load attempt, bounded by the request timeout
+		fmt.Println("ruleset loaded")
+	}
 
-	user := toggleslash.UserContext("u1", map[string]toggleslash.Value{
-		"plan": toggleslash.String("pro"),
-	})
-	if client.BoolVariation("new-checkout", user, false) {
+	ctx := toggleslash.NewContext("user-42", map[string]any{"plan": "pro"})
+	if client.BoolVariation("new-checkout", ctx, false) { // the fallback fixes the expected kind
 		fmt.Println("new checkout")
 	}
 
-	detail := client.StringVariationDetail("banner", user, "none")
+	detail := client.StringVariationDetail("banner-text", ctx, "welcome")
 	fmt.Println(detail.Value, detail.VariationIndex, detail.Reason.Kind)
 }
 ```
 
-`New` returns at once. Before the first load, and when a flag is missing, malformed or of another type, an
-accessor answers the fallback, and the `Detail` form says why.
+## Mapping from the contract
 
-## The mapping
+The full table (every name, option and default, and what is a `Detail`, a `Status` and a `StreamState`) is
+section 1 of [`DESIGN.md`](DESIGN.md). In short:
 
-The canonical names of the contract map to Go in the table in [`DESIGN.md`](DESIGN.md#1-the-mapping-table),
-with the closed sets (reason kinds, error codes, stream states, `lastError` codes) and their spelling.
-`DESIGN.md` also holds the concurrency model, the HTTP and stream handling, the dependencies (none beyond the
-standard library) and the package layout.
+| Contract | Go |
+| --- | --- |
+| `create` | `toggleslash.New(url, sdkKey, opts...)` |
+| `ready` | `client.Ready() bool` |
+| `variation` | `client.BoolVariation`, `StringVariation`, `Float64Variation`, `IntVariation` (an `int64`) and `JSONVariation`, each `(flagKey, ctx, fallback)` |
+| `variationDetail` | the same names with `Detail` on the end, returning `Detail[T]` |
+| `status` | `client.Status()` |
+| `close` | `client.Close()` |
+| `stream`, `pollInterval`, `flushInterval`, `requestTimeout` | `WithStream`, `WithPollInterval`, `WithFlushInterval`, `WithRequestTimeout` |
+| `hooks.afterEvaluation` | `WithAfterEvaluation(func(Event))` |
+| `onError` | `WithOnError(func(error))` |
+
+A context is built with `NewContext`, `NewContextKind`, `NewMultiContext` or `ParseContext` (raw JSON, the form
+that keeps `1e999` and a lone surrogate exactly).
 
 ## Guarantees
 
-From contract section 5:
+- Nothing panics at a caller: a failure becomes your fallback with an `ERROR` reason, goes to the `onError` function, or both.
+- Evaluation and `Status` read memory only: they never wait on the network, a load or a flush.
+- `Ready` settles after the first attempt, is bounded by the request timeout, and gives the same answer each time.
+- The SDK keeps evaluating from the last good ruleset while the server is unreachable; only a valid ruleset replaces one.
+- No evaluation context, attribute or SDK key appears in a request body or URL (the key is the `Authorization`
+  header only), a log line (the SDK writes none), a status or an error the SDK builds.
+- `Close` is safe to call twice and from many goroutines, and returns within about twice the request timeout.
+- A client that is never closed does not keep the process from exiting.
 
-- No operation raises or panics at the caller, whatever the server, the network or the context does.
-- An evaluation never waits on the network: it reads the ruleset held, or answers `NOT_READY` before the first load.
-- `Ready` settles after the first attempt, bounded, and may be called again.
-- An answer that is not a ruleset never replaces the one held, and a ruleset and its ETag are swapped together.
-- Every operation is safe from many goroutines at once, and `Close` is safe to call twice or concurrently.
-- A callback that panics, or calls back into the client, neither breaks the client nor deadlocks it.
-- No context, context key or attribute appears in a request, an error or a log line.
-- Usage counts are batched, kept through a failure the server may recover from, and flushed once more on `Close`.
+## Check it
 
-## Toolchain and checks
+Install the toolchain once, then run from the root of the repository:
 
 ```sh
-(cd sdks/go && mise trust && mise install)   # go, golangci-lint and zig, as sdks/go/mise.toml pins them
-
-sdks/go/bin/lint            # gofmt, go vet and golangci-lint, no warnings allowed
-sdks/go/bin/test            # native tests under the race detector, every evaluation vector, and the test service build
-bun run conformance -- --service sdks/go/bin/test-service    # from the repository root, after bun install
+(cd sdks/go && mise trust && mise install)
+sdks/go/bin/lint                                            # go vet, golangci-lint and gofmt, no warnings allowed
+sdks/go/bin/test                                            # go test -race, and every evaluation vector
+bun run conformance -- --service sdks/go/bin/test-service   # the shared conformance harness
 ```
 
-The race detector needs cgo, and the machine is not assumed to have a C compiler, so `mise.toml` pins `zig`
-and `bin/test` uses `zig cc` by path. `sdks/go/test-service` is the conformance test service; see its
-[`README.md`](test-service/README.md) for the accessor mapping.
+`mise.toml` pins Go, golangci-lint and Zig (the race detector needs a C compiler, and `bin/test` names the
+pinned Zig as one); with `mise` installed the scripts use those versions. See
+[`test-service/README.md`](test-service/README.md) for the conformance service, [`DESIGN.md`](DESIGN.md) for the
+design decisions and [`RUN.md`](RUN.md) for the report of the run that wrote this SDK.

@@ -2,119 +2,111 @@ package evaluator
 
 import "github.com/madangryscientist/toggleslash/sdks/go/internal/wtf8"
 
-// Patterns for the `matches` op, to the "Patterns" section of docs/evaluation.md. pattern_parse.go reads a
-// pattern into a tree; this compiles the tree to a small program and runs it on a Pike VM over code
-// points: no backtracking and no regexp package, so a match costs O(program x input) whatever the pattern.
+// Patterns for the `matches` op. pattern_parse.go reads a pattern into a tree; this compiles the tree to a small
+// program and runs it on a Pike VM over code points: no backtracking and no platform regexp, so a match costs
+// O(program x input) whatever the pattern.
 
-type instOp uint8
+type opcode uint8
 
 const (
-	opChar instOp = iota
+	opChar opcode = iota
 	opSplit
 	opStart
 	opEnd
 	opMatch
 )
 
-// inst is one instruction. A jump is a split whose two targets are the same.
 type inst struct {
-	op   instOp
-	set  *charSet // opChar
-	x, y int      // opSplit
+	op   opcode
+	set  *charSet
+	x, y int
 }
 
-// Pattern is a compiled `matches` pattern.
-type Pattern struct {
-	program []inst
+// pattern is a compiled pattern.
+type pattern []inst
+
+func emitSplit(prog *[]inst, x int) int {
+	*prog = append(*prog, inst{op: opSplit, x: x, y: x})
+	return len(*prog) - 1
 }
 
-type compiler struct {
-	program []inst
-}
-
-func (c *compiler) split(x int) int {
-	c.program = append(c.program, inst{op: opSplit, x: x, y: x})
-	return len(c.program) - 1
-}
-
-func (c *compiler) emitAlt(sides []*node) {
+func emitAlt(sides []*node, prog *[]inst) {
 	var jumps []int
 	last := len(sides) - 1
 	for i, side := range sides {
 		choice := -1
 		if i < last {
-			choice = c.split(len(c.program) + 1)
+			choice = emitSplit(prog, len(*prog)+1)
 		}
-		c.emit(side)
+		emit(side, prog)
 		if choice < 0 {
 			continue
 		}
-		jumps = append(jumps, c.split(0))
-		c.program[choice].y = len(c.program)
+		jumps = append(jumps, emitSplit(prog, 0))
+		(*prog)[choice].y = len(*prog)
 	}
 	for _, j := range jumps {
-		c.program[j].x = len(c.program)
-		c.program[j].y = len(c.program)
+		(*prog)[j].x = len(*prog)
+		(*prog)[j].y = len(*prog)
 	}
 }
 
-func (c *compiler) emitRepeat(body *node, lo, hi int) {
+func emitRepeat(body *node, lo, hi int, prog *[]inst) {
 	// A body of size 0 is empty groups only and matches just the empty string, so repeating it emits
 	// nothing. Its copies would otherwise cost instructions that the size does not count.
 	if body.size == 0 {
 		return
 	}
 	for i := 0; i < lo; i++ {
-		c.emit(body)
+		emit(body, prog)
 	}
 	if hi < 0 {
-		top := len(c.program)
-		loop := c.split(top + 1)
-		c.emit(body)
-		c.split(top)
-		c.program[loop].y = len(c.program)
+		top := len(*prog)
+		loop := emitSplit(prog, top+1)
+		emit(body, prog)
+		emitSplit(prog, top)
+		(*prog)[loop].y = len(*prog)
 		return
 	}
 	var optional []int
 	for i := lo; i < hi; i++ {
-		optional = append(optional, c.split(len(c.program)+1))
-		c.emit(body)
+		optional = append(optional, emitSplit(prog, len(*prog)+1))
+		emit(body, prog)
 	}
-	for _, choice := range optional {
-		c.program[choice].y = len(c.program)
+	for _, c := range optional {
+		(*prog)[c].y = len(*prog)
 	}
 }
 
-func (c *compiler) emit(n *node) {
+func emit(n *node, prog *[]inst) {
 	switch n.kind {
 	case nodeSet:
-		set := n.set
-		c.program = append(c.program, inst{op: opChar, set: &set})
+		*prog = append(*prog, inst{op: opChar, set: n.set})
 	case nodeStart:
-		c.program = append(c.program, inst{op: opStart})
+		*prog = append(*prog, inst{op: opStart})
 	case nodeEnd:
-		c.program = append(c.program, inst{op: opEnd})
+		*prog = append(*prog, inst{op: opEnd})
 	case nodeConcat:
 		for _, part := range n.parts {
-			c.emit(part)
+			emit(part, prog)
 		}
 	case nodeAlt:
-		c.emitAlt(n.parts)
+		emitAlt(n.parts, prog)
 	case nodeRepeat:
-		c.emitRepeat(n.body, n.min, n.max)
+		emitRepeat(n.parts[0], n.min, n.max, prog)
 	}
 }
 
-// CompilePattern returns the compiled pattern, or nil when pattern is not a valid pattern.
-func CompilePattern(pattern string) *Pattern {
-	tree := parsePattern(pattern)
-	if tree == nil {
-		return nil
+// compilePattern returns the compiled pattern, or false when text is not a valid pattern.
+func compilePattern(text string) (pattern, bool) {
+	tree, ok := parsePattern(wtf8.CodePoints(text))
+	if !ok {
+		return nil, false
 	}
-	c := &compiler{}
-	c.emit(tree)
-	c.program = append(c.program, inst{op: opMatch})
-	return &Pattern{program: c.program}
+	var prog []inst
+	emit(tree, &prog)
+	prog = append(prog, inst{op: opMatch})
+	return prog, true
 }
 
 func inItem(it item, c rune) bool {
@@ -136,31 +128,29 @@ func inSet(set *charSet, c rune) bool {
 	return hit != set.negate
 }
 
-// Matches reports whether the pattern matches somewhere in text. It is a Pike VM: each instruction is
-// visited at most once per input position.
-func (p *Pattern) Matches(text string) bool {
-	input := wtf8.Runes(text)
+// matches reports whether the pattern matches somewhere in text. It is a Pike VM: each instruction is visited once
+// per position.
+func (prog pattern) matches(text string) bool {
+	input := wtf8.CodePoints(text)
 	length := len(input)
-	program := p.program
-	seen := make([]int, len(program))
+	seen := make([]int, len(prog))
 	for i := range seen {
 		seen[i] = -1
 	}
 	var stack []int
-	current := make([]int, 0, len(program))
-	next := make([]int, 0, len(program))
+	var current, next []int
 
-	// add puts pc and everything it reaches without reading into list; it is true when that reaches a match.
+	// add puts pc and everything it reaches without reading on list, and reports whether that reaches a match.
 	add := func(list *[]int, pc, pos int) bool {
 		stack = append(stack[:0], pc)
 		for len(stack) > 0 {
 			at := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
-			if at >= len(program) || seen[at] == pos {
+			if at >= len(prog) || seen[at] == pos {
 				continue
 			}
 			seen[at] = pos
-			in := &program[at]
+			in := prog[at]
 			switch in.op {
 			case opMatch:
 				return true
@@ -191,12 +181,11 @@ func (p *Pattern) Matches(text string) bool {
 		c := input[pos]
 		next = next[:0]
 		for _, pc := range current {
-			in := &program[pc]
+			in := prog[pc]
 			if in.op == opChar && inSet(in.set, c) && add(&next, pc+1, pos+1) {
 				return true
 			}
 		}
 		current, next = next, current
-		// `current` now holds the threads for pos+1; add(0, pos+1) joins them with a fresh start.
 	}
 }

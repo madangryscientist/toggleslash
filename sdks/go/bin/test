@@ -1,26 +1,38 @@
 #!/bin/sh
-# Builds everything, runs the native tests under the race detector (never a cached result), prints the
-# vector and pin counts, and builds the test service binary last. The race detector needs cgo, so a C
-# compiler is pinned in mise.toml (zig) and named by path: a zig elsewhere on PATH can shadow it.
 set -eu
-here=$(cd "$(dirname "$0")" && pwd)
-cd "$here/.."
+cd "$(dirname "$0")/.."
 
-if command -v mise >/dev/null 2>&1; then
-	zig=$(mise where zig)/zig
-	run() { mise exec -- "$@"; }
-else
-	zig=$(command -v zig)
-	run() { "$@"; }
-fi
+# Every tool runs through `mise exec --` when mise is on PATH (a mise shim fails in a directory where its tool
+# is not active); in CI the mise action puts the pinned tools on PATH.
+tool() {
+  if command -v mise >/dev/null 2>&1; then
+    mise exec -- "$@"
+  else
+    "$@"
+  fi
+}
+
+# The race detector needs cgo, hence a C compiler. The pinned Zig is one, named by path: a `zig` elsewhere on
+# PATH could shadow it.
+zig_dir="$(tool mise where zig 2>/dev/null || mise where zig)"
+CC="$zig_dir/zig cc"
+export CC
 export CGO_ENABLED=1
-export CC="$zig cc"
 
-run go vet ./...
-run go test -race -count=1 ./...
+# Build: every package, test files included (`go vet` compiles them), with nothing cached.
+tool go build ./...
+tool go vet ./...
 
-counts=$(run go test -race -count=1 -v -run '^(TestVectors|TestBucketPins)$' ./internal/evaluator |
-	awk '/ vectors: [0-9]+$/ { v = $NF } / pins: [0-9]+$/ { p = $NF } END { if (v == "" || p == "") exit 1; print "vectors: " v " pins: " p }')
-echo "$counts"
+# Run: the race detector on, and `-count=1` so no result is ever reported from the cache.
+tool go test -race -count=1 ./...
 
-run go build -o .build/test-service ./test-service
+# The counts: the vectors and the pins are two tests, and `go test` hides a pass's log lines, so they run alone
+# with -v and only the totals are kept.
+counts="$(tool go test -count=1 -v -run '^(TestVectors|TestBucketPins)$' ./internal/evaluator)"
+vectors="$(printf '%s\n' "$counts" | sed -n 's/.*vectors: \([0-9][0-9]*\).*/\1/p')"
+pins="$(printf '%s\n' "$counts" | sed -n 's/.*pins: \([0-9][0-9]*\).*/\1/p')"
+echo "vectors: ${vectors:-0} pins: ${pins:-0}"
+
+# Last: the test service's binary, which bin/test-service runs.
+mkdir -p .build
+tool go build -o .build/test-service ./test-service

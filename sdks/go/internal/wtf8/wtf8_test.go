@@ -1,95 +1,100 @@
 package wtf8
 
-import "testing"
-
-const (
-	lone     = "\xed\xa0\x80"        // U+D800 on its own
-	loneLow  = "\xed\xb0\x80"        // U+DC00 on its own
-	astral   = "\U0001F600"          // U+1F600, surrogate pair D83D DE00 in UTF-16
-	highHalf = "\xed\xa0\xbd"        // U+D83D
-	lowHalf  = "\xed\xb8\x80"        // U+DE00
-	bmpTop   = "\uffff"              // U+FFFF, one unit above every surrogate
-	tail     = "\ufffd" + lone + "z" // mixed
+import (
+	"slices"
+	"testing"
 )
 
-func TestScrubFollowsWHATWG(t *testing.T) {
-	cases := []struct{ name, in, want string }{
-		{"valid is untouched", "a\u00e9\U0001F600", "a\u00e9\U0001F600"},
-		{"lone continuation", "a\x80b", "a\ufffdb"},
-		{"truncated three byte", "\xe2\x82", "\ufffd"},
-		{"truncated then ascii", "\xe2\x82a", "\ufffda"},
-		{"overlong", "\xc0\x80", "\ufffd\ufffd"},
-		{"surrogate encoding is invalid utf-8", lone, "\ufffd\ufffd\ufffd"},
-		{"beyond U+10FFFF", "\xf4\x90\x80\x80", "\ufffd\ufffd\ufffd\ufffd"},
+const (
+	hi = "\xed\xa0\x80" // U+D800
+	lo = "\xed\xb0\x80" // U+DC00
+)
+
+func TestSurrogateRoundTrip(t *testing.T) {
+	s := "a" + hi + "b"
+	points := CodePoints(s)
+	if !slices.Equal(points, []rune{'a', 0xD800, 'b'}) {
+		t.Fatalf("code points: %x", points)
 	}
-	for _, c := range cases {
-		if got := string(Scrub([]byte(c.in))); got != c.want {
-			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
-		}
+	if got := FromCodePoints(points); got != s {
+		t.Fatalf("round trip: %q", got)
+	}
+	if !HasSurrogate(s) || HasSurrogate("abc\U0001F600") {
+		t.Fatal("HasSurrogate")
 	}
 }
 
-func TestLoneSurrogates(t *testing.T) {
-	if !HasLoneSurrogate(lone) || !HasLoneSurrogate("a"+loneLow) {
-		t.Error("a lone surrogate was not found")
-	}
-	if HasLoneSurrogate("a\u00e9"+astral) || HasLoneSurrogate("") {
-		t.Error("a valid string reported a lone surrogate")
-	}
-	if got := ToUTF8(tail); got != "\ufffd\ufffdz" {
-		t.Errorf("ToUTF8 = %q", got)
-	}
-	if got := ToUTF8("plain"); got != "plain" {
-		t.Errorf("ToUTF8 changed a valid string: %q", got)
+func TestToUTF8ReplacesLoneSurrogates(t *testing.T) {
+	if got := ToUTF8("a" + hi + "b" + lo); got != "a\uFFFDb\uFFFD" {
+		t.Fatalf("got %q", got)
 	}
 }
 
-func TestRunesAndUnits(t *testing.T) {
-	runes := Runes("a" + lone + astral)
-	if len(runes) != 3 || runes[1] != 0xD800 || runes[2] != 0x1F600 {
-		t.Errorf("Runes = %v", runes)
+func TestUnits(t *testing.T) {
+	got := Units("\U0001F600" + hi)
+	if !slices.Equal(got, []uint16{0xD83D, 0xDE00, 0xD800}) {
+		t.Fatalf("units: %x", got)
 	}
-	units := Units("a" + lone + astral)
-	want := []uint16{'a', 0xD800, 0xD83D, 0xDE00}
-	if len(units) != len(want) {
-		t.Fatalf("Units = %v", units)
+	if FromUnits(got) != "\U0001F600"+hi {
+		t.Fatal("FromUnits")
 	}
-	for i := range want {
-		if units[i] != want[i] {
-			t.Errorf("Units[%d] = %x, want %x", i, units[i], want[i])
-		}
+	// A pair split across the end is joined, a reversed pair is two lone surrogates.
+	if FromUnits([]uint16{0xDE00, 0xD83D}) != "\xed\xb8\x80\xed\xa0\xbd" {
+		t.Fatalf("reversed pair: %q", FromUnits([]uint16{0xDE00, 0xD83D}))
 	}
 }
 
-func TestAppendRuneWritesSurrogatesAsWTF8(t *testing.T) {
-	if got := string(AppendRune(nil, 0xD800)); got != lone {
-		t.Errorf("AppendRune(D800) = %q", got)
+func TestCompareIsByUTF16Unit(t *testing.T) {
+	// By code point U+FF5E sorts before U+1F600; by UTF-16 unit the pair starts with 0xD83D, so it sorts first.
+	if Compare("\U0001F600", "\uFF5E") >= 0 {
+		t.Fatal("a supplementary character must sort before U+FF5E by UTF-16 unit")
 	}
-	if got := string(AppendRune(nil, 0x1F600)); got != astral {
-		t.Errorf("AppendRune(1F600) = %q", got)
+	if Compare("a", "a") != 0 || Compare("a", "b") >= 0 || Compare("b", "a") <= 0 || Compare("a", "ab") >= 0 {
+		t.Fatal("ordinary order")
+	}
+	if Compare("x"+hi, "x"+lo) >= 0 {
+		t.Fatal("lone surrogates compare by value")
 	}
 }
 
-func TestCompareIsUTF16Order(t *testing.T) {
-	cases := []struct {
-		a, b string
-		want int
+func TestSubstringChecks(t *testing.T) {
+	s := "x" + hi + "y"
+	for _, c := range []struct {
+		name string
+		got  bool
+		want bool
 	}{
-		{"a", "b", -1},
-		{"b", "a", 1},
-		{"a", "a", 0},
-		{"", "a", -1},
-		{"ab", "a", 1},
-		// Code point order puts U+FFFF before U+10000, UTF-16 order puts the pair (D800 ...) before U+FFFF.
-		{astral, bmpTop, -1},
-		{bmpTop, astral, 1},
-		{lone, astral, -1},
-		{lone, bmpTop, -1},
-		{loneLow, bmpTop, -1},
+		{"contains lone", Contains(s, hi), true},
+		{"contains absent lone", Contains(s, lo), false},
+		{"prefix lone", HasPrefix(hi+"y", hi), true},
+		{"suffix lone", HasSuffix(s, hi+"y"), true},
+		{"suffix absent", HasSuffix(s, "x"), false},
+		{"empty needle", Contains(s, ""), true},
+		{"plain contains", Contains("hello", "ell"), true},
+		{"pair never matches half", Contains("\U0001F600", hi), false},
+	} {
+		if c.got != c.want {
+			t.Errorf("%s: got %v", c.name, c.got)
+		}
 	}
-	for _, c := range cases {
-		if got := Compare(c.a, c.b); got != c.want {
-			t.Errorf("Compare(%q, %q) = %d, want %d", c.a, c.b, got, c.want)
+}
+
+func TestDecodeWHATWG(t *testing.T) {
+	for _, c := range []struct {
+		in   string
+		want string
+	}{
+		{"abc", "abc"},
+		{"\xff", "\uFFFD"},
+		{"\xe2\x82", "\uFFFD"},                 // a truncated three-byte sequence is one error
+		{"\xe2\x28\xa1", "\uFFFD(\uFFFD"},      // the bad second byte is reprocessed
+		{"\xed\xa0\x80", "\uFFFD\uFFFD\uFFFD"}, // an encoded surrogate is three errors
+		{"\xf0\x9f\x98\x80", "\U0001F600"},
+		{"\xf0\x9f\x98", "\uFFFD"},
+		{"\xc0\x80", "\uFFFD\uFFFD"},
+	} {
+		if got := DecodeWHATWG([]byte(c.in)); got != c.want {
+			t.Errorf("%q: got %q want %q", c.in, got, c.want)
 		}
 	}
 }

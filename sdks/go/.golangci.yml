@@ -1,72 +1,30 @@
-# The lint rule set for the Go SDK. golangci-lint v2 with the standard linters (errcheck, govet, ineffassign,
-# staticcheck, unused) plus the ones below. Each ignore says why it is there.
+# The rule set: golangci-lint's "standard" linters (errcheck, govet, ineffassign, staticcheck, unused), plus the
+# ones enabled below, and gofmt as the formatter. Tests and the test service are linted too.
 version: "2"
-
 run:
-  timeout: 5m
-
+  tests: true
 linters:
   default: standard
   enable:
-    # bugs the standard set misses
     - bodyclose # a response body left open leaks a connection
-    - contextcheck # a request must carry the context it was given
-    - errorlint # compare errors with errors.Is, never ==
-    - noctx # every HTTP request has a context
-    - nilerr # returning nil where an error was just checked is almost always a slip
-    - gosec # the SDK handles keys and network input
-    # clarity
-    - misspell
-    - unconvert
-    - unparam
-    - revive
-    - predeclared
-    - copyloopvar
-  exclusions:
-    presets:
-      - comments
-      - std-error-handling
-    rules:
-      # Tests build throwaway fixtures: a weak random source, a test server on loopback, a fixed cert.
-      - path: _test\.go
-        linters:
-          - gosec
-          - unparam
-      # The test service is a development tool that reads a request body of any size and listens on loopback.
-      - path: test-service/
-        linters:
-          - gosec
-      # Its handlers call Ready and Close, which reach the usage flush that is detached on purpose (below).
-      - path: test-service/
-        text: "should pass the context parameter"
-        linters:
-          - contextcheck
-      # Reconnect jitter only spreads clients out; it is not a secret, so math/rand/v2 is the right source.
-      - path: toggleslash\.go
-        text: "G404"
-        linters:
-          - gosec
-      # revive's unused-parameter fires on handler and callback signatures a test must keep whole
-      # (http.HandlerFunc takes a writer and a request whether or not a case reads them).
-      - path: _test\.go
-        text: "unused-parameter"
-        linters:
-          - revive
-      # Narrowing conversions in the UTF-8 and escape-decoding code are masked or range-checked on the line
-      # before, so the value always fits; G115 cannot see that.
-      - path: internal/(wtf8|jsonvalue)/
-        text: "G115"
-        linters:
-          - gosec
-      # The final usage flush must finish after Close has cancelled the client's lifetime context, so a
-      # usage request is deliberately not derived from it (DESIGN.md section 2).
-      - path: usage\.go
-        text: "should pass the context parameter"
-        linters:
-          - contextcheck
-    paths:
-      - .build
-
+    - errorlint # compares errors with errors.Is and errors.As, never == or a type assertion
+    - gocritic # common mistakes and slow idioms
+    - misspell # typos in comments and strings
+    - noctx # an HTTP request or a listener without a context cannot be cancelled
+    - nolintlint # a //nolint directive must name its linter and carry a reason
+    - revive # style and naming
+    - unconvert # a conversion to the type a value already has
+    - unparam # a parameter or result that is always the same
+  settings:
+    revive:
+      rules:
+        # revive's two noisy defaults: the exported-comment form and the package comment on every package.
+        # The public API and each package carry doc comments written for a reader, not for a pattern, and the
+        # internal packages have a comment on the file that matters.
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
 formatters:
   enable:
     - gofmt

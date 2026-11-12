@@ -1,9 +1,16 @@
-#!/usr/bin/env bash
-# Starts the Go SDK's test service (docs/sdk-test-service.md). It builds the binary first if bin/test has
-# not, so the harness's 30 s wait for the "listening" line is not spent compiling a warm tree.
-set -euo pipefail
+#!/bin/sh
+set -eu
 cd "$(dirname "$0")/.."
+
+if command -v mise >/dev/null 2>&1; then
+  run() { mise exec -- "$@"; }
+else
+  run() { "$@"; }
+fi
+
+# The binary bin/test builds; built here only when it is missing (the harness waits 30 s for `listening`).
 if [ ! -x .build/test-service ]; then
-  go build -o .build/test-service ./test-service
+  mkdir -p .build
+  run go build -o .build/test-service ./test-service
 fi
 exec .build/test-service
