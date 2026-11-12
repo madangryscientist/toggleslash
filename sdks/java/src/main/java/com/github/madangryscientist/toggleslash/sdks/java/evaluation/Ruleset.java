@@ -180,11 +180,12 @@ public final class Ruleset {
 
   /**
    * The {@code version} of the flag {@code key}, or empty when there is no such flag or it is
-   * malformed.
+   * malformed: its own shape is invalid, or a segment it names is missing or malformed (contract
+   * 10). A problem that shows only at evaluation, a prerequisite cycle say, keeps the version.
    */
   public Optional<Double> flagVersion(String key) {
     FlagEntry entry = flags.get(key);
-    if (entry == null || entry.status() == Status.MALFORMED) {
+    if (entry == null || entry.status() == Status.MALFORMED || entry.status() == Status.BROKEN) {
       return Optional.empty();
     }
     return entry.flag().get("version") instanceof Double version
