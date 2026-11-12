@@ -48,3 +48,11 @@ Give a fresh builder `docs/sdk-authoring/PROMPT.md`, the language name and any o
 lists, and nothing else. It builds
 `sdks/<lang>` and the workflow, and writes `RUN.md`. Its proposed prompt changes are folded into
 `docs/sdk-authoring/` in a separate pull request before the next language starts.
+
+## Testing a prompt change
+
+- Prove a change to the prompt on one or two languages first: the language whose run the change answers, or
+  the one that failed. Run every language only once it holds there.
+- Prompt-test runs use a cheaper model, or the usual model at a lower reasoning level. One run on the usual
+  model at its full reasoning level is the final check before a prompt change counts as done.
+- Each run is one session per phase, as `docs/sdk-authoring/PROMPT.md` says.

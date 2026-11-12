@@ -56,4 +56,17 @@ Every line of `CHECKLIST.md`, in its order, with the evidence: a test name, a co
 or a file and line. A line that does not apply says why.
 
 - [x] <the line, shortened>: <evidence>
+
+## Phase log
+
+One entry per phase, 0 to 6, written by the session that ran it (`PROMPT.md`, "How a run is split").
+Each entry is all the next session gets, so write it to be read cold.
+
+### Phase <n>: <name>
+
+- Check: <the check the phase ran> -> <that check's last output line>
+- Files written: <paths>
+- Decisions: <what was chosen and why; these also go under Decisions>
+- Open items: <what is unfinished or doubtful, or "None.">
+- Next phase reads first: <the files, sections or entry lines the next phase must start from>
 ```
