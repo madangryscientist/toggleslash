@@ -1,630 +1,542 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
-import static com.github.madangryscientist.toggleslash.sdks.java.FakeServer.flag;
-import static com.github.madangryscientist.toggleslash.sdks.java.FakeServer.ruleset;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.github.madangryscientist.toggleslash.sdks.java.evaluation.ErrorCode;
 import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Json;
 import com.github.madangryscientist.toggleslash.sdks.java.evaluation.ReasonKind;
-import com.sun.net.httpserver.HttpExchange;
-import java.io.File;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.TreeSet;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * What the conformance harness cannot reach: threads, hung requests, the watchdog on a real socket,
- * the hold cap on every route, the UTC day split, a failing evaluator, and the headers on the wire.
- * The server is a real loopback socket; time is faked only through the options' seams.
+ * The client against a loopback server: loading, answers, usage, hooks and the contract's edges.
  */
 class ClientTest {
-  private static final Duration LIMIT = Duration.ofSeconds(60);
-  private static final Context USER = Context.user("u1");
 
-  private static Options.Builder options(FakeServer server) {
-    return Options.builder(server.url(), "fs_server_test").stream(false);
-  }
+  private final FakeServer server = new FakeServer();
+  private final List<ToggleSlashClient> clients = new CopyOnWriteArrayList<>();
+  private final List<Throwable> errors = new CopyOnWriteArrayList<>();
 
-  private static void waitFor(java.util.function.BooleanSupplier condition, String what)
-      throws InterruptedException {
-    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-    while (!condition.getAsBoolean()) {
-      if (System.nanoTime() > deadline) {
-        throw new AssertionError("did not happen within 10 s: " + what);
-      }
-      Thread.sleep(5);
-    }
-  }
-
-  // ---- threads ------------------------------------------------------------------------------
-
-  /** Java has no race detector; many threads and a close in the middle stand in for one. */
-  @Test
-  void everyOperationFromManyThreadsWithCloseRacingAndTwoClosesRacing() throws Exception {
-    assertTimeoutPreemptively(
-        LIMIT,
-        () -> {
-          try (FakeServer server =
-              new FakeServer().ruleset(ruleset(flag("f", "true", 1)), "\"v1\"").events(200)) {
-            List<Throwable> errors = Collections.synchronizedList(new ArrayList<>());
-            Client client =
-                Client.create(
-                    options(server)
-                        .flushInterval(Duration.ofMillis(20))
-                        .pollInterval(Duration.ofMillis(20))
-                        .onError(errors::add)
-                        .build());
-            assertTrue(client.ready());
-            ExecutorService pool = Executors.newFixedThreadPool(18);
-            List<Future<?>> work = new ArrayList<>();
-            for (int w = 0; w < 14; w++) {
-              final int id = w;
-              work.add(
-                  pool.submit(
-                      () -> {
-                        for (int i = 0; i < 3000; i++) {
-                          Context who = Context.user("u" + id + "-" + i);
-                          client.boolVariation("f", who, false);
-                          assertNotNull(client.stringVariationDetail("f", who, "x").reason());
-                          assertNotNull(client.status());
-                          client.ready();
-                        }
-                      }));
-            }
-            CountDownLatch go = new CountDownLatch(1);
-            for (int c = 0; c < 4; c++) {
-              work.add(
-                  pool.submit(
-                      () -> {
-                        go.await();
-                        client.close();
-                        return null;
-                      }));
-            }
-            Thread.sleep(50);
-            go.countDown();
-            for (Future<?> future : work) {
-              future.get();
-            }
-            pool.shutdown();
-            assertEquals(StreamState.CLOSED, client.status().stream());
-            assertEquals(List.of(), errors);
-          }
-        });
-  }
-
-  @Test
-  void variationReturnsQuicklyWhileARulesetRequestAndAUsageFlushHang() throws Exception {
-    assertTimeoutPreemptively(
-        LIMIT,
-        () -> {
-          try (FakeServer server = new FakeServer()) {
-            AtomicInteger rulesets = new AtomicInteger();
-            server
-                .on(
-                    "/sdk/v1/ruleset",
-                    x -> {
-                      if (rulesets.getAndIncrement() == 0) {
-                        x.getResponseHeaders().set("ETag", "\"v1\"");
-                        FakeServer.send(x, 200, ruleset(flag("f", "true", 1)));
-                      } else {
-                        server.hang(x);
-                      }
-                    })
-                .on("/sdk/v1/events", server::hang);
-            Client client =
-                Client.create(
-                    options(server)
-                        .pollInterval(Duration.ofMillis(20))
-                        .flushInterval(Duration.ofMillis(20))
-                        .requestTimeout(Duration.ofSeconds(2))
-                        .build());
-            assertTrue(client.ready());
-            client.boolVariation("f", USER, false);
-            waitFor(() -> server.requests("/sdk/v1/ruleset").size() >= 2, "a hung ruleset request");
-            waitFor(() -> !server.requests("/sdk/v1/events").isEmpty(), "a hung usage flush");
-            long start = System.nanoTime();
-            for (int i = 0; i < 2000; i++) {
-              assertEquals(true, client.boolVariationDetail("f", USER, false).value());
-              client.status();
-            }
-            long millis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-            assertTrue(millis < 1000, "4000 calls took " + millis + " ms while requests hung");
-            client.close();
-          }
-        });
-  }
-
-  @Test
-  void aHooksEtagAndFlagVersionBelongToTheSameRulesetUnderConcurrentSwaps() throws Exception {
-    assertTimeoutPreemptively(
-        LIMIT,
-        () -> {
-          try (FakeServer server = new FakeServer().events(200)) {
-            AtomicInteger n = new AtomicInteger();
-            server.on(
-                "/sdk/v1/ruleset",
-                x -> {
-                  int which = n.getAndIncrement() % 2;
-                  x.getResponseHeaders().set("ETag", "\"e" + which + "\"");
-                  FakeServer.send(x, 200, ruleset(flag("f", "true", which + 1)));
-                });
-            Set<String> pairs = Collections.synchronizedSet(new HashSet<>());
-            Client client =
-                Client.create(
-                    options(server)
-                        .pollInterval(Duration.ofMillis(5))
-                        .afterEvaluation(
-                            event ->
-                                pairs.add(
-                                    event.etag().orElse("none")
-                                        + "/"
-                                        + event.flagVersion().orElse(-1.0)))
-                        .build());
-            assertTrue(client.ready());
-            ExecutorService pool = Executors.newFixedThreadPool(4);
-            List<Future<?>> work = new ArrayList<>();
-            for (int t = 0; t < 4; t++) {
-              work.add(
-                  pool.submit(
-                      () -> {
-                        long end = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(1500);
-                        while (System.nanoTime() < end) {
-                          client.boolVariation("f", USER, false);
-                        }
-                      }));
-            }
-            for (Future<?> future : work) {
-              future.get();
-            }
-            pool.shutdown();
-            client.close();
-            assertEquals(Set.of("\"e0\"/1.0", "\"e1\"/2.0"), new HashSet<>(pairs));
-          }
-        });
-  }
-
-  @Test
-  void aHookAndAnOnErrorThatCallBackIntoTheClientDoNotDeadlock() throws Exception {
-    assertTimeoutPreemptively(
-        LIMIT,
-        () -> {
-          try (FakeServer server = new FakeServer()) {
-            AtomicInteger asked = new AtomicInteger();
-            server.on(
-                "/sdk/v1/ruleset",
-                x -> {
-                  if (asked.getAndIncrement() == 0) {
-                    x.getResponseHeaders().set("ETag", "\"v1\"");
-                    FakeServer.send(x, 200, ruleset(flag("f", "true", 1)));
-                  } else {
-                    FakeServer.send(x, 500, "");
-                  }
-                });
-            AtomicReference<Client> self = new AtomicReference<>();
-            CountDownLatch errored = new CountDownLatch(1);
-            CountDownLatch hooked = new CountDownLatch(1);
-            ThreadLocal<Boolean> inside = new ThreadLocal<>();
-            Client client =
-                Client.create(
-                    options(server)
-                        .pollInterval(Duration.ofMillis(20))
-                        .afterEvaluation(
-                            event -> {
-                              if (inside.get() == null) {
-                                inside.set(true);
-                                try {
-                                  self.get().status();
-                                  self.get().boolVariation("f", USER, false);
-                                  hooked.countDown();
-                                } finally {
-                                  inside.remove();
-                                }
-                              }
-                            })
-                        .onError(
-                            error -> {
-                              try {
-                                self.get().status();
-                                self.get().boolVariation("f", USER, false);
-                                errored.countDown();
-                              } catch (RuntimeException e) {
-                                // self is not set yet: the next error will be
-                              }
-                            })
-                        .build());
-            self.set(client);
-            assertTrue(client.ready());
-            client.boolVariation("f", USER, false);
-            assertTrue(hooked.await(10, TimeUnit.SECONDS), "the hook called back and returned");
-            assertTrue(errored.await(10, TimeUnit.SECONDS), "onError called back and returned");
-            client.close();
-          }
-        });
-  }
-
-  // ---- time ---------------------------------------------------------------------------------
-
-  private static String streamBody(String etag) {
-    return "event: connected\ndata: " + etag + "\n\n";
-  }
-
-  private static void eventStream(HttpExchange x, String first) throws IOException {
-    x.getResponseHeaders().set("Content-Type", "text/event-stream");
-    x.sendResponseHeaders(200, 0);
-    OutputStream out = x.getResponseBody();
-    out.write(first.getBytes(StandardCharsets.UTF_8));
-    out.flush();
-  }
-
-  /** A real loopback socket that goes quiet: the seam only shortens the watchdog's length. */
-  @Test
-  void aStreamWithNoBytesIsDroppedAsTimeout() throws Exception {
-    assertTimeoutPreemptively(
-        LIMIT,
-        () -> {
-          try (FakeServer server =
-              new FakeServer().ruleset(ruleset(flag("f", "true", 1)), "\"v1\"")) {
-            server.on(
-                "/sdk/v1/stream",
-                x -> {
-                  eventStream(x, streamBody("\"v1\""));
-                  server.hang(x);
-                });
-            Client client =
-                Client.create(
-                    Options.builder(server.url(), "fs_server_test")
-                        .pollInterval(Duration.ofMillis(100))
-                        .streamIdle(Duration.ofMillis(400))
-                        .build());
-            assertTrue(client.ready());
-            waitFor(() -> client.status().stream() == StreamState.CONNECTED, "connected");
-            long start = System.nanoTime();
-            waitFor(() -> client.status().lastError().equals(Optional.of("timeout")), "timeout");
-            long millis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-            assertTrue(millis >= 250, "dropped after " + millis + " ms, not after the quiet");
-            client.close();
-          }
-        });
-  }
-
-  @Test
-  void aKeepAliveRestartsTheWatchdog() throws Exception {
-    assertTimeoutPreemptively(
-        LIMIT,
-        () -> {
-          try (FakeServer server =
-              new FakeServer().ruleset(ruleset(flag("f", "true", 1)), "\"v1\"")) {
-            server.on(
-                "/sdk/v1/stream",
-                x -> {
-                  eventStream(x, streamBody("\"v1\""));
-                  for (int i = 0; i < 12; i++) {
-                    Thread.sleep(100);
-                    x.getResponseBody().write(": keep-alive\n\n".getBytes(StandardCharsets.UTF_8));
-                    x.getResponseBody().flush();
-                  }
-                  server.hang(x);
-                });
-            Client client =
-                Client.create(
-                    Options.builder(server.url(), "fs_server_test")
-                        .pollInterval(Duration.ofMillis(100))
-                        .streamIdle(Duration.ofMillis(400))
-                        .build());
-            assertTrue(client.ready());
-            waitFor(() -> client.status().stream() == StreamState.CONNECTED, "connected");
-            Thread.sleep(1000);
-            Status status = client.status();
-            assertEquals(StreamState.CONNECTED, status.stream());
-            assertEquals(Optional.empty(), status.lastError());
-            client.close();
-          }
-        });
-  }
-
-  @Test
-  void aRetryAfterAbove300IsHeldFor300SecondsOnTheRulesetRoute() throws Exception {
-    assertTimeoutPreemptively(
-        LIMIT,
-        () -> {
-          try (FakeServer server = new FakeServer()) {
-            server.on("/sdk/v1/ruleset", x -> limited(x));
-            Client client = Client.create(options(server).nanoTime(() -> 1_000_000L).build());
-            assertFalse(client.ready());
-            assertEquals(Duration.ofSeconds(300), client.syncHoldRemaining());
-            client.close();
-          }
-        });
-  }
-
-  @Test
-  void aRetryAfterAbove300IsHeldFor300SecondsOnTheStreamRoute() throws Exception {
-    assertTimeoutPreemptively(
-        LIMIT,
-        () -> {
-          try (FakeServer server =
-              new FakeServer().ruleset(ruleset(flag("f", "true", 1)), "\"v1\"")) {
-            server.on("/sdk/v1/stream", x -> limited(x));
-            Client client =
-                Client.create(
-                    Options.builder(server.url(), "fs_server_test")
-                        .nanoTime(() -> 1_000_000L)
-                        .build());
-            assertTrue(client.ready());
-            waitFor(() -> client.syncHoldRemaining().compareTo(Duration.ZERO) > 0, "a hold");
-            assertEquals(Duration.ofSeconds(300), client.syncHoldRemaining());
-            client.close();
-          }
-        });
-  }
-
-  @Test
-  void aRetryAfterAbove300IsHeldFor300SecondsOnTheEventsRoute() throws Exception {
-    assertTimeoutPreemptively(
-        LIMIT,
-        () -> {
-          try (FakeServer server =
-              new FakeServer().ruleset(ruleset(flag("f", "true", 1)), "\"v1\"")) {
-            server.on("/sdk/v1/events", x -> limited(x));
-            List<String> errors = Collections.synchronizedList(new ArrayList<>());
-            Client client =
-                Client.create(
-                    options(server)
-                        .nanoTime(() -> 1_000_000L)
-                        .onError(e -> errors.add(String.valueOf(e.getMessage())))
-                        .build());
-            assertTrue(client.ready());
-            client.boolVariation("f", USER, false);
-            client.flushNow();
-            assertEquals(Duration.ofSeconds(300), client.usageHoldRemaining());
-            assertEquals(Duration.ZERO, client.syncHoldRemaining());
-            long start = System.nanoTime();
-            client.close();
-            assertTrue(
-                System.nanoTime() - start < TimeUnit.SECONDS.toNanos(5),
-                "close waited out the hold");
-            assertTrue(
-                errors.stream().anyMatch(m -> m.contains("1 usage counts unsent")),
-                "the counts lost to the hold were reported: " + errors);
-          }
-        });
-  }
-
-  private static void limited(HttpExchange x) throws IOException {
-    x.getResponseHeaders().set("Retry-After", "99999");
-    FakeServer.send(x, 429, "");
-  }
-
-  /** A clock a test moves. */
-  private static final class MovingClock extends Clock {
-    private volatile Instant now;
-
-    MovingClock(Instant now) {
-      this.now = now;
-    }
-
-    @Override
-    public ZoneId getZone() {
-      return ZoneOffset.UTC;
-    }
-
-    @Override
-    public Clock withZone(ZoneId zone) {
-      return this;
-    }
-
-    @Override
-    public Instant instant() {
-      return now;
-    }
-  }
-
-  @Test
-  void countsRecordedEitherSideOfUtcMidnightGoOutAsTwoDays() throws Exception {
-    try (FakeServer server =
-        new FakeServer().ruleset(ruleset(flag("f", "true", 1)), "\"v1\"").events(200)) {
-      MovingClock clock = new MovingClock(Instant.parse("2026-03-31T23:59:59Z"));
-      Client client = Client.create(options(server).clock(clock).build());
-      assertTrue(client.ready());
-      client.boolVariation("f", USER, false);
-      clock.now = Instant.parse("2026-04-01T00:00:01Z");
-      client.boolVariation("f", USER, false);
-      client.boolVariation("f", Context.user("u2"), false);
-      client.flushNow();
-      List<FakeServer.Seen> sent = server.requests("/sdk/v1/events");
-      assertEquals(1, sent.size());
-      Map<String, Double> byDay = new TreeMap<>();
-      Object events = ((Map<?, ?>) Json.parse(sent.get(0).body())).get("events");
-      for (Object entry : (List<?>) events) {
-        Map<?, ?> row = (Map<?, ?>) entry;
-        byDay.merge((String) row.get("day"), (Double) row.get("count"), Double::sum);
-      }
-      assertEquals(Map.of("2026-03-31", 1.0, "2026-04-01", 2.0), byDay);
+  @AfterEach
+  void tearDown() {
+    for (ToggleSlashClient client : clients) {
       client.close();
     }
+    server.close();
   }
 
-  // ---- values -------------------------------------------------------------------------------
-
-  @Test
-  void anEvaluationThatRaisesGivesTheFallbackEvaluationFailedAndOneOnError() throws Exception {
-    try (FakeServer server =
-        new FakeServer().ruleset(ruleset(flag("f", "true", 1)), "\"v1\"").events(200)) {
-      List<Throwable> errors = Collections.synchronizedList(new ArrayList<>());
-      Client client =
-          Client.create(
-              options(server)
-                  .evaluator(
-                      (rules, key, context) -> {
-                        throw new IllegalStateException("boom");
-                      })
-                  .onError(errors::add)
-                  .build());
-      assertTrue(client.ready());
-      Detail<Boolean> detail = client.boolVariationDetail("f", USER, true);
-      assertEquals(true, detail.value());
-      assertTrue(detail.variationIndex().isEmpty());
-      assertEquals(ReasonKind.ERROR, detail.reason().kind());
-      assertEquals(Optional.of(ErrorCode.EVALUATION_FAILED), detail.reason().code());
-      assertEquals(1, errors.size());
-      client.flushNow();
-      assertEquals(0, server.requests("/sdk/v1/events").size(), "nothing was counted");
-      client.close();
-    }
-  }
-
-  @Test
-  void theIntegerAccessorTakesWholeNumbersInSigned64BitsAndNothingElse() throws Exception {
-    try (FakeServer server =
-        new FakeServer()
-            .ruleset(
-                ruleset(
-                    flag("huge", "9223372036854775808", 1),
-                    flag("hugeNegative", "-9223372036854777856", 1),
-                    flag("min", "-9223372036854775808", 1),
-                    flag("fraction", "1.5", 1),
-                    flag("two", "2.0", 1)),
-                "\"v1\"")) {
-      Client client = Client.create(options(server).build());
-      assertTrue(client.ready());
-      for (String key : List.of("huge", "hugeNegative", "fraction")) {
-        Detail<Long> detail = client.intVariationDetail(key, USER, 7);
-        assertEquals(7L, detail.value(), key);
-        assertEquals(Optional.of(ErrorCode.TYPE_MISMATCH), detail.reason().code(), key);
+  static void waitFor(String what, long millis, BooleanSupplier condition) {
+    long end = System.nanoTime() + millis * 1_000_000L;
+    while (System.nanoTime() < end) {
+      if (condition.getAsBoolean()) {
+        return;
       }
-      assertEquals(Long.MIN_VALUE, client.intVariation("min", USER, 7));
-      assertEquals(2L, client.intVariation("two", USER, 7));
-      client.close();
+      try {
+        Thread.sleep(5);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new IllegalStateException(e);
+      }
     }
+    throw new AssertionError("timed out waiting for " + what);
   }
 
-  // ---- process and wire ---------------------------------------------------------------------
+  ClientOptions.Builder options() {
+    return ClientOptions.builder(server.url(), FakeServer.KEY).stream(false)
+        .onError(errors::add)
+        .requestTimeout(Duration.ofSeconds(5));
+  }
 
-  @Test
-  void theSdksThreadsAreDaemonThreads() throws Exception {
-    try (FakeServer server = new FakeServer().ruleset(ruleset(flag("f", "true", 1)), "\"v1\"")) {
-      Client client = Client.create(options(server).build());
-      assertTrue(client.ready());
-      List<Thread> ours = new ArrayList<>();
-      for (Thread thread : Thread.getAllStackTraces().keySet()) {
-        if (thread.getName().startsWith("toggleslash-") && thread.isAlive()) {
-          ours.add(thread);
-        }
-      }
-      assertEquals(2, ours.size(), ours.toString());
-      for (Thread thread : ours) {
-        assertTrue(thread.isDaemon(), thread.getName());
-      }
-      client.close();
-    }
+  ToggleSlashClient start(ClientOptions.Builder builder) {
+    ToggleSlashClient client = ToggleSlashClient.create(builder.build());
+    clients.add(client);
+    return client;
   }
 
   @Test
-  void aClientThatIsNeverClosedDoesNotKeepTheProcessFromExiting() throws Exception {
-    try (FakeServer server = new FakeServer().ruleset(ruleset(flag("f", "true", 1)), "\"v1\"")) {
-      String classes =
-          new File(Client.class.getProtectionDomain().getCodeSource().getLocation().toURI())
-                  .getPath()
-              + File.pathSeparator
-              + new File(
-                      ClientTest.class.getProtectionDomain().getCodeSource().getLocation().toURI())
-                  .getPath();
-      String java = ProcessHandle.current().info().command().orElse("java");
-      Process child =
-          new ProcessBuilder(java, "-cp", classes, UnclosedMain.class.getName(), server.url())
-              .redirectErrorStream(true)
-              .start();
-      boolean exited = child.waitFor(30, TimeUnit.SECONDS);
-      String output = new String(child.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-      if (!exited) {
-        child.destroyForcibly();
-      }
-      assertTrue(exited, "the child JVM kept running: " + output);
-      assertEquals("returned", output.trim());
-    }
-  }
-
-  /** The headers the SDK sets, and the three the JDK's HTTP client adds on its own. */
-  @Test
-  void everyRequestCarriesOnlyTheProtocolsHeadersAndTheJdksThree() throws Exception {
-    try (FakeServer server =
-        new FakeServer().ruleset(ruleset(flag("f", "true", 1)), "\"v1\"").events(200)) {
-      server.on(
-          "/sdk/v1/stream",
-          x -> {
-            eventStream(x, streamBody("\"v1\""));
-            server.hang(x);
-          });
-      Client polling = Client.create(options(server).pollInterval(Duration.ofMillis(30)).build());
-      Client streaming = Client.create(Options.builder(server.url(), "fs_server_test").build());
-      assertTrue(polling.ready());
-      assertTrue(streaming.ready());
-      polling.boolVariation("f", Context.user("someone@example.com"), false);
-      polling.flushNow();
-      waitFor(
-          () -> server.requests("/sdk/v1/ruleset").size() >= 3, "a conditional ruleset request");
-      waitFor(() -> !server.requests("/sdk/v1/stream").isEmpty(), "a stream request");
-      waitFor(() -> !server.requests("/sdk/v1/events").isEmpty(), "an events request");
-      Set<String> names = new TreeSet<>();
-      for (FakeServer.Seen request : server.all()) {
-        for (Map.Entry<String, List<String>> header : request.headers().entrySet()) {
-          names.add(header.getKey().toLowerCase(java.util.Locale.ROOT));
-          if (header.getKey().equalsIgnoreCase("User-Agent")) {
-            assertTrue(
-                header.getValue().get(0).matches("Java-http-client/[0-9][0-9.]*[A-Za-z0-9.+-]*"),
-                "User-Agent names the library only: " + header.getValue());
+  void notReadyUntilTheFirstRulesetThenServes() throws Exception {
+    CountDownLatch release = new CountDownLatch(1);
+    FakeServer.Handler normal = server.rulesetHandler;
+    server.rulesetHandler =
+        x -> {
+          try {
+            release.await(5, TimeUnit.SECONDS);
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
           }
-        }
-        assertFalse(request.body().contains("someone@example.com"));
-        assertFalse(request.path().contains("someone"));
-      }
-      Set<String> allowed =
-          Set.of(
-              "authorization",
-              "accept",
-              "if-none-match",
-              "content-type",
-              "host",
-              "user-agent",
-              "content-length");
-      assertTrue(allowed.containsAll(names), "headers on the wire: " + names);
-      System.out.println("request headers seen: " + names);
-      assertTrue(
-          server.requests("/sdk/v1/ruleset").stream()
-              .anyMatch(
-                  r ->
-                      r.headers().keySet().stream()
-                          .anyMatch(k -> k.equalsIgnoreCase("If-None-Match"))));
-      polling.close();
-      streaming.close();
+          normal.handle(x);
+        };
+    server.serve(FakeServer.rulesetOf(FakeServer.flag("f", "true", 1)), "\"v1\"");
+    ToggleSlashClient client = start(options());
+    Evaluation<Boolean> before = client.boolVariationDetail("f", Map.of("key", "u"), false);
+    assertFalse(before.value());
+    assertEquals(ReasonKind.ERROR, before.reason().kind());
+    assertEquals(ErrorCode.NOT_READY, before.reason().errorCode());
+    assertTrue(before.variationIndex().isEmpty());
+    release.countDown();
+    assertTrue(client.ready());
+    assertTrue(client.boolVariation("f", Map.of("key", "u"), false));
+    Status status = client.status();
+    assertEquals("\"v1\"", status.etag().orElseThrow());
+    assertTrue(status.lastSyncAt().isPresent());
+    assertTrue(status.lastError().isEmpty());
+    assertEquals(StreamState.OFF, status.stream());
+  }
+
+  @Test
+  void aPollSendsIfNoneMatchOnlyOnceBothAreHeldAndA304IsASync() {
+    server.serve(FakeServer.rulesetOf(FakeServer.flag("f", "true", 1)), "\"v1\"");
+    ToggleSlashClient client = start(options().pollInterval(Duration.ofMillis(40)));
+    assertTrue(client.ready());
+    waitFor("three ruleset requests", 5000, () -> server.ruleset.size() >= 3);
+    assertEquals(null, server.ruleset.get(0).header("If-None-Match"));
+    assertEquals("\"v1\"", server.ruleset.get(1).header("If-None-Match"));
+    assertEquals("Bearer " + FakeServer.KEY, server.ruleset.get(0).header("Authorization"));
+    Instant first = client.status().lastSyncAt().orElseThrow();
+    waitFor("a later sync", 5000, () -> client.status().lastSyncAt().orElseThrow().isAfter(first));
+    assertTrue(client.status().lastError().isEmpty());
+  }
+
+  @Test
+  void aBadRulesetKeepsTheLastGoodOne() {
+    server.serve(FakeServer.rulesetOf(FakeServer.flag("f", "true", 1)), "\"v1\"");
+    ToggleSlashClient client = start(options().pollInterval(Duration.ofMillis(30)));
+    assertTrue(client.ready());
+    server.serve("{\"flags\":[]}", "\"v2\"");
+    waitFor("bad_ruleset", 5000, () -> client.status().lastError().isPresent());
+    assertEquals("bad_ruleset", client.status().lastError().orElseThrow());
+    assertEquals("\"v1\"", client.status().etag().orElseThrow());
+    assertTrue(client.boolVariation("f", Map.of("key", "u"), false));
+    assertFalse(errors.isEmpty());
+    ToggleSlashException error = (ToggleSlashException) errors.get(0);
+    assertEquals("bad_ruleset", error.code());
+  }
+
+  @Test
+  void aRefusedFirstLoadSettlesReadyFalseAndReportsTheStatus() {
+    server.rulesetHandler = x -> FakeServer.reply(x, 401, "no");
+    ToggleSlashClient client = start(options());
+    assertFalse(client.ready());
+    assertFalse(client.ready());
+    assertEquals("http_401", client.status().lastError().orElseThrow());
+    assertTrue(client.status().etag().isEmpty());
+  }
+
+  @Test
+  void accessorsApplyTheKindRules() {
+    server.serve(
+        FakeServer.rulesetOf(
+            FakeServer.flag("big", "9300000000000000000", 1),
+            FakeServer.flag("two", "2.0", 1),
+            FakeServer.flag("frac", "1.5", 1),
+            FakeServer.flag("max", "9223372036854775807", 1),
+            FakeServer.flag("neg", "-9223372036854775808", 1),
+            FakeServer.flag("text", "\"hi\"", 1),
+            FakeServer.flag("nothing", "null", 1),
+            FakeServer.flag("list", "[1,2]", 1)),
+        "\"v1\"");
+    ToggleSlashClient client = start(options());
+    assertTrue(client.ready());
+    Object ctx = Map.of("key", "u");
+
+    Evaluation<Long> big = client.intVariationDetail("big", ctx, 7);
+    assertEquals(7L, big.value());
+    assertEquals(ErrorCode.TYPE_MISMATCH, big.reason().errorCode());
+    assertTrue(big.variationIndex().isEmpty());
+    assertEquals(2L, client.intVariation("two", ctx, 0));
+    assertEquals(0L, client.intVariation("frac", ctx, 0));
+    assertEquals(1.5, client.doubleVariation("frac", ctx, 0));
+    // numbers are doubles, so 2^63 - 1 reads as 2^63, which is outside the signed 64-bit range
+    assertEquals(0L, client.intVariation("max", ctx, 0));
+    assertEquals(Long.MIN_VALUE, client.intVariation("neg", ctx, 0));
+    assertEquals("hi", client.stringVariation("text", ctx, "fb"));
+    assertFalse(client.boolVariation("text", ctx, false));
+    assertEquals("fb", client.stringVariation("two", ctx, "fb"));
+    assertEquals(null, client.stringVariation("nothing", ctx, null));
+    assertEquals("fb", client.stringVariation("nothing", ctx, "fb"));
+    assertEquals(List.of(1.0, 2.0), client.jsonVariation("list", ctx, null));
+    assertEquals(List.of(1.0, 2.0), client.jsonVariation("list", ctx, List.of()));
+    assertEquals("x", client.jsonVariation("list", ctx, "x"));
+    assertEquals("x", client.jsonVariation("missing", ctx, "x"));
+    Evaluation<Object> missing = client.jsonVariationDetail("missing", ctx, "x");
+    assertEquals(ErrorCode.FLAG_NOT_FOUND, missing.reason().errorCode());
+    assertEquals(
+        ErrorCode.INVALID_CONTEXT,
+        client.boolVariationDetail("text", Map.of(), false).reason().errorCode());
+  }
+
+  @Test
+  void aRaiseInTheBuildIsEvaluationFailedAndOneOnErrorCall() {
+    server.serve(FakeServer.rulesetOf(FakeServer.flag("f", "true", 1)), "\"v1\"");
+    FakeClock clock = new FakeClock(false, false);
+    ToggleSlashClient client = start(options().clock(clock));
+    assertTrue(client.ready());
+    errors.clear();
+    clock.wallThrows = true;
+    Evaluation<Boolean> detail = client.boolVariationDetail("f", Map.of("key", "u"), false);
+    clock.wallThrows = false;
+    assertFalse(detail.value());
+    assertEquals(ErrorCode.EVALUATION_FAILED, detail.reason().errorCode());
+    assertTrue(detail.variationIndex().isEmpty());
+    assertEquals(1, errors.size());
+    assertTrue(errors.get(0) instanceof IllegalStateException);
+  }
+
+  @Test
+  void hooksSeeEveryCallAndARaisingHookChangesNothing() {
+    server.serve(FakeServer.rulesetOf(FakeServer.flag("f", "true", 7)), "\"v1\"");
+    List<EvaluationEvent> seen = new CopyOnWriteArrayList<>();
+    ToggleSlashClient client =
+        start(
+            options()
+                .afterEvaluation(event -> {
+                  seen.add(event);
+                  throw new IllegalArgumentException("hook");
+                }));
+    assertTrue(client.ready());
+    Map<String, Object> ctx = Map.of("key", "u");
+    assertTrue(client.boolVariation("f", ctx, false));
+    assertEquals(false, client.boolVariation("nope", ctx, false));
+    assertEquals(2, seen.size());
+    EvaluationEvent first = seen.get(0);
+    assertEquals("f", first.flagKey());
+    assertEquals(ctx, first.context());
+    assertEquals(true, first.value());
+    assertEquals(0, first.variationIndex().getAsInt());
+    assertEquals("\"v1\"", first.etag().orElseThrow());
+    assertEquals(7L, first.flagVersion().getAsLong());
+    assertEquals(ErrorCode.FLAG_NOT_FOUND, seen.get(1).reason().errorCode());
+    assertTrue(seen.get(1).flagVersion().isEmpty());
+    assertEquals(2, errors.stream().filter(e -> e instanceof IllegalArgumentException).count());
+    client.close();
+    Map<String, Object> body = body(server.events.get(0));
+    List<?> sent = (List<?>) body.get("events");
+    assertEquals(1, sent.size());
+    assertEquals(1.0, ((Map<?, ?>) sent.get(0)).get("count"));
+  }
+
+  @Test
+  void aThrowingOnErrorIsIgnored() {
+    server.rulesetHandler = x -> FakeServer.reply(x, 500, "boom");
+    ToggleSlashClient client =
+        start(
+            ClientOptions.builder(server.url(), FakeServer.KEY).stream(false)
+                .onError(e -> {
+                  throw new IllegalStateException("onError");
+                }));
+    assertFalse(client.ready());
+    assertEquals("http_500", client.status().lastError().orElseThrow());
+    assertEquals(false, client.boolVariation("f", Map.of("key", "u"), false));
+  }
+
+  @SuppressWarnings("unchecked")
+  static Map<String, Object> body(FakeServer.Seen seen) {
+    return (Map<String, Object>) Json.parse(seen.body());
+  }
+
+  @Test
+  void usageGoesOutOnCloseAsExactlyTheFourFields() {
+    server.serve(
+        FakeServer.rulesetOf(FakeServer.flag("a", "true", 1), FakeServer.flag("b", "false", 1)),
+        "\"v1\"");
+    ToggleSlashClient client = start(options());
+    assertTrue(client.ready());
+    Map<String, Object> ctx = Map.of("key", "u");
+    for (int i = 0; i < 3; i++) {
+      client.boolVariation("a", ctx, false);
     }
+    client.boolVariation("b", ctx, true);
+    client.boolVariation("missing", ctx, true);
+    client.close();
+    assertEquals(1, server.events.size());
+    FakeServer.Seen seen = server.events.get(0);
+    assertEquals("POST", seen.method());
+    assertEquals("application/json", seen.header("Content-Type"));
+    Map<String, Object> body = body(seen);
+    assertEquals(List.of("events"), List.copyOf(body.keySet()));
+    List<?> entries = (List<?>) body.get("events");
+    assertEquals(2, entries.size());
+    for (Object entry : entries) {
+      Map<?, ?> map = (Map<?, ?>) entry;
+      assertEquals(4, map.size());
+      assertTrue(map.containsKey("flag") && map.containsKey("variationIndex"));
+      assertTrue(map.containsKey("count") && map.containsKey("day"));
+      assertTrue(((String) map.get("day")).matches("\\d{4}-\\d{2}-\\d{2}"));
+    }
+    assertFalse(seen.text().contains("\"u\""));
+    // nothing is counted after close
+    client.boolVariation("a", ctx, false);
+    assertEquals(1, server.events.size());
+    assertEquals(StreamState.CLOSED, client.status().stream());
+  }
+
+  @Test
+  void countsEitherSideOfUtcMidnightGoOutAsTwoDays() {
+    server.serve(FakeServer.rulesetOf(FakeServer.flag("a", "true", 1)), "\"v1\"");
+    FakeClock clock = new FakeClock(false, false);
+    clock.wall.set(Instant.parse("2026-03-01T23:59:59.500Z").toEpochMilli());
+    ToggleSlashClient client = start(options().clock(clock));
+    assertTrue(client.ready());
+    Map<String, Object> ctx = Map.of("key", "u");
+    client.boolVariation("a", ctx, false);
+    client.boolVariation("a", ctx, false);
+    clock.wall.set(Instant.parse("2026-03-02T00:00:00.500Z").toEpochMilli());
+    client.boolVariation("a", ctx, false);
+    client.close();
+    List<?> entries = (List<?>) body(server.events.get(0)).get("events");
+    assertEquals(2, entries.size());
+    for (Object entry : entries) {
+      Map<?, ?> map = (Map<?, ?>) entry;
+      if (map.get("day").equals("2026-03-01")) {
+        assertEquals(2.0, map.get("count"));
+      } else {
+        assertEquals("2026-03-02", map.get("day"));
+        assertEquals(1.0, map.get("count"));
+      }
+    }
+  }
+
+  @Test
+  void moreThanFiveHundredEntriesGoAsSeveralRequests() {
+    StringBuilder flags = new StringBuilder();
+    String[] list = new String[1203];
+    for (int i = 0; i < list.length; i++) {
+      list[i] = FakeServer.flag("f" + i, "true", 1);
+    }
+    server.serve(FakeServer.rulesetOf(list), "\"v1\"");
+    ToggleSlashClient client = start(options());
+    assertTrue(client.ready());
+    for (int i = 0; i < list.length; i++) {
+      client.boolVariation("f" + i, Map.of("key", "u"), false);
+    }
+    client.close();
+    assertEquals(3, server.events.size());
+    int total = 0;
+    for (FakeServer.Seen seen : server.events) {
+      int n = ((List<?>) body(seen).get("events")).size();
+      assertTrue(n <= 500);
+      total += n;
+    }
+    assertEquals(list.length, total);
+    assertNotNull(flags);
+  }
+
+  @Test
+  void nothingPendingSendsNoRequest() {
+    server.serve(FakeServer.rulesetOf(FakeServer.flag("a", "true", 1)), "\"v1\"");
+    ToggleSlashClient client = start(options().flushInterval(Duration.ofMillis(20)));
+    assertTrue(client.ready());
+    try {
+      Thread.sleep(150);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+    client.close();
+    assertTrue(server.events.isEmpty());
+  }
+
+  @Test
+  void aFailedFlushKeepsTheCountsAndTheNextOneSendsThem() {
+    server.serve(FakeServer.rulesetOf(FakeServer.flag("a", "true", 1)), "\"v1\"");
+    server.eventsHandler = x -> FakeServer.reply(x, 503, "later");
+    ToggleSlashClient client = start(options().flushInterval(Duration.ofMillis(30)));
+    assertTrue(client.ready());
+    client.boolVariation("a", Map.of("key", "u"), false);
+    waitFor("a failed flush", 5000, () -> server.events.size() >= 2);
+    assertTrue(errors.stream().anyMatch(e -> "http_503".equals(((ToggleSlashException) e).code())));
+    server.eventsHandler = x -> FakeServer.reply(x, 204, "");
+    int before = server.events.size();
+    waitFor("a good flush", 5000, () -> server.events.size() > before);
+    Map<?, ?> entry = (Map<?, ?>) ((List<?>) body(server.events.get(before)).get("events")).get(0);
+    assertEquals(1.0, entry.get("count"));
+    int sent = server.events.size();
+    try {
+      Thread.sleep(150);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+    assertEquals(sent, server.events.size());
+  }
+
+  @Test
+  void aClientErrorDropsTheBatchAndGoesOn() {
+    server.serve(FakeServer.rulesetOf(FakeServer.flag("a", "true", 1)), "\"v1\"");
+    server.eventsHandler = x -> FakeServer.reply(x, 400, "no");
+    ToggleSlashClient client = start(options().flushInterval(Duration.ofMillis(30)));
+    assertTrue(client.ready());
+    client.boolVariation("a", Map.of("key", "u"), false);
+    waitFor("one flush", 5000, () -> server.events.size() >= 1);
+    try {
+      Thread.sleep(200);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+    assertEquals(1, server.events.size());
+  }
+
+  @Test
+  void aHeldRetryAfterMeansCloseLosesTheCountsAndSaysSo() {
+    server.serve(FakeServer.rulesetOf(FakeServer.flag("a", "true", 1)), "\"v1\"");
+    server.eventsHandler =
+        x -> {
+          x.getResponseHeaders().add("Retry-After", "30");
+          FakeServer.reply(x, 429, "slow");
+        };
+    ToggleSlashClient client = start(options().flushInterval(Duration.ofMillis(30)));
+    assertTrue(client.ready());
+    Map<String, Object> ctx = Map.of("key", "u");
+    client.boolVariation("a", ctx, false);
+    waitFor("the 429", 5000, () -> server.events.size() >= 1);
+    client.boolVariation("a", ctx, false);
+    errors.clear();
+    client.close();
+    assertEquals(1, server.events.size());
+    assertTrue(
+        errors.stream()
+            .anyMatch(e ->
+                e.getMessage()
+                    .equals("closed with 1 usage counts unsent: the server asked to wait")));
+  }
+
+  @Test
+  void closeIsSafeTwiceAndEvaluationStillAnswers() {
+    server.serve(FakeServer.rulesetOf(FakeServer.flag("a", "true", 1)), "\"v1\"");
+    ToggleSlashClient client = start(options());
+    assertTrue(client.ready());
+    client.close();
+    client.close();
+    assertTrue(client.boolVariation("a", Map.of("key", "u"), false));
+    assertEquals(StreamState.CLOSED, client.status().stream());
+    assertTrue(client.ready());
+  }
+
+  @Test
+  void closeBeforeTheFirstLoadSettlesReadyFalse() {
+    CountDownLatch never = new CountDownLatch(1);
+    server.rulesetHandler =
+        x -> {
+          try {
+            never.await(10, TimeUnit.SECONDS);
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          }
+        };
+    ToggleSlashClient client = start(options().requestTimeout(Duration.ofSeconds(30)));
+    waitFor("the request", 5000, () -> !server.ruleset.isEmpty());
+    long start = System.nanoTime();
+    client.close();
+    assertFalse(client.ready());
+    assertTrue(System.nanoTime() - start < 3_000_000_000L);
+    assertTrue(client.status().lastError().isEmpty());
+    assertTrue(errors.isEmpty());
+    never.countDown();
+  }
+
+  @Test
+  void aRulesetThatNeverAnswersIsATimeoutAndReadyIsBounded() {
+    server.rulesetHandler =
+        x -> {
+          try {
+            Thread.sleep(3000);
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          }
+        };
+    ToggleSlashClient client = start(options().requestTimeout(Duration.ofMillis(300)));
+    long start = System.nanoTime();
+    assertFalse(client.ready());
+    assertTrue(System.nanoTime() - start < 2_000_000_000L);
+    assertEquals("timeout", client.status().lastError().orElseThrow());
+  }
+
+  @Test
+  void aBodyThatNeverEndsIsATimeoutToo() {
+    server.rulesetHandler =
+        x -> {
+          x.sendResponseHeaders(200, 100_000);
+          x.getResponseBody().write("{\"flags\":".getBytes());
+          x.getResponseBody().flush();
+          try {
+            Thread.sleep(3000);
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          }
+        };
+    ToggleSlashClient client = start(options().requestTimeout(Duration.ofMillis(300)));
+    assertFalse(client.ready());
+    assertEquals("timeout", client.status().lastError().orElseThrow());
+  }
+
+  @Test
+  void aStreamChangeIsFetchedAndTheSameTagIsNot() {
+    server.serve(FakeServer.rulesetOf(FakeServer.flag("f", "true", 1)), "\"v1\"");
+    ToggleSlashClient client =
+        start(
+            ClientOptions.builder(server.url(), FakeServer.KEY)
+                .onError(errors::add)
+                .requestTimeout(Duration.ofSeconds(5)));
+    assertTrue(client.ready());
+    waitFor("connected", 5000, () -> client.status().stream() == StreamState.CONNECTED);
+    assertEquals("text/event-stream", server.stream.get(0).header("Accept"));
+    int fetches = server.ruleset.size();
+    server.push("event: changed\ndata: \"v1\"\n\n");
+    server.push("event: other\ndata: x\n\n");
+    server.serve(FakeServer.rulesetOf(FakeServer.flag("f", "false", 2)), "\"v2\"");
+    server.push("event: changed\ndata: \"v2\"\n\n");
+    waitFor("the new ruleset", 5000, () -> "\"v2\"".equals(client.status().etag().orElse("")));
+    assertFalse(client.boolVariation("f", Map.of("key", "u"), true));
+    assertEquals(fetches + 1, server.ruleset.size());
+    assertEquals("\"v1\"", server.ruleset.get(fetches).header("If-None-Match"));
+  }
+
+  @Test
+  void aStreamThatEndsCleanLeavesLastErrorAloneAndIsRetried() {
+    server.serve(FakeServer.rulesetOf(FakeServer.flag("f", "true", 1)), "\"v1\"");
+    ToggleSlashClient client =
+        start(
+            ClientOptions.builder(server.url(), FakeServer.KEY)
+                .jitter(() -> 0.5)
+                .onError(errors::add)
+                .requestTimeout(Duration.ofSeconds(5)));
+    assertTrue(client.ready());
+    waitFor("connected", 5000, () -> client.status().stream() == StreamState.CONNECTED);
+    server.push("END");
+    waitFor("disconnected", 5000, () -> client.status().stream() != StreamState.CONNECTED);
+    assertTrue(client.status().lastError().isEmpty());
+    waitFor("a second stream", 8000, () -> server.stream.size() >= 2);
+  }
+
+  @Test
+  void aNonOkStreamIsHttpStatusAndAPollFollows() {
+    server.serve(FakeServer.rulesetOf(FakeServer.flag("f", "true", 1)), "\"v1\"");
+    server.streamHandler = x -> FakeServer.reply(x, 503, "no");
+    ToggleSlashClient client =
+        start(
+            ClientOptions.builder(server.url(), FakeServer.KEY)
+                .jitter(() -> 0.5)
+                .onError(errors::add)
+                .requestTimeout(Duration.ofSeconds(5)));
+    assertTrue(client.ready());
+    // one status() read is one snapshot; a second read could already see the next attempt
+    waitFor(
+        "http_503 while disconnected",
+        5000,
+        () -> {
+          Status status = client.status();
+          return "http_503".equals(status.lastError().orElse(""))
+              && status.stream() == StreamState.DISCONNECTED;
+        });
+    waitFor("a poll after it", 8000, () -> server.ruleset.size() >= 2);
   }
 }

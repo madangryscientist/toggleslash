@@ -1,86 +1,71 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
-import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.charset.CharsetDecoder;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Utf8Decoder;
+import java.util.function.BiConsumer;
 
 /**
- * A server-sent events parser, to the WHATWG rules: lines end in LF, CRLF or a lone CR; a line that
- * starts with a colon is a comment; the event name defaults to {@code message}; several {@code
- * data} lines are joined with LF; an event with no {@code data} line is dropped; an event still
- * open when the input ends is discarded (it is never flushed). Bytes are decoded as UTF-8 across
- * chunk boundaries, with U+FFFD for bad bytes.
+ * A Server-Sent Events parser as the WHATWG standard reads one: LF, CRLF and a lone CR end a line,
+ * a line starting with {@code :} is a comment, a leading byte order mark is skipped, and UTF-8 and
+ * line endings may be split across reads. Only {@code event} and {@code data} are read. An event
+ * with no {@code data} line is dropped, and one still open at the end of the stream is discarded.
+ * Not thread safe: one stream's reader owns it.
  */
 final class SseParser {
-  /** One dispatched event. */
-  record Event(String name, String data) {}
 
-  private final CharsetDecoder decoder =
-      StandardCharsets.UTF_8
-          .newDecoder()
-          .onMalformedInput(CodingErrorAction.REPLACE)
-          .onUnmappableCharacter(CodingErrorAction.REPLACE);
-  private ByteBuffer pending = ByteBuffer.allocate(0);
+  private final Utf8Decoder decoder = new Utf8Decoder();
+  private final StringBuilder chars = new StringBuilder();
   private final StringBuilder line = new StringBuilder();
   private final StringBuilder data = new StringBuilder();
+  private final BiConsumer<String, String> sink;
   private String name = "";
   private boolean hasData;
-  private boolean skipLf;
-  private boolean atStart = true;
+  private boolean lastWasCr;
+  private boolean first = true;
 
-  /** Feeds the next bytes and returns the events they completed. */
-  List<Event> feed(byte[] chunk, int length) {
-    ByteBuffer input = ByteBuffer.allocate(pending.remaining() + length);
-    input.put(pending);
-    input.put(chunk, 0, length);
-    input.flip();
-    CharBuffer out = CharBuffer.allocate(input.remaining() + 1);
-    decoder.decode(input, out, false);
-    pending = ByteBuffer.allocate(input.remaining());
-    pending.put(input);
-    pending.flip();
-    out.flip();
-    List<Event> events = new ArrayList<>();
-    while (out.hasRemaining()) {
-      char c = out.get();
-      if (atStart) {
-        atStart = false;
-        if (c == '﻿') {
-          continue;
-        }
+  /** A parser that hands each event to {@code sink} as (name, data). */
+  SseParser(BiConsumer<String, String> sink) {
+    this.sink = sink;
+  }
+
+  /** Feeds bytes read from the stream. */
+  void feed(byte[] bytes, int offset, int length) {
+    chars.setLength(0);
+    decoder.feed(bytes, offset, length, chars);
+    consume();
+  }
+
+  private void consume() {
+    int from = 0;
+    if (first && chars.length() > 0) {
+      first = false;
+      if (chars.charAt(0) == '﻿') {
+        from = 1;
       }
-      if (skipLf) {
-        skipLf = false;
+    }
+    for (int i = from; i < chars.length(); i++) {
+      char c = chars.charAt(i);
+      if (lastWasCr) {
+        lastWasCr = false;
         if (c == '\n') {
           continue;
         }
       }
       if (c == '\r') {
-        skipLf = true;
-        endLine(events);
+        lastWasCr = true;
+        endOfLine();
       } else if (c == '\n') {
-        endLine(events);
+        endOfLine();
       } else {
         line.append(c);
       }
     }
-    return events;
   }
 
-  private void endLine(List<Event> events) {
+  private void endOfLine() {
     String text = line.toString();
     line.setLength(0);
     if (text.isEmpty()) {
-      if (hasData) {
-        events.add(new Event(name.isEmpty() ? "message" : name, data.toString()));
-      }
-      name = "";
-      data.setLength(0);
-      hasData = false;
+      dispatch();
       return;
     }
     if (text.charAt(0) == ':') {
@@ -100,6 +85,19 @@ final class SseParser {
       }
       data.append(value);
       hasData = true;
+    }
+  }
+
+  private void dispatch() {
+    if (hasData) {
+      String eventName = name.isEmpty() ? "message" : name;
+      String eventData = data.toString();
+      name = "";
+      data.setLength(0);
+      hasData = false;
+      sink.accept(eventName, eventData);
+    } else {
+      name = "";
     }
   }
 }

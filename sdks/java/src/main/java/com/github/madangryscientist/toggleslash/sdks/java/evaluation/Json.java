@@ -1,22 +1,25 @@
 package com.github.madangryscientist.toggleslash.sdks.java.evaluation;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * The JSON reader and writer. The JDK has no JSON parser, and the spec pins what a parser must
- * keep: numbers are binary64 ({@code 1e999} is Infinity, not an error), negative zero is kept, and
- * a lone surrogate in a string stays as it is.
+ * A JSON parser that keeps what the evaluation spec needs. Numbers are binary64 ({@link Double}),
+ * so {@code 1e999} is infinity and {@code 9007199254740993} reads as {@code 9007199254740992}. A
+ * string is a Java {@link String}, so a lone surrogate written as {@code "\ud800"} stays one {@code
+ * char}. A duplicate key keeps the last value.
  *
- * <p>A value is a tree of {@code LinkedHashMap<String,Object>}, {@code ArrayList<Object>}, {@code
- * String}, {@code Double}, {@code Boolean} and {@code null}.
+ * <p>Values come out as {@code null}, {@link Boolean}, {@link Double}, {@link String}, {@link List}
+ * of these and {@link Map} from {@link String} to these.
  */
 public final class Json {
-  /** Nesting deeper than this is an error, so no input can overflow the stack. */
-  static final int MAX_DEPTH = 512;
+
+  /** Nesting deeper than this is refused (the contract's minimum is 512). */
+  static final int MAX_DEPTH = 1000;
+
+  private static final String BOM = String.valueOf((char) 0xFEFF);
 
   private final String text;
   private int pos;
@@ -25,51 +28,68 @@ public final class Json {
     this.text = text;
   }
 
-  /** Reads the bytes of a response body: UTF-8 with U+FFFD for bad bytes, a leading BOM skipped. */
-  public static Object parse(byte[] body) {
-    String decoded = new String(body, StandardCharsets.UTF_8);
-    return parse(decoded.startsWith("﻿") ? decoded.substring(1) : decoded);
+  /** Thrown for text that is not JSON. */
+  public static final class ParseException extends RuntimeException {
+    private static final long serialVersionUID = 1L;
+
+    ParseException(String message) {
+      super(message);
+    }
   }
 
-  /** Reads JSON text. A duplicate key keeps the last value. Throws {@link JsonException}. */
+  /**
+   * Parses UTF-8 bytes. Invalid bytes become U+FFFD, one per maximal invalid subpart, and a leading
+   * byte order mark is skipped.
+   */
+  public static Object parse(byte[] bytes) {
+    return parse(decodeUtf8(bytes));
+  }
+
+  /** Parses JSON text. */
   public static Object parse(String text) {
-    Json reader = new Json(text);
-    reader.skipSpace();
-    Object value = reader.value(0);
-    reader.skipSpace();
-    if (reader.pos != text.length()) {
-      throw new JsonException("unexpected content after the value");
+    Json json = new Json(text);
+    if (text.startsWith(BOM)) {
+      json.pos = 1;
+    }
+    json.skipWhitespace();
+    Object value = json.value(0);
+    json.skipWhitespace();
+    if (json.pos != text.length()) {
+      throw json.error("unexpected content after the value");
     }
     return value;
   }
 
-  private void skipSpace() {
-    while (pos < text.length()) {
-      char c = text.charAt(pos);
-      if (c != ' ' && c != '\t' && c != '\n' && c != '\r') {
-        return;
-      }
-      pos++;
-    }
+  /** Decodes UTF-8 with U+FFFD for invalid input, as the WHATWG decoder does. */
+  public static String decodeUtf8(byte[] bytes) {
+    return Utf8Decoder.decode(bytes, 0, bytes.length);
   }
 
-  private char peek() {
-    if (pos >= text.length()) {
-      throw new JsonException("unexpected end of input");
+  private ParseException error(String message) {
+    return new ParseException(message + " at " + pos);
+  }
+
+  private void skipWhitespace() {
+    while (pos < text.length()) {
+      char c = text.charAt(pos);
+      if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+        pos++;
+      } else {
+        return;
+      }
     }
-    return text.charAt(pos);
   }
 
   private Object value(int depth) {
-    if (depth > MAX_DEPTH) {
-      throw new JsonException("nested too deeply");
+    if (pos >= text.length()) {
+      throw error("unexpected end");
     }
-    char c = peek();
+    char c = text.charAt(pos);
     switch (c) {
       case '{':
-        return object(depth);
+        return object(depth + 1);
       case '[':
-        return array(depth);
+        return array(depth + 1);
       case '"':
         return string();
       case 't':
@@ -82,71 +102,87 @@ public final class Json {
         literal("null");
         return null;
       default:
-        return number();
+        if (c == '-' || (c >= '0' && c <= '9')) {
+          return number();
+        }
+        throw error("unexpected character");
     }
   }
 
   private void literal(String word) {
     if (!text.startsWith(word, pos)) {
-      throw new JsonException("invalid literal");
+      throw error("bad literal");
     }
     pos += word.length();
   }
 
   private Map<String, Object> object(int depth) {
-    Map<String, Object> map = new LinkedHashMap<>();
+    if (depth > MAX_DEPTH) {
+      throw error("nested too deeply");
+    }
     pos++;
-    skipSpace();
+    Map<String, Object> map = new LinkedHashMap<>();
+    skipWhitespace();
     if (peek() == '}') {
       pos++;
       return map;
     }
     while (true) {
-      skipSpace();
+      skipWhitespace();
       if (peek() != '"') {
-        throw new JsonException("expected a member name");
+        throw error("expected a key");
       }
-      String name = string();
-      skipSpace();
+      String key = string();
+      skipWhitespace();
       if (peek() != ':') {
-        throw new JsonException("expected ':'");
+        throw error("expected ':'");
       }
       pos++;
-      skipSpace();
-      map.put(name, value(depth + 1));
-      skipSpace();
+      skipWhitespace();
+      map.put(key, value(depth));
+      skipWhitespace();
       char c = peek();
       pos++;
       if (c == '}') {
         return map;
       }
       if (c != ',') {
-        throw new JsonException("expected ',' or '}'");
+        throw error("expected ',' or '}'");
       }
     }
   }
 
   private List<Object> array(int depth) {
-    List<Object> list = new ArrayList<>();
+    if (depth > MAX_DEPTH) {
+      throw error("nested too deeply");
+    }
     pos++;
-    skipSpace();
+    List<Object> list = new ArrayList<>();
+    skipWhitespace();
     if (peek() == ']') {
       pos++;
       return list;
     }
     while (true) {
-      skipSpace();
-      list.add(value(depth + 1));
-      skipSpace();
+      skipWhitespace();
+      list.add(value(depth));
+      skipWhitespace();
       char c = peek();
       pos++;
       if (c == ']') {
         return list;
       }
       if (c != ',') {
-        throw new JsonException("expected ',' or ']'");
+        throw error("expected ',' or ']'");
       }
     }
+  }
+
+  private char peek() {
+    if (pos >= text.length()) {
+      throw error("unexpected end");
+    }
+    return text.charAt(pos);
   }
 
   private String string() {
@@ -154,14 +190,17 @@ public final class Json {
     StringBuilder out = null;
     int start = pos;
     while (true) {
-      char c = peek();
+      if (pos >= text.length()) {
+        throw error("unterminated string");
+      }
+      char c = text.charAt(pos);
       if (c == '"') {
-        String tail = text.substring(start, pos);
+        String piece = text.substring(start, pos);
         pos++;
-        return out == null ? tail : out.append(tail).toString();
+        return out == null ? piece : out.append(piece).toString();
       }
       if (c < 0x20) {
-        throw new JsonException("control character in string");
+        throw error("control character in string");
       }
       if (c != '\\') {
         pos++;
@@ -178,9 +217,9 @@ public final class Json {
   }
 
   private char escape() {
-    char c = peek();
+    char e = peek();
     pos++;
-    switch (c) {
+    switch (e) {
       case '"':
         return '"';
       case '\\':
@@ -200,162 +239,68 @@ public final class Json {
       case 'u':
         return unicode();
       default:
-        throw new JsonException("invalid escape");
+        throw error("bad escape");
     }
   }
 
   private char unicode() {
     if (pos + 4 > text.length()) {
-      throw new JsonException("short unicode escape");
+      throw error("bad unicode escape");
     }
-    int code = 0;
+    int value = 0;
     for (int i = 0; i < 4; i++) {
       int digit = Character.digit(text.charAt(pos + i), 16);
-      char d = text.charAt(pos + i);
-      boolean ascii = d < 0x80;
+      char c = text.charAt(pos + i);
+      boolean ascii = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
       if (digit < 0 || !ascii) {
-        throw new JsonException("invalid unicode escape");
+        throw error("bad unicode escape");
       }
-      code = code * 16 + digit;
+      value = value * 16 + digit;
     }
     pos += 4;
-    return (char) code;
-  }
-
-  private static boolean isDigit(char c) {
-    return c >= '0' && c <= '9';
+    return (char) value;
   }
 
   private Double number() {
     int start = pos;
-    if (peek() == '-') {
+    if (text.charAt(pos) == '-') {
       pos++;
     }
-    char first = peek();
+    if (pos >= text.length()) {
+      throw error("bad number");
+    }
+    char first = text.charAt(pos);
     if (first == '0') {
       pos++;
     } else if (first >= '1' && first <= '9') {
       digits();
     } else {
-      throw new JsonException("invalid value");
+      throw error("bad number");
     }
     if (pos < text.length() && text.charAt(pos) == '.') {
       pos++;
-      digits();
+      if (digits() == 0) {
+        throw error("bad number");
+      }
     }
     if (pos < text.length() && (text.charAt(pos) == 'e' || text.charAt(pos) == 'E')) {
       pos++;
       if (pos < text.length() && (text.charAt(pos) == '+' || text.charAt(pos) == '-')) {
         pos++;
       }
-      digits();
+      if (digits() == 0) {
+        throw error("bad number");
+      }
     }
     return Double.valueOf(Double.parseDouble(text.substring(start, pos)));
   }
 
-  private void digits() {
-    if (pos >= text.length() || !isDigit(text.charAt(pos))) {
-      throw new JsonException("expected a digit");
-    }
-    while (pos < text.length() && isDigit(text.charAt(pos))) {
+  private int digits() {
+    int count = 0;
+    while (pos < text.length() && text.charAt(pos) >= '0' && text.charAt(pos) <= '9') {
       pos++;
+      count++;
     }
-  }
-
-  /**
-   * Writes a value as JSON. Infinity is {@code 1e999}, negative zero is {@code -0}, and a lone
-   * surrogate is {@code \}{@code udXXX}. NaN cannot be written in JSON and becomes {@code null}.
-   */
-  public static String write(Object value) {
-    StringBuilder out = new StringBuilder();
-    write(out, value);
-    return out.toString();
-  }
-
-  private static void write(StringBuilder out, Object value) {
-    if (value == null) {
-      out.append("null");
-    } else if (value instanceof String s) {
-      writeString(out, s);
-    } else if (value instanceof Boolean b) {
-      out.append(b.booleanValue() ? "true" : "false");
-    } else if (value instanceof Double d) {
-      writeNumber(out, d.doubleValue());
-    } else if (value instanceof Number n) {
-      if (n instanceof Long || n instanceof Integer) {
-        out.append(n.longValue());
-      } else {
-        writeNumber(out, n.doubleValue());
-      }
-    } else if (value instanceof Map<?, ?> map) {
-      out.append('{');
-      boolean first = true;
-      for (Map.Entry<?, ?> entry : map.entrySet()) {
-        if (!first) {
-          out.append(',');
-        }
-        first = false;
-        writeString(out, String.valueOf(entry.getKey()));
-        out.append(':');
-        write(out, entry.getValue());
-      }
-      out.append('}');
-    } else if (value instanceof List<?> list) {
-      out.append('[');
-      for (int i = 0; i < list.size(); i++) {
-        if (i > 0) {
-          out.append(',');
-        }
-        write(out, list.get(i));
-      }
-      out.append(']');
-    } else {
-      writeString(out, value.toString());
-    }
-  }
-
-  private static void writeNumber(StringBuilder out, double d) {
-    if (Double.isNaN(d)) {
-      out.append("null");
-    } else if (Double.isInfinite(d)) {
-      out.append(d > 0 ? "1e999" : "-1e999");
-    } else if (d == 0) {
-      out.append(1 / d < 0 ? "-0" : "0");
-    } else if (d == Math.rint(d) && Math.abs(d) < 1e15) {
-      out.append((long) d);
-    } else {
-      out.append(Double.toString(d));
-    }
-  }
-
-  private static void writeString(StringBuilder out, String s) {
-    out.append('"');
-    for (int i = 0; i < s.length(); i++) {
-      char c = s.charAt(i);
-      if (c == '"') {
-        out.append("\\\"");
-      } else if (c == '\\') {
-        out.append("\\\\");
-      } else if (c == '\n') {
-        out.append("\\n");
-      } else if (c == '\r') {
-        out.append("\\r");
-      } else if (c == '\t') {
-        out.append("\\t");
-      } else if (c < 0x20 || isLoneSurrogate(s, i)) {
-        out.append(String.format("\\u%04x", (int) c));
-      } else {
-        out.append(c);
-      }
-    }
-    out.append('"');
-  }
-
-  private static boolean isLoneSurrogate(String s, int i) {
-    char c = s.charAt(i);
-    if (Character.isHighSurrogate(c)) {
-      return i + 1 >= s.length() || !Character.isLowSurrogate(s.charAt(i + 1));
-    }
-    return Character.isLowSurrogate(c) && (i == 0 || !Character.isHighSurrogate(s.charAt(i - 1)));
+    return count;
   }
 }

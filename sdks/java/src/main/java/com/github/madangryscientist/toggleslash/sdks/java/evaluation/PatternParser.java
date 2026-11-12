@@ -4,96 +4,65 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The parser for {@code matches} patterns, to the "Patterns" section of {@code docs/evaluation.md}:
- * code points in, a tree with each node's size out, or {@code null} for a pattern that is not
- * valid. {@link Pattern} compiles the tree and runs it. No platform regular expression is involved.
+ * The parser for {@code matches} patterns, to "Patterns" in the evaluation spec: code points in, a
+ * tree with each node's size out, or null for a pattern that is not valid. {@link PatternProgram}
+ * compiles the tree and runs it.
  */
 final class PatternParser {
+
   private static final int MAX_LENGTH = 1024;
-  private static final int MAX_SIZE = 10000;
+  private static final int MAX_SIZE = 10_000;
   private static final int MAX_COUNT = 100;
   private static final int END = -1;
-  private static final int NEWLINE = 0x0a;
+  private static final int NEWLINE = 0x0A;
 
-  /** Code point ranges as pairs {@code lo, hi}, inclusive, or their complement when negated. */
+  /** Code point ranges as pairs lo, hi (inclusive), or their complement when negated. */
   record Item(int[] ranges, boolean negate) {}
 
-  /** A class: any of its items, or none of them when {@code negate} is set. */
+  /** A class: any of its items, or none of them when negated. */
   record CharSet(List<Item> items, boolean negate) {}
 
-  /** A node of the tree. {@code size} is what the spec's size limit counts. */
-  abstract static sealed class Node {
-    final int size;
+  /** A parsed node and its size. */
+  sealed interface Node permits SetNode, AnchorNode, Concat, Alt, Repeat {
+    int size();
+  }
 
-    Node(int size) {
-      this.size = size;
+  record SetNode(CharSet set) implements Node {
+    @Override
+    public int size() {
+      return 1;
     }
   }
 
-  static final class SetNode extends Node {
-    final CharSet set;
-
-    SetNode(CharSet set) {
-      super(1);
-      this.set = set;
+  /** {@code ^} or {@code $}. */
+  record AnchorNode(boolean atStart) implements Node {
+    @Override
+    public int size() {
+      return 1;
     }
   }
 
-  static final class AnchorNode extends Node {
-    final boolean start;
+  record Concat(List<Node> parts, int size) implements Node {}
 
-    AnchorNode(boolean start) {
-      super(1);
-      this.start = start;
+  record Alt(List<Node> sides, int size) implements Node {}
+
+  /** {@code max} is -1 for no upper bound. */
+  record Repeat(Node body, int min, int max, int size) implements Node {}
+
+  /** One atom inside a class or after a backslash: a single code point, or a shorthand class. */
+  private record Atom(int codePoint, Item item) {
+    static Atom of(int codePoint) {
+      return new Atom(codePoint, null);
+    }
+
+    static Atom of(Item item) {
+      return new Atom(0, item);
+    }
+
+    Item asItem() {
+      return item != null ? item : new Item(new int[] {codePoint, codePoint}, false);
     }
   }
-
-  static final class ConcatNode extends Node {
-    final List<Node> parts;
-
-    ConcatNode(List<Node> parts, int size) {
-      super(size);
-      this.parts = parts;
-    }
-  }
-
-  static final class AltNode extends Node {
-    final List<Node> sides;
-
-    AltNode(List<Node> sides, int size) {
-      super(size);
-      this.sides = sides;
-    }
-  }
-
-  static final class RepeatNode extends Node {
-    final Node body;
-    final int min;
-
-    /** The upper bound, or -1 for none. */
-    final int max;
-
-    RepeatNode(Node body, int min, int max, int size) {
-      super(size);
-      this.body = body;
-      this.min = min;
-      this.max = max;
-    }
-  }
-
-  private static final Item DIGIT = new Item(new int[] {0x30, 0x39}, false);
-  private static final Item WORD =
-      new Item(new int[] {0x30, 0x39, 0x41, 0x5a, 0x5f, 0x5f, 0x61, 0x7a}, false);
-  // U+0009 to U+000D are \t \n \v \f \r.
-  private static final Item SPACE = new Item(new int[] {0x09, 0x0d, 0x20, 0x20}, false);
-
-  /** {@code \} before one of these is that character. */
-  private static final String ESCAPABLE = "\\.[]()|*+?{}^$-";
-
-  /** Code points that cannot start an atom outside a class. */
-  private static final String NOT_AN_ATOM = "*+?{}]";
-
-  private static final String QUANTIFIERS = "*+?{";
 
   private static final class Invalid extends RuntimeException {
     private static final long serialVersionUID = 1L;
@@ -103,6 +72,13 @@ final class PatternParser {
     }
   }
 
+  private static final Item DIGIT = new Item(new int[] {0x30, 0x39}, false);
+  private static final Item WORD =
+      new Item(new int[] {0x30, 0x39, 0x41, 0x5A, 0x5F, 0x5F, 0x61, 0x7A}, false);
+
+  /** U+0009 to U+000D are \t \n \v \f \r. */
+  private static final Item SPACE = new Item(new int[] {0x09, 0x0D, 0x20, 0x20}, false);
+
   private final int[] cps;
   private int pos;
 
@@ -110,23 +86,9 @@ final class PatternParser {
     this.cps = cps;
   }
 
-  /** The code points of a UTF-16 string: a valid surrogate pair is one, a lone surrogate itself. */
-  static int[] codePoints(String text) {
-    int[] points = new int[text.length()];
-    int n = 0;
-    int i = 0;
-    while (i < text.length()) {
-      int cp = text.codePointAt(i);
-      points[n++] = cp;
-      i += Character.charCount(cp);
-    }
-    return java.util.Arrays.copyOf(points, n);
-  }
-
-  /**
-   * The tree for a pattern's code points, or null when it is not valid: too long, malformed or big.
-   */
-  static Node parse(int[] cps) {
+  /** The tree for a pattern's code points, or null when it is too long, malformed or too big. */
+  static Node parse(String pattern) {
+    int[] cps = pattern.codePoints().toArray();
     if (cps.length > MAX_LENGTH) {
       return null;
     }
@@ -134,28 +96,16 @@ final class PatternParser {
       PatternParser parser = new PatternParser(cps);
       Node node = parser.alternation();
       if (parser.pos < cps.length) {
-        return null; // an unmatched ")"
+        return null; // an unmatched ')'
       }
-      return node.size > MAX_SIZE ? null : node;
+      return node.size() > MAX_SIZE ? null : node;
     } catch (Invalid e) {
       return null;
     }
   }
 
-  private static Invalid fail() {
-    return new Invalid();
-  }
-
-  private static int saturate(int size) {
-    return Math.min(size, MAX_SIZE + 1);
-  }
-
-  private static boolean isDigit(int c) {
-    return c >= 0x30 && c <= 0x39;
-  }
-
-  private static boolean in(String set, int c) {
-    return c >= 0 && c < 0x80 && set.indexOf(c) >= 0;
+  private static int saturate(long size) {
+    return (int) Math.min(size, MAX_SIZE + 1L);
   }
 
   private int peek(int offset) {
@@ -163,12 +113,8 @@ final class PatternParser {
     return at < cps.length ? cps[at] : END;
   }
 
-  private int peek() {
-    return peek(0);
-  }
-
   private int take() {
-    int c = peek();
+    int c = peek(0);
     pos++;
     return c;
   }
@@ -176,112 +122,129 @@ final class PatternParser {
   private Node alternation() {
     List<Node> sides = new ArrayList<>();
     sides.add(concat());
-    while (peek() == '|') {
+    while (peek(0) == '|') {
       pos++;
       sides.add(concat());
     }
     if (sides.size() == 1) {
       return sides.get(0);
     }
-    int size = sides.size() - 1;
+    long size = sides.size() - 1L;
     for (Node side : sides) {
-      size += side.size;
+      size += side.size();
     }
-    return new AltNode(sides, saturate(size));
+    return new Alt(sides, saturate(size));
   }
 
   private Node concat() {
     List<Node> parts = new ArrayList<>();
-    int size = 0;
-    for (int c = peek(); c != END && c != '|' && c != ')'; c = peek()) {
+    long size = 0;
+    for (int c = peek(0); c != END && c != '|' && c != ')'; c = peek(0)) {
       Node atom = atom();
-      boolean anchor = atom instanceof AnchorNode;
-      Node part = !anchor && in(QUANTIFIERS, peek()) ? quantify(atom) : atom;
+      int next = peek(0);
+      boolean quantifier = next == '*' || next == '+' || next == '?' || next == '{';
+      Node part = !(atom instanceof AnchorNode) && quantifier ? quantify(atom) : atom;
       parts.add(part);
-      size += part.size;
+      size += part.size();
     }
-    return new ConcatNode(parts, saturate(size));
+    return new Concat(parts, saturate(size));
   }
 
   private Node atom() {
     int c = take();
-    if (c == '(') {
-      return group();
+    switch (c) {
+      case '(':
+        return group();
+      case '[':
+        return new SetNode(charClass());
+      case '\\':
+        return new SetNode(single(escape().asItem()));
+      case '*':
+      case '+':
+      case '?':
+      case '{':
+      case '}':
+      case ']':
+        throw new Invalid();
+      case '.':
+        return new SetNode(single(new Item(new int[] {NEWLINE, NEWLINE}, true)));
+      case '^':
+        return new AnchorNode(true);
+      case '$':
+        return new AnchorNode(false);
+      default:
+        return new SetNode(single(Atom.of(c).asItem()));
     }
-    if (c == '[') {
-      return new SetNode(charClass());
-    }
-    if (c == '\\') {
-      return new SetNode(new CharSet(List.of(asItem(escape())), false));
-    }
-    if (in(NOT_AN_ATOM, c)) {
-      throw fail();
-    }
-    if (c == '.') {
-      return new SetNode(new CharSet(List.of(new Item(new int[] {NEWLINE, NEWLINE}, true)), false));
-    }
-    if (c == '^') {
-      return new AnchorNode(true);
-    }
-    if (c == '$') {
-      return new AnchorNode(false);
-    }
-    return new SetNode(new CharSet(List.of(single(c)), false));
+  }
+
+  private static CharSet single(Item item) {
+    return new CharSet(List.of(item), false);
   }
 
   private Node group() {
     Node inner = alternation();
     if (take() != ')') {
-      throw fail();
+      throw new Invalid();
     }
     return inner;
   }
 
-  /**
-   * After a backslash: one code point (an Integer), or one of the six shorthand classes (an Item).
-   */
-  private Object escape() {
+  /** After a backslash: one code point, or one of the six shorthand classes. */
+  private Atom escape() {
     int c = take();
-    if (in(ESCAPABLE, c)) {
-      return Integer.valueOf(c);
-    }
     switch (c) {
+      case '\\':
+      case '.':
+      case '[':
+      case ']':
+      case '(':
+      case ')':
+      case '|':
+      case '*':
+      case '+':
+      case '?':
+      case '{':
+      case '}':
+      case '^':
+      case '$':
+      case '-':
+        return Atom.of(c);
       case 'n':
-        return Integer.valueOf(0x0a);
+        return Atom.of(0x0A);
       case 't':
-        return Integer.valueOf(0x09);
+        return Atom.of(0x09);
       case 'r':
-        return Integer.valueOf(0x0d);
+        return Atom.of(0x0D);
       case 'f':
-        return Integer.valueOf(0x0c);
+        return Atom.of(0x0C);
       case 'v':
-        return Integer.valueOf(0x0b);
+        return Atom.of(0x0B);
       case 'd':
-        return DIGIT;
+        return Atom.of(DIGIT);
       case 'w':
-        return WORD;
+        return Atom.of(WORD);
       case 's':
-        return SPACE;
+        return Atom.of(SPACE);
       case 'D':
-        return new Item(DIGIT.ranges(), true);
+        return Atom.of(new Item(DIGIT.ranges(), true));
       case 'W':
-        return new Item(WORD.ranges(), true);
+        return Atom.of(new Item(WORD.ranges(), true));
       case 'S':
-        return new Item(SPACE.ranges(), true);
+        return Atom.of(new Item(SPACE.ranges(), true));
       default:
-        throw fail();
+        throw new Invalid();
     }
   }
 
-  /** After "[": the members up to "]". */
+  /** After {@code [}: the members up to {@code ]}. */
   private CharSet charClass() {
-    boolean negate = peek() == '^';
+    boolean negate = peek(0) == '^';
     if (negate) {
       pos++;
     }
     List<Item> items = new ArrayList<>();
     items.add(member(true));
-    while (peek() != ']') {
+    while (peek(0) != ']') {
       items.add(member(false));
     }
     pos++;
@@ -290,33 +253,31 @@ final class PatternParser {
 
   /** One member: an atom, or a range of two single code points. */
   private Item member(boolean first) {
-    Object from = classAtom(first);
-    boolean range = peek() == '-' && peek(1) != END && peek(1) != ']';
+    Atom from = classAtom(first);
+    boolean range = peek(0) == '-' && peek(1) != END && peek(1) != ']';
     if (!range) {
-      return asItem(from);
+      return from.asItem();
     }
     pos++;
-    Object to = classAtom(false);
-    if (!(from instanceof Integer lo) || !(to instanceof Integer hi) || lo > hi) {
-      throw fail();
+    Atom to = classAtom(false);
+    if (from.item() != null || to.item() != null || from.codePoint() > to.codePoint()) {
+      throw new Invalid();
     }
-    return new Item(new int[] {lo, hi}, false);
+    return new Item(new int[] {from.codePoint(), to.codePoint()}, false);
   }
 
-  private Object classAtom(boolean first) {
+  private Atom classAtom(boolean first) {
     int c = take();
-    // "]" here is a class with no members; END and "[" are never members.
     if (c == END || c == '[' || c == ']') {
-      throw fail();
+      throw new Invalid();
     }
     if (c == '\\') {
       return escape();
     }
-    // An unescaped "-" is a literal only as the first member or directly before "]".
-    if (c == '-' && !first && peek() != ']') {
-      throw fail();
+    if (c == '-' && !first && peek(0) != ']') {
+      throw new Invalid();
     }
-    return Integer.valueOf(c);
+    return Atom.of(c);
   }
 
   private Node quantify(Node body) {
@@ -324,62 +285,58 @@ final class PatternParser {
     if (c != '{') {
       int min = c == '+' ? 1 : 0;
       int max = c == '?' ? 1 : -1;
-      return new RepeatNode(body, min, max, saturate(body.size + 1));
+      return new Repeat(body, min, max, saturate(body.size() + 1L));
     }
     int min = count();
     int max = upper(min);
     if (take() != '}') {
-      throw fail();
+      throw new Invalid();
     }
-    if (max < 0) {
-      return repeat(body, min, -1, min + 1);
+    if (max == -1) {
+      return repeat(body, min, -1, min + 1L);
     }
     if (min > max) {
-      throw fail();
+      throw new Invalid();
     }
     return repeat(body, min, max, max);
   }
 
-  /** After "{n": n again for "{n}", -1 for "{n,}", m for "{n,m}". Leaves the "}". */
+  /** The upper bound of a counted repeat: n again for a bare count, -1 when open ended, else m. */
   private int upper(int min) {
-    if (peek() != ',') {
+    if (peek(0) != ',') {
       return min;
     }
     pos++;
-    return peek() == '}' ? -1 : count();
+    return peek(0) == '}' ? -1 : count();
   }
 
-  private static Node repeat(Node body, int min, int max, int times) {
-    return new RepeatNode(body, min, max, Math.max(1, saturate(times * body.size)));
+  private static Node repeat(Node body, int min, int max, long times) {
+    return new Repeat(body, min, max, Math.max(1, saturate(times * body.size())));
+  }
+
+  private static boolean isDigit(int c) {
+    return c >= '0' && c <= '9';
   }
 
   /** ASCII digits with no leading zero, at most 100. */
   private int count() {
     int c = take();
     if (!isDigit(c)) {
-      throw fail();
+      throw new Invalid();
     }
     if (c == '0') {
-      if (isDigit(peek())) {
-        throw fail();
+      if (isDigit(peek(0))) {
+        throw new Invalid();
       }
       return 0;
     }
-    int value = c - 0x30;
-    while (isDigit(peek())) {
-      value = value * 10 + (take() - 0x30);
+    int value = c - '0';
+    while (isDigit(peek(0))) {
+      value = value * 10 + (take() - '0');
       if (value > MAX_COUNT) {
-        throw fail();
+        throw new Invalid();
       }
     }
     return value;
-  }
-
-  private static Item single(int c) {
-    return new Item(new int[] {c, c}, false);
-  }
-
-  private static Item asItem(Object atom) {
-    return atom instanceof Integer c ? single(c) : (Item) atom;
   }
 }

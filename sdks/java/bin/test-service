@@ -1,20 +1,10 @@
 #!/bin/sh
-# Starts the conformance test service and prints "listening http://127.0.0.1:<port>" once it does.
-# It runs the built classes; it builds them only when there are none (bin/test rebuilds every time).
-set -eu
+# Starts the Java SDK's conformance test service. It prints "listening http://127.0.0.1:<port>".
+# The classes are built by `bin/test`; this builds them only when they are missing.
+set -e
 cd "$(dirname "$0")/.."
-
-run() {
-  if command -v mise >/dev/null 2>&1; then
-    mise exec -- "$@"
-  else
-    "$@"
-  fi
-}
-
-SERVICE=target/test-classes/com/github/madangryscientist/toggleslash/sdks/java/testservice/TestService.class
-if [ ! -f "$SERVICE" ]; then
-  run mvn -B -q -DskipTests test-compile >&2
+if [ ! -d target/classes ] || [ ! -d target/test-classes ]; then
+  mise exec -- mvn -B -q -ntp -DskipTests test-compile >&2
 fi
 exec mise exec -- java -cp target/classes:target/test-classes \
-  com.github.madangryscientist.toggleslash.sdks.java.testservice.TestService
+  com.github.madangryscientist.toggleslash.sdks.java.testservice.Main

@@ -1,18 +1,6 @@
 #!/bin/sh
-# The native lint and format check. Any finding fails; there is no warning level. Nothing is rewritten.
-#   google-java-format: layout, in --dry-run so it only reports
-#   Checkstyle: the rules in checkstyle.xml, over the SDK's own sources (not the tests)
-#   javac with -Xlint:all -Werror: set in pom.xml, so compiling main and test sources is the check
-set -eu
+# The Java SDK's lint and format check: google-java-format through Spotless, then Checkstyle with
+# warnings counted as failures. The compiler's own -Xlint:all -Werror runs in bin/test.
+set -e
 cd "$(dirname "$0")/.."
-if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
-  run() { mise exec -- "$@"; }
-else
-  run() { "$@"; }
-fi
-FILES=$(find src test-service -name '*.java' | sort)
-run google-java-format --dry-run --set-exit-if-changed $FILES
-# The checkstyle that mise installs is a bare jar, so it is run through java.
-CHECKSTYLE=$(run sh -c 'command -v checkstyle')
-run java -jar "$CHECKSTYLE" -c checkstyle.xml src/main/java
-run mvn -B -q clean test-compile
+exec mise exec -- mvn -B -q -ntp spotless:check checkstyle:check
