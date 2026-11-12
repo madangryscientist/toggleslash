@@ -1,6 +1,6 @@
 #!/bin/sh
-# The native lint and format check, no warnings allowed: ruff check (rules in pyproject.toml) and
-# ruff format --check, then a byte-compile of every file under Python's development mode.
+# The native lint and format check: Ruff's lint rules (the set is named in pyproject.toml) over src, tests and
+# test-service, then Ruff's formatter in check mode. Nothing is rewritten.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -10,6 +10,5 @@ else
   run() { "$@"; }
 fi
 
-run ruff check --no-cache --output-format concise src tests test-service
-run ruff format --no-cache --check src tests test-service
-PYTHONDONTWRITEBYTECODE=1 run python -X dev -W error -m compileall -q src tests test-service >/dev/null
+run ruff check --no-cache src tests test-service
+run ruff format --check --no-cache src tests test-service

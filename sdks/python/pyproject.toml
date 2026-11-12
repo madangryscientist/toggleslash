@@ -1,13 +1,14 @@
-[build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "toggleslash"
 version = "0.0.0"
-description = "The ToggleSlash server SDK for Python (unpublished)."
+description = "The ToggleSlash server SDK for Python"
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -16,43 +17,27 @@ where = ["src"]
 toggleslash = ["py.typed"]
 
 [tool.ruff]
-line-length = 110
+line-length = 100
 target-version = "py311"
-src = ["src", "tests", "test-service"]
+src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "PL", "C4", "PIE", "T20", "S"]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "S", "C4", "RET", "RUF", "A", "PERF", "PL", "T20"]
 ignore = [
-  # Rules on counts and magic values: the evaluator and the sync loop are long state machines
-  # that the contract fixes, and splitting them to satisfy a count would hide the order of steps.
-  "PLR0911", # too many return statements
-  "PLR0912", # too many branches
-  "PLR0913", # too many arguments (create takes the contract's options)
-  "PLR0915", # too many statements
-  "PLR2004", # magic value in comparison (protocol constants are named where they matter)
-  "PLR0917", # too many positional arguments
-  "PLR1702", # too many nested blocks
-  "PLC0415", # import outside top level (the test service and TLS test import late on purpose)
-  "S101", # assert (tests use unittest, and a few internal invariants assert)
-  "S104", # binding all interfaces: the fake servers bind 127.0.0.1 only
-  "S105", # hard-coded password string: the tests use a throwaway SDK key
-  "S106", # the same, as a keyword argument
-  "S110", # try/except/pass: callbacks that raise are ignored on purpose (contract section 5)
-  "S311", # random for jitter is not security
-  "S603", # subprocess in tests runs this interpreter on a script we wrote
-  "S607", # the same, for a partial executable path (openssl is looked up with shutil.which)
-  "SIM105", # contextlib.suppress would hide which exception is ignored
-  "RUF012", # mutable class attributes in test handlers
-  "RUF001", # ambiguous unicode in test strings that probe unicode handling on purpose
-  "RUF002", # the same, in docstrings
-  "RUF003", # the same, in comments
+  # A class that is a parser, a dispatcher or a state machine has this many branches by design; the
+  # evaluator mirrors the specification's own steps. PLR2004 would turn every protocol number (a status
+  # code, a byte value, a limit from the contract) into a named constant used once.
+  "PLR0911",
+  "PLR0912",
+  "PLR0913",
+  "PLR0915",
+  "PLR2004",
+  # The formatter wraps code; a long string or comment is left to the author.
+  "E501",
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# The loop variables a test closure uses are all read before the next iteration, inside the loop body.
-"tests/*" = ["B023"]
-# bin/test reads the vector and pin counts from this file's one summary line.
-"tests/test_vectors.py" = ["T201"]
-
-[tool.ruff.format]
-quote-style = "double"
+# Tests assert, build sockets on loopback, read private modules and bind to 127.0.0.1 deliberately.
+"tests/*" = ["S101", "S104", "S105", "S106", "S108", "S311", "S603", "S607", "PLC0415", "PLW0603"]
+# The test service prints the line the harness waits for and answers whatever a test asks.
+"test-service/*" = ["T201", "S104"]

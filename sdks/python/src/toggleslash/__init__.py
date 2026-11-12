@@ -1,10 +1,12 @@
-"""The ToggleSlash Python server SDK: ``toggleslash.create(url=..., sdk_key=...)``.
+"""The ToggleSlash server SDK for Python: evaluates feature flags locally from a ruleset it keeps current.
 
-It keeps the ruleset the server serves, evaluates flags locally and sends usage counts. It never raises
-at a caller. See ``README.md`` and ``docs/sdk-contract.md``.
+    client = toggleslash.create(url="https://flags.example.com", sdk_key="...")
+    if client.variation("new-checkout", {"key": "user-1"}, False):
+        ...
+    client.close()
+
+It never raises at a caller and sends nothing about an end user. See README.md in the repository.
 """
-
-from __future__ import annotations
 
 from ._client import Client, create
 from ._types import (

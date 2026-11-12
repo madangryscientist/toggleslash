@@ -1,73 +1,75 @@
-"""A Server-Sent Events reader to the WHATWG rules the contract names (7.2, "Reading events")."""
+"""A server-sent events parser, to the WHATWG rules: UTF-8 decoded incrementally, lines end on LF, CRLF or a
+lone CR, `:` starts a comment, one leading space of a value is dropped, and an event with no data is dropped."""
 
 from __future__ import annotations
 
 import codecs
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class SseEvent:
+    name: str
+    data: str
 
 
 class SseParser:
-    """Feed it the bytes as they arrive; it returns the events that were completed.
-
-    A line ends at LF, CRLF or a lone CR; UTF-8 may be split across reads; a line that starts with ``:``
-    is a comment; only ``event`` and ``data`` are read; an event with no ``data`` line is dropped; an
-    event still incomplete when the stream ends is discarded (the caller just stops feeding).
-    """
+    """Feed it bytes as they arrive; it returns the events they completed. An event still incomplete when the
+    stream ends is never returned."""
 
     def __init__(self) -> None:
         self._decoder = codecs.getincrementaldecoder("utf-8")("replace")
-        self._tail = ""
+        self._buffer = ""
+        self._started = False
         self._skip_lf = False
         self._name = ""
         self._data: list[str] = []
 
-    def feed(self, chunk: bytes) -> list[tuple[str, str]]:
-        text = self._decoder.decode(chunk)
-        if self._skip_lf and text:
-            if text.startswith("\n"):
-                text = text[1:]
+    def feed(self, data: bytes) -> list[SseEvent]:
+        text = self._decoder.decode(data)
+        if text and not self._started:
+            self._started = True
+            text = text.removeprefix("﻿")
+        buffer = self._buffer + text
+        if self._skip_lf and buffer:
+            # The previous read ended on a CR, which already ended its line: an LF now is the same line end.
             self._skip_lf = False
-        text = self._tail + text
-        events: list[tuple[str, str]] = []
+            buffer = buffer.removeprefix("\n")
+        events: list[SseEvent] = []
+        size = len(buffer)
         start = 0
-        n = len(text)
-        i = 0
-        while i < n:
-            ch = text[i]
-            if ch in "\r\n":
-                event = self._line(text[start:i])
-                if event is not None:
-                    events.append(event)
-                if ch == "\r":
-                    if i + 1 < n:
-                        if text[i + 1] == "\n":
-                            i += 1
-                    else:
-                        self._skip_lf = True
-                i += 1
-                start = i
+        while start < size:
+            end = start
+            while end < size and buffer[end] not in "\r\n":
+                end += 1
+            if end == size:
+                break
+            if buffer[end] == "\r":
+                if end + 1 == size:
+                    self._skip_lf = True
+                    after = end + 1
+                else:
+                    after = end + 2 if buffer[end + 1] == "\n" else end + 1
             else:
-                i += 1
-        self._tail = text[start:]
+                after = end + 1
+            self._line(buffer[start:end], events)
+            start = after
+        self._buffer = buffer[start:]
         return events
 
-    def _line(self, line: str) -> tuple[str, str] | None:
-        if line == "":
-            return self._dispatch()
+    def _line(self, line: str, events: list[SseEvent]) -> None:
+        if not line:
+            if self._data:
+                events.append(SseEvent(self._name or "message", "\n".join(self._data)))
+            self._name = ""
+            self._data = []
+            return
         if line.startswith(":"):
-            return None
-        name, colon, value = line.partition(":")
-        if colon and value.startswith(" "):
-            value = value[1:]
-        if name == "event":
+            return
+        field, colon, value = line.partition(":")
+        if colon:
+            value = value.removeprefix(" ")
+        if field == "event":
             self._name = value
-        elif name == "data":
+        elif field == "data":
             self._data.append(value)
-        return None
-
-    def _dispatch(self) -> tuple[str, str] | None:
-        data, name = self._data, self._name
-        self._data = []
-        self._name = ""
-        if not data:
-            return None
-        return (name or "message"), "\n".join(data)

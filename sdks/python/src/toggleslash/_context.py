@@ -1,64 +1,108 @@
-"""Contexts: validation and the map from kind to ``(key, attributes)`` (evaluation.md, "Context")."""
+"""Contexts, to the "Contexts" section of docs/evaluation.md: one context, or several of different kinds."""
 
 from __future__ import annotations
 
+import math
+import numbers
 from collections.abc import Mapping
-from typing import Any
+from decimal import Decimal
+from typing import Any, NamedTuple
+
+from ._bucket import bucket_of
+
+DEFAULT_KIND = "user"
+MAX_SAFE = 2**53
 
 _KIND_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-")
 
-Normalised = dict[str, tuple[str, "Mapping[str, Any] | None"]]
+
+class KindContext(NamedTuple):
+    """The key and attributes of one kind, after normalising."""
+
+    key: str
+    attributes: Mapping[str, Any] | None
 
 
 def is_kind(value: Any) -> bool:
-    """A kind is one or more ASCII letters, digits, ``.``, ``_`` or ``-``, and not ``kind`` or ``multi``.
+    """`^[A-Za-z0-9._-]+$` over ASCII, and neither `kind` nor `multi`."""
+    return (
+        isinstance(value, str)
+        and value != ""
+        and value not in ("kind", "multi")
+        and all(char in _KIND_CHARS for char in value)
+    )
 
-    Checked by walking the characters: the evaluator uses no regular expression of the platform.
-    """
-    if not isinstance(value, str) or value == "" or value in ("kind", "multi"):
-        return False
-    return all(ch in _KIND_CHARS for ch in value)
 
-
-def _entry(raw: Any) -> tuple[str, Mapping[str, Any] | None] | None:
-    if not isinstance(raw, Mapping):
-        return None
-    key = raw.get("key")
+def _read_entry(value: Mapping[str, Any]) -> KindContext | None:
+    key = value.get("key")
+    attributes = value.get("attributes")
     if not isinstance(key, str) or key == "":
         return None
-    attributes = raw.get("attributes")
-    if attributes is not None and not isinstance(attributes, Mapping):
-        return None
-    return key, attributes
+    if attributes is None:
+        return KindContext(key, None)
+    return KindContext(key, attributes) if isinstance(attributes, Mapping) else None
 
 
-def normalise(context: Any) -> Normalised | None:
-    """The context as ``{kind: (key, attributes)}``, or ``None`` when it is not valid."""
-    if not isinstance(context, Mapping):
+def _read_multi(value: Mapping[str, Any]) -> dict[str, KindContext] | None:
+    contexts = value.get("contexts")
+    if value.get("key") is not None or value.get("attributes") is not None:
         return None
-    kind = context.get("kind")
+    if not isinstance(contexts, Mapping):
+        return None
+    normalised: dict[str, KindContext] = {}
+    for kind, raw in contexts.items():
+        if not is_kind(kind) or not isinstance(raw, Mapping) or raw.get("kind") is not None:
+            return None
+        entry = _read_entry(raw)
+        if entry is None:
+            return None
+        normalised[kind] = entry
+    return normalised or None
+
+
+def normalise_context(value: Any) -> dict[str, KindContext] | None:
+    """The context as a map from kind to its key and attributes, or None when it is not valid."""
+    if not isinstance(value, Mapping):
+        return None
+    kind = value.get("kind")
     if kind is None:
-        kind = "user"
-    elif not isinstance(kind, str):
-        return None
+        kind = DEFAULT_KIND
     if kind == "multi":
-        if context.get("key") is not None or context.get("attributes") is not None:
-            return None
-        contexts = context.get("contexts")
-        if not isinstance(contexts, Mapping) or len(contexts) == 0:
-            return None
-        out: Normalised = {}
-        for name, raw in contexts.items():
-            if not is_kind(name) or not isinstance(raw, Mapping) or raw.get("kind") is not None:
-                return None
-            entry = _entry(raw)
-            if entry is None:
-                return None
-            out[name] = entry
-        return out
+        return _read_multi(value)
     if not is_kind(kind):
         return None
-    entry = _entry(context)
-    if entry is None:
+    entry = _read_entry(value)
+    return None if entry is None else {kind: entry}
+
+
+def kind_bucket(key: str, salt: str, kind: str | None, contexts: Mapping[str, KindContext]) -> int:
+    """The bucket for the key of `kind` (None is `user`); 0 when the context does not have that kind."""
+    chosen = DEFAULT_KIND if kind is None else kind
+    context = contexts.get(chosen)
+    if context is None:
+        return 0
+    context_key = context.key if chosen == DEFAULT_KIND else f"{chosen}:{context.key}"
+    return bucket_of(key, salt, context_key)
+
+
+def to_float(value: Any) -> float:
+    """A number the way binary64 holds it: an integer beyond 2**53 rounds, one too large is infinite."""
+    try:
+        return float(value)
+    except OverflowError:
+        return math.inf if value > 0 else -math.inf
+    except (ValueError, TypeError):
+        return math.nan
+
+
+def number_of(value: Any) -> float | int | None:
+    """`value` as a number the evaluator compares, or None when it is not one (a bool is not)."""
+    if isinstance(value, bool):
         return None
-    return {kind: entry}
+    if isinstance(value, int):
+        return value if -MAX_SAFE <= value <= MAX_SAFE else to_float(value)
+    if isinstance(value, float):
+        return value
+    if isinstance(value, (numbers.Real, Decimal)):
+        return to_float(value)
+    return None

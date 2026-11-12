@@ -1,31 +1,28 @@
 #!/bin/sh
-# Every native test, under Python's development mode with warnings as errors. Sources, tests and
-# the test service are byte-compiled first so a syntax error anywhere fails here.
 set -eu
 cd "$(dirname "$0")/.."
 
-if command -v mise >/dev/null 2>&1; then
-  run() { mise exec -- "$@"; }
-else
-  run() { "$@"; }
-fi
+# Every tool runs through `mise exec --` when mise is on PATH (a mise shim fails in a directory where its tool
+# is not active); in CI a setup step puts Python on PATH.
+tool() {
+  if command -v mise >/dev/null 2>&1; then
+    mise exec -- "$@"
+  else
+    "$@"
+  fi
+}
 
-export PYTHONPATH="src${PYTHONPATH:+:$PYTHONPATH}"
-export PYTHONDONTWRITEBYTECODE=1
-
-run python -X dev -W error - <<'PY'
-import pathlib
+# Build: compile every source, test and test-service file in memory under `-W error`, so a syntax error or a
+# warning in a file no test imports still fails, and nothing is cached.
+files="$(find src tests test-service -type f -name '*.py' | sort)"
+# shellcheck disable=SC2086
+tool python -X dev -W error -c '
 import sys
+for path in sys.argv[1:]:
+    with open(path, encoding="utf-8") as handle:
+        compile(handle.read(), path, "exec", dont_inherit=True)
+' $files
 
-failed = False
-for root in ("src", "tests", "test-service"):
-    for path in sorted(pathlib.Path(root).rglob("*.py")):
-        try:
-            compile(path.read_text(encoding="utf-8"), str(path), "exec", dont_inherit=True)
-        except SyntaxError as error:
-            print(f"{path}: {error}", file=sys.stderr)
-            failed = True
-sys.exit(1 if failed else 0)
-PY
-
-run python -X dev -W error -m unittest discover -s tests -t tests "$@"
+# Run: the development mode turns on the runtime checks Python has instead of a race detector, and `-W error`
+# makes a warning (an unclosed socket, a thread that raised) a failure.
+PYTHONPATH=src tool python -X dev -W error -m unittest discover -s tests -t tests
