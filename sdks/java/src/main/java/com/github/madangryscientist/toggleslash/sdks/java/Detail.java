@@ -1,23 +1,12 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
-import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Reason;
-import java.util.Objects;
-import java.util.OptionalInt;
-
 /**
- * One evaluation, in full.
+ * The result of a {@code ...VariationDetail} call.
  *
- * @param value the served value, or the fallback when nothing usable was served
- * @param variationIndex the variation served; empty when {@code value} is the fallback or the flag
- *     serves nothing
- * @param reason why
  * @param <T> the type of the value
+ * @param value the served value, or the caller's fallback
+ * @param variationIndex the index into the flag's variations, or null whenever the value is the
+ *     fallback
+ * @param reason why
  */
-public record Detail<T>(T value, OptionalInt variationIndex, Reason reason) {
-
-  /** Checks that the index and the reason are not null. */
-  public Detail {
-    Objects.requireNonNull(variationIndex);
-    Objects.requireNonNull(reason);
-  }
-}
+public record Detail<T>(T value, Integer variationIndex, Reason reason) {}

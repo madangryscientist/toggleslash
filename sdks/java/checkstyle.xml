@@ -1,28 +1,60 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE module PUBLIC
     "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
     "https://checkstyle.org/dtds/configuration_1_3.dtd">
-<!-- Layout is google-java-format's. This file holds what a formatter cannot: unused code, missing
-     braces, missing documentation on the public API, and the habits that hide bugs. Any finding fails. -->
+<!--
+  The Checkstyle rule set for the SDK's main sources (src/main/java). It is the public API's rule set:
+  Javadoc on every public type and member, naming, imports and the usual correctness checks. Formatting
+  (indentation, spacing, line breaks) belongs to Spotless with google-java-format, which bin/lint also
+  runs over the tests and the test service, so no whitespace rule is repeated here. The tests and the test
+  service are left out of this tool on purpose: Javadoc on a test method says nothing.
+  Every rule left out is named at the end with its reason.
+-->
 <module name="Checker">
   <property name="severity" value="error"/>
   <property name="charset" value="UTF-8"/>
-  <module name="FileTabCharacter"/>
-  <module name="NewlineAtEndOfFile"/>
-  <module name="RegexpSingleline">
-    <property name="format" value="\s+$"/>
-    <property name="message" value="trailing whitespace"/>
+  <property name="fileExtensions" value="java"/>
+
+  <module name="LineLength">
+    <property name="max" value="100"/>
+    <property name="ignorePattern" value="^package.*|^import.*|a href|href|http://|https://"/>
   </module>
+  <module name="NewlineAtEndOfFile"/>
+  <module name="FileTabCharacter"/>
+  <module name="JavadocPackage"/>
+
   <module name="TreeWalker">
+    <!-- Naming. -->
+    <module name="ConstantName"/>
+    <module name="LocalFinalVariableName"/>
+    <module name="LocalVariableName"/>
+    <module name="MemberName"/>
+    <module name="MethodName"/>
+    <module name="PackageName"/>
+    <module name="ParameterName"/>
+    <module name="StaticVariableName"/>
+    <module name="TypeName"/>
+    <module name="ClassTypeParameterName"/>
+    <module name="MethodTypeParameterName"/>
+
+    <!-- Imports. -->
     <module name="AvoidStarImport"/>
-    <module name="UnusedImports"/>
     <module name="RedundantImport"/>
+    <module name="UnusedImports"/>
     <module name="IllegalImport"/>
-    <module name="OneTopLevelClass"/>
-    <module name="NeedBraces"/>
+
+    <!-- Modifiers and declarations. -->
     <module name="ModifierOrder"/>
     <module name="RedundantModifier"/>
+    <module name="OneTopLevelClass"/>
+    <module name="OneStatementPerLine"/>
+    <module name="MultipleVariableDeclarations"/>
+    <module name="ArrayTypeStyle"/>
+    <module name="UpperEll"/>
     <module name="MissingOverride"/>
+    <module name="OverloadMethodsDeclarationOrder"/>
+
+    <!-- Correctness. -->
     <module name="EmptyStatement"/>
     <module name="EqualsHashCode"/>
     <module name="FallThrough"/>
@@ -30,27 +62,58 @@
     <module name="SimplifyBooleanExpression"/>
     <module name="SimplifyBooleanReturn"/>
     <module name="StringLiteralEquality"/>
-    <module name="UpperEll"/>
-    <module name="ArrayTypeStyle"/>
-    <module name="HideUtilityClassConstructor"/>
-    <module name="FinalClass"/>
-    <module name="InterfaceIsType"/>
-    <module name="MultipleVariableDeclarations"/>
-    <module name="OneStatementPerLine"/>
-    <module name="TypeName"/>
-    <module name="MethodName"/>
-    <module name="MemberName"/>
-    <module name="ParameterName"/>
-    <module name="LocalVariableName"/>
-    <module name="ConstantName"/>
-    <module name="PackageName"/>
-    <module name="MissingJavadocType">
-      <property name="scope" value="public"/>
+    <module name="InnerAssignment"/>
+    <module name="HiddenField">
+      <property name="ignoreConstructorParameter" value="true"/>
+      <property name="ignoreSetter" value="true"/>
+    </module>
+    <module name="IllegalThrows"/>
+    <module name="NeedBraces"/>
+    <module name="EmptyCatchBlock">
+      <property name="exceptionVariableName" value="ignored|expected"/>
+    </module>
+
+    <!-- Javadoc on the public API. -->
+    <module name="JavadocMethod">
+      <property name="accessModifiers" value="public, protected"/>
+      <property name="allowMissingParamTags" value="false"/>
+      <property name="allowMissingReturnTag" value="false"/>
     </module>
     <module name="MissingJavadocMethod">
       <property name="scope" value="public"/>
       <property name="allowMissingPropertyJavadoc" value="true"/>
-      <property name="ignoreMethodNamesRegex" value="^(main)$"/>
+      <property name="tokens" value="METHOD_DEF, CTOR_DEF, ANNOTATION_FIELD_DEF, COMPACT_CTOR_DEF"/>
     </module>
+    <module name="MissingJavadocType">
+      <property name="scope" value="protected"/>
+    </module>
+    <module name="JavadocType">
+      <property name="allowMissingParamTags" value="true"/>
+    </module>
+    <module name="JavadocVariable">
+      <property name="accessModifiers" value="public, protected"/>
+    </module>
+    <module name="SummaryJavadoc">
+      <property name="forbiddenSummaryFragments" value="^@return the *|^This method returns |^A [{]@code [a-zA-Z0-9]+[}]( is a )"/>
+    </module>
+    <module name="JavadocParagraph"/>
+    <module name="AtclauseOrder">
+      <property name="tagOrder" value="@param, @return, @throws, @deprecated"/>
+    </module>
+    <module name="NonEmptyAtclauseDescription"/>
+    <module name="InvalidJavadocPosition"/>
+    <module name="JavadocTagContinuationIndentation"/>
   </module>
+
+  <!--
+    Left out, with reasons:
+    - MagicNumber: the evaluator is full of the spec's own numbers (UTF-8 byte ranges, bit masks, the
+      300 s cap), each named by a comment beside it; a constant per number would hide the spec text.
+    - FinalParameters, DesignForExtension: every class is final or package-private, so neither adds anything.
+    - CyclomaticComplexity, NPathComplexity, MethodLength: the pattern matcher and the UTF-8 decoder are
+      state machines written to the spec, and splitting them would scatter the spec's steps.
+    - IllegalCatch: the contract says the SDK catches whatever a hook, a callback or the evaluator raises and
+      reports it to onError, so catching RuntimeException and StackOverflowError is the specified behaviour.
+    - TodoComment: there is none, and the repository's own lint holds the TODO(#123) form.
+  -->
 </module>

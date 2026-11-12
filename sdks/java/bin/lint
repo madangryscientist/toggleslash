@@ -1,18 +1,23 @@
 #!/bin/sh
-# The native lint and format check. Any finding fails; there is no warning level. Nothing is rewritten.
-#   google-java-format: layout, in --dry-run so it only reports
-#   Checkstyle: the rules in checkstyle.xml, over the SDK's own sources (not the tests)
-#   javac with -Xlint:all -Werror: set in pom.xml, so compiling main and test sources is the check
+# The native lint and format check, with no warnings allowed.
+#
+# Two tools, each over its own roots:
+#   - Spotless (google-java-format 2.0.0, see pom.xml) checks the format of src/main/java, src/test/java and
+#     test-service/src, so every Java file in the SDK, its tests and the test service.
+#   - Checkstyle (checkstyle.xml) checks src/main/java only: it is the public API's rule set (Javadoc, naming,
+#     imports, correctness), and a Javadoc rule on a test says nothing.
 set -eu
 cd "$(dirname "$0")/.."
-if command -v mise >/dev/null 2>&1 && [ -f mise.toml ]; then
-  run() { mise exec -- "$@"; }
+
+if command -v mise >/dev/null 2>&1; then
+	run() { mise exec -- "$@"; }
 else
-  run() { "$@"; }
+	run() { "$@"; }
 fi
-FILES=$(find src test-service -name '*.java' | sort)
-run google-java-format --dry-run --set-exit-if-changed $FILES
-# The checkstyle that mise installs is a bare jar, so it is run through java.
-CHECKSTYLE=$(run sh -c 'command -v checkstyle')
-run java -jar "$CHECKSTYLE" -c checkstyle.xml src/main/java
-run mvn -B -q clean test-compile
+
+run mvn -B -q spotless:check
+
+# mise installs Checkstyle as a bare JAR with no launcher. Resolve its path inside mise, as every tool is run:
+# outside, `command -v checkstyle` finds the mise shim, which `java -jar` rejects as a corrupt jarfile.
+jar=$(run sh -c 'command -v checkstyle')
+run java -jar "$jar" -c checkstyle.xml src/main/java

@@ -1,31 +1,32 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
-/** How the stream is doing, spelled as in the contract by {@link #value()}. */
+import java.util.Locale;
+
+/** How the stream is doing (contract section 8). */
 public enum StreamState {
-  /** {@code stream(false)}: polling only. */
-  OFF("off"),
-  /** Opening the stream, or the first load. */
-  CONNECTING("connecting"),
-  /** The server's {@code connected} event arrived. */
-  CONNECTED("connected"),
-  /** Down, waiting to retry (polling meanwhile). */
-  DISCONNECTED("disconnected"),
-  /** After {@code close()}. */
-  CLOSED("closed");
+  /** The stream option is off. It stays off until close. */
+  OFF,
+  /** The first load, or a stream attempt that is opening. */
+  CONNECTING,
+  /** The stream's {@code connected} event arrived and the stream is still open. */
+  CONNECTED,
+  /** The last stream attempt ended and the SDK is waiting to retry. */
+  DISCONNECTED,
+  /** {@link ToggleSlashClient#close()} has been called. */
+  CLOSED;
 
-  private final String value;
-
-  StreamState(String value) {
-    this.value = value;
-  }
-
-  /** The canonical spelling, as it appears in the contract and on the wire. */
+  /**
+   * The canonical lower-case spelling.
+   *
+   * @return {@code off}, {@code connecting}, {@code connected}, {@code disconnected} or {@code
+   *     closed}
+   */
   public String value() {
-    return value;
+    return name().toLowerCase(Locale.ROOT);
   }
 
   @Override
   public String toString() {
-    return value;
+    return value();
   }
 }

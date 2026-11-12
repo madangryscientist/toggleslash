@@ -1,25 +1,26 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
-import java.util.Objects;
-
 /**
- * A failure the SDK absorbed and reports to {@code onError}; it is never thrown at a caller. {@link
- * #code()} is the {@code lastError} code when the failure was a ruleset or stream attempt ({@code
- * http_<status>}, {@code timeout}, {@code bad_ruleset}, {@code network}), and {@code usage} for a
- * usage flush or {@code close}. The message is fixed text: it never holds a URL, a key or a
- * context.
+ * What {@code onError} receives for a failure the SDK absorbed. It never carries a context, a key
+ * or a flag key. The SDK never throws it at a caller.
  */
 public final class ToggleSlashException extends RuntimeException {
   private static final long serialVersionUID = 1L;
 
   private final String code;
 
-  ToggleSlashException(String code, String message) {
-    super(message);
-    this.code = Objects.requireNonNull(code);
+  ToggleSlashException(String code, String message, Throwable cause) {
+    super(message, cause);
+    this.code = code;
   }
 
-  /** The short code of this failure. */
+  /**
+   * The code that {@link Status#lastError()} uses for a ruleset or stream failure ({@code
+   * http_500}, {@code timeout}, {@code bad_ruleset}, {@code network}), or a short name for another
+   * failure.
+   *
+   * @return the code
+   */
   public String code() {
     return code;
   }
