@@ -288,7 +288,7 @@ server recorded; read those before you change code.
 2. `$L/README.md`: a quickstart (install from a checkout of this repository, with no tag, create, `variation`, `close`), the
    mapping table or a link to it in `DESIGN.md`, the guarantees as a short list (contract section 5), and
    how to run `bin/lint`, `bin/test` and the harness (the toolchain install is `(cd sdks/<lang> && mise trust && mise install)`, as `sdks/README.md` gives it, and no more). It names no registry and no published package.
-3. `$L/bin/lint`: the native lint and format check, with no warnings allowed. It covers the SDK's sources, its tests and the test service; a rule set meant for the public API (doc comment rules, say) may leave the tests and the test service out, and `bin/lint` names the roots each tool reads in a comment. The repository's own
+3. `$L/bin/lint`: the native lint and format check, with no warnings allowed (a line a tool's own runtime prints about the tool itself, such as a JVM deprecation notice from the formatter's code, is not a lint warning: leave it visible and name it in `RUN.md`). It covers the SDK's sources, its tests and the test service; a rule set meant for the public API (doc comment rules, say) may leave the tests and the test service out (the format check still reads every root), and `bin/lint` names the roots each tool reads in a comment. The repository's own
    formatter, `oxfmt`, checks every TOML, YAML and JSON file, `$L/mise.toml` included, through `bun run
    format:check` (not `bin/lint`): format those with `bunx oxfmt <file>`. If a native tool and `oxfmt` disagree about one file, that is a stuck point.
 4. `.github/workflows/sdk-<lang>.yml`, from this skeleton. Fill in only the toolchain step: pin every
