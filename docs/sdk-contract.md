@@ -76,7 +76,7 @@ one. An SDK SHOULD fall back to the default for it, and it is not tested.
 A context is a single context or a multi context, exactly as [`evaluation.md`](evaluation.md#context)
 defines them, including what is valid. No `kind` means `user`. An SDK MUST accept both shapes, and MAY
 add a typed builder for them ([section 13](#13-what-a-language-may-add)). An invalid context is not an
-exception: the evaluator answers `ERROR INVALID_CONTEXT`, and the caller gets its fallback.
+exception: the evaluator answers `ERROR INVALID_CONTEXT`, and the caller gets its fallback. Where a context is built from the language's own values, a number of any of its numeric types is the JSON number of the same value, read as binary64 like a served number (section 4).
 
 ## 4. Evaluation results
 
@@ -110,14 +110,14 @@ The result is built in this order:
 **The mismatch rule.** Compare JSON kinds only: boolean, number, string, array, object. Array and object
 are distinct kinds. There is no integer versus float distinction at this level, so `1` and `1.5` are
 both "number". A **null fallback accepts any served value** (it says nothing about the kind the caller
-wants). A **null served value against a non-null fallback is a mismatch.**
+wants). A **null served value against a non-null fallback is a mismatch.** A typed accessor whose type admits null (a Java `String`) and is given a null fallback accepts a served value of its own kind only, and any other kind is `TYPE_MISMATCH`; a JSON accessor, whose type holds every kind, accepts any.
 
 **Typed languages (new).** A language with a separate integer type MUST apply one more rule to an
 integer accessor: if the served number has a fractional part, or is outside the integer type's range,
 the caller gets its fallback with `TYPE_MISMATCH`. A language whose integer type is unbounded (Python,
 Ruby) uses the signed 64-bit range. `2.0` counts as the integer `2`. This is deliberately
 stricter than the TypeScript SDK, which has one number type. A served number is read as binary64, so the largest
-integer within signed 64 bits that a test can serve is `2^63 - 1024`; the literal `2^63 - 1` reads as `2^63`, out of range.
+integer within signed 64 bits that a test can serve is `2^63 - 1024`; the literal `2^63 - 1` reads as `2^63`, out of range. A generic method whose result has the fallback's static type (Java, C#) treats a fallback of an integer type as an integer accessor: a whole served number in that type's range comes back in that type, and anything else is `TYPE_MISMATCH`.
 
 A language MAY choose any of these shapes, and its mapping table names the one it chose: typed methods
 (`boolVariation`, `stringVariation`, `intVariation`, `floatVariation`, `jsonVariation` or the language's
@@ -403,11 +403,11 @@ per call, **on the caller's thread, synchronously, before the call returns**, wi
 | --- | --- |
 | `flagKey` | the key the caller asked for. |
 | `context` | the context the caller passed (the SDK itself sends none of it anywhere). |
-| `value` | what the caller is about to get. Where an integer accessor returns integers wider than a double holds exactly (above 2^53) and the language's event type carries the value as a double, the event MAY carry the nearest double, and the SDK's `DESIGN.md` says so; the caller still gets the exact integer. |
+| `value` | what the caller is about to get. The event carries it either in the language's JSON value type or in the accessor's own type (a 64-bit integer for an integer accessor); the mapping table says which. Where an integer accessor returns integers wider than a double holds exactly (above 2^53) and the language's event type carries the value as a double, the event MAY carry the nearest double, and the SDK's `DESIGN.md` says so; the caller still gets the exact integer. |
 | `variationIndex` | as `variationDetail`; none for a fallback. |
 | `reason` | as `variationDetail`. |
 | `etag` | the ETag of the ruleset held at this evaluation, as received (the same value as `status`'s `etag` then); none before the first load. |
-| `flagVersion` | the flag's `version` in that ruleset, or none when the ruleset has no such flag or the flag is malformed. The server's versions are signed 64-bit integers, so an SDK that carries `flagVersion` as a signed 64-bit integer MAY report a version above 2^63 minus 1 as none. |
+| `flagVersion` | the flag's `version` in that ruleset, or none when the ruleset has no such flag or the flag is malformed. A flag is malformed here when its own shape is invalid (`MALFORMED_FLAG`) or when a segment it names is missing or malformed in that ruleset (`SEGMENT_NOT_FOUND`, `MALFORMED_SEGMENT`); a flag whose problem shows only at evaluation (a prerequisite cycle, say) keeps its version. The server's versions are signed 64-bit integers, so an SDK that carries `flagVersion` as a signed 64-bit integer MAY report a version above 2^63 minus 1 as none. |
 
 The hook's return value is ignored. A hook that is not callable is ignored. **A hook never reaches the
 caller**: an error it raises (or, in a runtime with futures, a future it later fails) goes to `onError`,
