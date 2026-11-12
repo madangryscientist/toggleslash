@@ -110,7 +110,7 @@ The result is built in this order:
 **The mismatch rule.** Compare JSON kinds only: boolean, number, string, array, object. Array and object
 are distinct kinds. There is no integer versus float distinction at this level, so `1` and `1.5` are
 both "number". A **null fallback accepts any served value** (it says nothing about the kind the caller
-wants). A **null served value against a non-null fallback is a mismatch.** A typed accessor whose type admits null (a Java `String`) and is given a null fallback accepts a served value of its own kind only, and any other kind is `TYPE_MISMATCH`; a JSON accessor, whose type holds every kind, accepts any.
+wants). A **null served value against a non-null fallback is a mismatch.** A typed accessor whose type admits null (a Java `String`) and is given a null fallback accepts a served value of its own kind only, and any other kind is `TYPE_MISMATCH`. A JSON accessor, whose type holds every kind, accepts any served value only when its fallback is null; given a non-null fallback it compares kinds like every other accessor, so a served array against an object fallback is `TYPE_MISMATCH`.
 
 **Typed languages (new).** A language with a separate integer type MUST apply one more rule to an
 integer accessor: if the served number has a fractional part, or is outside the integer type's range,
@@ -138,7 +138,7 @@ rules of this section, and `variationDetail` exists for each.
    called any number of times, before or after the load, and gives the same answer: the answer is fixed when the first attempt settles, so a later load does not
    turn a false into a true. After `close` it
    answers false if it had not settled. When the first attempt fails, `ready` and the `onError` call for that
-   failure have no set order (`ready` MAY settle first), so a test that checks both waits for the `onError` call.
+   failure have no set order (`ready` MAY settle first), so a test that checks both waits for the `onError` call. `lastError` is set before `ready` settles.
 4. **Last good ruleset.** While the server is unreachable, the SDK keeps evaluating from the last ruleset
    it held. At start, before any load, every evaluation is the fallback with `NOT_READY` and the SDK keeps
    trying.
