@@ -2,125 +2,142 @@
 
 ## Prompt version
 
-- Prompt: d8735fba478d7da8b9f2a2ff554bf34a42f0ec3d
+- Prompt: 26598eee3b61a0b44edc1c6d50c5d4e4ad08b813 (`git log -1 --format=%H -- docs/sdk-authoring`, taken at the start of the run and unchanged after the phase 6 `git fetch origin`)
 - Model: Claude Sonnet 5.5 (`claude-sonnet-5-5`)
-- Date: 2026-11-10
-- Input: language Ruby; runtime chosen: MRI (CRuby), developed on 4.0.9; minimum version chosen: 3.3; package manager chosen: RubyGems (`toggleslash.gemspec`, nothing published)
-- Toolchain: ruby 4.0.9 (`ruby 4.0.9 (2026-10-23 revision 3e93b23afc) +PRISM [x86_64-linux]`), pinned in `mise.toml`; rubocop 1.92.2 (`1.92.2 (using Parser 3.3.13.0, Prism 2.1.0, rubocop-ast 1.51.0, analyzing as Ruby 3.3, running on ruby 4.0.9)`), pinned in `mise.toml` as `gem:rubocop`; minitest from Ruby's bundled gems (no pin needed); bun 1.4.2 for the harness and the checks. Versions were looked up with `mise ls-remote ruby`, `mise ls-remote gem:rubocop` and the ruby-lang.org release page on the run date, not from memory.
+- Date: 2026-11-12
+- Input: language Ruby; runtime chosen: MRI (CRuby); minimum version chosen: 3.3 (proved on 3.3.13); package manager chosen: RubyGems with a gemspec and no Bundler dependency
+- Toolchain: `mise.toml` pins `ruby = "4.0.9"` and `"gem:rubocop" = "1.92.2"`. `ruby -v` prints `ruby 4.0.9 (2026-10-23 revision 3e93b23afc) +PRISM [x86_64-linux]`; `rubocop -V` prints `1.92.2 (using Parser 3.3.13.0, Prism 2.1.0, rubocop-ast 1.51.0, analyzing as Ruby 3.3, running on ruby 4.0.9)`. Minitest is the one that ships with Ruby 4.0.9 (a bundled gem), so the build file pins nothing for tests. The gemspec has no runtime or development dependency. Bun 1.4.2 runs the harness.
 
 ## Results
 
-- Vectors: 1371 passed of 1371; bucket pins: 17 passed of 17 (`bin/test`; the phase 2 count command prints `1371 17`)
-- Conformance: `scenarios: 81 passed, 0 failed, 0 skipped; vectors: 1369 passed, 0 failed, 2 skipped`
+- Vectors: 1371 passed of 1371; bucket pins: 17 passed of 17 (`bin/test` prints `vectors: 1371 pins: 17`; the phase 2 count command gives the same two numbers)
+- Conformance: `scenarios: 83 passed, 0 failed, 0 skipped; vectors: 1369 passed, 0 failed, 2 skipped`
 - Capabilities advertised: `integer-accessor`
-- Native tests: 65 passed of 65 (52 in `client_test.rb`, `stream_test.rb`, `http_test.rb`, `sse_test.rb` and `json_test.rb`, 13 from `vectors_test.rb`: one test per vector file but `buckets.json` (11), the bucket pins and the fixtures check)
+- Native tests: 110 passed of 110, 500 assertions (`bin/test`: `110 runs, 500 assertions, 0 failures, 0 errors, 0 skips`). By file: client 21, sync 21, http 16, usage 10, sse 10, json 10, concurrency 5, text 6, pattern 6, tls 3, vectors 2 (the vectors test is one test over 1371 vectors, the pins test one test over 17 pins). The test service has no tests of its own; the harness runs it.
+- Repeat runs: `bin/test` ten times in a row, each `110 runs, 500 assertions, 0 failures, 0 errors, 0 skips`, then the eleventh with 12 busy shell loops (`nproc` is 12) running at normal priority from before the command until after it: `110 runs, 500 assertions, 0 failures`. The staged tree hash was `f24fb466bf4dd7decfee5e82c0e2045898d70670` before and after the eleven runs. Ruby 3.3.13 (the minimum) also passes: 110 runs, 0 failures, and the harness passes with the service on it.
+- Lint: `bin/lint` prints `35 files inspected, no offenses detected` and compiles every file with `ruby -w` with no warning.
+
+### Request headers the client sends, one request per route
+
+Captured on a loopback listener with a script outside the tree (it starts the SDK against the test suite's fake server and prints each distinct route's header map, key redacted).
+
+| Route | Headers on the wire |
+| --- | --- |
+| `GET /sdk/v1/ruleset` | `Host`, `Connection: close`, `Accept: application/json`, `Authorization` |
+| `GET /sdk/v1/ruleset` (conditional) | the row above plus `If-None-Match` |
+| `GET /sdk/v1/stream` | `Host`, `Connection: close`, `Accept: text/event-stream`, `Authorization` |
+| `POST /sdk/v1/events` | `Host`, `Connection: close`, `Content-Length`, `Content-Type: application/json`, `Authorization` |
+
+`Authorization`, `Accept`, `If-None-Match` and `Content-Type` are the protocol's four. The SDK writes its own requests over `socket`, so no HTTP library adds anything: `Host` (the URL's host and port, which the server already knows), `Connection: close` (one request per connection), and `Content-Length` (the byte length of the usage body) are the only others. There is no `User-Agent` and no `Accept-Encoding`. None identifies a user or a machine. `test_only_the_allowed_headers_are_sent` in `test/usage_test.rb` holds the set.
 
 ## Decisions
 
-1. Runtime: MRI over JRuby or TruffleRuby, because it is the mainstream runtime and the only one with a GVL whose behaviour the concurrency design can state. Minimum 3.3, the oldest release still in security maintenance (3.2 is end of life), which has `Data.define` and `Hash#except`.
-2. Package manager and layout: RubyGems with a gemspec over Bundler-only, because the gemspec is the language's package description. It sets no homepage and no registry, and `lib/` is put on the load path with `-I` or a Gemfile `path:` line.
-3. Test framework: Minitest over RSpec, because it ships with Ruby and adds no dependency.
-4. Lint and format: RuboCop over StandardRB, because it is one pinned tool for both, and its rules are in `.rubocop.yml` (target 3.3, new cops enabled, line length 120, metrics relaxed, single quotes). `bin/lint` also runs `ruby -wc` on every file. The tests fail on any Ruby warning (`Warning.warn` is patched in `test/test_helper.rb`), Ruby's analogue of `-W error`.
-5. No runtime dependency. The standard library's `json` raises on a lone surrogate (`JSON.parse('"\ud800"')` fails on json 2.18.0), which the contract's context handling must accept, so the SDK has its own JSON parser and generator (`json.rb`). `Net::HTTP` cannot bound the whole response with one deadline, cancel a blocked read from another thread or enforce a stream idle limit at the socket, so the SDK has its own small HTTP/1.1 client over `socket` and `openssl` (`http.rb`), and its own SSE parser (`sse.rb`). Each is a line in `DESIGN.md`.
-6. Concurrency: the SDK state is one frozen `State` swapped under a `Mutex`, so a reader sees one ruleset or the other; two daemon threads (sync, usage flush). A reader never takes a lock for I/O.
-7. Public API shapes: keyword arguments on `create`, durations as `Numeric` seconds, closed sets (reason kinds, error codes, stream states, `lastError` codes) as Symbols with the contract's spelling, snake_case method names (`bool_variation_detail`).
-8. Seams are keyword options on `create`: `clock:` (wall time and the Retry-After hold; request deadlines use the real monotonic clock), `random:`, `evaluator:` and `stream_idle_timeout:`. They are not documented as public API and nothing reads a global or an environment variable.
-9. Advertised `integer-accessor`, because Ruby has a separate `Integer` type. `int_variation` takes the signed 64-bit rule explicitly, since Ruby's integers are unbounded (`2.0` becomes `2`; a fraction or a number outside 64 bits is `TYPE_MISMATCH`).
-10. Generic `variation` takes its kind from the fallback, and a `nil` fallback accepts any served kind. The json accessor accepts an array or an object that matches the kind of its fallback (a `nil` fallback accepts either).
-11. Hooks and `on_error` are plain callables, so the future line of the checklist does not apply. A hook that is not callable is ignored.
-12. `close` is leader and follower under a mutex and a condition variable, in the contract's order: stop counting, close the store, cancel both loops, join the threads, settle `ready`, the final flush, release the pipes. A usage flush that is running is waited for (contract 11 step 3) and is bounded by `request_timeout`; a `close` from the leader's thread or an SDK thread returns at once. The skeptical review found that an earlier version abandoned the running flush and could deadlock on a `close` from `on_error`; both were changed.
-13. Test service: a hand-written `TCPServer` on `127.0.0.1` port 0, one thread per connection, over the same dependency-free approach as the SDK.
-14. Toolchain entry points: the `bin` scripts `cd` to the SDK and run through `mise exec`, with a plain `ruby` fallback when mise is absent. `bin/lint` runs the RuboCop gem script under the mise-pinned ruby (see stuck point 1, which is not a blocker).
-15. The workflow follows `sdk-python.yml` line for line, with the toolchain step limited to `ruby gem:rubocop` so the root `.tool-versions` is not installed.
+1. Toolchain through mise: every tool is called as `mise exec -- <tool>` because a bare `ruby` outside the SDK directory resolves to another version. RuboCop is a mise `gem:` tool whose own gem directory has to be on `GEM_HOME`, so `bin/lint` runs `GEM_HOME=$(mise where gem:rubocop)/libexec GEM_PATH=... mise exec -- ruby $GEM_HOME/bin/rubocop` (plain `rubocop` when mise is absent). Over a bare `mise exec -- rubocop`, which picked a different Ruby here and failed on the gem path.
+2. Lint rule set: RuboCop's default cops with `NewCops: enable` over `lib test test-service toggleslash.gemspec`, plus a `ruby -w` compile of every file. `.rubocop.yml` names the set at its top and each cop turned off or loosened carries its reason beside it: the Metrics cops (a protocol client and a pattern VM are as long as their specification), `Style/Documentation` excluded for tests, `Naming/MethodParameterName` minimum 1 (`cp`, `lo`, `hi`), `Naming/PredicateMethod` off, `Style/ComparableBetween` off, `Style/OneClassPerFile` off, `Naming/VariableNumber` for method names, `Metrics/BlockNesting` 4, line length 120. Double quotes over single because the whole tree uses them. Shell scripts are not passed to RuboCop (it parses them as Ruby). Only RuboCop's safe autocorrect (`-a`) was used, never `-A`.
+3. Format check: RuboCop's layout cops are the format check, so one tool does both, over a second formatter dependency.
+4. No runtime dependency (DESIGN.md section 4): `socket`, `openssl`, `uri` and `thread` ship with Ruby. The JSON reader is the SDK's own (DESIGN.md section 5) because the standard `json` gem cannot hold a lone surrogate in a `String`, reads a literal such as `1e999` only with a warning, and does not skip a leading byte order mark or replace invalid bytes as the WHATWG decoder does (DESIGN.md section 5).
+5. Numbers: a served or context number is read as binary64 through `Rational` and `Rational#to_f`, which is warning-free where `Float("1e999")` warns. A context attribute of any Integer width, Float, Rational or BigDecimal matches as the JSON number of its value (`test_a_context_attribute_of_each_numeric_type_matches_as_its_value`); `Complex` is not a JSON number and does not match.
+6. Aborting a request in flight uses a self-pipe in `IO.select`, because closing an IO from another thread does not wake a thread blocked in `IO.select` in MRI (`test_abort_wakes_a_waiting_request`, `test_close_while_a_stream_is_open_returns_at_once`).
+7. Usage and error callbacks are called after the flush lock is released, so a callback that calls back into the client cannot deadlock (`test_callbacks_that_call_back_into_the_client_do_not_deadlock`).
+8. `Content-Length: 0` on the stream route is `http_200` (not a connected stream), and a clean empty 200 stream leaves `lastError` alone (`test_a_stream_answering_200_with_content_length_zero_is_http_200`, `test_a_stream_that_ends_cleanly_with_no_bytes_leaves_last_error_alone`). A 304 with no ruleset held is `http_304` (`test_a_304_with_no_ruleset_held_is_http_304`).
+9. The generic `variation` is dynamically typed: an Integer fallback has the JSON kind number, so a served `2.0` comes back as `2.0`. The integer rules (`2.0` is `2`, a fraction or an out-of-range value is `TYPE_MISMATCH`) belong to `int_variation` and `int_variation_detail`, which the test service maps for the `int` accessor and `integer-accessor` advertises. The harness's `number` accessor expects the served number unchanged, which settles it. Tests: `test_the_generic_accessor_with_an_integer_fallback_returns_the_served_number`, `test_the_integer_accessor`.
+10. The integer accessor with a `nil` fallback accepts any served number and answers `TYPE_MISMATCH` for any other kind, because the accessor's own kind is number (`test_the_integer_accessor_with_a_nil_fallback_accepts_a_number_only`). The generic accessor with a `nil` fallback accepts any kind (`test_a_null_fallback_accepts_any_kind`).
+11. Durations (`poll_interval`, `flush_interval`, `request_timeout`) that are not positive finite numbers fall back to the default, and a very large one is clamped to one year so `Time` arithmetic cannot overflow (`test_durations_fall_back_to_the_default`).
+12. No size cap on the 200 ruleset body, a stream line or an event, since the contract names none; only the nesting depth is bounded (1000, above the contract's 512 minimum; deeper is a parse error, and a `SystemStackError` is caught too, `test_nesting_limit`).
+13. Seams are keywords on the private `Client.new` (`transport`, `clock`, `jitter`, `stream_watchdog`, `evaluator`; `lib/toggleslash/client.rb:25`), not on `Toggleslash.create`, which takes the public options only. No global and no environment variable is read by the SDK.
+14. The gemspec license is `Elastic-2.0`, the repository's source-available licence; nothing is published and no gem name is reserved.
+15. Workflow toolchain: `jdx/mise-action` (pinned by SHA) with `working_directory: sdks/ruby` and `install_args: ruby gem:rubocop`, so CI uses the versions `mise.toml` pins. The job is `runs-on: ubuntu-latest` with no `if:` guard, triggers `pull_request` and `push` only.
+16. The test service is a few lines over `TCPServer` because the SDK has no runtime dependency and neither does its service. It rescues nothing the SDK raises: a raise answers 500, so the harness fails the scenario.
+17. Threads and exit: the SDK's threads are daemon-like in effect (Ruby exits when the main thread ends and does not wait for them), and set `report_on_exception = false` so nothing is printed to stderr. A subprocess test holds that a never-closed client does not keep the process alive.
+18. Race detector: Ruby has none. The stand-in is `test/concurrency_test.rb` (every operation from many threads, `close` racing `variation` and a second `close`, `ready` from many threads, `close` during a hung ruleset request and during an open stream, each with a bound on the wait). The many-thread test runs 16 threads of 300 operations each (variation, status, int_variation, variation_detail) under a 30 s `Timeout`, with fast poll and flush loops running beside them.
+19. Optional `bigdecimal` is required inside a `begin ... rescue LoadError` in the numeric context test, because it is a bundled gem from Ruby 3.4 and absent from a bare 3.3 install.
+20. Retry-After is digits only (any other form is ignored) and capped at 300 s; one hold is shared by the ruleset and the stream, and the events route has its own (contract 7.4, 9; `test_a_retry_after_that_is_not_whole_seconds_is_ignored`, `test_a_429_on_the_stream_holds_the_ruleset_too`).
 
 ## Guesses
 
-1. There is no `language-notes/ruby.md`, so every Ruby choice above was a decision with no note to check it against. Where: `language-notes/README.md`. Assumed: the notes are optional, and `DESIGN.md` carries the reasons.
-2. What a typed json accessor accepts was not stated. The first version required the served value to match the fallback exactly, and the harness sent a `{}` fallback with a served `[1]`. Where: `sdk-test-service.md`, "Accessors", and `sdk-contract.md`, section 4, "Typed languages". Assumed: array and object are one container kind for the json accessor, and a `nil` fallback accepts either.
-3. What `close` does when called from `onError` or a hook on the closing thread or on one of the SDK's own threads, which would wait for a shutdown that is waiting for it. Where: `sdk-contract.md`, section 11 ("safe to call twice (or concurrently)") and 6.4. Assumed: it returns at once.
-4. Where a native test for "two `close` calls racing" belongs, and whether it may be the same test as the many-thread stress. Where: `CHECKLIST.md`, "Native tests". Assumed: one test (`test_operations_called_from_many_threads_with_close_racing`) with workers that call `close` and four racing closers, bounded by `Timeout`.
-5. How a busy test thread is allowed to behave under the GVL. Twelve threads spinning without `Thread.pass` starved the close leader for more than 5 s. Where: `CHECKLIST.md`, "Native tests", stress test. Assumed: a test thread passes the GVL each turn, which is what a real caller that does any I/O does.
-6. Whether CI can be run before the PR. The workflow could not be run locally (no GitHub Actions runner). Where: `PROMPT.md`, phase 5. Assumed: it is correct because it differs from `sdk-python.yml` only in the name, the paths, the concurrency group and the toolchain step; the first CI run is the proof.
-7. The headers an own HTTP client adds. The checklist lists `Host`, `Content-Length` and `Connection` as allowed, and this client writes exactly those. Where: `CHECKLIST.md`, "Code and documents". Assumed: the capture below is the evidence.
+None. Every point the prompt and the documents left open on purpose is a Decision above with the test or file that settles it.
 
 ## Stuck points
 
-None. Nothing needed outside help and no contract, harness, scenario or vector was wrong. Three tool problems were worked around and are in the proposals below:
-
-1. `mise exec -- rubocop` fails with `cannot load such file -- erb`: the system ruby (3.4.10) comes before the mise one on `PATH` for the rubocop shim. `bin/lint` instead runs the gem's script under the pinned ruby (`GEM_HOME="$(mise where gem:rubocop)/libexec" mise exec -- ruby "$(mise where gem:rubocop)/libexec/bin/rubocop"`).
-2. `rubocop -A` (autocorrect) broke the code in four places: `.freeze` on counters that are mutated, and `.zero?` on a comparison that can return `nil` (`compare(a, b) == 0` in `eval/clause.rb`, kept with an inline disable that says why).
-3. Ruby gotchas the vectors found, all fixed with tests: `"".split('.', -1)` is `[]` (a semver of `""`), `Float("1e999")` can warn under `-w`, and a regexp scan over invalid UTF-8 can raise (so the evaluator scans bytes).
+None.
 
 ## Proposed prompt changes
 
-1. For guess 1, add `language-notes/ruby.md` with: MRI and the GVL (a thread-safety design, not a speed one); no race detector, so the stress test is the substitute; `-w` plus `Warning.warn` patched in the test helper is the warnings-as-errors; Minitest and RuboCop with one pinned `.rubocop.yml`; `Data.define` for events (3.2 and later); unbounded `Integer`, so state the 64-bit rule; symbols for closed sets.
-2. For stuck point 1, in `language-notes/ruby.md`: "`mise exec -- rubocop` can pick the system ruby; run the gem script under the pinned ruby with `GEM_HOME` set to `$(mise where gem:rubocop)/libexec`. In CI the `install_args: ruby gem:rubocop` form of the mise action works."
-3. For stuck point 2, in `language-notes/ruby.md`: "Do not run `rubocop -A` over the tree: `Style/RedundantFreeze` and `Style/NumericPredicate` autocorrect mutable counters and nil-able comparisons into bugs. Fix by hand and disable a cop inline with the reason."
-4. For stuck point 3, in `language-notes/ruby.md`: "`''.split('.', -1)` is `[]`; `Float('1e999')` can warn under `-w`; a regexp on invalid UTF-8 can raise: scan bytes (`/n` regexes) when parsing untrusted text."
-5. For guess 2, in `sdk-test-service.md`, "Accessors", after the json row, add: "A language with a separate array and object type treats them as one kind for this accessor; the harness sends a `{}` fallback for a served `[1]`."
-6. For guess 5, in `CHECKLIST.md`, "Native tests", stress test line, add: "In a runtime with a global lock, a worker yields each turn (`Thread.pass`), or the test starves the code it is checking."
-7. For guess 4, in `CHECKLIST.md`, the stress test line, add: "One test may cover the many-thread race and the two-close race, so long as it names both."
-8. For guess 7, in `PROMPT.md`, phase 3, "HTTP", after "Do not add a header the protocol does not name", add: "An own HTTP client writes `Host`, `Connection` and `Content-Length` itself; capture one request on a loopback listener and paste it in `RUN.md`."
+These are suggestions for `language-notes/ruby.md` (there is no Ruby note yet), each tied to a Decision above, not a guess:
+
+1. For decision 1, in `language-notes/ruby.md`, add: "Call every tool as `mise exec -- <tool>`. RuboCop installed as `gem:rubocop` needs its own gem directory: `GH=\"$(mise where gem:rubocop)/libexec\"; D=$(mise exec -- ruby -e 'print Gem.default_dir'); GEM_HOME=$GH GEM_PATH=\"$GH:$D\" mise exec -- ruby \"$GH/bin/rubocop\" ...`. Use `-a` (safe), never `-A`. Do not pass shell scripts to RuboCop."
+2. For decision 2, in `language-notes/ruby.md`, add: "`Minitest/MultipleAssertions` does not exist in RuboCop 1.92.2; do not name it. Set `Style/StringLiterals` and `Style/StringLiteralsInInterpolation` to one style, or the default cops fight the tree. Turn the Metrics cops off with a reason: they measure the specification."
+3. For decision 6, in `language-notes/ruby.md`, add: "In MRI, closing an IO from another thread does not wake `IO.select` or a blocked read. Abort a request with a self-pipe the select waits on. Set `report_on_exception = false` on every SDK thread."
+4. For decision 5, in `language-notes/ruby.md`, add: "`Float(\"1e999\")` prints a warning; read numbers through `Rational` and `Rational#to_f`. `\"\".split` is `[]`, not `[\"\"]`."
+5. For decision 18, in `language-notes/ruby.md`, add: "A test that patches `Warning` must make the warning raise, or a warning in the SDK passes unnoticed; `bin/lint` also compiles every file with `ruby -w`."
 
 ## Checklist
 
 ### The two executable checks
 
-- [x] `bin/test` runs every vector but `buckets.json`, read from the repository, and every pin; the count equals the phase 2 command's: `bin/test` prints `vectors: 1371 pins: 17`; `bun -e '...'` prints `1371 17`. `test/vectors_test.rb` (`test_fixtures_exist` fails when no files or no vectors were read, `test_bucket_pins` checks `uint32` and `bucket`).
-- [x] `bin/test` passes 10 times in a row, and once under CPU load: 10 of 10 runs printed `65 runs, ... 0 failures, 0 errors, 0 skips` with `vectors: 1371 pins: 17` (assertions 29068 to 73761 per run, because the stress tests loop until a state is reached). Under load (12 busy loops, one per core, `nproc` = 12): `65 runs, 30057 assertions, 0 failures, 0 errors, 0 skips`, `vectors: 1371 pins: 17`.
-- [x] The harness exits 0 with only the two named vector skips: `bun run conformance -- --service sdks/ruby/bin/test-service` printed `scenarios: 81 passed, 0 failed, 0 skipped; vectors: 1369 passed, 0 failed, 2 skipped`, exit 0.
+- [x] `bin/test` runs every vector but `buckets.json` and every pin, count equal to the phase 2 command: `test/vectors_test.rb` (`test_vectors`, `test_pins`) reads `fixtures/evaluation/*.json` at test time; prints `vectors: 1371 pins: 17`, the same as the count command.
+- [x] `bin/test` ten times in a row and an eleventh under CPU load: ten runs of `110 runs, 500 assertions, 0 failures, 0 errors, 0 skips`; the eleventh with 12 busy loops (`nproc`) started before and kept running until it ended: `110 runs, 500 assertions, 0 failures`. The staged tree hash was identical before and after (`f24fb466bf4dd7decfee5e82c0e2045898d70670`). No test needed fixing for load in the final tree.
+- [x] The harness exits 0 with only the 2 named vector skips: `scenarios: 83 passed, 0 failed, 0 skipped; vectors: 1369 passed, 0 failed, 2 skipped`; `integer-accessor` is advertised, so no scenario is skipped.
 
 ### What the harness checks
 
-- [x] Both context shapes: the harness (`privacy.json`, the `kinds.json` vectors), exit 0.
-- [x] Result order, mismatch rule, own error codes: the harness (`evaluation.json`, `usage.json`).
-- [x] With `integer-accessor`, a served fraction is `TYPE_MISMATCH` and `2.0` is `2`: the harness (`evaluation.json`); also `test_the_integer_accessor_follows_the_signed_64_bit_rule`.
-- [x] No failure makes an operation raise: the harness, every scenario (the service answers 500 on any raise); `test_a_url_that_cannot_be_reached_never_raises`.
-- [x] `NOT_READY` before the first load, at once: the harness (`load.json`); `test_evaluating_before_the_first_load_is_not_ready_at_once`.
-- [x] `ready` settles after the first attempt, bounded, may be called again, false after `close`: the harness (`load.json`, `close.json`).
-- [x] An answer that is not a ruleset never replaces the one held: the harness (`status.json`).
-- [x] The ruleset request, `If-None-Match`, the exact ETag, URL joining: the harness (`load.json`, `status.json`); `test_a_second_poll_sends_if_none_match_and_a_304_is_a_sync`; `test_target_joins_a_base_path_and_refuses_what_is_not_http`.
-- [x] The stream, SSE parsing, a failed refresh ends the stream: the harness (`stream.json`, `load.json`, `status.json`); `sse_test.rb`, `stream_test.rb`.
-- [x] The loop and the jittered backoff: the harness (`backoff.json`, `stream.json`).
-- [x] `429` and `Retry-After` on every route: the harness (`rate-limit.json`); `test_retry_after_counts_on_a_429_only_in_whole_seconds_capped_at_300`.
-- [x] Status fields, states and `lastError` codes: the harness (`status.json`, and the shape check on every read).
-- [x] Usage counts: the harness (`usage.json`, `rate-limit.json`); `test_a_batch_holds_at_most_500_entries_and_usage_carries_no_context`.
-- [x] Hook events and `onError`, a hook that raises, an `onError` that raises: the harness (`hooks.json`); `test_an_on_error_that_raises_is_ignored`.
-- [x] `close` in order, twice at once, during a hold, with a final flush: the harness (`close.json`, `rate-limit.json`, `usage.json`, `status.json`); `test_nothing_is_counted_after_close_begins_and_close_flushes`, `test_close_waits_for_a_hung_usage_flush_for_at_most_the_request_timeout`, `test_a_close_from_on_error_on_the_sdk_threads_and_the_closing_thread_does_not_deadlock`.
-- [x] No context, key or attribute in any request or `onError` message, no extra header: the harness (`privacy.json` and the checks after every scenario). Source search for logs: `grep -rnE '\b(puts|warn|print|p |pp|logger|Logger|\$stderr|\$stdout|STDERR|STDOUT|abort)\b' lib` finds nothing, so the SDK writes no log line. Error values are built from the status, route, a fixed phrase or the Ruby exception of a network failure (`sync.rb` `StatusError` builds `GET <route> answered <status>`; `usage.rb` builds `POST /sdk/v1/events answered <status>`); no code path interpolates a context, a key or an attribute into text. The evaluator's failure is reported as the exception the evaluator raised, and `test_an_evaluation_that_raises_gives_the_fallback_and_one_on_error` checks that the one `onError` message is the evaluator's own text.
+- [x] Both context shapes accepted: the harness (`privacy.json`, `kinds.json` vectors through the service); a non-finite number is a present attribute of the wrong type (`test/vectors_test.rb`).
+- [x] Result order and the mismatch rule with the SDK's error codes: harness `evaluation.json`, `usage.json`; `test_type_mismatch_gives_the_fallback`, `test_a_null_fallback_accepts_any_kind`, `test_a_class_with_no_json_kind_never_matches`.
+- [x] `integer-accessor`: a fraction is `TYPE_MISMATCH` and `2.0` is `2`: harness `evaluation.json`; `test_the_integer_accessor`.
+- [x] No failure makes an operation raise: harness, every scenario (the service answers 500 on a raise); `test_an_evaluator_that_raises_a_deep_stack_error_is_contained`, `test_on_error_that_raises_is_swallowed`.
+- [x] Evaluating before the first load is `NOT_READY` at once: harness `load.json`; `test_not_ready_before_a_load_answers_the_fallback`.
+- [x] `ready` settles after the first attempt, bounded, callable again, false after `close` if unsettled: harness `load.json`, `close.json`; `test_ready_called_from_many_threads_agrees`.
+- [x] An answer that is not a ruleset never replaces the one held: harness `status.json`; `test_a_bad_ruleset_keeps_the_one_held`.
+- [x] Ruleset request, `If-None-Match`, ETag kept exactly, URL joining: harness `load.json`, `status.json`; `test_the_ruleset_request_headers_and_the_conditional_request`, `test_an_etag_is_kept_exactly_as_received`, `test_a_path_prefix_in_the_url_is_kept`.
+- [x] The stream: harness `stream.json`, `load.json`, `status.json`; `test/sse_test.rb`, `test_a_changed_event_with_a_new_tag_fetches_the_ruleset`.
+- [x] The loop and jittered backoff: harness `backoff.json`, `stream.json`; the `jitter` seam is `0.5 + rand * 0.5` by default.
+- [x] `429` and `Retry-After` on every route: harness `rate-limit.json`; `test_a_429_on_the_stream_holds_the_ruleset_too`, `test_a_retry_after_above_300_holds_usage_for_300_and_close_reports_unsent_counts`.
+- [x] Status fields, states and `lastError` codes: harness `status.json` and the shape check on every status read; `test_error_statuses_network_timeout_and_bad_bodies_set_last_error`.
+- [x] Usage counts: harness `usage.json`, `rate-limit.json`; `test_counts_are_summed_per_flag_variation_and_day_and_sent_on_close`, `test_more_than_500_entries_go_in_requests_of_at_most_500`, `test_5xx_408_and_429_keep_the_counts_and_other_4xx_drop_them`.
+- [x] Hook events and `onError`, a hook that raises, an `onError` that raises: harness `hooks.json`; `test_a_hook_that_raises_goes_to_on_error_and_the_answer_stands`, `test_on_error_that_raises_is_swallowed`.
+- [x] `close` in order, twice at once, during a hold, with a final flush: harness `close.json`, `rate-limit.json`, `usage.json`, `status.json`; `test_close_is_safe_twice_and_concurrent_and_the_client_answers_after`, `test_close_during_a_usage_hold_does_not_wait_and_tells_on_error`.
+- [x] No context, key or attribute in any request or `onError` message, no extra header: harness `privacy.json` and the after-scenario checks; `test_nothing_in_a_request_or_an_error_carries_the_context_or_the_key_beyond_authorization`. Source search for logging: `grep -rnE "puts|warn |logger|Logger|\$stderr|\$stdout" lib` finds nothing; the SDK writes no log line, and every error value is built from a fixed code and message with no context data (`lib/toggleslash/types.rb`, `lib/toggleslash/event.rb`).
 
 ### Native tests
 
-- [x] Every operation from many threads, `close` racing `variation`, two closes racing: `test_operations_called_from_many_threads_with_close_racing` (`client_test.rb`): 12 workers call `variation`, `int_variation_detail`, `status`, `ready` and one of them `close`, four extra threads call `close` under `Timeout.timeout(5)`, every join is bounded, and no error is collected. Ruby has no race detector (the GVL makes the interpreter state safe and the SDK's own state is one frozen object under a mutex), so this stress test, with its bound on every wait, stands in.
-- [x] `variation` and `variationDetail` return while a ruleset request hangs and while a usage flush hangs: `test_variation_returns_while_a_ruleset_request_hangs`, `test_variation_returns_while_a_usage_flush_hangs`.
-- [x] A reader sees one ruleset or the other across a swap: `test_a_hook_sees_an_etag_and_flag_version_of_the_same_ruleset_across_swaps`.
-- [x] A hook and an `onError` that call back into the client do not deadlock: `test_a_hook_and_on_error_that_call_back_into_the_client_do_not_deadlock` (with a guard so the hook does not re-enter itself).
-- [x] A stream with no bytes for 60 s is dropped as `timeout`, a keep-alive restarts it, through a seam on a real loopback socket: `test_a_stream_that_goes_quiet_is_dropped_as_a_timeout_through_the_idle_seam`, `test_a_keep_alive_restarts_the_idle_watchdog` (`stream_test.rb`), which use `stream_idle_timeout:` and a real `TCPServer` that goes quiet.
-- [x] A `Retry-After` above 300 is held for 300 s on each route: `test_a_retry_after_above_300_is_held_for_300_seconds_on_the_ruleset_route`, `..._on_the_stream_route`, `test_the_events_route_has_its_own_hold_capped_at_300`, through the fake clock.
-- [x] Counts either side of a UTC midnight go out as two days: `test_counts_either_side_of_a_utc_midnight_go_out_as_two_days`.
-- [x] An evaluation that raises gives the fallback, `ERROR EVALUATION_FAILED` and one `onError`: `test_an_evaluation_that_raises_gives_the_fallback_and_one_on_error` (the `evaluator:` seam).
-- [x] Where hooks may return a future: n/a: no futures (a hook is a plain callable; `test_a_hook_that_is_not_callable_is_ignored` covers the shape).
-- [x] A served number outside signed 64 bits is `TYPE_MISMATCH` on the integer accessor: `test_the_integer_accessor_follows_the_signed_64_bit_rule` and the harness's `huge` scenario.
-- [x] A client never closed does not keep the process from exiting: `test_a_client_that_is_never_closed_does_not_keep_the_process_alive` (runs a child ruby that creates a client and ends), because Ruby ends every other thread when the main thread ends, so the two background threads cannot hold the process; the test starts a child ruby that creates a streaming client, never closes it, and expects a successful exit well inside 8 s.
+- [x] Every operation from many threads, `close` racing `variation`, two `close` calls racing: `test_every_operation_from_many_threads`, `test_close_racing_variation_and_a_second_close` in `test/concurrency_test.rb` (Ruby has no race detector; decision 18 names this stress test as the stand-in, with a bound on the wait). Also `test_close_is_safe_twice_and_concurrent_and_the_client_answers_after`.
+- [x] SHOULD: an `https` URL reaches the TLS path with a local certificate: `test/tls_test.rb` (`test_a_ruleset_loads_over_tls_with_a_trusted_certificate`, `test_an_untrusted_certificate_is_refused_as_a_network_error`, `test_a_certificate_for_another_host_is_refused`).
+- [x] `variation` and `variation_detail` return within a bound while a ruleset request hangs and while a usage flush hangs: `test_a_request_that_never_answers_is_a_timeout_and_variation_stays_fast`, `test_a_usage_request_that_hangs_is_bounded_and_variation_stays_fast`, `test_close_while_the_ruleset_request_hangs_returns_within_twice_the_timeout`.
+- [x] A reader sees one ruleset or the other, and a hook's `etag` and `flagVersion` belong together: `test_a_ruleset_swap_is_seen_whole_by_a_reader` in `test/sync_test.rb`.
+- [x] Callbacks that call back into the client do not deadlock, and `ready` from the SDK's own thread returns at once: `test_callbacks_that_call_back_into_the_client_do_not_deadlock`, `test_ready_and_close_from_the_sdks_own_thread_return_at_once`. The order that rules the unsettled case out: `ready` settles the first attempt before any callback runs on the SDK thread, and a call from the SDK's own thread returns at once without waiting.
+- [x] 60 s stream watchdog through a seam on a real loopback socket: `test_a_stream_that_goes_quiet_for_the_watchdog_ends_and_reconnects`, `test_a_keep_alive_restarts_the_watchdog` (`stream_watchdog` seam), and `test_a_stream_idle_longer_than_the_bound_times_out` in `test/http_test.rb`.
+- [x] A `Retry-After` above 300 held for 300 s on the ruleset, stream and events routes through a seam (the `clock` seam, `TestClock` offsets of 299 and 301): `test_a_429_retry_after_above_300_is_held_for_300_on_the_ruleset`, `test_a_429_on_the_stream_holds_the_ruleset_too`, `test_a_retry_after_above_300_holds_usage_for_300_and_close_reports_unsent_counts`.
+- [x] Counts either side of a UTC midnight go out as two days: `test_counts_are_summed_per_flag_variation_and_day_and_sent_on_close` (23:59:59 and 00:00:01 on a `TestClock`).
+- [x] An evaluation that raises gives the fallback, `ERROR EVALUATION_FAILED` and one `onError`: `test_an_evaluator_that_raises_gives_the_fallback_and_one_on_error`.
+- [x] n/a: no futures (a hook is a plain callable).
+- [x] A served number outside signed 64 bits is `TYPE_MISMATCH` on the integer accessor: `test_the_integer_accessor` (the `over`, `under` and `float_over` flags; `max` 9223372036854774784 and `min` are accepted); harness `huge` scenario.
+- [x] A client never closed does not keep the process from exiting: `test_a_client_never_closed_does_not_keep_the_process_alive` runs a subprocess that creates a client, calls `ready` and exits. Ruby does not wait for threads when the main thread ends.
+- [x] A typed accessor whose type admits null, given a null fallback and served another kind: `test_the_integer_accessor_with_a_nil_fallback_accepts_a_number_only` (the integer accessor, a served string gives `TYPE_MISMATCH`); the generic accessor accepts any kind with a nil fallback by the mismatch rule (`test_a_null_fallback_accepts_any_kind`).
+- [x] A generic accessor with an integer fallback: Ruby's `variation` is dynamically typed, so an Integer fallback has the JSON kind number and a served `2.0` comes back as served (decision 9); `int_variation` gives `2` and `TYPE_MISMATCH` for a fraction or an out-of-range value (`test_the_integer_accessor`). A fallback of a class with no JSON kind gives the fallback and `TYPE_MISMATCH`: `test_a_class_with_no_json_kind_never_matches`.
+- [x] The hook event's `value` for the integer accessor is an Integer: `test_a_hook_sees_the_value_for_the_integer_accessor_as_an_integer`.
+- [x] A context attribute of each numeric type matches as its value: `test_a_context_attribute_of_each_numeric_type_matches_as_its_value` (Integer, Float, Rational, BigDecimal; `Complex` does not match) and `test_a_fractional_numeric_attribute_keeps_its_value`.
 
 ### Code and documents
 
-- [x] `DESIGN.md` passes the phase 1 row check, and `README.md` links the mapping table: `DESIGN.md#mapping-table-contract-section-2`, linked from `README.md`.
-- [x] Names keep their canonical meaning and defaults, and reason kinds, error codes, stream states and `lastError` codes keep their spelling: the mapping table; `README.md`, "The API"; the harness checks every spelling through the service.
-- [x] The evaluator has no platform regex: `grep -nE 'Regexp|=~|\.match|\.scan|\.gsub|\.sub\(|/[^/ ]+/[imxn]*[ ).,]' lib/toggleslash/eval/*.rb lib/toggleslash/eval.rb` finds only `String#split` and `String#index` with string arguments (`semver.rb`, `text.rb`), which are not regular expressions. The pattern engine is `eval/pattern_parser.rb` and `eval/pattern.rb` (a Pike VM). The platform's regexes are used only outside `eval/`: `config.rb` (trailing slash), `http.rb` (status line, digits, chunk size), `json.rb` (tokens).
-- [x] Every runtime dependency has a line in `DESIGN.md`: there are none, and `DESIGN.md`, "Dependencies", says why the standard library's `json` and `Net::HTTP` do not do.
-- [x] No telemetry, no header that identifies a user or machine: the only headers the code writes are `Authorization` (`sync.rb`, `usage.rb`), `Accept` (`sync.rb` stream), `If-None-Match` (`sync.rb`), `Content-Type` (`usage.rb`), plus `Host`, `Connection` and `Content-Length` written by `http.rb` lines 80 to 86. One request captured on a loopback listener (the sdk key replaced by `<key>`, the port the one the OS gave): `GET /sdk/v1/ruleset HTTP/1.1`, `Host: 127.0.0.1:44275`, `Connection: close`, `Authorization: Bearer <key>`; and `POST /sdk/v1/events HTTP/1.1`, `Host: 127.0.0.1:44275`, `Connection: close`, `Authorization: Bearer <key>`, `Content-Type: application/json`, `Content-Length: 73`. The client adds `Host` (the server's own address, which the caller gave: it names the server, not a user or machine), `Connection: close` (one request per connection, a fixed word) and `Content-Length` (the byte count of the body). It adds no `User-Agent` and no `Accept-Encoding`. `test_the_headers_the_client_adds_are_the_protocol_ones_and_nothing_that_names_a_user` holds this in `http_test.rb`.
-- [x] Every extra beyond the contract is one contract 13 allows: the typed accessors, the `Detail` and `EvaluationEvent` types and the seams. None sends anything new.
-- [x] Seams are options on `create`, never a global or an environment variable: `grep -rn ENV lib` finds nothing, and the seams are `clock:`, `random:`, `evaluator:`, `stream_idle_timeout:`.
-- [x] `bin/lint`, `bin/test` and `bin/test-service` exist, are executable, `cd` to the SDK and use only the `mise.toml` toolchain: `ls -l sdks/ruby/bin`, each is `#!/bin/sh` with `set -eu` and `cd "$(dirname "$0")/.."`.
-- [x] `test-service/README.md` maps every accessor to an SDK method: the table has bool, string, number, int, json and any.
-- [x] The workflow follows the skeleton, filters on its paths and pins every action by SHA: `.github/workflows/sdk-ruby.yml` differs from `sdk-python.yml` only in its name, paths, concurrency group, job name and toolchain step (checked with `diff`); the three actions are pinned to the same SHAs as `ci.yml`.
+- [x] `DESIGN.md` has the mapping table (section 1) and `README.md` links to it.
+- [x] Mapping names, reason kinds, error codes, stream states and `lastError` codes keep their spelling: `lib/toggleslash/types.rb`; the harness checks the strings.
+- [x] No platform regular expression in the evaluator: `grep -rniE "\bRegexp\b|=~|\.match\??\(|\.scan\(|\.gsub|\.sub\(" lib/toggleslash/eval` finds only a comment in `lib/toggleslash/eval/pattern.rb:6` that says none is used. The pattern engine is the SDK's own VM, tested in `test/pattern_test.rb` (`test_time_is_bounded_whatever_the_pattern`).
+- [x] The lint configuration names its rule set and each ignored rule carries a reason: `.rubocop.yml` (decision 2).
+- [x] Every runtime dependency has a line in `DESIGN.md`: there is none, and section 4 says why.
+- [x] No telemetry and no identifying header: the request-header table in Results lists what is on the wire, each with why it does not identify a user or a machine; the source sets only `Authorization`, `Accept`, `If-None-Match` and `Content-Type` (`lib/toggleslash/client.rb:29`, `:391`, `:393`, `:471`, `lib/toggleslash/usage.rb:133`); `test_only_the_allowed_headers_are_sent`.
+- [x] Every extra beyond the contract is one contract 13 allows: `int_variation` and `int_variation_detail` (typed accessor), `Client#status` fields, the private seams. None weakens contract 5 or sends anything new.
+- [x] Test seams are not global and not an environment variable: private `Client.new` keywords (decision 13); `Toggleslash.create` exposes the public options only.
+- [x] `bin/lint`, `bin/test` and `bin/test-service` exist, are executable, `cd` to the SDK and run with only the `mise.toml` toolchain: `ls -l bin` shows mode 755 on each; each starts `cd "$(dirname "$0")/.."`.
+- [x] `test-service/README.md` maps every accessor: `bool`, `string`, `number`, `json`, `any` to `variation_detail`, `int` to `int_variation_detail`.
+- [x] `.github/workflows/sdk-ruby.yml` follows the skeleton, filters on its paths and pins every action by commit SHA: `bun scripts/check-workflows.ts .github/workflows/*.yml` passes.
+- [x] A `status` read racing a stream failure never shows that failure's `lastError` beside `stream: connected`: `test_status_never_shows_a_stream_failure_beside_connected` (Ruby has no race detector; a reader thread reads `status` every 0.2 ms for 1.5 s while the stream connects, fails and reconnects, and counts any read with `stream: connected` beside a `lastError`).
 
 ### Repository
 
-- [x] No em dash or en dash: `bun scripts/check-dashes.ts` exit 0.
-- [x] `bun run format:check` passes: `All matched files use the correct format.`
-- [x] Scope: the phase 6 scope check printed only `scope ok`.
-- [x] No package was published and no name reserved: the gemspec has no registry and no push was made; no `gem build` was run.
-- [x] Commit subject is a Conventional Commit, not `feat`, with no `Co-Authored-By` and no AI attribution: `chore(sdk-ruby): a Ruby server SDK built from the authoring prompt`.
-- [x] `RUN.md` follows `RUN-TEMPLATE.md`: the section grep printed nothing.
+- [x] No em dash or en dash: `bun scripts/check-dashes.ts` exits 0.
+- [x] `bun run format:check` passes.
+- [x] Only `sdks/ruby/` and the one workflow file changed: the phase 6 scope check prints `scope ok`.
+- [x] No package published and no name reserved: the gemspec is built by no step and the workflow publishes nothing.
+- [x] Commit subject is a Conventional Commit (`chore(sdk-ruby): the Ruby server SDK regenerated cold from the authoring prompt`), not `feat`, with no `Co-Authored-By` or AI attribution.
+- [x] The workflow's job is `runs-on: ubuntu-latest` with no `if:` guard, triggers `pull_request` and `push` only, installs its own toolchain (mise action) and `bun scripts/check-workflows.ts .github/workflows/*.yml` passes.
+- [x] `RUN.md` follows `RUN-TEMPLATE.md`, with evidence for every line of the list: this file, checked by the phase 6 section loop.

@@ -1,208 +1,138 @@
 # frozen_string_literal: true
 
-require 'ipaddr'
-require 'openssl'
-require 'socket'
-require 'uri'
-require_relative 'clock'
+require "socket"
+require "openssl"
+require "uri"
 
-module ToggleSlash
-  # A small HTTP/1.1 client, written because `Net::HTTP` bounds each read and not the whole request: here one
-  # monotonic deadline covers the connect, the TLS handshake, the request, the headers and the body, and a
-  # `Cancel` abandons a request that is blocked on the network. One request per connection (`Connection:
-  # close`), no pool, no redirects, no compression.
+module Toggleslash
+  # A small HTTP/1.1 client: one request per connection, `Connection: close`, no redirects, no proxy, no
+  # compression. It is hand-written because the standard library's `Net::HTTP` bounds each socket operation,
+  # not the whole request, and cannot be aborted from another thread, which contract 7.1, 7.2 and 11 need.
+  # Every wait here is an `IO.select` against one deadline and the abort pipe, so a whole request (the body
+  # included) is bounded, and `close` ends a request in flight by closing the pipe.
   module Http
-    class Error < StandardError; end
+    STREAM_IDLE = 60.0
 
-    # The deadline passed before the answer was complete.
-    class Timeout < Error; end
+    # The request ran past its bound, or the stream went quiet.
+    class RequestTimeout < StandardError; end
 
-    # The connection failed, was cut, or spoke something that is not HTTP/1.1.
-    class Network < Error; end
+    # The connection failed, or anything else went wrong with the request.
+    class NetworkFailure < StandardError; end
 
-    # The caller's `Cancel` was thrown while the request was waiting.
-    class Cancelled < Error; end
+    # `close` abandoned the request.
+    class Aborted < StandardError; end
 
-    # The longest a server's `Retry-After` can hold the client, in seconds.
-    MAX_RETRY_AFTER = 300
-    MAX_HEAD_BYTES = 65_536
-
-    # Where requests go: `prefix` is whatever path the configured URL carries, `host_header` the Host value.
-    Target = Struct.new(:scheme, :host, :port, :prefix, :host_header)
-
-    module_function
-
-    # Splits the configured URL. Nil when it is not an http or https URL with a host; a request to nil
-    # fails with `Network`, so a bad URL is a `network` error and never an exception at the caller.
-    def target(base_url)
-      uri = URI.parse(base_url)
-      return nil unless %w[http https].include?(uri.scheme) && uri.hostname && !uri.hostname.empty?
-
-      port = uri.port || (uri.scheme == 'https' ? 443 : 80)
-      default = uri.scheme == 'https' ? 443 : 80
-      host = uri.hostname.include?(':') ? "[#{uri.hostname}]" : uri.hostname
-      Target.new(uri.scheme, uri.hostname, port, uri.path.to_s, port == default ? host : "#{host}:#{port}")
-    rescue URI::Error
-      nil
+    Response = Struct.new(:status, :headers, :body) do
+      # A header by lower-case name; the first one wins.
+      def header(name)
+        headers[name]
+      end
     end
 
-    # The seconds a response asks the client to wait, capped, or nil. Only a 429 counts, and only whole
-    # decimal seconds (surrounding spaces ignored): a date, a fraction or a sign is ignored.
-    def retry_after(status, header)
-      return nil unless status == 429
-
-      text = header.to_s.strip
-      return nil unless text.match?(/\A[0-9]+\z/)
-
-      [text.to_i, MAX_RETRY_AFTER].min
+    def self.now
+      Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end
 
-    # Sends one request and returns once the response head has arrived; the body is read afterwards, by the
-    # same deadline. Raises `Timeout`, `Network` or `Cancelled`, never anything else.
-    def request(target, method, path, deadline:, cancel: nil, headers: {}, body: nil)
-      raise Network, 'the url is not an http or https url' if target.nil?
-
-      connection = Connection.connect(target, deadline, cancel)
-      begin
-        connection.write_all(build_head(target, method, path, headers, body), deadline)
-        Response.read_head(connection, deadline, method)
-      rescue Exception # rubocop:disable Lint/RescueException
-        connection.close
-        raise
+    # The requests `close` may abandon. Closing the write end of a pipe makes its read end readable for every
+    # request that waits on it, now and later.
+    class Aborts
+      def initialize
+        @reader, @writer = IO.pipe
+        @closed = false
+        @lock = Mutex.new
       end
-    rescue Error
-      raise
-    rescue SystemCallError, IOError, SocketError, OpenSSL::SSL::SSLError => e
-      raise Network, "network failure (#{e.class})"
+
+      attr_reader :reader
+
+      def closed?
+        @lock.synchronize { @closed }
+      end
+
+      def abort_all
+        @lock.synchronize do
+          return if @closed
+
+          @closed = true
+          @writer.close
+        end
+      end
+
+      def dispose
+        abort_all
+        @lock.synchronize { @reader.close unless @reader.closed? }
+      end
     end
 
-    def build_head(target, method, path, headers, body)
-      lines = ["#{method} #{target.prefix}#{path} HTTP/1.1", "Host: #{target.host_header}", 'Connection: close']
-      headers.each do |name, value|
-        raise Network, 'a header value holds a line break' if value.to_s.match?(/[\r\n]/)
+    # A parsed base URL: scheme, host, port and a path prefix.
+    class Endpoint
+      attr_reader :host, :port, :prefix, :https
 
-        lines << "#{name}: #{value}"
+      def initialize(url)
+        @valid = false
+        @https = false
+        @host = ""
+        @port = 80
+        @prefix = ""
+        parse(url)
       end
-      lines << "Content-Length: #{body.bytesize}" unless body.nil?
-      head = "#{lines.join("\r\n")}\r\n\r\n".b
-      body.nil? ? head : head << body.b
+
+      def valid?
+        @valid
+      end
+
+      def host_header
+        name = @host.include?(":") ? "[#{@host}]" : @host
+        default = @https ? 443 : 80
+        @port == default ? name : "#{name}:#{@port}"
+      end
+
+      private
+
+      def parse(url)
+        uri = URI.parse(url)
+        return unless %w[http https].include?(uri.scheme) && uri.hostname && !uri.hostname.empty?
+
+        @https = uri.scheme == "https"
+        @host = uri.hostname
+        @port = uri.port || (@https ? 443 : 80)
+        return unless @port.between?(1, 65_535)
+
+        @prefix = uri.path.to_s
+        @valid = true
+      rescue URI::Error, ArgumentError
+        nil
+      end
     end
 
-    # A connected socket, plain or TLS, and the waits on it.
-    class Connection
-      def self.connect(target, deadline, cancel)
-        addresses = resolve(target.host, target.port, deadline, cancel)
-        failure = nil
-        addresses.each do |address|
-          socket = open_socket(address, deadline, cancel)
-          return target.scheme == 'https' ? start_tls(socket, target.host, deadline,
-                                                      cancel) : new(socket, socket, cancel)
-        rescue SystemCallError => e
-          failure = e
-        end
-        raise Network, "connection failed (#{failure ? failure.class : 'no address'})"
-      end
-
-      def self.ip_literal?(host)
-        IPAddr.new(host)
-        true
-      rescue IPAddr::Error
-        false
-      end
-
-      # Name resolution cannot be bounded by a socket call, so it runs on a helper thread that is waited on
-      # in short slices against the deadline and the cancel switch.
-      def self.resolve(host, port, deadline, cancel)
-        return [Addrinfo.tcp(host, port)] if ip_literal?(host)
-
-        lookup = Thread.new do
-          Thread.current.report_on_exception = false
-          Addrinfo.getaddrinfo(host, port, nil, :STREAM)
-        end
-        until lookup.join([deadline - Clock.monotonic, 0.05].min.clamp(0.0, 0.05))
-          if cancel&.cancelled?
-            lookup.kill
-            raise Cancelled, 'cancelled'
-          end
-          next if Clock.monotonic < deadline
-
-          lookup.kill
-          raise Timeout, 'timed out resolving the host'
-        end
-        lookup.value
-      end
-
-      def self.open_socket(address, deadline, cancel)
-        socket = Socket.new(address.afamily, Socket::SOCK_STREAM, 0)
-        begin
-          socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
-          if socket.connect_nonblock(address, exception: false) == :wait_writable
-            new(socket, socket, cancel).wait(:write, deadline)
-            code = socket.getsockopt(Socket::SOL_SOCKET, Socket::SO_ERROR).int
-            raise SystemCallError.new('connect', code) unless code.zero?
-          end
-          socket
-        rescue Exception # rubocop:disable Lint/RescueException
-          socket.close
-          raise
-        end
-      end
-
-      def self.tls_context
-        @tls_context ||= OpenSSL::SSL::SSLContext.new.tap(&:set_params)
-      end
-
-      def self.start_tls(socket, host, deadline, cancel)
-        ssl = OpenSSL::SSL::SSLSocket.new(socket, tls_context)
-        ssl.sync_close = true
-        ssl.hostname = host unless ip_literal?(host)
-        connection = new(socket, ssl, cancel)
-        begin
-          loop do
-            result = ssl.connect_nonblock(exception: false)
-            break if result == ssl
-
-            connection.wait(result == :wait_writable ? :write : :read, deadline)
-          end
-          ssl.post_connection_check(host)
-          connection
-        rescue Exception # rubocop:disable Lint/RescueException
-          connection.close
-          raise
-        end
-      end
-
-      def initialize(socket, io, cancel)
-        @socket = socket
+    # One open connection, plain or TLS, with reads and writes bounded by a deadline and the abort pipe.
+    class Conn
+      def initialize(io, aborts)
         @io = io
-        @cancel = cancel
+        @aborts = aborts
       end
 
-      # Blocks until the socket can be read or written, the deadline passes, or the cancel switch is thrown.
-      def wait(mode, deadline)
-        raise Cancelled, 'cancelled' if @cancel&.cancelled?
-
-        remaining = deadline - Clock.monotonic
-        raise Timeout, 'timed out' unless remaining.positive?
-
-        wake = @cancel&.reader
-        readers = mode == :read ? [@socket] : []
-        readers << wake if wake
-        ready = IO.select(readers, mode == :write ? [@socket] : [], nil, remaining)
-        raise Timeout, 'timed out' if ready.nil?
-        raise Cancelled, 'cancelled' if wake && ready[0].include?(wake)
+      def close
+        @io.close unless @io.closed?
+      rescue StandardError
+        nil
       end
 
       # The next bytes, or nil at the end of the stream.
       def read_some(deadline)
         loop do
-          data = @io.read_nonblock(16_384, exception: false)
-          case data
-          when :wait_readable then wait(:read, deadline)
-          when :wait_writable then wait(:write, deadline)
-          else return data
+          chunk = @io.read_nonblock(65_536, exception: false)
+          case chunk
+          when :wait_readable then Conn.wait(@io, :read, deadline, @aborts)
+          when :wait_writable then Conn.wait(@io, :write, deadline, @aborts)
+          else return chunk
           end
         end
+      rescue EOFError
+        nil
+      rescue SystemCallError, IOError, OpenSSL::SSL::SSLError => e
+        raise Aborted if @aborts&.closed?
+
+        raise NetworkFailure, e.class.name
       end
 
       def write_all(data, deadline)
@@ -210,217 +140,420 @@ module ToggleSlash
         until data.empty?
           written = @io.write_nonblock(data, exception: false)
           case written
-          when :wait_writable then wait(:write, deadline)
-          when :wait_readable then wait(:read, deadline)
-          else data = data.byteslice(written..)
+          when :wait_readable then Conn.wait(@io, :read, deadline, @aborts)
+          when :wait_writable then Conn.wait(@io, :write, deadline, @aborts)
+          else data = data.byteslice(written, data.bytesize - written)
           end
         end
+      rescue SystemCallError, IOError, OpenSSL::SSL::SSLError => e
+        raise Aborted if @aborts&.closed?
+
+        raise NetworkFailure, e.class.name
       end
 
-      def close
-        @io.close unless @io.closed?
-        @socket.close unless @socket.closed?
-      rescue IOError, SystemCallError, OpenSSL::SSL::SSLError
-        nil
+      # Waits until `io` can be read or written, the deadline passes (RequestTimeout) or the abort pipe fires.
+      def self.wait(io, mode, deadline, aborts)
+        raise Aborted if aborts&.closed?
+
+        remaining = deadline - Http.now
+        raise RequestTimeout if remaining <= 0
+
+        reads = mode == :read ? [io] : []
+        writes = mode == :write ? [io] : []
+        reads << aborts.reader if aborts
+        ready = IO.select(reads, writes, nil, remaining)
+        raise RequestTimeout unless ready
+        raise Aborted if aborts && ready[0].include?(aborts.reader)
+      rescue IOError, SystemCallError
+        raise Aborted if aborts&.closed?
+
+        raise NetworkFailure, "select"
       end
     end
 
-    # A response whose head has been read. The body is read on demand, whole or piece by piece.
-    class Response
-      attr_reader :status, :headers
-
-      def self.read_head(connection, deadline, method)
-        buffer = ''.b
-        until (at = buffer.index("\r\n\r\n"))
-          raise Network, 'the response head is too long' if buffer.bytesize > MAX_HEAD_BYTES
-
-          data = connection.read_some(deadline)
-          raise Network, 'the connection closed before the response head' if data.nil?
-
-          buffer << data
-        end
-        head = buffer.byteslice(0, at)
-        new(connection, head, buffer.byteslice((at + 4)..), method)
-      end
-
-      def initialize(connection, head, leftover, method)
-        @connection = connection
-        @buffer = leftover
-        status_line, *lines = head.split("\r\n")
-        @status = parse_status(status_line)
-        @headers = parse_headers(lines)
+    # The body of a response, read in pieces: by length, chunked, or until the server closes.
+    class Body
+      def initialize(conn, mode, length, buffer)
+        @conn = conn
+        @mode = mode
+        @remaining = length
+        @buffer = buffer
+        @state = :size
+        @chunk_left = 0
         @done = false
-        choose_framing(method)
       end
 
-      def header(name)
-        @headers[name.downcase]
-      end
+      # The next bytes (at least one), or nil when the body has ended.
+      def read(deadline)
+        return nil if @done
 
-      # True when the response has no body at all (so a 200 with none is an error for a stream).
-      def bodiless?
-        @mode == :none || (@mode == :length && @remaining.zero?)
-      end
-
-      # The rest of the body, read under `deadline`.
-      def read_body(deadline)
-        body = ''.b
-        while (piece = read_chunk(deadline: deadline))
-          body << piece
+        case @mode
+        when :none then finish
+        when :length then read_length(deadline)
+        when :chunked then read_chunked(deadline)
+        else read_until_close(deadline)
         end
-        body
-      end
-
-      # The next piece of the decoded body, or nil at its end. Each read waits at most until `deadline`, or
-      # for `idle` seconds from the start of that read when `idle` is given, so any bytes restart the wait.
-      def read_chunk(deadline: nil, idle: nil)
-        loop do
-          piece = take
-          return piece unless piece.empty?
-          return nil if @done
-
-          data = @connection.read_some(idle ? Clock.monotonic + idle : deadline)
-          if data.nil?
-            raise Network, 'the connection closed before the body ended' unless @mode == :eof
-
-            @done = true
-            return nil
-          end
-          @buffer << data
-        end
-      end
-
-      def close
-        @connection.close
       end
 
       private
 
-      def parse_status(line)
-        match = %r{\AHTTP/1\.[01] ([0-9]{3})(?: |\z)}n.match(line.to_s)
-        raise Network, 'the answer is not HTTP/1.x' if match.nil?
-
-        match[1].to_i
+      def finish
+        @done = true
+        nil
       end
 
-      def parse_headers(lines)
-        lines.each_with_object({}) do |line, result|
-          name, value = line.split(':', 2)
-          next if value.nil?
+      def fill(deadline)
+        chunk = @conn.read_some(deadline)
+        raise NetworkFailure, "truncated" if chunk.nil?
+
+        @buffer << chunk
+      end
+
+      def take(limit)
+        piece = @buffer.byteslice(0, limit)
+        @buffer = @buffer.byteslice(piece.bytesize, @buffer.bytesize - piece.bytesize)
+        piece
+      end
+
+      def read_length(deadline)
+        return finish if @remaining.zero?
+
+        fill(deadline) if @buffer.empty?
+        piece = take(@remaining)
+        @remaining -= piece.bytesize
+        piece
+      end
+
+      def read_until_close(deadline)
+        if @buffer.empty?
+          chunk = @conn.read_some(deadline)
+          return finish if chunk.nil?
+
+          @buffer << chunk
+        end
+        take(@buffer.bytesize)
+      end
+
+      def line(deadline)
+        loop do
+          at = @buffer.index("\n".b)
+          if at
+            text = take(at + 1)
+            return text.chomp.chomp("\r")
+          end
+          fill(deadline)
+        end
+      end
+
+      def read_chunked(deadline)
+        loop do
+          case @state
+          when :size then start_chunk(deadline)
+          when :data
+            fill(deadline) if @buffer.empty?
+            piece = take(@chunk_left)
+            @chunk_left -= piece.bytesize
+            @state = :data_end if @chunk_left.zero?
+            return piece
+          when :data_end
+            raise NetworkFailure, "bad chunk" unless line(deadline).empty?
+
+            @state = :size
+          else
+            return finish if line(deadline).empty?
+          end
+        end
+      end
+
+      def start_chunk(deadline)
+        text = line(deadline).split(";", 2).first.to_s.strip
+        raise NetworkFailure, "bad chunk size" unless text.match?(/\A[0-9a-fA-F]{1,15}\z/)
+
+        size = text.to_i(16)
+        if size.zero?
+          @state = :trailer
+        else
+          @chunk_left = size
+          @state = :data
+        end
+      end
+    end
+
+    # An open response being read in pieces.
+    class Stream
+      attr_reader :status, :headers
+
+      def initialize(conn, status, headers, body, bodyless)
+        @conn = conn
+        @status = status
+        @headers = headers
+        @body = body
+        @bodyless = bodyless
+        @idle = STREAM_IDLE
+      end
+
+      # True for an answer that declared `Content-Length: 0`: no body object at all.
+      def bodyless?
+        @bodyless
+      end
+
+      attr_writer :idle
+
+      def header(name)
+        @headers[name]
+      end
+
+      # The next bytes (at least one), or nil when the server ended the stream.
+      def read
+        @body.read(Http.now + @idle)
+      end
+
+      def close
+        @conn.close
+      end
+    end
+
+    # The default transport. A test replaces it with an object that has the same two methods.
+    class Transport
+      def initialize(ssl_context: nil)
+        @ssl_context = ssl_context
+      end
+
+      # One whole request, body read, in `timeout` seconds. Raises RequestTimeout, Aborted or NetworkFailure
+      # and nothing else.
+      def fetch(endpoint, method, path, headers, body, timeout, aborts)
+        guarded(aborts) do
+          deadline = Http.now + timeout
+          conn = open_connection(endpoint, deadline, aborts)
+          begin
+            conn.write_all(request(endpoint, method, path, headers, body), deadline)
+            status, response_headers, reader, = read_response(conn, method, deadline)
+            Response.new(status, response_headers, collect(reader, deadline))
+          ensure
+            conn.close
+          end
+        end
+      end
+
+      # Opens `GET path`: bounded by `open_timeout` until the headers arrive; after that every read waits at
+      # most `idle_timeout` for a byte. The caller closes the stream.
+      def open_stream(endpoint, path, headers, open_timeout, idle_timeout, aborts)
+        guarded(aborts) do
+          deadline = Http.now + open_timeout
+          conn = open_connection(endpoint, deadline, aborts)
+          begin
+            conn.write_all(request(endpoint, "GET", path, headers, nil), deadline)
+            status, response_headers, reader, bodyless = read_response(conn, "GET", deadline)
+            stream = Stream.new(conn, status, response_headers, reader, bodyless)
+            stream.idle = idle_timeout
+            stream
+          rescue Exception # rubocop:disable Lint/RescueException
+            conn.close
+            raise
+          end
+        end
+      end
+
+      private
+
+      def guarded(aborts)
+        yield
+      rescue RequestTimeout, Aborted, NetworkFailure
+        raise
+      rescue StandardError, SystemStackError => e
+        raise Aborted if aborts&.closed?
+
+        raise NetworkFailure, e.class.name
+      end
+
+      def request(endpoint, method, path, headers, body)
+        raise NetworkFailure, "unusable url" unless endpoint.valid?
+
+        lines = ["#{method} #{endpoint.prefix}#{path} HTTP/1.1", "Host: #{endpoint.host_header}", "Connection: close"]
+        lines << "Content-Length: #{body.bytesize}" if body
+        headers.each do |name, value|
+          raise NetworkFailure, "unusable header" if value.match?(/[\r\n]/)
+
+          lines << "#{name}: #{value}"
+        end
+        head = "#{lines.join("\r\n")}\r\n\r\n".b
+        body ? head + body.b : head
+      end
+
+      def open_connection(endpoint, deadline, aborts)
+        raise NetworkFailure, "unusable url" unless endpoint.valid?
+        raise Aborted if aborts&.closed?
+
+        sock = connect(endpoint, deadline, aborts)
+        io = endpoint.https ? tls(sock, endpoint, deadline, aborts) : sock
+        Conn.new(io, aborts)
+      end
+
+      def connect(endpoint, deadline, aborts)
+        failure = nil
+        addresses(endpoint, deadline, aborts).each do |address|
+          return connect_one(address, deadline, aborts)
+        rescue NetworkFailure => e
+          failure = e
+        end
+        raise failure || NetworkFailure.new("no address")
+      end
+
+      def connect_one(address, deadline, aborts)
+        sock = Socket.new(address.afamily, Socket::SOCK_STREAM, 0)
+        begin
+          sock.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
+          begin
+            sock.connect_nonblock(address)
+          rescue IO::WaitWritable
+            Conn.wait(sock, :write, deadline, aborts)
+            begin
+              sock.connect_nonblock(address)
+            rescue Errno::EISCONN
+              nil
+            end
+          end
+          sock
+        rescue SystemCallError, SocketError, IOError => e
+          sock.close
+          raise NetworkFailure, e.class.name
+        rescue Exception # rubocop:disable Lint/RescueException
+          sock.close
+          raise
+        end
+      end
+
+      # The addresses of the host. A numeric host never blocks; a name is resolved on a helper thread so the
+      # wait stays bounded and abortable.
+      def addresses(endpoint, deadline, aborts)
+        host = endpoint.host
+        begin
+          return [Addrinfo.tcp(host, endpoint.port)] if numeric?(host)
+        rescue SocketError
+          nil
+        end
+        queue = Queue.new
+        resolver = Thread.new do
+          Thread.current.report_on_exception = false
+          queue << Addrinfo.getaddrinfo(host, endpoint.port, nil, :STREAM)
+        rescue StandardError => e
+          queue << e
+        end
+        result = pop(queue, deadline, aborts)
+        resolver.kill if result.nil?
+        raise NetworkFailure, "resolve" if result.is_a?(StandardError) || result.empty?
+
+        result
+      end
+
+      def numeric?(host)
+        host.match?(/\A[0-9.]+\z/) || host.include?(":")
+      end
+
+      def pop(queue, deadline, aborts)
+        loop do
+          raise Aborted if aborts&.closed?
+
+          remaining = deadline - Http.now
+          raise RequestTimeout if remaining <= 0
+
+          value = queue.pop(timeout: [remaining, 0.05].min)
+          return value unless value.nil?
+        end
+      end
+
+      def tls(sock, endpoint, deadline, aborts)
+        context = @ssl_context || default_context
+        ssl = OpenSSL::SSL::SSLSocket.new(sock, context)
+        ssl.hostname = endpoint.host
+        ssl.sync_close = true
+        begin
+          loop do
+            result = ssl.connect_nonblock(exception: false)
+            case result
+            when :wait_readable then Conn.wait(sock, :read, deadline, aborts)
+            when :wait_writable then Conn.wait(sock, :write, deadline, aborts)
+            else break
+            end
+          end
+          # A context the caller supplied may not check the name; the check is never skipped.
+          ssl.post_connection_check(endpoint.host) unless context.verify_mode == OpenSSL::SSL::VERIFY_NONE
+        rescue OpenSSL::SSL::SSLError, SystemCallError, IOError => e
+          ssl.close
+          raise NetworkFailure, e.class.name
+        rescue Exception # rubocop:disable Lint/RescueException
+          ssl.close
+          raise
+        end
+        ssl
+      end
+
+      def default_context
+        context = OpenSSL::SSL::SSLContext.new
+        context.set_params(verify_mode: OpenSSL::SSL::VERIFY_PEER, verify_hostname: true)
+        context
+      end
+
+      # [status, headers, Body, bodyless] once the head is in. Interim 1xx answers are skipped.
+      def read_response(conn, method, deadline)
+        buffer = String.new(encoding: Encoding::BINARY)
+        loop do
+          head, buffer = read_head(conn, buffer, deadline)
+          status, headers = parse_head(head)
+          next if status >= 100 && status < 200 && status != 101
+
+          mode, length = framing(status, method, headers)
+          return [status, headers, Body.new(conn, mode, length, buffer), mode == :length && length.zero?]
+        end
+      end
+
+      def read_head(conn, buffer, deadline)
+        loop do
+          at = buffer.index("\r\n\r\n".b)
+          return [buffer.byteslice(0, at), buffer.byteslice(at + 4, buffer.bytesize - at - 4)] if at
+
+          chunk = conn.read_some(deadline)
+          raise NetworkFailure, "no response" if chunk.nil?
+
+          buffer << chunk
+        end
+      end
+
+      def parse_head(head)
+        lines = head.split("\r\n", -1)
+        match = lines.shift.to_s.match(%r{\AHTTP/1\.[01] ([0-9]{3})(?: |\z)})
+        raise NetworkFailure, "bad status line" unless match
+
+        headers = {}
+        lines.each do |line|
+          name, colon, value = line.partition(":")
+          next if colon.empty?
 
           key = name.strip.downcase
-          text = value.strip.force_encoding(Encoding::UTF_8)
-          result[key] = result.key?(key) ? "#{result[key]}, #{text}" : text
+          headers[key] ||= value.strip.force_encoding(Encoding::UTF_8).scrub("�")
         end
+        [match[1].to_i, headers]
       end
 
-      def choose_framing(method)
-        length = @headers['content-length']
-        if method == 'HEAD' || @status < 200 || [204, 304].include?(@status)
-          @mode = :none
-          @done = true
-        elsif @headers['transfer-encoding'].to_s.downcase.include?('chunked')
-          @mode = :chunked
-          @chunk_state = :size
-          @chunk_size = 0
-        elsif length&.match?(/\A[0-9]+\z/)
-          @mode = :length
-          @remaining = length.to_i
-          @done = @remaining.zero?
-        else
-          @mode = :eof
-        end
+      def framing(status, method, headers)
+        return [:none, 0] if method == "HEAD" || status == 204 || status == 304 || status == 101
+
+        coding = headers["transfer-encoding"]
+        return [:chunked, 0] if coding && coding.downcase.split(",").last.to_s.strip == "chunked"
+
+        length = headers["content-length"]
+        return [:close, 0] unless length
+        raise NetworkFailure, "bad content-length" unless length.match?(/\A[0-9]{1,15}\z/)
+
+        [:length, length.to_i]
       end
 
-      # Decodes what is buffered; an empty string means more bytes are needed (or the body is done).
-      def take
-        case @mode
-        when :none then ''.b
-        when :eof then drain
-        when :length then take_length
-        else take_chunked
-        end
-      end
-
-      def drain
-        data = @buffer
-        @buffer = ''.b
-        data
-      end
-
-      def take_length
-        count = [@buffer.bytesize, @remaining].min
-        data = @buffer.byteslice(0, count)
-        @buffer = @buffer.byteslice(count..)
-        @remaining -= count
-        @done = true if @remaining.zero?
-        data
-      end
-
-      def take_chunked
-        out = ''.b
-        until @done
-          progress = case @chunk_state
-                     when :size then chunk_size_line
-                     when :data then chunk_data(out)
-                     when :data_end then chunk_data_end
-                     else chunk_trailer
-                     end
-          break unless progress
+      def collect(reader, deadline)
+        out = String.new(encoding: Encoding::BINARY)
+        while (piece = reader.read(deadline))
+          out << piece
         end
         out
-      end
-
-      def line_from_buffer
-        at = @buffer.index("\r\n")
-        if at.nil?
-          raise Network, 'a chunk header is too long' if @buffer.bytesize > 4096
-
-          return nil
-        end
-        line = @buffer.byteslice(0, at)
-        @buffer = @buffer.byteslice((at + 2)..)
-        line
-      end
-
-      def chunk_size_line
-        line = line_from_buffer
-        return false if line.nil?
-
-        size = line.split(';', 2).first.to_s.strip
-        raise Network, 'a chunk size is not hexadecimal' unless size.match?(/\A[0-9a-fA-F]+\z/)
-
-        @chunk_size = size.to_i(16)
-        @chunk_state = @chunk_size.zero? ? :trailer : :data
-        true
-      end
-
-      def chunk_data(out)
-        return false if @buffer.empty?
-
-        count = [@buffer.bytesize, @chunk_size].min
-        out << @buffer.byteslice(0, count)
-        @buffer = @buffer.byteslice(count..)
-        @chunk_size -= count
-        @chunk_state = :data_end if @chunk_size.zero?
-        true
-      end
-
-      def chunk_data_end
-        return false if @buffer.bytesize < 2
-        raise Network, 'a chunk is not followed by a line break' unless @buffer.start_with?("\r\n")
-
-        @buffer = @buffer.byteslice(2..)
-        @chunk_state = :size
-        true
-      end
-
-      def chunk_trailer
-        line = line_from_buffer
-        return false if line.nil?
-
-        @done = true if line.empty?
-        true
       end
     end
   end

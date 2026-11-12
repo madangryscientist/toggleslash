@@ -1,21 +1,25 @@
 #!/bin/sh
-# The native lint and format check, no warnings allowed: every file must parse clean under `ruby -wc`, and
-# RuboCop (style and layout) must report nothing.
+# The native lint and format check, no warnings allowed: RuboCop (rules in .rubocop.yml) over lib, test,
+# test-service and the gemspec, which includes its layout cops (the formatter), then a syntax check of every Ruby
+# file under `ruby -w` with warnings as errors.
 set -eu
 cd "$(dirname "$0")/.."
 
 if command -v mise >/dev/null 2>&1; then
-  # `mise exec -- rubocop` can pick a system Ruby that precedes mise's on PATH, so run the gem's script under
-  # mise's own Ruby.
-  rubocop_home=$(mise where gem:rubocop)
-  syntax() { mise exec -- ruby -wc "$1" >/dev/null; }
-  rubocop() { GEM_HOME="$rubocop_home/libexec" mise exec -- ruby "$rubocop_home/libexec/bin/rubocop" "$@"; }
+  run() { mise exec -- "$@"; }
+  # `mise exec -- rubocop` can pick a different Ruby than the one the gem was installed for, so RuboCop's
+  # own gem directory is put ahead of the default one and the script is run by the pinned ruby.
+  gem_home="$(mise where gem:rubocop)/libexec"
+  default_dir="$(mise exec -- ruby -e 'print Gem.default_dir')"
+  rubocop() {
+    GEM_HOME="$gem_home" GEM_PATH="$gem_home:$default_dir" mise exec -- ruby "$gem_home/bin/rubocop" "$@"
+  }
 else
-  syntax() { ruby -wc "$1" >/dev/null; }
+  run() { "$@"; }
+  rubocop() { command rubocop "$@"; }
 fi
 
-for file in $(find lib test test-service -name '*.rb' | sort); do
-  syntax "$file"
+rubocop --cache false --format simple lib test test-service toggleslash.gemspec
+for file in $(find lib test test-service -name '*.rb') toggleslash.gemspec; do
+  run ruby -w -e 'exit(RubyVM::InstructionSequence.compile_file(ARGV[0]) ? 0 : 1)' "$file" >/dev/null
 done
-
-rubocop --format simple

@@ -1,168 +1,226 @@
-# ToggleSlash server SDK for Ruby: design
+# ToggleSlash Ruby server SDK: design
 
-This is phase 1 of `docs/sdk-authoring/PROMPT.md`, written before any code. The contract is
-`docs/sdk-contract.md`; the evaluator is `docs/evaluation.md`.
+This is the design the SDK in this directory was built to (phase 1 of
+[`docs/sdk-authoring/PROMPT.md`](../../docs/sdk-authoring/PROMPT.md)). The contract is
+[`docs/sdk-contract.md`](../../docs/sdk-contract.md), evaluation is
+[`docs/evaluation.md`](../../docs/evaluation.md) and the harness protocol is
+[`docs/sdk-test-service.md`](../../docs/sdk-test-service.md). Section numbers below are the contract's.
 
-## Mapping table (contract section 2)
+The gem is `toggleslash` and the namespace is `Toggleslash` (`require "toggleslash"`). Nothing is registered
+under that name.
 
-Durations are `Numeric` seconds (an `Integer` or a `Float`), the usual Ruby idiom, never milliseconds.
-Options are keyword arguments to `ToggleSlash.create`. A closed set is a `Symbol` that keeps the canonical
-spelling (`:RULE_MATCH`, `:connected`, `:http_503`).
+## 1. The mapping table (contract 2)
 
-| Name | In Ruby |
-| --- | --- |
-| `create` | `ToggleSlash.create(url:, sdk_key:, stream: true, poll_interval: 30, flush_interval: 30, request_timeout: 10, hooks: nil, on_error: nil)` returns a `ToggleSlash::Client` and starts its two threads. It does not wait for the network and it never raises: an option that is missing or of the wrong type takes its default (a missing `url` makes every attempt a `network` error). `ToggleSlash::Client.new` takes the same keywords. |
-| `ready` | `client.ready` blocks the calling thread until the first load has finished and returns `true` or `false`. The answer is fixed when the first attempt settles. After `close` it is `false` if it had not settled. It is bounded by `request_timeout`. |
-| `variation` | `client.variation(flag_key, context, fallback)`: the generic accessor. The served value must be the same JSON kind as `fallback` (a `nil` fallback accepts any kind). |
-| `variationDetail` | `client.variation_detail(flag_key, context, fallback)` returns a `ToggleSlash::Detail` (`value`, `variation_index`, `reason`). |
-| `status` | `client.status` returns a frozen `ToggleSlash::Status` (`etag`, `last_sync_at`, `stream`, `last_error`), one consistent snapshot. `etag` is a `String` or `nil`, `last_sync_at` is a `Time` or `nil`, `stream` is one of `:off :connecting :connected :disconnected :closed`, `last_error` is `nil` or one of `:timeout :bad_ruleset :network` or `:http_<status>`. |
-| `close` | `client.close` stops both threads, joins them, sends the final usage flush and returns `nil`. Safe to call twice and from many threads at once. |
-| `url` | keyword `url:`, required (a `String`). Trailing `/` characters are removed. Only `http://` and `https://` are understood. |
-| `sdkKey` | keyword `sdk_key:`, required (a `String`). |
-| `stream` | keyword `stream:`, default `true`. Only `false` turns the stream off (`nil` means the default), so "not given" and "false" differ. |
-| `pollInterval` | keyword `poll_interval:`, default `30` seconds. A `nil`, non-numeric or non-positive value takes the default. |
-| `flushInterval` | keyword `flush_interval:`, default `30` seconds. Same rule. |
-| `requestTimeout` | keyword `request_timeout:`, default `10` seconds. Same rule. Bounds a whole request, body included. |
-| `hooks.afterEvaluation` | keyword `hooks:`, a `Hash` with `:after_evaluation` (or any object that responds to `after_evaluation`), a callable taking one `ToggleSlash::EvaluationEvent` (`flag_key`, `context`, `value`, `variation_index`, `reason`, `etag`, `flag_version`). Default none. |
-| `onError` | keyword `on_error:`, a callable taking one `Exception`. Default: ignore. |
-| `accessor shape` | Both. Generic `variation` and `variation_detail` (kind taken from the fallback) and typed `bool_variation`, `string_variation`, `number_variation`, `int_variation` and `json_variation`, each with a `_detail` twin. The typed ones check the served kind against their own kind, so a `nil` fallback is allowed. `int_variation` applies the integer rule of contract section 4: a fraction or a number outside signed 64 bits is `:TYPE_MISMATCH`, and `2.0` is `2`. `json_variation` takes a served array or object (the kind of its fallback, or either when the fallback is `nil`). |
-| `onError thread` | The thread that met the failure. Ruleset and stream failures: the SDK's sync thread. A failed usage request: the SDK's flush thread, or the thread that called `close` for the final flush. A hook that raised, or an evaluation that raised: the caller's thread, inside `variation`. No SDK lock is held when it is called. |
+Durations are `Numeric` seconds (an `Integer` or a `Float`). `create` is a module function,
+`Toggleslash.create(...)`, that returns a `Toggleslash::Client`. Ruby names are `snake_case`, and every
+argument is a keyword.
 
-The reason is a `ToggleSlash::Reason` (`kind`, and `rule_index`, `flag_key` or `code` when the kind carries
-them, `nil` otherwise). `kind` is `:OFF :PREREQUISITE_FAILED :TARGET_MATCH :RULE_MATCH :FALLTHROUGH :ERROR`.
-For `:ERROR`, `code` is `:INVALID_CONTEXT :FLAG_NOT_FOUND :SEGMENT_NOT_FOUND :MALFORMED_FLAG
-:MALFORMED_SEGMENT :PREREQUISITE_CYCLE :PREREQUISITE_DEPTH_EXCEEDED :NOT_READY :TYPE_MISMATCH
-:EVALUATION_FAILED`. Symbols keep the spelling exactly.
+| Name | Ruby | Default and meaning |
+| --- | --- | --- |
+| `create` | `Toggleslash.create(url:, sdk_key:, stream: true, poll_interval: 30, flush_interval: 30, request_timeout: 10, hooks: nil, on_error: nil)` returns a `Client`. | Starts two threads and returns at once; it does not wait for the network. |
+| `ready` | `client.ready -> true or false` | Blocks until the first ruleset attempt has settled, bounded by `request_timeout` (plus a 1 s grace for work the SDK does not control, such as a name lookup). True if a ruleset is held. The answer is fixed at the first settle. |
+| `variation` | `client.variation(flag_key, context, fallback)` | Generic: the expected kind is read off the class of `fallback` (`true` or `false`, `Integer` or `Float`, `String`, `Array`, `Hash`; `nil` accepts any kind). |
+| `variationDetail` | `client.variation_detail(flag_key, context, fallback) -> Detail` | `Detail` has `value`, `variation_index` (`Integer` or `nil`) and `reason`. Also `client.int_variation_detail`. |
+| `status` | `client.status -> Status` | A frozen `Data`: `etag`, `last_sync_at` (a UTC `Time` or `nil`), `stream` (a `StreamState` string), `last_error` (a `String` or `nil`). One snapshot. |
+| `close` | `client.close` | Stops, joins (bounded), sends the final usage flush. Safe twice and from many threads. Returns within about twice `request_timeout`. |
+| `url` | `url:` (required, `String`) | The server's base URL. Trailing `/` are removed. |
+| `sdkKey` | `sdk_key:` (required, `String`) | A server key. |
+| `stream` | `stream: true` | `true` or `false`. Off means poll only. |
+| `pollInterval` | `poll_interval: 30` | Seconds. |
+| `flushInterval` | `flush_interval: 30` | Seconds. |
+| `requestTimeout` | `request_timeout: 10` | Seconds, the whole request, body included. |
+| `hooks.afterEvaluation` | `hooks: Toggleslash::Hooks.new(after_evaluation: callable)`; default `nil` | `callable.call(event)` with an `EvaluationEvent`, on the caller's thread. The return value is ignored (a Thread or a future it returns is not awaited); an object that does not respond to `call` is ignored. A `Hash` with an `:after_evaluation` key is accepted too. |
+| `onError` | `on_error: callable`; default `nil` (ignore) | `callable.call(error)` with a `Toggleslash::Error` (a `StandardError` with a `code`). |
+| `accessor shape` | Both: the generic `variation` and `variation_detail` (the kind comes from the class of the fallback), and `int_variation` and `int_variation_detail` for the integer accessor. | There is no `bool_variation`, `string_variation` or `float_variation`: the generic method already compares the fallback's kind. An `Integer` or `Float` fallback to the generic method is the `number` kind with no integer rule (the harness `number` accessor), while `int_variation` applies contract 4's fractional and signed 64-bit rules. The `json` accessor is the generic method with an `Array` or `Hash` fallback. A `nil` fallback accepts any kind. |
+| `onError thread` | The SDK's own thread for what that thread did (a failed ruleset or stream attempt on `toggleslash-sync`, a failed usage request on `toggleslash-flush`); the caller's thread for a hook that raised and for `EVALUATION_FAILED`; the thread that called `close` for a usage request in the final flush and for counts lost at close. | No SDK lock is held while it runs. |
 
-A context is a `Hash` (string or symbol keys) in either shape of `docs/evaluation.md`. The test service
-passes what `ToggleSlash::Json.parse` returns, which keeps `1e999` and a lone surrogate. See "JSON". The
-SDK adds no context builder.
+A fallback whose class is not a JSON value (an arbitrary object, a `Symbol`, a `Time`) never matches a served
+value and answers `ERROR TYPE_MISMATCH`: it is the caller's fallback, so it is still returned unchanged.
 
-Defaults and "not given": a Ruby keyword argument has a default, so an option the caller leaves out is
-the default, and passing `false` for `stream:` is different from leaving it out. A `nil` is read as "not
-given" for every option. An interval of `0`, a negative number or a non-number is read as "not given"
-(contract section 2: not specified, SHOULD fall back).
+**The closed sets keep their spelling.** `Toggleslash::ReasonKind`, `Toggleslash::ErrorCode`,
+`Toggleslash::StreamState` and `Toggleslash::LastError` are modules of frozen string constants whose names
+and values are the canonical spelling (`ReasonKind::RULE_MATCH == "RULE_MATCH"`, `ErrorCode::NOT_READY ==
+"NOT_READY"`, `StreamState::CONNECTED == "connected"`, `LastError::TIMEOUT == "timeout"`). A reason or a status
+carries the plain string, so it compares equal to the spelling in the contract. `Reason` is a `Data` with
+`kind`, `code` (the `ErrorCode` for an `ERROR`, `nil` otherwise), `rule_index` and `flag_key`. `Status#last_error`
+is a plain `String` (`"http_503"`, `"timeout"`, `"bad_ruleset"`, `"network"`); `http_<status>` is built.
 
-## Concurrency (contract section 6)
+**"Not given" versus false or zero.** Ruby keyword defaults carry the defaults themselves
+(`stream: true`, `poll_interval: 30`), so "not given" is the default. A caller who passes `stream: false` gets
+off, and passing `nil` for an interval also gets the default. A non-positive, non-numeric or non-finite
+duration (`true` and `false` included) falls back to the default (contract 2, SHOULD). Only the exact value
+`false` turns the stream off.
 
-- **State.** One frozen `State` value (`ruleset`, `etag`, `last_sync_at`, `stream`, `last_error`) held in
-  one instance variable. A ruleset swap builds a new `State` and replaces the variable inside a tiny
-  `Mutex` (`@state_lock`) that guards only the reference read and the reference write, never a network
-  call. So the ruleset and the ETag that names it swap together, a reader sees the old pair or the new
-  one, and `status` is one snapshot.
-- **Threads.** Two daemon-style threads (Ruby kills non-main threads when the process exits, so a client
-  that is never closed does not keep it alive, contract 6.6): the **sync thread** (first load, stream,
-  poll, backoff) and the **flush thread** (usage counts every `flush_interval`). Both wait on a
-  `ToggleSlash::Cancel`: a `Mutex` and `ConditionVariable` for timed waits, and a lazily made self-pipe
-  so a thread blocked in `IO.select` on a socket wakes the moment `close` cancels.
-- **Close.** The first `close` caller is the leader: it cancels the lifetime `Cancel`s (which abandons a
-  ruleset or stream request but not a usage flush that is running: that finishes, bounded by
-  `request_timeout`, as contract 11 step 3 says), joins the sync and flush threads (never joining itself),
-  settles `ready` with `false`, then sends the final usage flush. Other callers (and a second call later)
-  wait on a condition variable until the leader is done. A `close` from the leader's own thread or from
-  either SDK thread (an `on_error` that calls `close`) returns at once, since it cannot wait for a shutdown
-  that is waiting for it. Evaluation keeps answering from the ruleset held.
-- **Locks.** `@state_lock` (reference swap), `@usage_lock` (add to or swap out the pending map: an
-  in-memory hash operation), `@flush_lock` (serialises flushes, held across the usage request, taken only
-  by the flush and close paths), `@close_lock`. `variation` takes `@state_lock` and `@usage_lock` for a
-  hash operation each and never takes `@flush_lock`, so a usage flush that hangs cannot delay it. No lock
-  is held while `after_evaluation` or `on_error` runs.
-- **GIL.** MRI's global lock is not relied on for correctness: every shared write is under one of the locks
-  above, so the design is the same on a runtime with parallel threads.
+## 2. Concurrency (contract 6)
 
-## HTTP and SSE
+- **The ruleset and its ETag** live in one frozen `Held` (`ruleset`, `etag`) referenced by one instance
+  variable. A swap is one assignment of that reference (atomic in MRI, JRuby and TruffleRuby alike), and an
+  evaluation reads the variable once, so it sees the old pair or the new pair. The `etag` and `flagVersion` a
+  hook reports come from that same read.
+- **The status** is one frozen `Held`-like `State` (`last_sync_at`, `stream`, `last_error`) replaced under a
+  short `@state_lock` (a `Mutex`). The lock covers a few assignments and never an I/O call or a callback.
+  `status` reads the held pair and the state together under that lock, so it is a snapshot, and a stream
+  failure sets `last_error` and the stream state in one replacement, so a reader never sees the failure's
+  `last_error` beside `connected` (contract 6.5).
+- **Threads the SDK starts** (contract 6.6): `toggleslash-sync` runs the first load and then the loop of 7.3,
+  `toggleslash-flush` runs the usage flush on `flush_interval`. Ruby kills every other thread when the main
+  thread exits, so a client that is never closed does not keep the process alive. Both threads set
+  `report_on_exception = false`.
+- **Locks.** `@state_lock` (above), `@usage_lock` (the counts hash, held for an add or a swap of the hash and
+  never during I/O), `@flush_lock` (serialises flushes; only the flush thread and `close` take it, never an
+  evaluation), `@close_lock` (decides who performs the shutdown). Evaluation takes `@usage_lock` for the length
+  of one hash update and no other lock. A request in flight holds none of them, so a hung server cannot slow
+  an evaluation down.
+- **Callbacks.** The hook and `onError` run with no SDK lock held. `ready` called from the SDK's own thread
+  (`Thread.current` is the sync or flush thread) returns at once with the state held, and `close` from an SDK
+  thread skips joining itself.
+- **Close.** `close` sets the closing flag and the stream state to `closed` under `@state_lock`, sets an
+  `Event` (a mutex and a condition variable) both loops wait on, so no timer outlives it, closes the sockets of
+  the in-flight ruleset and stream requests (below), joins the sync and flush threads with a bound of
+  `request_timeout`, takes `@flush_lock` (waiting for a flush already running, bounded) and runs the final
+  flush, then settles an unsettled `ready` as false. A second or concurrent caller waits for the same shutdown
+  on an `Event`, bounded by four times `request_timeout`, and returns. A thread stuck in a name lookup cannot
+  be interrupted; `close` does not wait for it past its bound.
+- **The global interpreter lock.** MRI has one, so the ruleset swap and the counts would be safe on assignment
+  alone; the locks above are for the other runtimes and for correctness of the multi-step updates. The stress
+  test (`test/concurrency_test.rb`) stands in for a race detector, which Ruby has none of.
 
-- **HTTP client.** A small HTTP/1.1 client over `Socket` (and `OpenSSL::SSL::SSLSocket` for `https`),
-  written because `Net::HTTP` bounds each read and not the whole request (contract 7.1). It makes
-  non-blocking connect, write and read calls and waits with `IO.select` against one monotonic deadline, so
-  `request_timeout` covers connect, TLS, the request, the headers **and the body**. Each request uses
-  `Connection: close` (one request per connection, no pool). The response body is read lazily:
-  a `304` or a refused status never reads it, a `200` reads it under the deadline.
-- **Headers sent.** Only `Host`, `Connection: close`, `Authorization`, `Accept` (stream), `If-None-Match`,
-  `Content-Type` and `Content-Length` (events). No `User-Agent` and no `Accept-Encoding`.
-- **Stream.** Opened with the request deadline until the response headers arrive. After that each read waits
-  at most the **idle timeout** (60 s; a seam shortens it for the loopback-socket test) for the next byte
-  from the socket, so a keep-alive restarts it, and a silent stream is dropped as `timeout`. Chunked
-  framing is decoded incrementally.
-- **SSE.** A hand-written incremental parser over bytes (line endings never occur inside a UTF-8
-  sequence, so splitting bytes is safe and a multi-byte character cut by a read is whole by the time its line
-  is complete). It follows WHATWG: LF, CRLF and a lone CR end a line (a trailing CR waits for the next
-  read), `:` lines are comments, a leading byte order mark is skipped, `data` lines join with LF, an event
-  with no `data` is dropped, the name defaults to `message`, and an unfinished event at the end of the
-  stream is discarded.
+## 3. HTTP and SSE
 
-## Dependencies
+- **HTTP client.** A small HTTP/1.1 client over `Socket` (and `OpenSSL::SSL::SSLSocket` for `https`, with
+  the default certificate store, peer verification and a `post_connection_check` of the host), written in
+  `lib/toggleslash/http.rb`. No size is capped (contract 7.1, "there is no size cap"): the whole-request deadline bounds a head, a line and a body. A port outside 1 to 65535 is refused.
+  `Net::HTTP` is not used because it adds a `User-Agent`, an `Accept-Encoding` and follows nothing the contract
+  asks it to, and its timeouts are per read, not per request. One new connection per request, `Connection:
+  close`, no redirects, no proxy lookup. The headers it sends are `Host`, `Connection`, `Content-Length` (a
+  POST), `Authorization`, `Accept`, `If-None-Match` and `Content-Type`, and nothing else.
+- **`request_timeout` bounds the whole request, body included.** Every step (connect, the TLS handshake, the
+  write, each read of the head and of the body) is non-blocking and waits with `IO.select` for at most the time
+  left against one monotonic deadline set when the request starts, so a server that trickles a body runs out of
+  time and the request is a `timeout`. Every wait also watches a self-pipe: `close` writes to the pipe of
+  every in-flight ruleset or stream request, the `IO.select` wakes, and the client turns it into "aborted".
+  (Closing a socket from another thread does not reliably wake a thread blocked in `IO.select`, so it is not
+  used.)
+- **The stream** is opened with the same deadline for the connect and the head. Once the head has arrived the
+  watchdog takes over: every read waits at most `stream_watchdog` (60 s; a seam shortens it) for a byte, and
+  each read that returns bytes (a `: keep-alive` included) restarts it. A read that runs out is `timeout`. A
+  `Content-Length: 0` answer on the stream is `http_200`; a 200 that ends cleanly with no bytes leaves
+  `last_error` alone. A
+  status other than 200 is `http_<status>`; a 429 reads `Retry-After`. The body is decoded as `chunked`,
+  `Content-Length` or read-until-close, as the head says.
+- **SSE.** A short hand-written parser, `lib/toggleslash/sse.rb`, to the WHATWG rules the contract names: it
+  decodes UTF-8 incrementally (a multi-byte character split across reads is held back, an invalid byte becomes
+  U+FFFD), ends a line on LF, CRLF or a lone CR (a CR at the end of a chunk waits for the next byte to see
+  whether an LF follows), ignores a line that starts with `:`, reads `event` and `data` (one leading space
+  removed from a value, several `data` lines joined with LF), drops an event with no `data` line, names an event
+  `message` when no name was given, and discards an event still incomplete at the end of the stream. The SDK
+  acts on `connected` and `changed`.
 
-Runtime dependencies: **none**. The SDK uses only the Ruby standard library: `socket`, `openssl` (TLS for
-`https`; required when the HTTP client loads), `ipaddr` (to tell an IP literal from a name), `digest`
-(SHA-256, the standard library has it), `strscan` (the JSON tokenizer), `uri` (to split a URL). Not `json`: see below.
+## 4. Dependencies
 
-Test and lint dependencies: `minitest` (the test framework, a bundled gem of Ruby), `rubocop` (lint and
-format, installed by mise as a gem so its version is pinned in `mise.toml`).
+| Dependency | Kind | Why |
+| --- | --- | --- |
+| none | runtime | `socket`, `openssl` (SHA-256 and TLS), `uri` and `thread` ship with Ruby and cover everything. The JSON reader is the SDK's own (section 5). |
+| `rubocop` 1.92.2 | lint | One tool for lint and format check, pinned in `mise.toml` (`gem:rubocop`). |
+| `minitest` | test | Ships with Ruby (a bundled gem), so the tests need nothing installed. |
+| `ruby` 4.0.9 | toolchain | Pinned in `mise.toml` for the checks; the gem itself supports 3.3 and later. |
 
-## JSON
+## 5. JSON
 
-The standard `json` gem cannot be used: it rejects a lone surrogate (`"\ud800"` raises `incomplete
-surrogate pair`) and the vectors need it kept. The SDK has its own parser and generator
-(`lib/toggleslash/json.rb`).
+The standard `json` gem cannot hold what the spec requires (a lone surrogate in a `String`, a literal such as
+`1e999` as an infinity without a warning, a leading byte order mark, the WHATWG replacement of invalid bytes),
+so `lib/toggleslash/json.rb` is a small hand-written reader and writer:
 
-- **Numbers** are binary64. An integer literal of at most 15 digits is an `Integer`; any other number is
-  read with `Float(text)`, so `9007199254740993` is `9007199254740992.0`, `1e999` is `Infinity` (not an
-  error) and `-0.0` and `-0` are `-0.0`. `1.0` stays a `Float` and equals `1`. The evaluator compares
-  numbers as binary64 whatever their Ruby class.
-- **Strings** are Ruby `String`s in UTF-8, in the **WTF-8** form: a lone surrogate is kept as its own
-  three bytes (`ED A0 80` to `ED BF BF`), so the string is not `valid_encoding?` but is byte-exact. A
-  `😀` pair becomes the one four-byte code point. Equality is `String#==` (bytes), which is
-  the same as UTF-16 equality for WTF-8. Order, `contains`, `startsWith` and `endsWith` are by UTF-16 code
-  unit, as the spec says, so they run over a UTF-16BE copy (code point order would differ for a code point
-  above U+FFFF against U+E000 to U+FFFF). Hashing replaces a lone surrogate with U+FFFD as the spec says.
-- **Contexts** reach the SDK as a `Hash`. A caller's own `Hash` with symbol or string keys and plain
-  strings, integers and floats works. A context that carries `1e999` or a lone surrogate (the vectors,
-  through the test service) is built by `ToggleSlash::Json.parse`, whose values the evaluator reads as
-  they are. That is the "form that keeps them": the SDK's own parser, whose output is plain Ruby values.
-- **Generation** (`Json.generate`) writes a lone surrogate as `\ud800`, `Infinity` as `1e999`, and keeps
-  the rest as UTF-8, so the test service round-trips every vector.
+- **Numbers** are binary64. An integer literal of 15 digits or fewer is an `Integer`; a longer one, and any
+  literal with a fraction or an exponent, is converted through `Rational(...).to_f`, which rounds correctly
+  and, unlike `Float("1e999")`, does not print a warning under `ruby -w`. A value whose magnitude is beyond the
+  range is decided from its exponent without building the number. `1e999` is `Float::INFINITY`;
+  `9007199254740993` is `9007199254740992.0`; an integer literal whose double is below 2^53 in magnitude stays
+  an `Integer`; `-0` is `-0.0`. `NaN`, `Infinity` and a leading `+` or zero are errors.
+- **Strings** are UTF-8 `String`s. A lone surrogate escape (`"\ud800"`) is kept by writing its three-byte
+  generalised UTF-8 form (WTF-8) into the string; Ruby holds those bytes, `valid_encoding?` is false for it, and
+  the evaluator reads it as the one UTF-16 code unit it stands for. A valid escaped pair (`"😀"`) is
+  combined into one character. Invalid bytes in the input are replaced by `String#scrub`, whose output matches
+  the WHATWG UTF-8 decoder (checked in `test/json_test.rb`), and a leading byte order mark is skipped.
+- **A duplicate key** in an object keeps the last value. Nesting is read to a depth of 1000 and deeper is a
+  parse error (never a crash: a `SystemStackError` is caught too).
+- **Output** to the harness is `Toggleslash::Json.generate`, with `ensure_ascii` behaviour: every code unit above
+  U+007F leaves as `\uXXXX`, so a lone surrogate leaves as `\ud800`. An infinity is written as `1e999` (valid
+  JSON that reads back as an infinity) and a NaN as `null`.
 
-## Minimum runtime and toolchain
+The public API takes a context as a `Hash` (string keys, as the JSON reader returns, or `Symbol` keys, which
+are read as the string of the same name) whose values are `nil`, `true`, `false`, `Integer`, `Float`, `String`,
+`Array` and `Hash`. The vectors' `1e999` and lone surrogates reach the SDK through the same reader in the test
+service, so they are kept. A number that is not a finite binary64 never matches (the spec), an `Integer` is
+read as the nearest double, and a `Rational` or a `BigDecimal` (any real `Numeric`) is read through `to_f` as a
+number. Any other object (a `Symbol`, a `Complex`, a `Time`) is a present attribute of no JSON kind: it
+matches nothing.
 
-- **Runtime:** MRI (CRuby), the mainstream runtime. **Developed on 4.0.9**, the current stable release
-  (`mise ls-remote ruby`, ruby-lang.org release page, 2026-11-10). **Minimum 3.3**: the oldest release still in
-  support (3.3 is in security maintenance until 2027-03-31; 3.2 reached end of life on 2026-04-01).
-  3.3 has `Data.define` and `Data#with`, `Hash#except`, `Time.at(in:)` and the non-blocking socket
-  calls this SDK uses. `toggleslash.gemspec` sets `required_ruby_version = ">= 3.3"`.
-- **Package manager:** RubyGems with a `toggleslash.gemspec` (the language's mainstream choice); from a
-  checkout use `-I sdks/ruby/lib` or `gem build`. Nothing is published.
-- **Test framework:** Minitest (the default that ships with Ruby, no extra dependency).
-- **Lint and format:** RuboCop (the mainstream Ruby linter and formatter, one tool for both), configured in
-  `.rubocop.yml`. Warnings are errors. The tests also fail on any Ruby warning (`Warning.warn` is
-  patched in the test helper), Ruby's analogue of `-W error`.
-- **Build tool:** none (an interpreted language). `bin/test` runs the tests and the vectors straight from
-  `test/`. There is no race detector in Ruby; the stress test is `test_operations_called_from_many_threads_with_close_racing` in `test/client_test.rb`.
-- **Integer accessor:** `int_variation` uses Ruby's `Integer`, bounded to signed 64 bits (an unbounded
-  type, so the bound is explicit), as the `huge` scenario expects.
-- **Pin:** `mise.toml` pins `ruby` and the `rubocop` gem to exact versions.
+## 6. Minimum runtime and toolchain
 
-## Package layout
+- **Runtime: MRI** (CRuby), the mainstream implementation. The code is plain Ruby and uses no C extension, so
+  it is expected to run on JRuby and TruffleRuby, which this run does not test.
+- **Minimum Ruby 3.3.** On the run date (2026-11-12) Ruby 3.3 is in security maintenance (end of life expected
+  2027-03-31) and 3.2 is end of life; the 4.0 branch is in normal maintenance
+  (<https://www.ruby-lang.org/en/downloads/branches/>, read on the run date). 3.3 has `Data` and `Queue#pop` with a
+  timeout, which the code uses (the name lookup runs on a helper thread and is waited for with that timeout). The checks run on 4.0.9,
+  the latest stable release (`mise latest ruby`), and the full suite is also run once on 3.3.
+- **Lint and format: RuboCop** (the mainstream Ruby tool for both, one config). **Test framework: Minitest**,
+  which ships with Ruby, so `bin/test` needs nothing installed. **Build tool: none for the checks**: `bin/test`
+  compiles every source, test and test-service file under `ruby -w` as its build step, with a warning counting
+  as a failure.
+  A `toggleslash.gemspec` makes `gem build` and a Bundler `path:` entry work from a checkout.
+- **Warnings are errors in the tests.** `bin/test` runs `ruby -w` and a test helper prepends a module to
+  `Warning` that raises, so a warning from the SDK fails the run. A duration the caller gives is capped at
+  31,536,000 s (a year), and a non-finite one falls back to the default.
+- **The integer accessor** uses Ruby's `Integer`, bounded to signed 64 bits by the SDK (an `Integer` is
+  unbounded): a served number that is not finite, has a fractional part, or lies outside -2^63 to 2^63-1 is
+  `TYPE_MISMATCH`; `2.0` is the integer `2`.
+- **No type checker is run.** The public methods carry YARD-style comments only.
+
+## 7. The package layout
 
 ```
 sdks/ruby/
-  mise.toml  .rubocop.yml  .gitignore  toggleslash.gemspec  DESIGN.md  README.md  RUN.md
+  mise.toml  .rubocop.yml  .gitignore  toggleslash.gemspec  README.md  DESIGN.md  RUN.md
   bin/lint  bin/test  bin/test-service
-  lib/toggleslash.rb                 requires everything
-  lib/toggleslash/json.rb            parser and generator
-  lib/toggleslash/eval/              the evaluator: no network, no regular expression, no JSON
-    text.rb  bucket.rb  reference.rb  semver.rb  dates.rb  pattern_parser.rb  pattern.rb
-    context.rb  validate.rb  ruleset.rb  clause.rb  evaluator.rb  result.rb
-  lib/toggleslash/client.rb          the client, hooks, status
-  lib/toggleslash/sync.rb            ruleset sync, stream, backoff, Retry-After
-  lib/toggleslash/usage.rb           usage counts
-  lib/toggleslash/http.rb            the HTTP client and Response
-  lib/toggleslash/sse.rb             the SSE parser
-  lib/toggleslash/cancel.rb  clock.rb
-  test/                              Minitest: vectors, native tests
-  test-service/main.rb  README.md    the conformance test service
+  lib/toggleslash.rb             requires, create
+  lib/toggleslash/
+    types.rb       Reason, Detail, Status, EvaluationEvent, Hooks, Error, the closed sets
+    client.rb      Client: options, evaluation, the loops, usage, close
+    http.rb        the HTTP/1.1 client: whole-request deadline, stream open and read, abort self-pipe
+    sse.rb         the SSE parser
+    usage.rb       the counts and the batches
+    json.rb        the JSON reader and writer
+    text.rb        UTF-16 code units and code points of a String, WHATWG decoding
+    event.rb       a settable flag with a timed wait, and the Clock the tests replace
+    eval/          the evaluator (no network, no threads)
+      ruleset.rb  evaluator.rb  pattern.rb  semver.rb  dates.rb  bucket.rb  context.rb  reference.rb  num.rb
+  test/            Minitest: vectors, evaluator units, client, sync, usage, http, tls and concurrency tests
+                   against a loopback fake server
+  test-service/    main.rb and README.md (syntax-checked by bin/test with the tests)
 ```
 
-The module is `ToggleSlash`; the gem is `toggleslash`, required as `require "toggleslash"`. The gemspec sets
-no `homepage` and no registry: nothing is published and no name is reserved. If it is ever published, the
-repository path the prompt gives is `github.com/madangryscientist/toggleslash/sdks/ruby`.
+`bin/test` runs `test/run_all.rb` under `ruby -w` with `lib` on the load path.
+
+## 8. Evaluator decisions (phase 2)
+
+- **Strings.** A Ruby `String` is a sequence of bytes with an encoding. The spec compares in UTF-16 code units
+  for equality, `contains`, `startsWith`, `endsWith` and order, and in code points for patterns. For two valid
+  strings the equality, containment and prefix tests are done on bytes (UTF-8 is self-synchronising, so the
+  result is the same as by units), and order is done on bytes when both are ASCII. Everything else goes through
+  `Text.units`, which decodes a string into an array of UTF-16 code units (a character above U+FFFF becomes its
+  pair, a WTF-8 surrogate its one unit, an invalid byte U+FFFD by the WHATWG rules). For patterns,
+  `Text.code_points` joins an adjacent high and low surrogate into one code point; a lone surrogate stays.
+- **Hashing.** The string is hashed as UTF-8 bytes where a lone surrogate (three WTF-8 bytes) is replaced by the
+  bytes of U+FFFD.
+- **Kind names** are checked with a character walk, never a regular expression.
+- **`matches`** is the spec's Pike VM in `eval/pattern.rb`. No `Regexp` and no `String#match`, `=~`, `scan`,
+  `gsub` or `sub` with a pattern appears under `lib/toggleslash/eval/`.
+- **Attribute reads** use own keys of a `Hash` only. `true` and `false` are tested before a number everywhere.
+- **Numbers.** `Integer` attributes are converted to binary64 with `Rational#to_f` beyond 2^53 (it rounds to
+  nearest and does not warn); `Integer#to_f` of a huge integer warns under `-w`.
+
+### Disagreements with other implementations
+
+None found so far; any that turns up is recorded here with both readings and the file and line of each.

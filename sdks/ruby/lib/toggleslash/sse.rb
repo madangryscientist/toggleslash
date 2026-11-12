@@ -1,88 +1,97 @@
 # frozen_string_literal: true
 
-module ToggleSlash
-  # Server-Sent Events, read the way the WHATWG standard reads them. Fed bytes in any split, it returns the
-  # events that are complete. A line ends at LF, CRLF or a lone CR (a CR at the end of a read waits for the
-  # next byte, which may be its LF); a line starting with `:` is a comment; several `data` lines join with
-  # LF; an event with no `data` line is dropped; the name is `message` when none was given; an event still
-  # unfinished when the stream ends is never returned.
-  module Sse
-    Event = Struct.new(:name, :data)
-
+module Toggleslash
+  # A Server-Sent Events reader to the WHATWG rules the contract names (7.2, "Reading events").
+  #
+  # Feed it bytes as they arrive; it returns the events that were completed, as `[name, data]` pairs. A line
+  # ends at LF, CRLF or a lone CR. Those bytes never occur inside a multi-byte UTF-8 character, so lines are
+  # cut on bytes and each whole line is decoded alone (an invalid byte becomes U+FFFD as the WHATWG decoder
+  # does it), which makes a character or a line ending split across reads harmless. A leading byte order mark
+  # is dropped. A line that starts with `:` is a comment; only `event` and `data` are read; an event with no
+  # `data` line is dropped; an event still incomplete when the stream ends is discarded (the caller just
+  # stops feeding).
+  class SseParser
     BOM = "\xEF\xBB\xBF".b.freeze
 
-    class Parser
-      def initialize
-        @buffer = ''.b
-        @started = false
-        @name = nil
-        @data = nil
-      end
+    def initialize
+      @buffer = String.new(encoding: Encoding::BINARY)
+      @skip_lf = false
+      @bom_checked = false
+      @name = +""
+      @data = []
+    end
 
-      # Bytes in, the events they complete out.
-      def feed(bytes)
-        @buffer << bytes.b
-        skip_byte_order_mark
-        events = []
-        while (line = next_line)
-          event = process(line)
+    def feed(chunk)
+      @buffer << chunk.b
+      return [] unless strip_bom
+
+      if @skip_lf && !@buffer.empty?
+        @buffer = @buffer.byteslice(1, @buffer.bytesize - 1) if @buffer.getbyte(0) == 10
+        @skip_lf = false
+      end
+      cut_lines
+    end
+
+    private
+
+    # False while the first bytes could still turn out to be a byte order mark.
+    def strip_bom
+      return true if @bom_checked
+
+      size = [@buffer.bytesize, BOM.bytesize].min
+      return false if size < BOM.bytesize && @buffer.byteslice(0, size) == BOM.byteslice(0, size)
+
+      @buffer = @buffer.byteslice(BOM.bytesize, @buffer.bytesize - BOM.bytesize) if @buffer.start_with?(BOM)
+      @bom_checked = true
+    end
+
+    def cut_lines
+      events = []
+      start = 0
+      index = 0
+      size = @buffer.bytesize
+      while index < size
+        byte = @buffer.getbyte(index)
+        if [10, 13].include?(byte)
+          event = line(@buffer.byteslice(start, index - start))
           events << event if event
+          if byte == 13
+            if index + 1 < size
+              index += 1 if @buffer.getbyte(index + 1) == 10
+            else
+              @skip_lf = true
+            end
+          end
+          start = index + 1
         end
-        events
+        index += 1
       end
+      @buffer = @buffer.byteslice(start, size - start)
+      events
+    end
 
-      private
+    def line(raw)
+      return dispatch if raw.empty?
+      return nil if raw.getbyte(0) == 58 # ":"
 
-      def skip_byte_order_mark
-        return if @started
-        return if @buffer.bytesize < BOM.bytesize && BOM.start_with?(@buffer)
-
-        @started = true
-        @buffer = @buffer.byteslice(BOM.bytesize..) if @buffer.start_with?(BOM)
+      text = raw.force_encoding(Encoding::UTF_8).scrub("�")
+      name, colon, value = text.partition(":")
+      value = value.delete_prefix(" ") unless colon.empty?
+      case name
+      when "event" then @name = value
+      when "data" then @data << value
       end
+      nil
+    end
 
-      # The next complete line without its ending, or nil when the buffer holds none yet.
-      def next_line
-        return nil unless @started
+    def dispatch
+      data = @data
+      name = @name
+      @data = []
+      @name = +""
+      return nil if data.empty?
 
-        at = @buffer.index(/[\r\n]/n)
-        return nil if at.nil?
-
-        # A CR in the last position may be the first half of a CRLF: wait.
-        return nil if @buffer.getbyte(at) == 0x0D && at == @buffer.bytesize - 1
-
-        line = @buffer.byteslice(0, at)
-        ending = @buffer.byteslice(at, 2) == "\r\n" ? 2 : 1
-        @buffer = @buffer.byteslice((at + ending)..)
-        line
-      end
-
-      def process(line)
-        return dispatch if line.empty?
-        return nil if line.getbyte(0) == 0x3A
-
-        field, value = line.split(':', 2)
-        value = value.nil? ? '' : value.delete_prefix(' ')
-        case field
-        when 'event' then @name = value
-        when 'data' then @data = @data.nil? ? value : "#{@data}\n#{value}".b
-        end
-        nil
-      end
-
-      def dispatch
-        data = @data
-        name = @name
-        @data = nil
-        @name = nil
-        return nil if data.nil?
-
-        Event.new(text(name || 'message'), text(data))
-      end
-
-      def text(bytes)
-        bytes.dup.force_encoding(Encoding::UTF_8).scrub
-      end
+      [name.empty? ? "message" : name, data.join("\n")]
     end
   end
 end

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Starts the conformance test service: `bun run conformance -- --service sdks/ruby/bin/test-service`.
+# Starts the conformance test service on a port the OS picks and prints `listening http://127.0.0.1:<port>`.
 set -eu
 cd "$(dirname "$0")/.."
 if command -v mise >/dev/null 2>&1; then

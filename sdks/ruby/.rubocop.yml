@@ -1,23 +1,24 @@
+# The rule set: RuboCop's default cops (the layout cops are the format check) with NewCops enabled, so a
+# new RuboCop release is not silently weaker. Each cop turned off or loosened below says why.
 AllCops:
   TargetRubyVersion: 3.3
   NewCops: enable
   SuggestExtensions: false
-  Exclude:
-    - tmp/**/*
 
+# The Python SDK reflows at 110; Ruby's blocks and keyword calls read better a little wider.
 Layout/LineLength:
   Max: 120
 
-# The evaluator is a direct transcription of docs/evaluation.md, and the clients are state machines; their
-# size follows the specification, not taste.
+# The SDK is a protocol client, a JSON reader, a pattern VM and an HTTP client: methods and classes are as long as
+# their specification is. The size and complexity cops measure the spec, not the code's quality.
+Metrics/MethodLength:
+  Enabled: false
 Metrics/AbcSize:
   Enabled: false
 Metrics/CyclomaticComplexity:
   Enabled: false
 Metrics/PerceivedComplexity:
   Enabled: false
-Metrics/MethodLength:
-  Max: 40
 Metrics/ClassLength:
   Enabled: false
 Metrics/ModuleLength:
@@ -27,29 +28,40 @@ Metrics/BlockLength:
 Metrics/ParameterLists:
   Enabled: false
 
+# A test says what it checks in its name and its assertions; a comment on every class would repeat it. The SDK's
+# own classes keep the cop.
 Style/Documentation:
-  Enabled: false
+  Exclude:
+    - "test/**/*"
+    - "test-service/**/*"
+
+# Double quotes everywhere, the style of the whole tree (and of the Python SDK's formatter).
 Style/StringLiterals:
-  EnforcedStyle: single_quotes
-Naming/PredicateMethod:
-  Enabled: false
-Naming/PredicatePrefix:
-  Enabled: false
-Style/ClassVars:
-  Enabled: false
-Style/GlobalVars:
-  Enabled: false
+  EnforcedStyle: double_quotes
+Style/StringLiteralsInInterpolation:
+  EnforcedStyle: double_quotes
+
+# Short parameter names (cp, lo, hi, io, ch) are the names the specification and the VM use.
 Naming/MethodParameterName:
   MinNameLength: 1
-Lint/MissingSuper:
-  Enabled: false
-# Names follow the specification's own spelling (int64, 300 seconds, v1).
-Naming/VariableNumber:
+
+# A few helpers do work and answer true or false (`add` follows jumps and reports MATCH; `send_usage` reports
+# whether the flush may go on). A `?` suffix would promise a pure question.
+Naming/PredicateMethod:
   Enabled: false
 
-# Struct members are named for the wire fields and the specification's own terms (count, min, max, size).
-Lint/StructNewOverride:
+# Code point and byte ranges are written as the specification writes them, `lo <= x && x <= hi`.
+Style/ComparableBetween:
   Enabled: false
-# A case with equal bodies keeps the specification's grammar rule-for-rule readable.
-Lint/DuplicateBranch:
+
+# One test or service file holds a few small helper classes next to its subject.
+Style/OneClassPerFile:
   Enabled: false
+
+# `test_flag_1`-style names in tests spell the scenario number.
+Naming/VariableNumber:
+  CheckMethodNames: false
+
+# The data rows of the SDK's shared constants are written out in full.
+Metrics/BlockNesting:
+  Max: 4

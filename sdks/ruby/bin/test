@@ -2,12 +2,25 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-if command -v mise >/dev/null 2>&1; then
-  run() { mise exec -- "$@"; }
-else
-  run() { "$@"; }
-fi
+# Every tool runs through `mise exec --` when mise is on PATH (a mise shim fails where its tool is not active,
+# and on some machines the system Ruby comes first on PATH); in CI a setup step puts Ruby on PATH.
+tool() {
+  if command -v mise >/dev/null 2>&1; then
+    mise exec -- "$@"
+  else
+    "$@"
+  fi
+}
 
-# Ruby is interpreted, so there is nothing to build and nothing to cache. `-w` turns on Ruby's warnings
-# and test_helper.rb makes any warning fail the run.
-run ruby -w -I lib -I test test/run_all.rb
+# Build: compile every source, test and test-service file under `ruby -w`, a warning counts as a failure, so a
+# file no test loads still fails the build.
+files="$(find lib test test-service bin -type f -name '*.rb' 2>/dev/null | sort)"
+tool ruby -w -e '
+  module Strict
+    def warn(message, **) = raise(message)
+  end
+  Warning.singleton_class.prepend(Strict)
+  ARGV.each { |file| RubyVM::InstructionSequence.compile_file(file) }
+' $files
+
+tool ruby -w test/run_all.rb

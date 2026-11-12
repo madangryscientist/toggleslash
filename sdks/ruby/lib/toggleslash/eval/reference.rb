@@ -1,43 +1,53 @@
 # frozen_string_literal: true
 
-module ToggleSlash
+module Toggleslash
   module Eval
-    # An attribute reference, to "Reading the attribute" in docs/evaluation.md: a name that starts with `/`.
-    # The components are what is left after dropping the leading `/`, splitting on `/` and decoding `~1` as
-    # `/` and `~0` as `~` in one left-to-right pass. Nil when a component is empty or a `~` is followed by
-    # anything but `0` or `1`, or ends the component. Bytes only: every character the format cares about is
-    # ASCII, so a lone surrogate passes through untouched.
+    # Attribute references: "/a/b~1c" (evaluation.md, "Reading the attribute").
     module Reference
-      SLASH = 0x2F
-      TILDE = 0x7E
+      # Splits a name that starts with "/" into its decoded components, or nil if it is invalid.
+      def self.parse(name)
+        out = []
+        rest = name.byteslice(1, name.bytesize - 1)
+        (rest.empty? ? [rest] : rest.split("/", -1)).each do |part|
+          decoded = decode(part)
+          return nil if decoded.nil?
 
-      module_function
-
-      def parse(text)
-        bytes = text.b
-        components = []
-        current = ''.b
-        index = 1
-        size = bytes.bytesize
-        while index <= size
-          byte = index < size ? bytes.getbyte(index) : SLASH
-          if byte == SLASH
-            return nil if current.empty?
-
-            components << current.force_encoding(Encoding::UTF_8)
-            current = ''.b
-          elsif byte == TILDE
-            escape = bytes.getbyte(index + 1)
-            return nil unless [0x30, 0x31].include?(escape)
-
-            current << (escape == 0x30 ? TILDE : SLASH)
-            index += 1
-          else
-            current << byte
-          end
-          index += 1
+          out << decoded
         end
-        components
+        out
+      end
+
+      def self.decode(part)
+        return nil if part.empty?
+
+        out = +"".b
+        bytes = part.bytes
+        i = 0
+        while i < bytes.size
+          byte = bytes[i]
+          if byte != 126 # ~
+            out << byte
+            i += 1
+            next
+          end
+          nxt = bytes[i + 1]
+          case nxt
+          when 48 then out << 126
+          when 49 then out << 47
+          else return nil
+          end
+          i += 2
+        end
+        out.force_encoding(Encoding::UTF_8)
+      end
+
+      # The components an attribute name reads, or nil if the name is not valid. A name that does not start
+      # with "/" is one literal component.
+      def self.path(name)
+        return nil unless name.is_a?(String) && !name.empty?
+
+        name = Text.utf8(name)
+        name.getbyte(0) == 47 ? parse(name) : [name]
       end
     end
   end

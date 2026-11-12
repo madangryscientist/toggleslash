@@ -1,160 +1,218 @@
 # frozen_string_literal: true
 
-# The conformance test service (docs/sdk-test-service.md): an HTTP server on 127.0.0.1 that wraps
-# ToggleSlash.create so the harness in packages/sdk-conformance can drive it from outside. It catches nothing
-# the SDK raises: a call that raises answers 500 with the error text, and the harness fails the scenario.
-# The accessor mapping is in README.md next to this file.
+# The Ruby SDK's conformance test service: an HTTP server that wraps `Toggleslash.create` so the harness in
+# `packages/sdk-conformance` can drive it. The protocol is docs/sdk-test-service.md; the accessor mapping is
+# in this directory's README. It rescues nothing the SDK raises: a call that raises answers 500 with the
+# error text, and the harness fails the scenario. The server is a few lines over `TCPServer` because the
+# SDK has no runtime dependency and neither does its service.
 
-$LOAD_PATH.unshift(File.expand_path('../lib', __dir__))
-require 'socket'
-require 'toggleslash'
+$LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
+require "socket"
+require "toggleslash"
 
-module TestService
-  Entry = Struct.new(:client, :hook_events, :errors, :lock)
+# One client the harness created, with the hook events and errors it asked to record.
+class Entry
+  attr_accessor :client
+  attr_reader :hook_events, :errors, :lock
 
-  CLIENTS = {} # rubocop:disable Style/MutableConstant
-  CLIENTS_LOCK = Mutex.new
-  COUNTER = [0] # rubocop:disable Style/MutableConstant
-
-  ACCESSORS = {
-    'bool' => :bool_variation_detail, 'string' => :string_variation_detail,
-    'number' => :number_variation_detail, 'int' => :int_variation_detail,
-    'json' => :json_variation_detail, 'any' => :variation_detail
-  }.freeze
-
-  class NotFound < StandardError; end
-
-  module_function
-
-  def options_for(body, entry)
-    options = {
-      url: body['url'].to_s, sdk_key: body['sdkKey'].to_s,
-      on_error: lambda do |error|
-        entry.lock.synchronize { entry.errors << error.message.to_s }
-        raise 'onError raised, as the test asked' if body['onErrorThrows'] == true
-      end
-    }
-    options[:stream] = body['stream'] if [true, false].include?(body['stream'])
-    { 'pollIntervalMs' => :poll_interval, 'flushIntervalMs' => :flush_interval,
-      'requestTimeoutMs' => :request_timeout }.each do |name, key|
-      options[key] = body[name] / 1000.0 if body[name].is_a?(Numeric)
-    end
-    options[:hooks] = hooks_for(body, entry) if body['hook'] == true || body['hookThrows'] == true
-    options
-  end
-
-  def hooks_for(body, entry)
-    { after_evaluation: lambda do |event|
-      entry.lock.synchronize { entry.hook_events << event_json(event) }
-      raise 'the hook raised, as the test asked' if body['hookThrows'] == true
-    end }
-  end
-
-  def event_json(event)
-    { 'flagKey' => event.flag_key, 'context' => event.context, 'value' => event.value,
-      'variationIndex' => event.variation_index, 'reason' => event.reason.wire,
-      'etag' => event.etag, 'flagVersion' => event.flag_version }
-  end
-
-  def create(body)
-    entry = Entry.new(nil, [], [], Mutex.new)
-    entry.client = ToggleSlash.create(**options_for(body, entry))
-    id = CLIENTS_LOCK.synchronize { (COUNTER[0] += 1).to_s }
-    CLIENTS_LOCK.synchronize { CLIENTS[id] = entry }
-    [201, { 'id' => id }]
-  end
-
-  def evaluate(entry, body)
-    method = ACCESSORS.fetch(body['accessor'].to_s) { raise ArgumentError, "unknown accessor #{body['accessor']}" }
-    detail = entry.client.public_send(method, body['flagKey'].to_s, body['context'], body['fallback'])
-    [200, { 'value' => detail.value, 'variationIndex' => detail.variation_index, 'reason' => detail.reason.wire }]
-  end
-
-  def status_json(client)
-    status = client.status
-    { 'etag' => status.etag,
-      'lastSyncAt' => status.last_sync_at && (status.last_sync_at.to_f * 1000).round,
-      'stream' => status.stream.to_s, 'lastError' => status.last_error&.to_s }
-  end
-
-  def client_route(entry, method, action, body)
-    case "#{method} #{action}"
-    when 'POST ready' then [200, { 'ready' => entry.client.ready }]
-    when 'POST evaluate' then evaluate(entry, body)
-    when 'GET status' then [200, status_json(entry.client)]
-    when 'GET hook-events' then [200, { 'events' => entry.lock.synchronize { entry.hook_events.dup } }]
-    when 'GET errors'
-      messages = entry.lock.synchronize { entry.errors.dup }
-      [200, { 'count' => messages.size, 'messages' => messages }]
-    when 'POST close'
-      entry.client.close
-      [200, {}]
-    else raise NotFound, 'no such route'
-    end
-  end
-
-  def route(method, path, body)
-    if method == 'GET' && path == '/'
-      return [200,
-              { 'name' => 'toggleslash-sdk (Ruby)',
-                'capabilities' => ['integer-accessor'] }]
-    end
-    return create(body) if method == 'POST' && path == '/clients'
-
-    match = %r{\A/clients/([^/]+)/([a-z-]+)\z}.match(path)
-    entry = match && CLIENTS_LOCK.synchronize { CLIENTS[match[1]] }
-    raise NotFound, 'no such client' if entry.nil?
-
-    client_route(entry, method, match[2], body)
-  end
-
-  def read_request(socket)
-    request_line = socket.gets("\r\n")&.chomp
-    return nil if request_line.nil?
-
-    method, path = request_line.split
-    length = 0
-    while (line = socket.gets("\r\n")) && line != "\r\n"
-      length = line.split(':', 2)[1].to_i if line.downcase.start_with?('content-length:')
-    end
-    text = length.positive? ? socket.read(length) : ''
-    [method, path, text.nil? || text.empty? ? {} : ToggleSlash::Json.parse(text)]
-  end
-
-  def answer(socket, status, payload)
-    text = payload.is_a?(String) ? payload : ToggleSlash::Json.generate(payload)
-    body = text.b
-    socket.write("HTTP/1.1 #{status} #{status == 200 ? 'OK' : 'Other'}\r\nContent-Type: application/json\r\n" \
-                 "Content-Length: #{body.bytesize}\r\nConnection: close\r\n\r\n")
-    socket.write(body)
-  end
-
-  def serve(socket)
-    method, path, body = read_request(socket)
-    return if method.nil?
-
-    status, payload = route(method, path, body)
-    answer(socket, status, payload)
-  rescue NotFound => e
-    answer(socket, 404, e.message)
-  rescue StandardError, ScriptError => e
-    answer(socket, 500, "#{e.class}: #{e.message}\n#{e.backtrace&.first(8)&.join("\n")}")
-  ensure
-    socket.close
-  end
-
-  def run
-    server = TCPServer.new('127.0.0.1', 0)
-    $stdout.sync = true
-    puts "listening http://127.0.0.1:#{server.addr[1]}"
-    loop do
-      socket = server.accept
-      Thread.new(socket) do |connection|
-        Thread.current.report_on_exception = false
-        serve(connection)
-      end
-    end
+  def initialize
+    @client = nil
+    @hook_events = []
+    @errors = []
+    @lock = Mutex.new
   end
 end
 
-TestService.run if $PROGRAM_NAME == __FILE__
+# The routes of docs/sdk-test-service.md.
+class Service
+  def initialize
+    @clients = {}
+    @lock = Mutex.new
+    @counter = 0
+  end
+
+  def handle(method, path, body)
+    path = path.split("?", 2).first
+    if method == "GET" && path == "/"
+      return [200,
+              { "name" => "toggleslash-sdk (Ruby)",
+                "capabilities" => ["integer-accessor"] }]
+    end
+    return [201, create(parse(body))] if method == "POST" && path == "/clients"
+
+    match = %r{\A/clients/([^/]+)/([a-z-]+)\z}.match(path)
+    entry = match && @lock.synchronize { @clients[match[1]] }
+    return [404, "no such client"] unless entry&.client
+
+    client(entry, "#{method} #{match[2]}", body)
+  end
+
+  private
+
+  def parse(body)
+    return {} if body.nil? || body.empty?
+
+    parsed = Toggleslash::Json.parse(body)
+    raise TypeError, "the body is not a JSON object" unless parsed.is_a?(Hash)
+
+    parsed
+  end
+
+  def client(entry, action, body)
+    client = entry.client
+    case action
+    when "POST ready" then [200, { "ready" => client.ready }]
+    when "POST evaluate" then [200, evaluate(client, parse(body))]
+    when "GET status" then [200, status_json(client.status)]
+    when "GET hook-events" then [200, { "events" => entry.lock.synchronize { entry.hook_events.dup } }]
+    when "GET errors" then [200, errors_json(entry)]
+    when "POST close" then close(client)
+    else [404, "no such route"]
+    end
+  end
+
+  def close(client)
+    client.close
+    [200, {}]
+  end
+
+  def errors_json(entry)
+    messages = entry.lock.synchronize { entry.errors.dup }
+    { "count" => messages.size, "messages" => messages }
+  end
+
+  def create(body)
+    entry = Entry.new
+    options = { url: body["url"].to_s, sdk_key: body["sdkKey"].to_s, on_error: error_recorder(entry, body) }
+    options[:stream] = body["stream"] if [true, false].include?(body["stream"])
+    { pollIntervalMs: :poll_interval, flushIntervalMs: :flush_interval, requestTimeoutMs: :request_timeout }
+      .each do |name, option|
+        value = body[name.to_s]
+        options[option] = value / 1000.0 if value.is_a?(Numeric)
+      end
+    if body["hook"] == true || body["hookThrows"] == true
+      options[:hooks] =
+        Toggleslash::Hooks.new(after_evaluation: hook_recorder(entry,
+                                                               body))
+    end
+    entry.client = Toggleslash.create(**options)
+    identifier = @lock.synchronize { (@counter += 1).to_s }
+    @lock.synchronize { @clients[identifier] = entry }
+    { "id" => identifier }
+  end
+
+  def error_recorder(entry, body)
+    lambda do |error|
+      entry.lock.synchronize { entry.errors << error.message }
+      raise "on_error raised, as the test asked" if body["onErrorThrows"] == true
+    end
+  end
+
+  def hook_recorder(entry, body)
+    lambda do |event|
+      entry.lock.synchronize { entry.hook_events << event_json(event) }
+      raise "the hook raised, as the test asked" if body["hookThrows"] == true
+    end
+  end
+
+  def evaluate(client, body)
+    flag = body["flagKey"].to_s
+    fallback = body["fallback"]
+    detail =
+      if body["accessor"] == "int"
+        fallback = fallback.to_i if fallback.is_a?(Float) && fallback.finite? && fallback == fallback.floor
+        client.int_variation_detail(flag, body["context"], fallback)
+      else
+        client.variation_detail(flag, body["context"], fallback)
+      end
+    { "value" => clean(detail.value), "variationIndex" => detail.variation_index,
+      "reason" => reason_json(detail.reason) }
+  end
+
+  # JSON cannot hold a non-finite number: a JavaScript service would answer `null` for one.
+  def clean(value)
+    case value
+    when Float then value.finite? ? value : nil
+    when Array then value.map { |item| clean(item) }
+    when Hash then value.to_h { |key, item| [key.to_s, clean(item)] }
+    else value
+    end
+  end
+
+  def reason_json(reason)
+    out = { "kind" => reason.kind }
+    out["code"] = reason.code unless reason.code.nil?
+    out["ruleIndex"] = reason.rule_index unless reason.rule_index.nil?
+    out["flagKey"] = reason.flag_key unless reason.flag_key.nil?
+    out
+  end
+
+  def event_json(event)
+    { "flagKey" => event.flag_key, "context" => clean(event.context), "value" => clean(event.value),
+      "variationIndex" => event.variation_index, "reason" => reason_json(event.reason),
+      "etag" => event.etag, "flagVersion" => event.flag_version }
+  end
+
+  def status_json(status)
+    at = status.last_sync_at
+    { "etag" => status.etag, "lastSyncAt" => at && (at.to_r * 1000).floor, "stream" => status.stream,
+      "lastError" => status.last_error }
+  end
+end
+
+# Reads one request, answers it, closes.
+class Connection
+  def initialize(socket, service)
+    @socket = socket
+    @service = service
+  end
+
+  def run
+    method, path, body = read_request
+    status, payload = begin
+      @service.handle(method, path, body)
+    rescue StandardError => e
+      [500, "#{e.class}: #{e.message}\n#{e.backtrace&.first(8)&.join("\n")}"]
+    end
+    reply(status, payload)
+  rescue StandardError
+    nil
+  ensure
+    @socket.close unless @socket.closed?
+  end
+
+  private
+
+  def read_request
+    head = +""
+    head << @socket.readpartial(65_536) until head.include?("\r\n\r\n")
+    head, rest = head.b.split("\r\n\r\n", 2)
+    lines = head.split("\r\n")
+    method, path, = lines.first.split
+    length = lines.drop(1).filter_map { |line| line[/\Acontent-length:\s*(\d+)/i, 1] }.first.to_i
+    rest << @socket.readpartial(length - rest.bytesize) while rest.bytesize < length
+    [method, path, rest]
+  end
+
+  def reply(status, payload)
+    if payload.is_a?(String)
+      type = "text/plain; charset=utf-8"
+      data = payload.b
+    else
+      type = "application/json"
+      data = Toggleslash::Json.generate(payload).b
+    end
+    @socket.write("HTTP/1.1 #{status} X\r\nContent-Type: #{type}\r\nContent-Length: #{data.bytesize}\r\n" \
+                  "Connection: close\r\n\r\n".b + data)
+  end
+end
+
+server = TCPServer.new("127.0.0.1", 0)
+service = Service.new
+$stdout.write("listening http://127.0.0.1:#{server.addr[1]}\n")
+$stdout.flush
+loop do
+  socket = server.accept
+  thread = Thread.new { Connection.new(socket, service).run }
+  thread.report_on_exception = false
+end
