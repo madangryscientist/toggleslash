@@ -1,75 +1,72 @@
-# ToggleSlash server SDK for Java
+# ToggleSlash Java server SDK
 
-Feature flags evaluated locally, in your process, from a ruleset the ToggleSlash server keeps current. It
-meets [`docs/sdk-contract.md`](../../docs/sdk-contract.md), has no runtime dependency outside the JDK
-(Java 17 or later) and is **not published**: there is no version to install from a registry.
+A server SDK for ToggleSlash in Java. It evaluates flags locally on a ruleset it keeps fresh from the
+server, with no runtime dependency beyond the JDK. It follows the language-neutral
+[SDK contract](../../docs/sdk-contract.md) and the [evaluation spec](../../docs/evaluation.md); the
+design and the full mapping from the contract's names to Java's are in [`DESIGN.md`](DESIGN.md). It is
+not published to any registry.
+
+Java 17 or newer at run time. The repository builds it with the Temurin 25 toolchain pinned in
+`mise.toml`.
 
 ## Quickstart
 
-Install from a checkout of this repository: build it and put the jar on your class path.
+Build it from a checkout of this repository (`sdks/java`) and put `target/classes` on the class path:
 
 ```sh
-cd sdks/java
-mise install            # the pinned Java and Maven, once
-mise exec -- mvn -B -q -DskipTests package   # writes target/toggleslash-sdk-java-0.1.0-SNAPSHOT.jar
+(cd sdks/java && mise trust && mise install)
+(cd sdks/java && mise exec -- mvn -B -q compile)
 ```
-
-Then:
 
 ```java
 import com.github.madangryscientist.toggleslash.sdks.java.Client;
 import com.github.madangryscientist.toggleslash.sdks.java.Context;
 import com.github.madangryscientist.toggleslash.sdks.java.Options;
 
-public final class Main {
-  public static void main(String[] args) {
-    // Read the key from the environment, never from source.
-    Options options =
-        Options.builder("https://flags.example.com", System.getenv("TOGGLESLASH_SDK_KEY")).build();
-    try (Client client = Client.create(options)) { // close() sends the last usage counts
-      client.ready(); // optional: waits for the first load, never longer than the request timeout
-      Context user = Context.user("user-42").with("plan", "pro");
-      if (client.boolVariation("new-checkout", user, false)) {
-        // ...
-      }
-    }
-  }
+try (Client client = Client.create(new Options().url("http://localhost:5000").sdkKey("fs_server_..."))) {
+  client.ready();
+  boolean on = client.boolVariation("new-checkout", Context.user("user-42"), false);
 }
 ```
 
-`Client.create` returns at once and never throws. `...Variation` and its `...VariationDetail` twins never wait
-for the network: before the first load they answer your fallback with the reason `ERROR` / `NOT_READY`. A
-client is safe to use from many threads. Options are `stream`, `pollInterval`, `flushInterval`,
-`requestTimeout`, `afterEvaluation` and `onError`.
+`create` never throws and does not wait for the network. `variation` and `variationDetail` never throw
+and never do I/O: until the first ruleset has loaded they answer the fallback with reason
+`NOT_READY`. `close` is idempotent and ends in about twice `requestTimeout` at most.
 
-## The API
+## Mapping
 
-Every name in the contract and its Java spelling is in the table in
-[`DESIGN.md`](DESIGN.md#the-mapping-table), along with the design choices behind it.
+| Canonical | Java |
+| --- | --- |
+| `create` | `Client.create(Options)` |
+| `ready` | `Client.ready()` (blocking), `Client.readyFuture()` |
+| `variation` | `boolVariation`, `stringVariation`, `doubleVariation`, `longVariation`, `jsonVariation` |
+| `variationDetail` | the same names with `Detail`, returning `Detail<T>` |
+| `status` | `Client.status()` |
+| `close` | `Client.close()` (`AutoCloseable`) |
+| options | `Options.url`, `sdkKey`, `stream`, `pollInterval`, `flushInterval`, `requestTimeout`, `afterEvaluation`, `onError` |
+
+`DESIGN.md` section 1 has the whole table, including defaults and the closed sets.
 
 ## Guarantees
 
-The contract's section 5, as this SDK keeps it:
+- The SDK never throws at a caller and never blocks an evaluation on the network.
+- A ruleset and its ETag swap in one step; a hook sees the ETag and flag version of the ruleset it
+  evaluated against.
+- The last good ruleset is kept through any failure.
+- A context never leaves the process: no request, log, status or error carries one.
+- Usage is counted per flag, variation and UTC day, sent in batches, and kept through a failed send.
+- `Retry-After` on a 429 is honoured, capped at 300 seconds.
+- Threads are daemon threads, so an unclosed client does not keep the JVM alive.
 
-1. It never throws at a caller, whatever the server, the network, a context, a hook or `onError` does.
-2. `variation`, `variationDetail` and `status` never do I/O and never wait.
-3. `ready` settles after the first attempt and gives the same answer every time.
-4. While the server is unreachable it keeps evaluating from the last good ruleset.
-5. Only something with the shape of a ruleset replaces a ruleset.
+## Checks
 
-It also sends no context, context key or attribute anywhere: usage counts carry a flag, a variation index and
-a day.
-
-## Running the checks
-
-The toolchain is pinned in [`mise.toml`](mise.toml) (`mise install` from this directory). The `bin` scripts
-find it themselves.
+From the repository root, with the toolchain installed as above and `bun install` run once:
 
 ```sh
-sdks/java/bin/lint      # google-java-format --dry-run, Checkstyle, javac -Xlint:all -Werror
-sdks/java/bin/test      # mvn clean test: every evaluation vector, the native tests, and the test service's build
-bun run conformance -- --service sdks/java/bin/test-service   # from the repository root: the conformance harness
+sdks/java/bin/lint
+sdks/java/bin/test
+bun run conformance -- --service sdks/java/bin/test-service
 ```
 
-The test service is described in [`test-service/README.md`](test-service/README.md). A report of the run that
-built this SDK is in [`RUN.md`](RUN.md).
+`bin/test` builds, runs every evaluation vector and the native tests, and prints
+`vectors: <n> pins: <n>`. `test-service/README.md` maps the conformance accessors.

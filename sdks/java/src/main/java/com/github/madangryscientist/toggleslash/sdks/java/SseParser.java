@@ -1,105 +1,65 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
-import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.charset.CharsetDecoder;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A server-sent events parser, to the WHATWG rules: lines end in LF, CRLF or a lone CR; a line that
- * starts with a colon is a comment; the event name defaults to {@code message}; several {@code
- * data} lines are joined with LF; an event with no {@code data} line is dropped; an event still
- * open when the input ends is discarded (it is never flushed). Bytes are decoded as UTF-8 across
- * chunk boundaries, with U+FFFD for bad bytes.
+ * An incremental Server-Sent Events parser to the WHATWG rules, fed text in any chunking. Only the
+ * {@code event} and {@code data} fields are read; a comment, any other field, an event with no data
+ * and an event left unfinished at the end are dropped.
  */
 final class SseParser {
-  /** One dispatched event. */
+  /** One event. */
   record Event(String name, String data) {}
 
-  private final CharsetDecoder decoder =
-      StandardCharsets.UTF_8
-          .newDecoder()
-          .onMalformedInput(CodingErrorAction.REPLACE)
-          .onUnmappableCharacter(CodingErrorAction.REPLACE);
-  private ByteBuffer pending = ByteBuffer.allocate(0);
-  private final StringBuilder line = new StringBuilder();
-  private final StringBuilder data = new StringBuilder();
-  private String name = "";
-  private boolean hasData;
-  private boolean skipLf;
-  private boolean atStart = true;
+  private String buffer = "";
 
-  /** Feeds the next bytes and returns the events they completed. */
-  List<Event> feed(byte[] chunk, int length) {
-    ByteBuffer input = ByteBuffer.allocate(pending.remaining() + length);
-    input.put(pending);
-    input.put(chunk, 0, length);
-    input.flip();
-    CharBuffer out = CharBuffer.allocate(input.remaining() + 1);
-    decoder.decode(input, out, false);
-    pending = ByteBuffer.allocate(input.remaining());
-    pending.put(input);
-    pending.flip();
-    out.flip();
+  List<Event> feed(String text) {
+    String joined = buffer + text;
+    // A CR at the end may be half of a CRLF split across chunks: wait for the next one.
+    boolean held = joined.endsWith("\r");
+    String body = held ? joined.substring(0, joined.length() - 1) : joined;
+    body = body.replace("\r\n", "\n").replace('\r', '\n');
     List<Event> events = new ArrayList<>();
-    while (out.hasRemaining()) {
-      char c = out.get();
-      if (atStart) {
-        atStart = false;
-        if (c == '﻿') {
-          continue;
-        }
+    int start = 0;
+    while (true) {
+      int end = body.indexOf("\n\n", start);
+      if (end < 0) {
+        break;
       }
-      if (skipLf) {
-        skipLf = false;
-        if (c == '\n') {
-          continue;
-        }
+      Event event = parseBlock(body.substring(start, end));
+      if (event != null) {
+        events.add(event);
       }
-      if (c == '\r') {
-        skipLf = true;
-        endLine(events);
-      } else if (c == '\n') {
-        endLine(events);
-      } else {
-        line.append(c);
-      }
+      start = end + 2;
     }
+    buffer = body.substring(start) + (held ? "\r" : "");
     return events;
   }
 
-  private void endLine(List<Event> events) {
-    String text = line.toString();
-    line.setLength(0);
-    if (text.isEmpty()) {
-      if (hasData) {
-        events.add(new Event(name.isEmpty() ? "message" : name, data.toString()));
+  private static Event parseBlock(String block) {
+    String name = "message";
+    List<String> data = new ArrayList<>();
+    int pos = 0;
+    while (pos <= block.length()) {
+      int eol = block.indexOf('\n', pos);
+      String line = block.substring(pos, eol < 0 ? block.length() : eol);
+      pos = eol < 0 ? block.length() + 1 : eol + 1;
+      if (line.isEmpty() || line.charAt(0) == ':') {
+        continue;
       }
-      name = "";
-      data.setLength(0);
-      hasData = false;
-      return;
-    }
-    if (text.charAt(0) == ':') {
-      return;
-    }
-    int colon = text.indexOf(':');
-    String field = colon < 0 ? text : text.substring(0, colon);
-    String value = colon < 0 ? "" : text.substring(colon + 1);
-    if (value.startsWith(" ")) {
-      value = value.substring(1);
-    }
-    if (field.equals("event")) {
-      name = value;
-    } else if (field.equals("data")) {
-      if (hasData) {
-        data.append('\n');
+      int colon = line.indexOf(':');
+      String field = colon < 0 ? line : line.substring(0, colon);
+      String value = colon < 0 ? "" : line.substring(colon + 1);
+      if (value.startsWith(" ")) {
+        value = value.substring(1);
       }
-      data.append(value);
-      hasData = true;
+      if (field.equals("event")) {
+        name = value;
+      } else if (field.equals("data")) {
+        data.add(value);
+      }
     }
+    return data.isEmpty() ? null : new Event(name, String.join("\n", data));
   }
 }

@@ -1,9 +1,3 @@
-# Maven output
 target/
-# Editors and tools
-.idea/
-*.iml
-.vscode/
-.classpath
-.project
-.settings/
+*.class
+.mvn/

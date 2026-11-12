@@ -1,220 +1,159 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Evaluator;
 import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Result;
 import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Ruleset;
+import com.github.madangryscientist.toggleslash.sdks.java.json.Json;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 import java.util.function.DoubleSupplier;
-import java.util.function.LongSupplier;
+import javax.net.ssl.SSLContext;
 
 /**
- * What {@link Client#create(Options)} reads. Build one with {@link #builder(String, String)}. A
- * duration that is null, zero or negative is the default.
+ * What {@link Client#create(Options)} reads. A field left unset takes its default, and a duration
+ * that is zero or negative takes it too. The object is read once, at {@code create}.
  */
 public final class Options {
-  static final Duration DEFAULT_POLL_INTERVAL = Duration.ofSeconds(30);
-  static final Duration DEFAULT_FLUSH_INTERVAL = Duration.ofSeconds(30);
-  static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(10);
-
-  /** The server sends a keep-alive every 25 s; this long without a byte and the stream is dead. */
-  static final Duration DEFAULT_STREAM_IDLE = Duration.ofSeconds(60);
-
-  /** How one evaluation is done; a test seam, so a test can make it fail. */
+  /** Evaluation as the client calls it; a seam for the package's own tests. */
   @FunctionalInterface
-  interface Evaluator {
-    Result evaluate(Ruleset ruleset, String flagKey, Object context);
+  interface Evaluation {
+    Result evaluate(Ruleset ruleset, String flagKey, Json context);
   }
 
-  private final String url;
-  private final String sdkKey;
-  private final boolean stream;
-  private final Duration pollInterval;
-  private final Duration flushInterval;
-  private final Duration requestTimeout;
-  private final Consumer<EvaluationEvent> afterEvaluation;
-  private final Consumer<Throwable> onError;
-  private final Clock clock;
-  private final LongSupplier nanoTime;
-  private final DoubleSupplier jitter;
-  private final Duration streamIdle;
-  private final Evaluator evaluator;
+  String url;
+  String sdkKey;
+  Boolean stream;
+  Duration pollInterval;
+  Duration flushInterval;
+  Duration requestTimeout;
+  Consumer<EvaluationEvent> afterEvaluation;
+  Consumer<Throwable> onError;
 
-  private Options(Builder b) {
-    this.url = b.url;
-    this.sdkKey = b.sdkKey;
-    this.stream = b.stream;
-    this.pollInterval = positive(b.pollInterval, DEFAULT_POLL_INTERVAL);
-    this.flushInterval = positive(b.flushInterval, DEFAULT_FLUSH_INTERVAL);
-    this.requestTimeout = positive(b.requestTimeout, DEFAULT_REQUEST_TIMEOUT);
-    this.afterEvaluation = b.afterEvaluation;
-    this.onError = b.onError;
-    this.clock = b.clock;
-    this.nanoTime = b.nanoTime;
-    this.jitter = b.jitter;
-    this.streamIdle = positive(b.streamIdle, DEFAULT_STREAM_IDLE);
-    this.evaluator = b.evaluator;
-  }
+  // Test seams, set only by this package's tests.
+  Duration streamIdle;
+  Clock clock;
+  DoubleSupplier random;
+  Evaluation evaluation = Evaluator::evaluate;
+  SSLContext sslContext;
 
-  private static Duration positive(Duration value, Duration fallback) {
-    return value == null || value.isZero() || value.isNegative() ? fallback : value;
+  /** Creates options with nothing set. */
+  public Options() {}
+
+  /**
+   * The server's base URL, such as {@code https://flags.example.com}. Required. Trailing slashes
+   * are removed.
+   *
+   * @param value the URL
+   * @return these options
+   */
+  public Options url(String value) {
+    this.url = value;
+    return this;
   }
 
   /**
-   * Starts options for a server at {@code url} (for example {@code https://flags.example.com}; a
-   * trailing slash is dropped) and a server SDK key ({@code fs_server_...}).
+   * A server SDK key. Required.
+   *
+   * @param value the key
+   * @return these options
    */
-  public static Builder builder(String url, String sdkKey) {
-    return new Builder(url, sdkKey);
+  public Options sdkKey(String value) {
+    this.sdkKey = value;
+    return this;
   }
 
-  String url() {
-    return url;
+  /**
+   * Whether to follow the live stream. Default true; false polls only.
+   *
+   * @param value on or off
+   * @return these options
+   */
+  public Options stream(boolean value) {
+    this.stream = value;
+    return this;
   }
 
-  String sdkKey() {
-    return sdkKey;
+  /**
+   * How often to poll when the stream is down or off, and the longest reconnect wait. Default 30 s.
+   *
+   * @param value the interval
+   * @return these options
+   */
+  public Options pollInterval(Duration value) {
+    this.pollInterval = value;
+    return this;
   }
 
-  boolean stream() {
-    return stream;
+  /**
+   * How often usage counts are sent. Default 30 s.
+   *
+   * @param value the interval
+   * @return these options
+   */
+  public Options flushInterval(Duration value) {
+    this.flushInterval = value;
+    return this;
   }
 
-  Duration pollInterval() {
-    return pollInterval;
+  /**
+   * The longest any one request may take, body included, and so the longest {@code ready} and
+   * {@code close} wait. Default 10 s.
+   *
+   * @param value the timeout
+   * @return these options
+   */
+  public Options requestTimeout(Duration value) {
+    this.requestTimeout = value;
+    return this;
   }
 
-  Duration flushInterval() {
-    return flushInterval;
+  /**
+   * Called synchronously on the caller's thread after every {@code variation} and {@code
+   * variationDetail}, a fallback included. What it throws goes to {@code onError}.
+   *
+   * @param value the hook
+   * @return these options
+   */
+  public Options afterEvaluation(Consumer<EvaluationEvent> value) {
+    this.afterEvaluation = value;
+    return this;
   }
 
-  Duration requestTimeout() {
-    return requestTimeout;
+  /**
+   * Told about every failure the SDK absorbs. It is never needed for correctness, and what it
+   * throws is ignored.
+   *
+   * @param value the callback
+   * @return these options
+   */
+  public Options onError(Consumer<Throwable> value) {
+    this.onError = value;
+    return this;
   }
 
-  Consumer<EvaluationEvent> afterEvaluation() {
-    return afterEvaluation;
+  Options streamIdle(Duration value) {
+    this.streamIdle = value;
+    return this;
   }
 
-  Consumer<Throwable> onError() {
-    return onError;
+  Options clock(Clock value) {
+    this.clock = value;
+    return this;
   }
 
-  Clock clock() {
-    return clock;
+  Options random(DoubleSupplier value) {
+    this.random = value;
+    return this;
   }
 
-  LongSupplier nanoTime() {
-    return nanoTime;
+  Options evaluation(Evaluation value) {
+    this.evaluation = value;
+    return this;
   }
 
-  DoubleSupplier jitter() {
-    return jitter;
-  }
-
-  Duration streamIdle() {
-    return streamIdle;
-  }
-
-  Evaluator evaluator() {
-    return evaluator;
-  }
-
-  /** Builds {@link Options}. */
-  public static final class Builder {
-    private final String url;
-    private final String sdkKey;
-    private boolean stream = true;
-    private Duration pollInterval;
-    private Duration flushInterval;
-    private Duration requestTimeout;
-    private Consumer<EvaluationEvent> afterEvaluation;
-    private Consumer<Throwable> onError;
-    private Clock clock = Clock.systemUTC();
-    private LongSupplier nanoTime = System::nanoTime;
-    private DoubleSupplier jitter = () -> ThreadLocalRandom.current().nextDouble();
-    private Duration streamIdle;
-    private Evaluator evaluator = Ruleset::evaluate;
-
-    private Builder(String url, String sdkKey) {
-      this.url = url;
-      this.sdkKey = sdkKey;
-    }
-
-    /** Follow the stream (default true). False polls only. */
-    public Builder stream(boolean stream) {
-      this.stream = stream;
-      return this;
-    }
-
-    /** How often to poll when the stream is down or off, and the longest reconnect wait (30 s). */
-    public Builder pollInterval(Duration pollInterval) {
-      this.pollInterval = pollInterval;
-      return this;
-    }
-
-    /** How often usage counts are sent (30 s). */
-    public Builder flushInterval(Duration flushInterval) {
-      this.flushInterval = flushInterval;
-      return this;
-    }
-
-    /**
-     * The longest any one request may take, and so the longest {@code ready} and {@code close} wait
-     * (10 s).
-     */
-    public Builder requestTimeout(Duration requestTimeout) {
-      this.requestTimeout = requestTimeout;
-      return this;
-    }
-
-    /**
-     * Called synchronously on the caller's thread after every evaluation, a fallback included. An
-     * exception it throws goes to {@code onError} and never reaches the caller.
-     */
-    public Builder afterEvaluation(Consumer<EvaluationEvent> hook) {
-      this.afterEvaluation = hook;
-      return this;
-    }
-
-    /**
-     * Told about every failure the SDK absorbs. It is never needed for correctness; an exception it
-     * throws is ignored.
-     */
-    public Builder onError(Consumer<Throwable> onError) {
-      this.onError = onError;
-      return this;
-    }
-
-    Builder clock(Clock clock) {
-      this.clock = clock;
-      return this;
-    }
-
-    Builder nanoTime(LongSupplier nanoTime) {
-      this.nanoTime = nanoTime;
-      return this;
-    }
-
-    Builder jitter(DoubleSupplier jitter) {
-      this.jitter = jitter;
-      return this;
-    }
-
-    Builder streamIdle(Duration streamIdle) {
-      this.streamIdle = streamIdle;
-      return this;
-    }
-
-    Builder evaluator(Evaluator evaluator) {
-      this.evaluator = evaluator;
-      return this;
-    }
-
-    /** The options. */
-    public Options build() {
-      return new Options(this);
-    }
+  Options sslContext(SSLContext value) {
+    this.sslContext = value;
+    return this;
   }
 }

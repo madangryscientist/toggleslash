@@ -1,40 +1,23 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
-import java.util.function.LongSupplier;
+import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * A server's "wait this long" (a {@code 429} with {@code Retry-After}): a deadline on a monotonic
- * clock that only moves later, never longer than {@link #MAX_SECONDS} from the moment it is asked
- * for.
- */
+/** A wait the server asked for with Retry-After. It only ever lengthens. */
 final class Hold {
-  /** However long a server asks, a client is back within this. */
-  static final long MAX_SECONDS = 300;
+  /** The longest wait honoured, in milliseconds. */
+  static final long CAP_MS = 300_000;
 
-  private final LongSupplier nanoTime;
-  private long until;
-  private boolean set;
+  private final AtomicLong deadline = new AtomicLong(System.nanoTime());
 
-  Hold(LongSupplier nanoTime) {
-    this.nanoTime = nanoTime;
+  void extendMs(long ms) {
+    long wanted = System.nanoTime() + Math.min(ms, CAP_MS) * 1_000_000L;
+    deadline.accumulateAndGet(
+        wanted, (current, candidate) -> candidate - current > 0 ? candidate : current);
   }
 
-  /** Holds for {@code seconds} from now (capped); a shorter ask never shortens a longer hold. */
-  synchronized void extend(long seconds) {
-    long capped = Math.min(Math.max(seconds, 0), MAX_SECONDS);
-    long deadline = nanoTime.getAsLong() + capped * 1_000_000_000L;
-    if (!set || deadline - until > 0) {
-      until = deadline;
-      set = true;
-    }
-  }
-
-  /** Nanoseconds left, 0 when there is no hold or it has passed. */
-  synchronized long remainingNanos() {
-    if (!set) {
-      return 0;
-    }
-    long left = until - nanoTime.getAsLong();
-    return Math.max(left, 0);
+  /** Milliseconds left, rounded up; zero when no hold is in force. */
+  long remainingMs() {
+    long left = deadline.get() - System.nanoTime();
+    return left <= 0 ? 0 : (left + 999_999) / 1_000_000;
   }
 }

@@ -1,16 +1,12 @@
 #!/bin/sh
-# Runs every native test (the evaluation vectors included), then builds the test service.
 set -eu
 cd "$(dirname "$0")/.."
-
-run() {
-  if command -v mise >/dev/null 2>&1; then
-    mise exec -- "$@"
-  else
-    "$@"
-  fi
-}
-
-# `clean test` compiles main, the tests and the test service every time, so a stale build never hides a
-# failure. The test service's classes are in target/test-classes.
-run mvn -B -q clean test
+if command -v mise >/dev/null 2>&1; then
+  run() { mise exec -- "$@"; }
+else
+  run() { "$@"; }
+fi
+rm -f target/vectors.txt
+run mvn -B -q test-compile
+run mvn -B -q surefire:test
+cat target/vectors.txt

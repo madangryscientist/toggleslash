@@ -3,137 +3,155 @@ package com.github.madangryscientist.toggleslash.sdks.java;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.TreeMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Supplier;
 
-/** A ToggleSlash server on a real loopback socket, answering what each test tells it to. */
+/** A loopback ToggleSlash server for the SDK's own tests: it records every request it gets. */
 final class FakeServer implements AutoCloseable {
-  /** What one route does with one request. */
+  /** One request as the server saw it. */
+  record Seen(String method, String path, Map<String, List<String>> headers, String body) {}
+
   @FunctionalInterface
   interface Handler {
     void handle(HttpExchange exchange) throws Exception;
   }
 
-  /** A request the server saw. */
-  record Seen(String method, String path, Map<String, List<String>> headers, String body) {}
+  static final String RULESET =
+      "{\"flags\":[{\"key\":\"f\",\"variations\":[false,true],\"on\":true,\"offVariation\":0,"
+          + "\"targets\":[],\"prerequisites\":[],\"rules\":[],\"fallthrough\":{\"variation\":1},"
+          + "\"salt\":\"s\",\"version\":7}],\"segments\":[]}";
 
-  static final String FLAG_TEMPLATE =
-      "{\"key\":\"%s\",\"variations\":[%s,%s],\"on\":true,\"offVariation\":0,\"targets\":[],"
-          + "\"prerequisites\":[],\"rules\":[],\"fallthrough\":{\"variation\":0},\"salt\":\"s\","
-          + "\"version\":%d}";
+  final List<Seen> seen = new CopyOnWriteArrayList<>();
 
-  /** A flag that serves {@code value} (JSON text) to everyone, as variation 0. */
-  static String flag(String key, String value, int version) {
-    return String.format(FLAG_TEMPLATE, key, value, "null", version);
-  }
-
-  static String ruleset(String... flags) {
-    return "{\"flags\":[" + String.join(",", flags) + "],\"segments\":[]}";
-  }
-
-  private final HttpServer server;
-  private final ExecutorService executor = Executors.newCachedThreadPool();
-  private final Map<String, Handler> routes = new ConcurrentHashMap<>();
-  private final List<Seen> seen = Collections.synchronizedList(new ArrayList<>());
-
-  /** Released at close, so a handler that hangs on purpose lets go. */
+  /** Counted down at close, so a handler that hangs can be let go. */
   final CountDownLatch released = new CountDownLatch(1);
 
+  volatile Handler ruleset = ok(() -> RULESET, "\"v1\"");
+  volatile Handler stream = status(404);
+  volatile Handler events = status(204);
+
+  private final HttpServer server;
+
   FakeServer() throws IOException {
-    server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
-    server.setExecutor(executor);
-    server.createContext(
-        "/",
-        exchange -> {
-          byte[] body = exchange.getRequestBody().readAllBytes();
-          seen.add(
-              new Seen(
-                  exchange.getRequestMethod(),
-                  exchange.getRequestURI().getPath(),
-                  Map.copyOf(exchange.getRequestHeaders()),
-                  new String(body, StandardCharsets.UTF_8)));
-          Handler handler = routes.get(exchange.getRequestURI().getPath());
-          try {
-            if (handler == null) {
-              send(exchange, 404, "");
-            } else {
-              handler.handle(exchange);
-            }
-          } catch (IOException e) {
-            // the client went away
-          } catch (Exception e) {
-            exchange.close();
-          }
-        });
+    this(HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0));
+  }
+
+  FakeServer(HttpServer server) {
+    this.server = server;
+    server.setExecutor(
+        Executors.newCachedThreadPool(r -> {
+          Thread t = new Thread(r, "fake-server");
+          t.setDaemon(true);
+          return t;
+        }));
+    server.createContext("/sdk/v1/ruleset", ex -> serve(ex, ruleset));
+    server.createContext("/sdk/v1/stream", ex -> serve(ex, stream));
+    server.createContext("/sdk/v1/events", ex -> serve(ex, events));
     server.start();
   }
 
   String url() {
-    return "http://127.0.0.1:" + server.getAddress().getPort();
+    return (server instanceof com.sun.net.httpserver.HttpsServer ? "https" : "http")
+        + "://127.0.0.1:"
+        + server.getAddress().getPort();
   }
 
-  FakeServer on(String path, Handler handler) {
-    routes.put(path, handler);
-    return this;
+  List<Seen> to(String path) {
+    List<Seen> out = new ArrayList<>();
+    for (Seen s : seen) {
+      if (s.path().equals(path)) {
+        out.add(s);
+      }
+    }
+    return out;
   }
 
-  /** The ruleset route answers {@code body} with the ETag {@code etag}, whatever is asked. */
-  FakeServer ruleset(String body, String etag) {
-    return on(
-        "/sdk/v1/ruleset",
-        x -> {
-          x.getResponseHeaders().set("ETag", etag);
-          send(x, 200, body);
-        });
-  }
-
-  FakeServer events(int status) {
-    return on("/sdk/v1/events", x -> send(x, status, "{}"));
-  }
-
-  List<Seen> requests(String path) {
-    synchronized (seen) {
-      return seen.stream().filter(s -> s.path().equals(path)).toList();
+  private void serve(HttpExchange exchange, Handler handler) throws IOException {
+    Map<String, List<String>> headers = new TreeMap<>();
+    exchange.getRequestHeaders().forEach((k, v) -> headers.put(k.toLowerCase(), List.copyOf(v)));
+    String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+    seen.add(
+        new Seen(exchange.getRequestMethod(), exchange.getRequestURI().getPath(), headers, body));
+    try {
+      handler.handle(exchange);
+    } catch (IOException e) {
+      // The client went away.
+    } catch (Exception e) {
+      exchange.close();
     }
   }
 
-  List<Seen> all() {
-    synchronized (seen) {
-      return new ArrayList<>(seen);
-    }
+  static Handler ok(Supplier<String> body, String etag) {
+    return ex -> {
+      if (etag != null) {
+        ex.getResponseHeaders().set("ETag", etag);
+      }
+      ex.getResponseHeaders().set("Content-Type", "application/json");
+      send(ex, 200, body.get());
+    };
   }
 
-  static void send(HttpExchange exchange, int status, String body) throws IOException {
+  static Handler status(int code) {
+    return ex -> send(ex, code, "");
+  }
+
+  static Handler tooMany(String retryAfter) {
+    return ex -> {
+      ex.getResponseHeaders().set("Retry-After", retryAfter);
+      send(ex, 429, "");
+    };
+  }
+
+  /** Holds the request open until the server closes. */
+  Handler hang() {
+    return ex -> {
+      try {
+        released.await();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    };
+  }
+
+  static void send(HttpExchange ex, int code, String body) throws IOException {
     byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-    if (!exchange.getResponseHeaders().containsKey("Content-Type")) {
-      exchange.getResponseHeaders().set("Content-Type", "application/json");
-    }
-    exchange.sendResponseHeaders(status, bytes.length == 0 ? -1 : bytes.length);
+    ex.sendResponseHeaders(code, bytes.length == 0 ? -1 : bytes.length);
     if (bytes.length > 0) {
-      exchange.getResponseBody().write(bytes);
+      try (OutputStream out = ex.getResponseBody()) {
+        out.write(bytes);
+      }
+    } else {
+      ex.close();
     }
-    exchange.close();
   }
 
-  /** Holds the request until the server closes. */
-  void hang(HttpExchange exchange) throws InterruptedException, IOException {
-    released.await();
-    exchange.close();
+  /** Opens an event stream: headers go out now, and the returned stream takes the events. */
+  static OutputStream openStream(HttpExchange ex) throws IOException {
+    ex.getResponseHeaders().set("Content-Type", "text/event-stream");
+    ex.sendResponseHeaders(200, 0);
+    OutputStream out = ex.getResponseBody();
+    out.flush();
+    return out;
+  }
+
+  static void write(OutputStream out, String text) throws IOException {
+    out.write(text.getBytes(StandardCharsets.UTF_8));
+    out.flush();
   }
 
   @Override
   public void close() {
     released.countDown();
     server.stop(0);
-    executor.shutdownNow();
   }
 }
