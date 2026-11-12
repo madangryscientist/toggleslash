@@ -2,23 +2,21 @@ package evaluator
 
 import "strings"
 
-// Semantic versions, to the "Semantic versions" section of docs/evaluation.md. A hand-written walk over
-// the string: no regular expression and no library. Nothing here converts a numeric part to a number.
-
-type semver struct {
+// semanticVersion is a parsed version. The numeric parts stay strings: nothing here converts one to a number.
+type semanticVersion struct {
 	major, minor, patch string
-	prerelease          []string // empty when there is no prerelease
+	prerelease          []string
 }
 
-func isDigitByte(c byte) bool { return c >= '0' && c <= '9' }
+func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
-func isIdentifierByte(c byte) bool {
-	return isDigitByte(c) || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '-'
+func isIdentifierChar(c byte) bool {
+	return isDigit(c) || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c == '-'
 }
 
 func allDigits(s string) bool {
 	for i := 0; i < len(s); i++ {
-		if !isDigitByte(s[i]) {
+		if !isDigit(s[i]) {
 			return false
 		}
 	}
@@ -30,7 +28,7 @@ func isNumericPart(s string) bool {
 	return s != "" && allDigits(s) && (s == "0" || s[0] != '0')
 }
 
-// identifiers splits on dots; none may be empty and each is ASCII letters, digits and `-`.
+// identifiers splits on '.', and every part must be non-empty and made of ASCII letters, digits and '-'.
 func identifiers(s string) ([]string, bool) {
 	parts := strings.Split(s, ".")
 	for _, part := range parts {
@@ -38,7 +36,7 @@ func identifiers(s string) ([]string, bool) {
 			return nil, false
 		}
 		for i := 0; i < len(part); i++ {
-			if !isIdentifierByte(part[i]) {
+			if !isIdentifierChar(part[i]) {
 				return nil, false
 			}
 		}
@@ -46,16 +44,14 @@ func identifiers(s string) ([]string, bool) {
 	return parts, true
 }
 
-// splitAt returns the text before and after the first sep; the bool is false when there is none.
-func splitAt(s string, sep byte) (string, string, bool) {
-	at := strings.IndexByte(s, sep)
-	if at < 0 {
+func splitAt(s string, sep byte) (before, after string, found bool) {
+	i := strings.IndexByte(s, sep)
+	if i < 0 {
 		return s, "", false
 	}
-	return s[:at], s[at+1:], true
+	return s[:i], s[i+1:], true
 }
 
-// prereleaseIdentifiers: valid identifiers, where a digits-only one has no leading zero.
 func prereleaseIdentifiers(s string) ([]string, bool) {
 	parts, ok := identifiers(s)
 	if !ok {
@@ -69,10 +65,9 @@ func prereleaseIdentifiers(s string) ([]string, bool) {
 	return parts, true
 }
 
-// numericParts reads MAJOR.MINOR.PATCH, or a short form (MAJOR, MAJOR.MINOR) when short is allowed.
 func numericParts(s string, short bool) ([]string, bool) {
 	numbers := strings.Split(s, ".")
-	if len(numbers) > 3 || (len(numbers) < 3 && !short) {
+	if len(numbers) > 3 || len(numbers) < 3 && !short {
 		return nil, false
 	}
 	for _, n := range numbers {
@@ -83,13 +78,13 @@ func numericParts(s string, short bool) ([]string, bool) {
 	return numbers, true
 }
 
-// parseSemver returns the version s spells, or false when it is not one.
-func parseSemver(s string) (semver, bool) {
-	withoutBuild, build, hasBuild := splitAt(s, '+')
-	// Build metadata: identifiers only, and leading zeros are fine.
+// parseSemanticVersion reads MAJOR.MINOR.PATCH with an optional -prerelease and +build, or the short forms
+// MAJOR and MAJOR.MINOR with no suffix. It reports false for anything else.
+func parseSemanticVersion(text string) (semanticVersion, bool) {
+	withoutBuild, build, hasBuild := splitAt(text, '+')
 	if hasBuild {
 		if _, ok := identifiers(build); !ok {
-			return semver{}, false
+			return semanticVersion{}, false
 		}
 	}
 	core, pre, hasPre := splitAt(withoutBuild, '-')
@@ -97,15 +92,14 @@ func parseSemver(s string) (semver, bool) {
 	if hasPre {
 		var ok bool
 		if prerelease, ok = prereleaseIdentifiers(pre); !ok {
-			return semver{}, false
+			return semanticVersion{}, false
 		}
 	}
-	// The short forms carry no suffix.
 	numbers, ok := numericParts(core, !hasBuild && !hasPre)
 	if !ok {
-		return semver{}, false
+		return semanticVersion{}, false
 	}
-	v := semver{major: numbers[0], minor: "0", patch: "0", prerelease: prerelease}
+	v := semanticVersion{major: numbers[0], minor: "0", patch: "0", prerelease: prerelease}
 	if len(numbers) > 1 {
 		v.minor = numbers[1]
 	}
@@ -113,6 +107,16 @@ func parseSemver(s string) (semver, bool) {
 		v.patch = numbers[2]
 	}
 	return v, true
+}
+
+func sign(order int) int {
+	if order < 0 {
+		return -1
+	}
+	if order > 0 {
+		return 1
+	}
+	return 0
 }
 
 // compareNumeric orders digit strings with no leading zero: the longer is larger, else by code unit.
@@ -123,7 +127,7 @@ func compareNumeric(a, b string) int {
 		}
 		return 1
 	}
-	return strings.Compare(a, b)
+	return sign(strings.Compare(a, b))
 }
 
 func compareIdentifier(a, b string) int {
@@ -136,36 +140,24 @@ func compareIdentifier(a, b string) int {
 	case bNumeric:
 		return 1
 	}
-	return strings.Compare(a, b)
+	return sign(strings.Compare(a, b))
 }
 
 func comparePrerelease(a, b []string) int {
 	// No prerelease is above any prerelease of the same core.
 	if len(a) == 0 || len(b) == 0 {
-		switch {
-		case len(b) > len(a):
-			return 1
-		case len(b) < len(a):
-			return -1
-		}
-		return 0
+		return sign(len(b) - len(a))
 	}
 	for i := 0; i < len(a) && i < len(b); i++ {
 		if order := compareIdentifier(a[i], b[i]); order != 0 {
 			return order
 		}
 	}
-	switch {
-	case len(a) < len(b):
-		return -1
-	case len(a) > len(b):
-		return 1
-	}
-	return 0
+	return sign(len(a) - len(b))
 }
 
-// compareSemver orders by SemVer 2.0.0 section 11; build metadata is already gone.
-func compareSemver(a, b semver) int {
+// compareSemanticVersions is -1, 0 or 1 by SemVer 2.0.0 section 11. Build metadata is already gone.
+func compareSemanticVersions(a, b semanticVersion) int {
 	if order := compareNumeric(a.major, b.major); order != 0 {
 		return order
 	}

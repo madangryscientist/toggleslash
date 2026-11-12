@@ -1,33 +1,31 @@
-# Go test service
+# The Go SDK's test service
 
-The conformance test service for the Go SDK, to the protocol in
-[`docs/sdk-test-service.md`](../../../docs/sdk-test-service.md). It is `package main` in this directory,
-one more package of the same module, so `go vet ./...` and `go build ./...` compile it with the SDK and
-`bin/test` builds it last, into `.build/test-service`. `bin/test-service` runs that binary and builds it
-only when it is missing.
+`main.go` wraps `toggleslash.New` in the protocol of [`docs/sdk-test-service.md`](../../../docs/sdk-test-service.md),
+so the conformance harness can drive the SDK from outside:
 
-It listens on `127.0.0.1`, port 0, and prints `listening http://127.0.0.1:<port>` on stdout (unbuffered in
-Go). It serves each request in its own goroutine, so a `ready` that waits does not hold up the others, and a
-panic that reaches a handler is answered 500 with its text. It advertises `integer-accessor`.
+```bash
+bun run conformance -- --service sdks/go/bin/test-service
+```
 
-## Accessor mapping
+`bin/test-service` runs the binary that `bin/test` builds into `.build/`. The service listens on `127.0.0.1` on a
+port the OS picks and prints `listening http://127.0.0.1:<port>` first.
 
-| `accessor` | SDK method | Fallback it takes |
-| --- | --- | --- |
-| `bool` | `BoolVariationDetail` | a JSON boolean, else 400 |
-| `string` | `StringVariationDetail` | a JSON string, else 400 |
-| `number` | `FloatVariationDetail` | a JSON number, else 400 |
-| `int` | `IntVariationDetail` (`int64`) | a whole JSON number inside the `int64` range, else 400 |
-| `json`, `any` | `JSONVariationDetail` | any JSON value, `null` included |
+It advertises one capability, `integer-accessor`: Go has an `int64` and `IntVariation`.
 
-The context is passed through as the JSON value it arrived as (`ContextOf`). A number that is not finite is
-written back as `null`. The reason is written with only the fields its kind has (`ruleIndex`, `flagKey`,
-`code`), and a variation index of `-1` is written as `null`.
+| Protocol | Go SDK |
+| --- | --- |
+| `POST /clients` | `toggleslash.New(url, sdkKey, opts...)`; `stream`, `pollIntervalMs`, `flushIntervalMs` and `requestTimeoutMs` become `WithStream`, `WithPollInterval`, `WithFlushInterval` and `WithRequestTimeout`; `WithOnError` always records |
+| `ready` | `Client.Ready()` |
+| `evaluate`, accessor `bool` | `BoolVariationDetail` |
+| `evaluate`, accessor `string` | `StringVariationDetail` |
+| `evaluate`, accessor `number` | `Float64VariationDetail` |
+| `evaluate`, accessor `int` | `IntVariationDetail`, with the answer written back through a double |
+| `evaluate`, accessors `json` and `any` | `JSONVariationDetail`, with the fallback it is sent |
+| `status` | `Client.Status()`; an empty ETag or `LastError` is `null`, `LastSyncAt` is epoch milliseconds or `null` |
+| `hook-events` | the `Event`s `WithAfterEvaluation` received, with `FlagVersion` `NoVersion` written as `null` |
+| `errors` | what `WithOnError` received, each as its `Error()` text |
+| `close` | `Client.Close()` |
 
-## Options and hooks
-
-`stream`, `pollIntervalMs`, `flushIntervalMs` and `requestTimeoutMs` become `WithStream`,
-`WithPollInterval`, `WithFlushInterval` and `WithRequestTimeout`. `hook` installs `WithAfterEvaluation`, which
-records each event; `hookThrows` records and then panics, and `onErrorThrows` makes the always-installed
-`WithOnError` record and then panic. The SDK recovers both. A status is written with `etag` and `lastError` as
-`null` when empty, and `lastSyncAt` as whole epoch milliseconds or `null`.
+`hook: true` installs a recording hook; `hookThrows: true` also panics in it; `onErrorThrows: true` panics in the
+recording `OnError` function. The service recovers nothing the SDK lets out of a call: a panic answers 500 with its
+text, and the harness fails the scenario. A typed accessor sent a fallback of another kind answers 400.

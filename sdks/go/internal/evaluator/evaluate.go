@@ -2,28 +2,32 @@ package evaluator
 
 import "github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
 
-// maxPrerequisiteDepth is the prerequisite links from the requested flag that docs/evaluation.md allows.
+// maxPrerequisiteDepth is the limit on prerequisite links from the requested flag; docs/evaluation.md pins it.
 const maxPrerequisiteDepth = 32
 
 type run struct {
 	ruleset   *Ruleset
-	contexts  contexts
-	active    map[string]struct{}
+	ctx       contexts
+	active    map[string]bool
 	completed map[string]Result
 }
 
-func offResult(h *header, reason Reason) Result {
-	if h.offVariation < 0 {
-		return Result{VariationIndex: -1, Reason: reason}
+func served(f *flag, index int, reason Reason) Result {
+	return Result{Value: f.variations[index], VariationIndex: index, Reason: reason}
+}
+
+func offResult(f *flag, reason Reason) Result {
+	if f.offVariation == NoVariation {
+		return Result{VariationIndex: NoVariation, Reason: reason}
 	}
-	return served(h.variations, h.offVariation, reason)
+	return served(f, f.offVariation, reason)
 }
 
 func rolloutVariation(r *rollout, position int) int {
 	chosen, cumulative := 0, 0
-	for _, w := range r.variations {
-		chosen = w.variation
-		cumulative += w.weight
+	for _, e := range r.entries {
+		chosen = e.variation
+		cumulative += e.weight
 		if position < cumulative {
 			break
 		}
@@ -33,43 +37,43 @@ func rolloutVariation(r *rollout, position int) int {
 
 func serveResult(f *flag, s serve, ctx contexts, reason Reason) Result {
 	index := s.variation
-	if s.roll != nil {
-		index = rolloutVariation(s.roll, int(kindBucket(f.key, f.salt, s.roll.kind, ctx)))
+	if s.rollout != nil {
+		index = rolloutVariation(s.rollout, kindBucket(f.key, f.salt, s.rollout.kind, ctx))
 	}
-	return served(f.variations, index, reason)
+	return served(f, index, reason)
+}
+
+func segmentRuleMatches(r *segmentRule, seg *segment, ctx contexts) bool {
+	for i := range r.clauses {
+		if !attributeClauseMatches(&r.clauses[i], ctx) {
+			return false
+		}
+	}
+	if !r.hasWeight {
+		return true
+	}
+	return kindBucket(seg.key, seg.salt, r.rolloutKind, ctx) < r.weight
 }
 
 // listsContext reports whether the context has, in any of its kinds, a key that keys lists for that kind.
-func listsContext(keys map[string]map[string]struct{}, ctx contexts) bool {
-	for kind, kc := range ctx {
-		if _, listed := keys[kind][kc.key]; listed {
+func listsContext(keys keysByKind, ctx contexts) bool {
+	for kind, entry := range ctx {
+		if _, ok := keys[kind][entry.key]; ok {
 			return true
 		}
 	}
 	return false
 }
 
-func segmentRuleMatches(r *segmentRule, s *segment, ctx contexts) bool {
-	for i := range r.clauses {
-		if !attributeClauseMatches(&r.clauses[i], ctx) {
-			return false
-		}
-	}
-	if r.weight < 0 {
-		return true
-	}
-	return int(kindBucket(s.key, s.salt, r.kind, ctx)) < r.weight
-}
-
-func segmentMatches(s *segment, ctx contexts) bool {
-	if listsContext(s.excluded, ctx) {
+func segmentMatches(seg *segment, ctx contexts) bool {
+	if listsContext(seg.excluded, ctx) {
 		return false
 	}
-	if listsContext(s.included, ctx) {
+	if listsContext(seg.included, ctx) {
 		return true
 	}
-	for i := range s.rules {
-		if segmentRuleMatches(&s.rules[i], s, ctx) {
+	for i := range seg.rules {
+		if segmentRuleMatches(&seg.rules[i], seg, ctx) {
 			return true
 		}
 	}
@@ -77,12 +81,12 @@ func segmentMatches(s *segment, ctx contexts) bool {
 }
 
 func (r *run) clauseMatches(c *clause) bool {
-	if c.op != opSegmentMatch {
-		return attributeClauseMatches(c, r.contexts)
+	if !c.segment {
+		return attributeClauseMatches(c, r.ctx)
 	}
 	matched := false
-	for _, key := range c.segments {
-		if s := r.ruleset.segments[key]; s != nil && segmentMatches(s, r.contexts) {
+	for _, key := range c.segmentKeys {
+		if entry, ok := r.ruleset.segments[key]; ok && entry.segment != nil && segmentMatches(entry.segment, r.ctx) {
 			matched = true
 			break
 		}
@@ -93,11 +97,12 @@ func (r *run) clauseMatches(c *clause) bool {
 func prerequisiteMet(p prerequisite, result Result) bool {
 	switch result.Reason.Kind {
 	case ReasonTargetMatch, ReasonRuleMatch, ReasonFallthrough:
-		return result.VariationIndex >= 0 && float64(result.VariationIndex) == p.variation
+		return result.VariationIndex != NoVariation && float64(result.VariationIndex) == p.variation
 	}
 	return false
 }
 
+// checkPrerequisites returns the result that stops the evaluation, and false when every prerequisite is met.
 func (r *run) checkPrerequisites(f *flag, depth int) (Result, bool) {
 	for _, p := range f.prerequisites {
 		result := r.evaluateFlag(p.flagKey, depth+1)
@@ -105,86 +110,87 @@ func (r *run) checkPrerequisites(f *flag, depth int) (Result, bool) {
 			return result, true
 		}
 		if !prerequisiteMet(p, result) {
-			h := &header{variations: f.variations, offVariation: f.offVariation}
-			return offResult(h, Reason{Kind: ReasonPrerequisiteFailed, FlagKey: p.flagKey}), true
+			return offResult(f, Reason{Kind: ReasonPrerequisiteFailed, FlagKey: p.flagKey}), true
 		}
 	}
 	return Result{}, false
 }
 
-func (f *flag) targeted(ctx contexts) (int, bool) {
-	best, found := targetHit{}, false
-	for kind, kc := range ctx {
-		hit, ok := f.targetIndex[kind][kc.key]
-		if ok && (!found || hit.order < best.order) {
-			best, found = hit, true
+// targetedVariation is the variation of the first target in array order that matches the context.
+func targetedVariation(hits map[string]map[string]targetHit, ctx contexts) (int, bool) {
+	var first *targetHit
+	for kind, entry := range ctx {
+		if hit, ok := hits[kind][entry.key]; ok && (first == nil || hit.order < first.order) {
+			h := hit
+			first = &h
 		}
 	}
-	return best.variation, found
+	if first == nil {
+		return 0, false
+	}
+	return first.variation, true
 }
 
-func (r *run) evaluateEntry(e *flagEntry, depth int) Result {
-	if e.status == flagMalformed {
+func (r *run) evaluateEntry(entry *flagEntry, depth int) Result {
+	if entry.status == statusMalformed {
 		return failure(CodeMalformedFlag)
 	}
-	if !e.header.on {
-		return offResult(&e.header, Reason{Kind: ReasonOff})
+	f := entry.flag
+	if !f.on {
+		return offResult(f, Reason{Kind: ReasonOff})
 	}
-	if e.status == flagBroken {
-		return failure(e.code)
+	if entry.status == statusBroken {
+		return failure(entry.code)
 	}
-	f := e.flag
 	if blocked, stop := r.checkPrerequisites(f, depth); stop {
 		return blocked
 	}
-	if variation, ok := f.targeted(r.contexts); ok {
-		return served(f.variations, variation, Reason{Kind: ReasonTargetMatch})
+	if index, ok := targetedVariation(entry.hits, r.ctx); ok {
+		return served(f, index, Reason{Kind: ReasonTargetMatch})
 	}
-	for index := range f.rules {
-		rl := &f.rules[index]
+	for i := range f.rules {
 		matched := true
-		for i := range rl.clauses {
-			if !r.clauseMatches(&rl.clauses[i]) {
+		for j := range f.rules[i].clauses {
+			if !r.clauseMatches(&f.rules[i].clauses[j]) {
 				matched = false
 				break
 			}
 		}
 		if matched {
-			return serveResult(f, rl.serve, r.contexts, Reason{Kind: ReasonRuleMatch, RuleIndex: index})
+			return serveResult(f, f.rules[i].serve, r.ctx, Reason{Kind: ReasonRuleMatch, RuleIndex: i})
 		}
 	}
-	return serveResult(f, f.fallthroughServe, r.contexts, Reason{Kind: ReasonFallthrough})
+	return serveResult(f, f.fall, r.ctx, Reason{Kind: ReasonFallthrough})
 }
 
 func (r *run) evaluateFlag(key string, depth int) Result {
 	if done, ok := r.completed[key]; ok {
 		return done
 	}
-	if _, cycle := r.active[key]; cycle {
+	if r.active[key] {
 		return failure(CodePrerequisiteCycle)
 	}
 	if depth > maxPrerequisiteDepth {
-		return failure(CodePrerequisiteDepthExceeds)
+		return failure(CodePrerequisiteDepthExceed)
 	}
 	entry, ok := r.ruleset.flags[key]
 	if !ok {
 		return failure(CodeFlagNotFound)
 	}
-	r.active[key] = struct{}{}
+	r.active[key] = true
 	result := r.evaluateEntry(entry, depth)
 	delete(r.active, key)
 	r.completed[key] = result
 	return result
 }
 
-// Evaluate evaluates one flag for one context, as JSON hands it over. It never fails: every problem,
-// including a prerequisite cycle, is an ERROR result. The order and the comparison rules are in
-// docs/evaluation.md.
+// Evaluate evaluates one flag for one context. Every failure, including a prerequisite cycle, is an ERROR
+// result. The order and the comparison rules are in docs/evaluation.md.
 func (rs *Ruleset) Evaluate(flagKey string, context jsonvalue.Value) Result {
 	ctx, ok := normalise(context)
 	if !ok {
 		return failure(CodeInvalidContext)
 	}
-	r := &run{ruleset: rs, contexts: ctx, active: map[string]struct{}{}, completed: map[string]Result{}}
+	r := &run{ruleset: rs, ctx: ctx, active: map[string]bool{}, completed: map[string]Result{}}
 	return r.evaluateFlag(flagKey, 0)
 }

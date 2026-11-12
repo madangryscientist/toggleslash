@@ -2,14 +2,12 @@ package evaluator
 
 import "strings"
 
-// parseReference reads an attribute reference, a name that starts with `/` ("Reading the attribute" in
-// docs/evaluation.md): drop the leading `/`, split on `/`, and decode `~1` as `/` and `~0` as `~` in one
-// left-to-right pass. It returns false when a component is empty or a `~` is followed by anything but 0
-// or 1, or ends the component.
+// parseReference reads an attribute reference, a name that starts with '/': the leading '/' is dropped, the rest
+// is split on '/', and in each component "~1" is '/' and "~0" is '~', in one left-to-right pass. It reports false
+// when a component is empty or a '~' is followed by anything but '0' or '1', or ends the component.
 func parseReference(text string) ([]string, bool) {
-	parts := strings.Split(text[1:], "/")
-	components := make([]string, 0, len(parts))
-	for _, part := range parts {
+	var components []string
+	for _, part := range strings.Split(text[1:], "/") {
 		if part == "" {
 			return nil, false
 		}

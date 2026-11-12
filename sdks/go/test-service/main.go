@@ -1,13 +1,13 @@
-// Command test-service wraps the Go SDK in the HTTP protocol of docs/sdk-test-service.md, so the
-// conformance harness (packages/sdk-conformance) can drive it. It listens on 127.0.0.1 and prints
-// "listening http://127.0.0.1:<port>" once it does.
+// Command test-service wraps the Go SDK in the protocol of docs/sdk-test-service.md, so the conformance harness
+// (packages/sdk-conformance) can drive it from outside. The accessor mapping is in README.md. It catches nothing
+// the SDK raises: a call that panics answers 500 with the text, and the harness fails the scenario.
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
-	"math"
 	"net"
 	"net/http"
 	"os"
@@ -22,9 +22,8 @@ import (
 
 type entry struct {
 	client *toggleslash.Client
-
 	mu     sync.Mutex
-	events []jsonvalue.Value
+	events []toggleslash.Event
 	errors []string
 }
 
@@ -37,78 +36,57 @@ type service struct {
 var clientRoute = regexp.MustCompile(`^/clients/([^/]+)/([a-z-]+)$`)
 
 func main() {
-	var lc net.ListenConfig
-	listener, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "cannot listen:", err)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	s := &service{clients: map[string]*entry{}}
-	fmt.Fprintf(os.Stdout, "listening http://%s\n", listener.Addr())
-	server := &http.Server{Handler: http.HandlerFunc(s.serve)}
+	svc := &service{clients: map[string]*entry{}}
+	out := bufio.NewWriter(os.Stdout)
+	_, _ = fmt.Fprintf(out, "listening http://127.0.0.1:%d\n", listener.Addr().(*net.TCPAddr).Port)
+	_ = out.Flush()
+	server := &http.Server{Handler: svc, ReadHeaderTimeout: 30 * time.Second}
 	if err := server.Serve(listener); err != nil {
-		fmt.Fprintln(os.Stderr, "serve:", err)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func (s *service) serve(w http.ResponseWriter, r *http.Request) {
-	// The SDK must never throw at a caller: anything that escapes it is reported, not absorbed.
+func (s *service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer func() {
-		if recovered := recover(); recovered != nil {
-			http.Error(w, fmt.Sprint("panic: ", recovered), http.StatusInternalServerError)
+		if p := recover(); p != nil {
+			http.Error(w, fmt.Sprint("panic: ", p), http.StatusInternalServerError)
 		}
 	}()
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/":
-		write(w, 200, object(
-			"name", jsonvalue.String("toggleslash-sdk (Go)"),
-			"capabilities", jsonvalue.Array([]jsonvalue.Value{jsonvalue.String("integer-accessor")}),
+		reply(w, 200, jsonvalue.Object(
+			jsonvalue.Member{Key: "name", Value: jsonvalue.String("toggleslash-sdk (Go)")},
+			jsonvalue.Member{Key: "capabilities", Value: jsonvalue.Array([]jsonvalue.Value{jsonvalue.String("integer-accessor")})},
 		))
-		return
 	case r.Method == http.MethodPost && r.URL.Path == "/clients":
 		s.create(w, r)
-		return
-	}
-	m := clientRoute.FindStringSubmatch(r.URL.Path)
-	if m == nil {
-		http.Error(w, "no such route", http.StatusNotFound)
-		return
-	}
-	s.mu.Lock()
-	e := s.clients[m[1]]
-	s.mu.Unlock()
-	if e == nil {
-		http.Error(w, "no such client", http.StatusNotFound)
-		return
-	}
-	switch r.Method + " " + m[2] {
-	case "POST ready":
-		write(w, 200, object("ready", jsonvalue.Bool(e.client.Ready())))
-	case "POST evaluate":
-		e.evaluate(w, r)
-	case "GET status":
-		write(w, 200, statusValue(e.client.Status()))
-	case "GET hook-events":
-		e.mu.Lock()
-		events := append([]jsonvalue.Value(nil), e.events...)
-		e.mu.Unlock()
-		write(w, 200, object("events", jsonvalue.Array(events)))
-	case "GET errors":
-		e.mu.Lock()
-		messages := make([]jsonvalue.Value, len(e.errors))
-		for i, msg := range e.errors {
-			messages[i] = toggleslash.String(msg)
-		}
-		count := len(e.errors)
-		e.mu.Unlock()
-		write(w, 200, object("count", jsonvalue.Number(float64(count)), "messages", jsonvalue.Array(messages)))
-	case "POST close":
-		_ = e.client.Close()
-		write(w, 200, object())
 	default:
-		http.Error(w, "no such route", http.StatusNotFound)
+		m := clientRoute.FindStringSubmatch(r.URL.Path)
+		if m == nil {
+			http.NotFound(w, r)
+			return
+		}
+		s.mu.Lock()
+		e := s.clients[m[1]]
+		s.mu.Unlock()
+		if e == nil {
+			http.Error(w, "no such client", http.StatusNotFound)
+			return
+		}
+		e.route(w, r, m[2])
 	}
+}
+
+func reply(w http.ResponseWriter, status int, v jsonvalue.Value) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_, _ = w.Write(jsonvalue.Marshal(v))
 }
 
 func readBody(r *http.Request) (jsonvalue.Value, error) {
@@ -117,146 +95,141 @@ func readBody(r *http.Request) (jsonvalue.Value, error) {
 		return jsonvalue.Null(), err
 	}
 	if len(raw) == 0 {
-		return object(), nil
+		return jsonvalue.Object(), nil
 	}
-	return toggleslash.ParseValue(raw)
+	v, err := jsonvalue.ParseBytes(raw)
+	if err != nil {
+		return jsonvalue.Null(), err
+	}
+	if !v.IsObject() {
+		return jsonvalue.Null(), fmt.Errorf("the body is not a JSON object")
+	}
+	return v, nil
 }
 
-func durationOption(body jsonvalue.Value, name string) (time.Duration, bool) {
-	v, _ := body.Field(name)
-	n, ok := v.AsNumber()
-	if !ok {
-		return 0, false
-	}
-	return time.Duration(n * float64(time.Millisecond)), true
+func str(body jsonvalue.Value, name string) string {
+	v, _ := body.Get(name)
+	s, _ := v.AsString()
+	return s
+}
+
+// millis reads an option in whole milliseconds, or reports that it is absent.
+func millis(body jsonvalue.Value, name string) (time.Duration, bool) {
+	v, _ := body.Get(name)
+	f, ok := v.AsNumber()
+	return time.Duration(f * float64(time.Millisecond)), ok
+}
+
+func flag(body jsonvalue.Value, name string) bool {
+	v, _ := body.Get(name)
+	b, _ := v.AsBool()
+	return b
 }
 
 func (s *service) create(w http.ResponseWriter, r *http.Request) {
 	body, err := readBody(r)
 	if err != nil {
-		http.Error(w, "the body is not JSON", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	e := &entry{}
-	str := func(name string) string {
-		v, _ := body.Field(name)
-		out, _ := v.AsString()
-		return out
+	opts := []toggleslash.Option{
+		toggleslash.WithOnError(func(err error) {
+			e.mu.Lock()
+			e.errors = append(e.errors, err.Error())
+			e.mu.Unlock()
+			if flag(body, "onErrorThrows") {
+				panic("onError threw, as the test asked")
+			}
+		}),
 	}
-	flag := func(name string) bool {
-		v, _ := body.Field(name)
-		out, _ := v.AsBool()
-		return out
-	}
-	var opts []toggleslash.Option
-	if v, ok := body.Field("stream"); ok {
-		if on, isBool := v.AsBool(); isBool {
-			opts = append(opts, toggleslash.WithStream(on))
+	if v, ok := body.Get("stream"); ok {
+		if b, isBool := v.AsBool(); isBool {
+			opts = append(opts, toggleslash.WithStream(b))
 		}
 	}
-	if d, ok := durationOption(body, "pollIntervalMs"); ok {
+	if d, ok := millis(body, "pollIntervalMs"); ok {
 		opts = append(opts, toggleslash.WithPollInterval(d))
 	}
-	if d, ok := durationOption(body, "flushIntervalMs"); ok {
+	if d, ok := millis(body, "flushIntervalMs"); ok {
 		opts = append(opts, toggleslash.WithFlushInterval(d))
 	}
-	if d, ok := durationOption(body, "requestTimeoutMs"); ok {
+	if d, ok := millis(body, "requestTimeoutMs"); ok {
 		opts = append(opts, toggleslash.WithRequestTimeout(d))
 	}
-	hookThrows := flag("hookThrows")
-	if flag("hook") || hookThrows {
+	if flag(body, "hook") || flag(body, "hookThrows") {
 		opts = append(opts, toggleslash.WithAfterEvaluation(func(ev toggleslash.Event) {
 			e.mu.Lock()
-			e.events = append(e.events, eventValue(ev))
+			e.events = append(e.events, ev)
 			e.mu.Unlock()
-			if hookThrows {
-				panic("the hook threw, as the test asked")
+			if flag(body, "hookThrows") {
+				panic("the hook panicked, as the test asked")
 			}
 		}))
 	}
-	onErrorThrows := flag("onErrorThrows")
-	opts = append(opts, toggleslash.WithOnError(func(err error) {
-		e.mu.Lock()
-		e.errors = append(e.errors, err.Error())
-		e.mu.Unlock()
-		if onErrorThrows {
-			panic("onError threw, as the test asked")
-		}
-	}))
-	e.client = toggleslash.New(str("url"), str("sdkKey"), opts...)
-
+	e.client = toggleslash.New(str(body, "url"), str(body, "sdkKey"), opts...)
 	s.mu.Lock()
 	s.created++
 	id := strconv.Itoa(s.created)
 	s.clients[id] = e
 	s.mu.Unlock()
-	write(w, 201, object("id", toggleslash.String(id)))
+	reply(w, http.StatusCreated, jsonvalue.Object(jsonvalue.Member{Key: "id", Value: jsonvalue.String(id)}))
 }
 
-func (e *entry) evaluate(w http.ResponseWriter, r *http.Request) {
-	body, err := readBody(r)
-	if err != nil {
-		http.Error(w, "the body is not JSON", http.StatusBadRequest)
-		return
-	}
-	keyValue, _ := body.Field("flagKey")
-	flagKey, _ := keyValue.AsString()
-	contextValue, _ := body.Field("context")
-	ctx := toggleslash.ContextOf(contextValue)
-	fallback, _ := body.Field("fallback")
-	accessor := "any"
-	if v, ok := body.Field("accessor"); ok {
-		if s, isString := v.AsString(); isString {
-			accessor = s
+func (e *entry) route(w http.ResponseWriter, r *http.Request, action string) {
+	switch r.Method + " " + action {
+	case "POST ready":
+		reply(w, 200, jsonvalue.Object(jsonvalue.Member{Key: "ready", Value: jsonvalue.Bool(e.client.Ready())}))
+	case "POST evaluate":
+		e.evaluate(w, r)
+	case "GET status":
+		reply(w, 200, statusValue(e.client.Status()))
+	case "GET hook-events":
+		e.mu.Lock()
+		events := make([]jsonvalue.Value, len(e.events))
+		for i, ev := range e.events {
+			events[i] = eventValue(ev)
 		}
-	}
-
-	var (
-		value jsonvalue.Value
-		index int
-		why   toggleslash.Reason
-	)
-	switch accessor {
-	case "bool":
-		b, ok := fallback.AsBool()
-		if !ok {
-			http.Error(w, "the bool accessor needs a boolean fallback", http.StatusBadRequest)
-			return
+		e.mu.Unlock()
+		reply(w, 200, jsonvalue.Object(jsonvalue.Member{Key: "events", Value: jsonvalue.Array(events)}))
+	case "GET errors":
+		e.mu.Lock()
+		messages := make([]jsonvalue.Value, len(e.errors))
+		for i, m := range e.errors {
+			messages[i] = jsonvalue.String(m)
 		}
-		d := e.client.BoolVariationDetail(flagKey, ctx, b)
-		value, index, why = toggleslash.Bool(d.Value), d.VariationIndex, d.Reason
-	case "string":
-		s, ok := fallback.AsString()
-		if !ok {
-			http.Error(w, "the string accessor needs a string fallback", http.StatusBadRequest)
-			return
-		}
-		d := e.client.StringVariationDetail(flagKey, ctx, s)
-		value, index, why = jsonvalue.String(d.Value), d.VariationIndex, d.Reason
-	case "number":
-		n, ok := fallback.AsNumber()
-		if !ok {
-			http.Error(w, "the number accessor needs a number fallback", http.StatusBadRequest)
-			return
-		}
-		d := e.client.FloatVariationDetail(flagKey, ctx, n)
-		value, index, why = toggleslash.Number(d.Value), d.VariationIndex, d.Reason
-	case "int":
-		n, ok := fallback.AsNumber()
-		if !ok || n != math.Trunc(n) || n < -(1<<63) || n >= 1<<63 {
-			http.Error(w, "the int accessor needs an integer fallback", http.StatusBadRequest)
-			return
-		}
-		d := e.client.IntVariationDetail(flagKey, ctx, int64(n))
-		value, index, why = toggleslash.Number(float64(d.Value)), d.VariationIndex, d.Reason
-	case "json", "any":
-		d := e.client.JSONVariationDetail(flagKey, ctx, fallback)
-		value, index, why = d.Value, d.VariationIndex, d.Reason
+		count := len(e.errors)
+		e.mu.Unlock()
+		reply(w, 200, jsonvalue.Object(
+			jsonvalue.Member{Key: "count", Value: jsonvalue.Number(float64(count))},
+			jsonvalue.Member{Key: "messages", Value: jsonvalue.Array(messages)},
+		))
+	case "POST close":
+		e.client.Close()
+		reply(w, 200, jsonvalue.Object())
 	default:
-		http.Error(w, "no such accessor", http.StatusBadRequest)
-		return
+		http.NotFound(w, r)
 	}
-	write(w, 200, object("value", value, "variationIndex", indexValue(index), "reason", reasonValue(why)))
+}
+
+func nullable(s string) jsonvalue.Value {
+	if s == "" {
+		return jsonvalue.Null()
+	}
+	return jsonvalue.String(s)
+}
+
+func statusValue(st toggleslash.Status) jsonvalue.Value {
+	synced := jsonvalue.Null()
+	if !st.LastSyncAt.IsZero() {
+		synced = jsonvalue.Number(float64(st.LastSyncAt.UnixMilli()))
+	}
+	return jsonvalue.Object(
+		jsonvalue.Member{Key: "etag", Value: nullable(st.ETag)},
+		jsonvalue.Member{Key: "lastSyncAt", Value: synced},
+		jsonvalue.Member{Key: "stream", Value: jsonvalue.String(string(st.Stream))},
+		jsonvalue.Member{Key: "lastError", Value: nullable(string(st.LastError))},
+	)
 }
 
 func indexValue(i int) jsonvalue.Value {
@@ -267,63 +240,93 @@ func indexValue(i int) jsonvalue.Value {
 }
 
 func reasonValue(r toggleslash.Reason) jsonvalue.Value {
-	pairs := []any{"kind", toggleslash.String(string(r.Kind))}
+	members := []jsonvalue.Member{{Key: "kind", Value: jsonvalue.String(string(r.Kind))}}
 	switch r.Kind {
 	case toggleslash.ReasonRuleMatch:
-		pairs = append(pairs, "ruleIndex", jsonvalue.Number(float64(r.RuleIndex)))
+		members = append(members, jsonvalue.Member{Key: "ruleIndex", Value: jsonvalue.Number(float64(r.RuleIndex))})
 	case toggleslash.ReasonPrerequisiteFailed:
-		pairs = append(pairs, "flagKey", toggleslash.String(r.FlagKey))
+		members = append(members, jsonvalue.Member{Key: "flagKey", Value: jsonvalue.String(r.FlagKey)})
 	case toggleslash.ReasonError:
-		pairs = append(pairs, "code", toggleslash.String(string(r.Code)))
+		members = append(members, jsonvalue.Member{Key: "code", Value: jsonvalue.String(string(r.Code))})
 	}
-	return object(pairs...)
+	return jsonvalue.Object(members...)
 }
 
 func eventValue(ev toggleslash.Event) jsonvalue.Value {
-	etag := jsonvalue.Null()
-	if ev.ETag != "" {
-		etag = toggleslash.String(ev.ETag)
-	}
 	version := jsonvalue.Null()
-	if ev.FlagVersion != nil {
-		version = jsonvalue.Number(float64(*ev.FlagVersion))
+	if ev.FlagVersion != toggleslash.NoVersion {
+		version = jsonvalue.Number(float64(ev.FlagVersion))
 	}
-	return object(
-		"flagKey", toggleslash.String(ev.FlagKey),
-		"context", ev.Context.Value(),
-		"value", ev.Value,
-		"variationIndex", indexValue(ev.VariationIndex),
-		"reason", reasonValue(ev.Reason),
-		"etag", etag,
-		"flagVersion", version,
+	return jsonvalue.Object(
+		jsonvalue.Member{Key: "flagKey", Value: jsonvalue.String(ev.FlagKey)},
+		jsonvalue.Member{Key: "context", Value: ev.Context},
+		jsonvalue.Member{Key: "value", Value: ev.Value},
+		jsonvalue.Member{Key: "variationIndex", Value: indexValue(ev.VariationIndex)},
+		jsonvalue.Member{Key: "reason", Value: reasonValue(ev.Reason)},
+		jsonvalue.Member{Key: "etag", Value: nullable(ev.ETag)},
+		jsonvalue.Member{Key: "flagVersion", Value: version},
 	)
 }
 
-func statusValue(st toggleslash.Status) jsonvalue.Value {
-	etag, lastError, lastSync := jsonvalue.Null(), jsonvalue.Null(), jsonvalue.Null()
-	if st.ETag != "" {
-		etag = toggleslash.String(st.ETag)
-	}
-	if st.LastError != "" {
-		lastError = toggleslash.String(string(st.LastError))
-	}
-	if !st.LastSyncAt.IsZero() {
-		lastSync = jsonvalue.Number(float64(st.LastSyncAt.UnixMilli()))
-	}
-	return object("etag", etag, "lastSyncAt", lastSync, "stream", toggleslash.String(string(st.Stream)), "lastError", lastError)
+func answer(value jsonvalue.Value, index int, reason toggleslash.Reason) jsonvalue.Value {
+	return jsonvalue.Object(
+		jsonvalue.Member{Key: "value", Value: value},
+		jsonvalue.Member{Key: "variationIndex", Value: indexValue(index)},
+		jsonvalue.Member{Key: "reason", Value: reasonValue(reason)},
+	)
 }
 
-// object builds a JSON object from alternating keys and values.
-func object(pairs ...any) jsonvalue.Value {
-	o := jsonvalue.NewObject()
-	for i := 0; i+1 < len(pairs); i += 2 {
-		o.Set(pairs[i].(string), pairs[i+1].(jsonvalue.Value))
+// evaluate calls the accessor the request names. Every typed accessor takes a fallback of its own kind; the
+// harness sends none of another kind, so a mismatch is a 400.
+func (e *entry) evaluate(w http.ResponseWriter, r *http.Request) {
+	body, err := readBody(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
-	return jsonvalue.ObjectValue(o)
-}
-
-func write(w http.ResponseWriter, status int, v jsonvalue.Value) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_, _ = w.Write(jsonvalue.Marshal(v))
+	flagKey := str(body, "flagKey")
+	ctx, _ := body.Get("context")
+	fallback, _ := body.Get("fallback")
+	accessor := str(body, "accessor")
+	bad := func() { http.Error(w, "the fallback does not fit the "+accessor+" accessor", http.StatusBadRequest) }
+	switch accessor {
+	case "bool":
+		fb, ok := fallback.AsBool()
+		if !ok {
+			bad()
+			return
+		}
+		d := e.client.BoolVariationDetail(flagKey, ctx, fb)
+		reply(w, 200, answer(jsonvalue.Bool(d.Value), d.VariationIndex, d.Reason))
+	case "string":
+		fb, ok := fallback.AsString()
+		if !ok {
+			bad()
+			return
+		}
+		d := e.client.StringVariationDetail(flagKey, ctx, fb)
+		reply(w, 200, answer(jsonvalue.String(d.Value), d.VariationIndex, d.Reason))
+	case "number":
+		fb, ok := fallback.AsNumber()
+		if !ok {
+			bad()
+			return
+		}
+		d := e.client.Float64VariationDetail(flagKey, ctx, fb)
+		reply(w, 200, answer(jsonvalue.Number(d.Value), d.VariationIndex, d.Reason))
+	case "int":
+		fb, ok := fallback.AsNumber()
+		if !ok {
+			bad()
+			return
+		}
+		// The answer goes back through a double: no scenario serves an integer a double cannot hold.
+		d := e.client.IntVariationDetail(flagKey, ctx, int64(fb))
+		reply(w, 200, answer(jsonvalue.Number(float64(d.Value)), d.VariationIndex, d.Reason))
+	case "json", "any":
+		d := e.client.JSONVariationDetail(flagKey, ctx, fallback)
+		reply(w, 200, answer(d.Value, d.VariationIndex, d.Reason))
+	default:
+		http.Error(w, "unknown accessor "+accessor, http.StatusBadRequest)
+	}
 }

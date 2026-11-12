@@ -2,111 +2,117 @@ package toggleslash
 
 import "github.com/madangryscientist/toggleslash/sdks/go/internal/wtf8"
 
-// sseEvent is one dispatched Server-Sent Event: the name (message when none was given) and the data, which
-// is the lines of its data fields joined with LF, scrubbed of invalid UTF-8.
+// sseEvent is one dispatched Server-Sent Event. Only the event name and the data are kept.
 type sseEvent struct {
 	name string
 	data string
 }
 
-// sseParser reads a Server-Sent Events stream as the WHATWG standard does, from byte chunks of any size:
-// LF, CRLF and a lone CR end a line (a CR at the end of a chunk waits for a possible LF in the next), a line
-// that starts with ":" is a comment, a field is split at the first ":" and one space after it is dropped,
-// only `event` and `data` are read, an event with no data field is dropped, and one still incomplete when
-// the stream ends is never dispatched (the caller simply stops feeding). A leading byte order mark is
-// skipped, even when its bytes arrive in separate chunks.
+// sseParser reads Server-Sent Events as the WHATWG standard does, from raw bytes in whatever pieces they arrive.
+// LF, CRLF and a lone CR end a line; a line that starts with ':' is a comment; `event` and `data` are the fields
+// read, several `data` lines are joined with LF, an event with no `data` line is dropped, an event with no name
+// is named "message", and an event still incomplete when the bytes stop is never dispatched. A leading UTF-8 byte
+// order mark is skipped. It works on bytes and decodes a finished field once, so a UTF-8 sequence cut between
+// two reads is whole by then.
 type sseParser struct {
-	head    []byte // the first bytes, held until they can be told from a byte order mark
-	started bool
-	skipLF  bool // the last chunk ended in CR
 	line    []byte
-	name    string
+	skipLF  bool // the last byte was a CR, so an LF straight after it belongs to the same line end
+	bomSeen int  // how much of the byte order mark has matched; 3 once the start of the stream is behind us
+	held    []byte
+
+	name    []byte
 	data    []byte
 	hasData bool
 }
 
-var byteOrderMark = []byte{0xEF, 0xBB, 0xBF}
+var utf8BOM = [3]byte{0xEF, 0xBB, 0xBF}
 
-// feed reads a chunk and calls emit for each event it completes. If emit returns false, feed stops at once
-// and returns false.
-func (p *sseParser) feed(chunk []byte, emit func(sseEvent) bool) bool {
-	if !p.started {
-		p.head = append(p.head, chunk...)
-		n := min(len(p.head), len(byteOrderMark))
-		if string(p.head[:n]) == string(byteOrderMark[:n]) && len(p.head) < len(byteOrderMark) {
-			return true // could still become a byte order mark
-		}
-		p.started = true
-		chunk = p.head
-		if string(chunk[:n]) == string(byteOrderMark) {
-			chunk = chunk[n:]
-		}
-		p.head = nil
-	}
+// feed adds bytes and returns the events they completed.
+func (p *sseParser) feed(chunk []byte) []sseEvent {
+	var events []sseEvent
 	for _, b := range chunk {
-		if p.skipLF {
-			p.skipLF = false
-			if b == '\n' {
+		if p.bomSeen < len(utf8BOM) {
+			if b == utf8BOM[p.bomSeen] {
+				p.held = append(p.held, b)
+				p.bomSeen++
+				if p.bomSeen == len(utf8BOM) {
+					p.held = nil
+				}
 				continue
 			}
-		}
-		switch b {
-		case '\n':
-			if !p.endLine(emit) {
-				return false
+			held := p.held
+			p.held = nil
+			p.bomSeen = len(utf8BOM)
+			for _, h := range held {
+				events = p.byte(events, h)
 			}
-		case '\r':
-			p.skipLF = true
-			if !p.endLine(emit) {
-				return false
-			}
-		default:
-			p.line = append(p.line, b)
 		}
+		events = p.byte(events, b)
 	}
-	return true
+	return events
 }
 
-func (p *sseParser) endLine(emit func(sseEvent) bool) bool {
+func (p *sseParser) byte(events []sseEvent, b byte) []sseEvent {
+	if p.skipLF {
+		p.skipLF = false
+		if b == '\n' {
+			return events
+		}
+	}
+	switch b {
+	case '\r':
+		p.skipLF = true
+		return p.endLine(events)
+	case '\n':
+		return p.endLine(events)
+	}
+	p.line = append(p.line, b)
+	return events
+}
+
+func (p *sseParser) endLine(events []sseEvent) []sseEvent {
 	line := p.line
 	p.line = p.line[:0]
 	if len(line) == 0 {
-		return p.dispatch(emit)
+		return p.dispatch(events)
 	}
 	if line[0] == ':' {
-		return true
+		return events
 	}
 	field, value := line, []byte(nil)
-	for i, b := range line {
-		if b == ':' {
+	for i, c := range line {
+		if c == ':' {
 			field, value = line[:i], line[i+1:]
-			if len(value) > 0 && value[0] == ' ' {
-				value = value[1:]
-			}
 			break
 		}
 	}
+	if len(value) > 0 && value[0] == ' ' {
+		value = value[1:]
+	}
 	switch string(field) {
 	case "event":
-		p.name = string(value)
+		p.name = append(p.name[:0], value...)
 	case "data":
-		if p.hasData {
-			p.data = append(p.data, '\n')
-		}
 		p.data = append(p.data, value...)
+		p.data = append(p.data, '\n')
 		p.hasData = true
 	}
-	return true
+	return events
 }
 
-func (p *sseParser) dispatch(emit func(sseEvent) bool) bool {
-	name, data, hasData := p.name, p.data, p.hasData
-	p.name, p.data, p.hasData = "", nil, false
-	if !hasData {
-		return true
+func (p *sseParser) dispatch(events []sseEvent) []sseEvent {
+	defer func() {
+		p.name = p.name[:0]
+		p.data = p.data[:0]
+		p.hasData = false
+	}()
+	if !p.hasData {
+		return events
 	}
-	if name == "" {
-		name = "message"
+	data := p.data[:len(p.data)-1] // the LF the last data line added
+	name := "message"
+	if len(p.name) > 0 {
+		name = wtf8.DecodeWHATWG(p.name)
 	}
-	return emit(sseEvent{name: name, data: string(wtf8.Scrub(data))})
+	return append(events, sseEvent{name: name, data: wtf8.DecodeWHATWG(data)})
 }

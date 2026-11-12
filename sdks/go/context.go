@@ -1,47 +1,126 @@
 package toggleslash
 
 import (
-	"reflect"
+	"encoding/json"
 	"sort"
 
 	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
 	"github.com/madangryscientist/toggleslash/sdks/go/internal/wtf8"
 )
 
-// Value is one JSON value as the SDK reads it: null, a boolean, a number (binary64), a string, an array or
-// an object. Flag values, fallbacks of JSONVariation, context attributes and hook events use it. It is
-// immutable; share it freely. Its accessors are AsBool, AsNumber, AsString, AsArray, AsObject, IsNull and
-// Field.
+// Value is a JSON value: what a context is made of, what a JSON flag serves, and what an Event carries. Numbers
+// are IEEE-754 binary64, as the evaluation spec requires; a string keeps a lone surrogate. Read one with Kind and
+// the As… methods; build one with ValueOf.
 type Value = jsonvalue.Value
 
-// ParseValue reads one JSON value. It keeps what encoding/json cannot: 1e999 is +Inf and a lone surrogate
-// escape stays. The only error is a syntax error, and it carries no text of the input.
-func ParseValue(data []byte) (Value, error) { return jsonvalue.Parse(data) }
+// Kind is the JSON type of a Value.
+type Kind = jsonvalue.Kind
 
-// Null is the JSON null.
-func Null() Value { return jsonvalue.Null() }
+// The kinds of a Value.
+const (
+	KindNull   = jsonvalue.KindNull
+	KindBool   = jsonvalue.KindBool
+	KindNumber = jsonvalue.KindNumber
+	KindString = jsonvalue.KindString
+	KindArray  = jsonvalue.KindArray
+	KindObject = jsonvalue.KindObject
+)
 
-// Bool makes a JSON boolean.
-func Bool(b bool) Value { return jsonvalue.Bool(b) }
+// Context is who a flag is evaluated for. It is a Value in the shape of docs/evaluation.md: build one with
+// NewContext, NewContextKind, NewMultiContext or ParseContext. A context that is not valid is not an error here;
+// evaluating with it answers the fallback and ErrInvalidContext.
+type Context = Value
 
-// Number makes a JSON number.
-func Number(n float64) Value { return jsonvalue.Number(n) }
-
-// String makes a JSON string. Bytes of s that are not valid UTF-8 become U+FFFD.
-func String(s string) Value { return jsonvalue.String(wtf8.FromGo(s)) }
-
-// Array makes a JSON array.
-func Array(items ...Value) Value { return jsonvalue.Array(append([]Value(nil), items...)) }
-
-// Object makes a JSON object. Its keys are in sorted order.
-func Object(members map[string]Value) Value {
-	obj := jsonvalue.NewObject()
-	for _, key := range sortedKeys(members) {
-		obj.Set(wtf8.FromGo(key), members[key])
+// ValueOf turns a Go value into a Value. It knows nil, bool, every integer width, float32, float64, string,
+// json.Number, Value, []any, []string, []bool, []float64, []int, map[string]any and map[string]string. Every number
+// becomes the binary64 nearest to it, as a number the server serves does. A value ValueOf does not know becomes
+// null. A string that is not valid UTF-8 has each ill-formed byte replaced with U+FFFD.
+func ValueOf(x any) Value {
+	switch v := x.(type) {
+	case nil:
+		return jsonvalue.Null()
+	case Value:
+		return v
+	case bool:
+		return jsonvalue.Bool(v)
+	case string:
+		return jsonvalue.String(wtf8.Sanitize(v))
+	case int:
+		return jsonvalue.Number(float64(v))
+	case int8:
+		return jsonvalue.Number(float64(v))
+	case int16:
+		return jsonvalue.Number(float64(v))
+	case int32:
+		return jsonvalue.Number(float64(v))
+	case int64:
+		return jsonvalue.Number(float64(v))
+	case uint:
+		return jsonvalue.Number(float64(v))
+	case uint8:
+		return jsonvalue.Number(float64(v))
+	case uint16:
+		return jsonvalue.Number(float64(v))
+	case uint32:
+		return jsonvalue.Number(float64(v))
+	case uint64:
+		return jsonvalue.Number(float64(v))
+	case float32:
+		return jsonvalue.Number(float64(v))
+	case float64:
+		return jsonvalue.Number(v)
+	case json.Number:
+		if parsed, err := jsonvalue.Parse(v.String()); err == nil && parsed.Kind() == jsonvalue.KindNumber {
+			return parsed
+		}
+		return jsonvalue.Null()
+	case []any:
+		items := make([]Value, len(v))
+		for i, item := range v {
+			items[i] = ValueOf(item)
+		}
+		return jsonvalue.Array(items)
+	case []string:
+		items := make([]Value, len(v))
+		for i, item := range v {
+			items[i] = ValueOf(item)
+		}
+		return jsonvalue.Array(items)
+	case []bool:
+		items := make([]Value, len(v))
+		for i, item := range v {
+			items[i] = jsonvalue.Bool(item)
+		}
+		return jsonvalue.Array(items)
+	case []float64:
+		items := make([]Value, len(v))
+		for i, item := range v {
+			items[i] = jsonvalue.Number(item)
+		}
+		return jsonvalue.Array(items)
+	case []int:
+		items := make([]Value, len(v))
+		for i, item := range v {
+			items[i] = jsonvalue.Number(float64(item))
+		}
+		return jsonvalue.Array(items)
+	case map[string]any:
+		members := make([]jsonvalue.Member, 0, len(v))
+		for _, key := range sortedKeys(v) {
+			members = append(members, jsonvalue.Member{Key: wtf8.Sanitize(key), Value: ValueOf(v[key])})
+		}
+		return jsonvalue.Object(members...)
+	case map[string]string:
+		members := make([]jsonvalue.Member, 0, len(v))
+		for _, key := range sortedKeys(v) {
+			members = append(members, jsonvalue.Member{Key: wtf8.Sanitize(key), Value: ValueOf(v[key])})
+		}
+		return jsonvalue.Object(members...)
 	}
-	return jsonvalue.ObjectValue(obj)
+	return jsonvalue.Null()
 }
 
+// sortedKeys orders a map's keys so the Value built from it does not depend on Go's random map order.
 func sortedKeys[V any](m map[string]V) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
@@ -51,162 +130,60 @@ func sortedKeys[V any](m map[string]V) []string {
 	return keys
 }
 
-// Context is who a flag is evaluated for: a single context (a kind, a key and attributes) or a multi
-// context. It holds a Value and is checked when it is evaluated: a context that is not valid does not
-// fail here, it gives the fallback with ReasonError and ErrInvalidContext. The zero Context is not valid.
-type Context struct {
-	v Value
+// NewContext builds a context of the default kind, "user", for key and the given attributes. attributes may be nil.
+func NewContext(key string, attributes map[string]any) Context {
+	return newSingle("", key, attributes)
 }
 
-// Value returns the context as the JSON value the evaluator reads.
-func (c Context) Value() Value { return c.v }
-
-// ContextOf makes a Context from a Value that is already in the shape of docs/evaluation.md.
-func ContextOf(v Value) Context { return Context{v: v} }
-
-// UserContext makes a context of kind "user" (the default kind) with the key and attributes.
-func UserContext(key string, attributes map[string]Value) Context {
-	return Context{v: single("", key, attributes)}
+// NewContextKind builds a single context of the given kind. A kind that is not valid makes an invalid context.
+func NewContextKind(kind, key string, attributes map[string]any) Context {
+	return newSingle(kind, key, attributes)
 }
 
-// NewContext makes a single context of the given kind.
-func NewContext(kind, key string, attributes map[string]Value) Context {
-	return Context{v: single(kind, key, attributes)}
-}
-
-func single(kind, key string, attributes map[string]Value) Value {
-	obj := jsonvalue.NewObject()
+func newSingle(kind, key string, attributes map[string]any) Context {
+	var members []jsonvalue.Member
 	if kind != "" {
-		obj.Set("kind", String(kind))
+		members = append(members, jsonvalue.Member{Key: "kind", Value: ValueOf(kind)})
 	}
-	obj.Set("key", String(key))
+	members = append(members, jsonvalue.Member{Key: "key", Value: ValueOf(key)})
 	if attributes != nil {
-		obj.Set("attributes", Object(attributes))
+		members = append(members, jsonvalue.Member{Key: "attributes", Value: ValueOf(attributes)})
 	}
-	return jsonvalue.ObjectValue(obj)
+	return jsonvalue.Object(members...)
 }
 
-// MultiContext makes a multi context from single contexts by kind. The kind of each entry is the map key;
-// a kind written inside an entry is dropped, because the spec refuses one there.
-func MultiContext(contexts map[string]Context) Context {
-	entries := jsonvalue.NewObject()
+// NewMultiContext builds a multi-kind context from single contexts, keyed by kind. It takes each entry's key and
+// attributes (any kind the entry names is ignored); an entry that is not an object is passed through, which makes
+// the whole context invalid.
+func NewMultiContext(contexts map[string]Context) Context {
+	entries := make([]jsonvalue.Member, 0, len(contexts))
 	for _, kind := range sortedKeys(contexts) {
-		entries.Set(wtf8.FromGo(kind), withoutKind(contexts[kind].v))
-	}
-	obj := jsonvalue.NewObject()
-	obj.Set("kind", String("multi"))
-	obj.Set("contexts", jsonvalue.ObjectValue(entries))
-	return Context{v: jsonvalue.ObjectValue(obj)}
-}
-
-func withoutKind(v Value) Value {
-	src, ok := v.AsObject()
-	if !ok {
-		return v
-	}
-	out := jsonvalue.NewObject()
-	for _, key := range src.Keys() {
-		if key == "kind" {
+		entry := contexts[kind]
+		if !entry.IsObject() {
+			entries = append(entries, jsonvalue.Member{Key: wtf8.Sanitize(kind), Value: entry})
 			continue
 		}
-		value, _ := src.Get(key)
-		out.Set(key, value)
+		var members []jsonvalue.Member
+		for _, name := range []string{"key", "attributes"} {
+			if v, ok := entry.Get(name); ok {
+				members = append(members, jsonvalue.Member{Key: name, Value: v})
+			}
+		}
+		entries = append(entries, jsonvalue.Member{Key: wtf8.Sanitize(kind), Value: jsonvalue.Object(members...)})
 	}
-	return jsonvalue.ObjectValue(out)
+	return jsonvalue.Object(
+		jsonvalue.Member{Key: "kind", Value: jsonvalue.String("multi")},
+		jsonvalue.Member{Key: "contexts", Value: jsonvalue.Object(entries...)},
+	)
 }
 
-// ContextFromMap makes a context from native Go values, in the shape of docs/evaluation.md:
-// {"kind": "user", "key": "u1", "attributes": {"plan": "pro"}}. Values may be nil, bool, any integer or
-// float type, string, Value, Context, a slice or array, or a map with string keys. Anything else becomes
-// null, which a clause reads as an absent attribute.
-func ContextFromMap(m map[string]any) Context {
-	return Context{v: fromNative(m, 0)}
-}
-
-// ContextFromJSON makes a context from JSON text. Text that is not JSON makes a context that is not valid.
-func ContextFromJSON(data []byte) Context {
-	v, err := jsonvalue.Parse(data)
+// ParseContext reads a context from JSON text. It is the form that keeps a number such as 1e999 and a lone
+// surrogate escape as the evaluation spec reads them. Text that is not JSON gives a null Context, which
+// evaluates as an invalid context.
+func ParseContext(data []byte) Context {
+	v, err := jsonvalue.ParseBytes(data)
 	if err != nil {
-		return Context{}
+		return jsonvalue.Null()
 	}
-	return Context{v: v}
-}
-
-func fromNative(x any, depth int) Value {
-	if depth > jsonvalue.MaxDepth {
-		return Null()
-	}
-	switch t := x.(type) {
-	case nil:
-		return Null()
-	case Value:
-		return t
-	case Context:
-		return t.v
-	case bool:
-		return Bool(t)
-	case string:
-		return String(t)
-	case float64:
-		return Number(t)
-	case float32:
-		return Number(float64(t))
-	case int:
-		return Number(float64(t))
-	case int64:
-		return Number(float64(t))
-	case []any:
-		items := make([]Value, len(t))
-		for i, item := range t {
-			items[i] = fromNative(item, depth+1)
-		}
-		return jsonvalue.Array(items)
-	case map[string]any:
-		obj := jsonvalue.NewObject()
-		for _, key := range sortedKeys(t) {
-			obj.Set(wtf8.FromGo(key), fromNative(t[key], depth+1))
-		}
-		return jsonvalue.ObjectValue(obj)
-	}
-	return fromReflect(reflect.ValueOf(x), depth)
-}
-
-func fromReflect(rv reflect.Value, depth int) Value {
-	switch rv.Kind() {
-	case reflect.Bool:
-		return Bool(rv.Bool())
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return Number(float64(rv.Int()))
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return Number(float64(rv.Uint()))
-	case reflect.Float32, reflect.Float64:
-		return Number(rv.Float())
-	case reflect.String:
-		return String(rv.String())
-	case reflect.Slice, reflect.Array:
-		if rv.Kind() == reflect.Slice && rv.IsNil() {
-			return Null()
-		}
-		items := make([]Value, rv.Len())
-		for i := range items {
-			items[i] = fromNative(rv.Index(i).Interface(), depth+1)
-		}
-		return jsonvalue.Array(items)
-	case reflect.Map:
-		if rv.Type().Key().Kind() != reflect.String || rv.IsNil() {
-			return Null()
-		}
-		members := make(map[string]any, rv.Len())
-		iter := rv.MapRange()
-		for iter.Next() {
-			members[iter.Key().String()] = iter.Value().Interface()
-		}
-		return fromNative(members, depth)
-	case reflect.Pointer, reflect.Interface:
-		if rv.IsNil() {
-			return Null()
-		}
-		return fromNative(rv.Elem().Interface(), depth+1)
-	}
-	return Null()
+	return v
 }

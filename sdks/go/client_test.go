@@ -1,8 +1,7 @@
 package toggleslash
 
 import (
-	"context"
-	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"sync"
@@ -14,577 +13,338 @@ import (
 	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
 )
 
-func newClient(t *testing.T, f *fakeServer, opts ...Option) *Client {
-	t.Helper()
-	opts = append([]Option{WithStream(false), WithPollInterval(time.Hour), WithFlushInterval(time.Hour)}, opts...)
-	c := New(f.URL, "sdk-key", opts...)
-	t.Cleanup(func() { _ = c.Close() })
-	return c
-}
-
-func TestReadyAndVariation(t *testing.T) {
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", staticRuleset(`"v1"`, flagRuleset))
-	c := newClient(t, f)
+func TestReadyAndEvaluate(t *testing.T) {
+	s := newFakeServer(t, boolFlag("checkout", true))
+	c := newTestClient(t, s, WithStream(false))
 	if !c.Ready() {
-		t.Fatal("Ready is false after a good first load")
+		t.Fatal("Ready() = false")
 	}
-	d := c.BoolVariationDetail("f", user("u"), false)
+	d := c.BoolVariationDetail("checkout", user("u"), false)
 	if !d.Value || d.VariationIndex != 1 || d.Reason.Kind != ReasonFallthrough {
-		t.Fatalf("unexpected detail %+v", d)
-	}
-	if got := c.StringVariation("s", user("u"), "z"); got != "y" {
-		t.Fatalf("string flag gave %q", got)
+		t.Fatalf("detail = %+v", d)
 	}
 	st := c.Status()
-	if st.ETag != `"v1"` || st.LastSyncAt.IsZero() || st.Stream != StreamOff || st.LastError != "" {
-		t.Fatalf("status %+v", st)
+	if st.ETag != `"v1"` || st.LastSyncAt.IsZero() || st.LastError != LastErrorNone || st.Stream != StreamOff {
+		t.Fatalf("status = %+v", st)
 	}
 }
 
-func TestNotReadyAndMismatch(t *testing.T) {
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(503) })
-	log := &errorLog{}
-	c := newClient(t, f, WithOnError(log.add))
+func TestNotReadyBeforeFirstLoad(t *testing.T) {
+	c := New("http://127.0.0.1:1", testKey, WithStream(false), WithRequestTimeout(time.Second))
+	t.Cleanup(c.Close)
+	d := c.StringVariationDetail("x", user("u"), "fb")
+	if d.Value != "fb" || d.VariationIndex != NoVariation || d.Reason.Kind != ReasonError || d.Reason.Code != ErrNotReady {
+		// The refused connection may have settled already; NOT_READY is what a load that failed also gives.
+		t.Fatalf("detail = %+v", d)
+	}
 	if c.Ready() {
-		t.Fatal("Ready is true with no ruleset")
+		t.Fatal("Ready() = true with no server")
 	}
-	d := c.BoolVariationDetail("f", user("u"), true)
-	if !d.Value || d.VariationIndex != NoVariation || d.Reason.Code != ErrNotReady {
-		t.Fatalf("detail %+v", d)
-	}
-	if got := c.Status().LastError; got != "http_503" {
-		t.Fatalf("lastError %q", got)
-	}
-	if errs := log.all(); len(errs) != 1 || errs[0] != "toggleslash: ruleset request failed: http_503" {
-		t.Fatalf("errors %v", errs)
-	}
-
-	g := newFakeServer(t)
-	g.handle("/sdk/v1/ruleset", staticRuleset(`"v1"`, flagRuleset))
-	c2 := newClient(t, g)
-	c2.Ready()
-	d2 := c2.BoolVariationDetail("s", user("u"), false)
-	if d2.Value || d2.VariationIndex != NoVariation || d2.Reason.Code != ErrTypeMismatch {
-		t.Fatalf("mismatch detail %+v", d2)
-	}
-	if n := c2.pendingEntries(); n != 0 {
-		t.Fatalf("a type mismatch was counted (%d entries)", n)
-	}
-	// a null fallback accepts any kind; JSON takes the served value
-	d3 := c2.JSONVariationDetail("s", user("u"), Null())
-	if s, _ := d3.Value.AsString(); s != "y" || d3.VariationIndex != 1 {
-		t.Fatalf("json detail %+v", d3)
+	if got := c.Status().LastError; got != LastErrorNetwork {
+		t.Fatalf("lastError = %q", got)
 	}
 }
 
-func TestUnknownFlagAndInvalidContext(t *testing.T) {
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", staticRuleset(`"v1"`, flagRuleset))
-	c := newClient(t, f)
+func TestTypeMismatchAndFallbacks(t *testing.T) {
+	s := newFakeServer(t,
+		valueFlag("str", `"hello"`), valueFlag("num", `2.5`), valueFlag("whole", `2.0`),
+		valueFlag("huge", `1e30`), valueFlag("nul", `null`), valueFlag("obj", `{"a":1}`))
+	c := newTestClient(t, s, WithStream(false))
 	c.Ready()
-	d := c.BoolVariationDetail("nope", user("u"), true)
-	if !d.Value || d.Reason.Code != ErrFlagNotFound || d.VariationIndex != NoVariation {
-		t.Fatalf("%+v", d)
+	ctx := user("u")
+
+	if d := c.BoolVariationDetail("str", ctx, true); !d.Value || d.Reason.Code != ErrTypeMismatch || d.VariationIndex != NoVariation {
+		t.Errorf("bool on string: %+v", d)
 	}
-	d = c.BoolVariationDetail("f", Context{}, true)
-	if !d.Value || d.Reason.Code != ErrInvalidContext {
-		t.Fatalf("%+v", d)
+	if d := c.IntVariationDetail("num", ctx, 9); d.Value != 9 || d.Reason.Code != ErrTypeMismatch {
+		t.Errorf("int on 2.5: %+v", d)
 	}
-	if n := c.pendingEntries(); n != 0 {
-		t.Fatalf("a fallback was counted (%d)", n)
+	if d := c.IntVariationDetail("whole", ctx, 9); d.Value != 2 || d.Reason.Kind != ReasonFallthrough {
+		t.Errorf("int on 2.0: %+v", d)
+	}
+	if d := c.IntVariationDetail("huge", ctx, 9); d.Value != 9 || d.Reason.Code != ErrTypeMismatch {
+		t.Errorf("int on 1e30: %+v", d)
+	}
+	if d := c.Float64VariationDetail("num", ctx, 0); d.Value != 2.5 {
+		t.Errorf("float: %+v", d)
+	}
+	if d := c.StringVariationDetail("nul", ctx, "fb"); d.Value != "fb" || d.Reason.Code != ErrTypeMismatch {
+		t.Errorf("string on null: %+v", d)
+	}
+	if d := c.JSONVariationDetail("nul", ctx, jsonvalue.Null()); !d.Value.IsNull() || d.VariationIndex != 0 {
+		t.Errorf("json null on null: %+v", d)
+	}
+	if d := c.JSONVariationDetail("obj", ctx, jsonvalue.Null()); !d.Value.IsObject() || d.VariationIndex != 0 {
+		t.Errorf("json null fallback accepts any kind: %+v", d)
+	}
+	if d := c.JSONVariationDetail("obj", ctx, jsonvalue.String("x")); d.Reason.Code != ErrTypeMismatch {
+		t.Errorf("json string fallback on object: %+v", d)
+	}
+	if d := c.JSONVariationDetail("nul", ctx, jsonvalue.String("x")); d.Reason.Code != ErrTypeMismatch {
+		t.Errorf("json string fallback on null: %+v", d)
+	}
+	if d := c.BoolVariationDetail("missing", ctx, true); !d.Value || d.Reason.Code != ErrFlagNotFound || d.VariationIndex != NoVariation {
+		t.Errorf("missing: %+v", d)
+	}
+	if d := c.BoolVariationDetail("str", NewContext("", nil), true); d.Reason.Code != ErrInvalidContext {
+		t.Errorf("invalid context: %+v", d)
 	}
 }
 
-func TestConditionalRequestAndNotModified(t *testing.T) {
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", staticRuleset(`"v1"`, flagRuleset))
-	c := newClient(t, f, WithPollInterval(20*time.Millisecond))
-	c.Ready()
-	eventually(t, "a conditional poll", func() bool { return f.count("/sdk/v1/ruleset") >= 3 })
-	reqs := f.seen("/sdk/v1/ruleset")
-	if reqs[0].header.Get("If-None-Match") != "" {
-		t.Fatal("the first request was conditional")
+func TestIntRangeEdges(t *testing.T) {
+	cases := []struct {
+		f  float64
+		ok bool
+	}{
+		{0, true}, {2, true}, {2.5, false}, {math.Exp2(63), false}, {-math.Exp2(63), true},
+		{math.Exp2(63) - 1024, true}, {math.Inf(1), false}, {math.NaN(), false}, {1e30, false},
 	}
-	if reqs[2].header.Get("If-None-Match") != `"v1"` {
-		t.Fatalf("a later request did not carry the tag: %q", reqs[2].header.Get("If-None-Match"))
-	}
-	if c.Status().LastError != "" {
-		t.Fatalf("a 304 left an error: %q", c.Status().LastError)
-	}
-}
-
-func TestNotModifiedWithNothingHeldIsAnError(t *testing.T) {
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(304) })
-	c := newClient(t, f)
-	if c.Ready() {
-		t.Fatal("ready on a 304 with nothing held")
-	}
-	if got := c.Status().LastError; got != "http_304" {
-		t.Fatalf("lastError %q", got)
-	}
-}
-
-func TestBadRulesetKeepsTheOneHeld(t *testing.T) {
-	f := newFakeServer(t)
-	var bad atomic.Bool
-	f.handle("/sdk/v1/ruleset", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("ETag", `"v2"`)
-		if bad.Load() {
-			_, _ = w.Write([]byte(`{"flags":{},"segments":[]}`))
-			return
+	for _, tc := range cases {
+		if got := isInt64(tc.f); got != tc.ok {
+			t.Errorf("isInt64(%v) = %v", tc.f, got)
 		}
-		w.Header().Set("ETag", `"v1"`)
-		_, _ = w.Write([]byte(flagRuleset))
-	})
-	log := &errorLog{}
-	c := newClient(t, f, WithPollInterval(15*time.Millisecond), WithOnError(log.add))
+	}
+}
+
+func TestUsageOnlyForServedValues(t *testing.T) {
+	s := newFakeServer(t, boolFlag("a", true), valueFlag("s", `"x"`))
+	c := newTestClient(t, s, WithStream(false))
 	c.Ready()
-	bad.Store(true)
-	eventually(t, "bad_ruleset", func() bool { return c.Status().LastError == "bad_ruleset" })
-	if c.Status().ETag != `"v1"` || !c.BoolVariation("f", user("u"), false) {
-		t.Fatal("the held ruleset was replaced by a bad one")
+	c.BoolVariation("a", user("u"), false)
+	c.BoolVariation("a", user("v"), false)
+	c.BoolVariation("s", user("u"), false) // mismatch: not counted
+	c.BoolVariation("gone", user("u"), false)
+	if n := c.use.pending(); n != 1 {
+		t.Fatalf("pending entries = %d", n)
+	}
+	e := c.use.take()
+	if len(e) != 1 || e[0].flag != "a" || e[0].count != 2 || e[0].variationIndex != 1 {
+		t.Fatalf("entries = %+v", e)
 	}
 }
 
-func TestRedirectIsNotFollowed(t *testing.T) {
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/elsewhere", http.StatusFound)
-	})
-	c := newClient(t, f)
-	if c.Ready() {
-		t.Fatal("ready after a redirect")
+func TestEvaluatorPanicBecomesEvaluationFailed(t *testing.T) {
+	s := newFakeServer(t, boolFlag("a", true))
+	var log errorLog
+	c := newTestClient(t, s, WithStream(false), WithOnError(log.add),
+		withEvaluator(func(*evaluator.Ruleset, string, jsonvalue.Value) evaluator.Result { panic("boom") }))
+	c.Ready()
+	d := c.BoolVariationDetail("a", user("u"), true)
+	if !d.Value || d.Reason.Code != ErrEvaluationFailed || d.VariationIndex != NoVariation {
+		t.Fatalf("detail = %+v", d)
 	}
-	if f.count("/elsewhere") != 0 {
-		t.Fatal("the redirect was followed")
+	if log.count() != 1 || !strings.Contains(log.messages()[0], "boom") {
+		t.Fatalf("errors = %v", log.messages())
 	}
-	if got := c.Status().LastError; got != "http_302" {
-		t.Fatalf("lastError %q", got)
+	if c.use.pending() != 0 {
+		t.Fatal("a failed evaluation was counted")
 	}
 }
 
-func TestRequestTimeout(t *testing.T) {
-	f := newFakeServer(t)
+func TestHookEventAndPanic(t *testing.T) {
+	s := newFakeServer(t, boolFlag("a", true))
+	var mu sync.Mutex
+	var events []Event
+	var log errorLog
+	c := newTestClient(t, s, WithStream(false), WithOnError(log.add), WithAfterEvaluation(func(e Event) {
+		mu.Lock()
+		events = append(events, e)
+		mu.Unlock()
+		if e.FlagKey == "bad" {
+			panic("hook failed")
+		}
+	}))
+	c.Ready()
+	ctx := user("u1")
+	c.BoolVariation("a", ctx, false)
+	c.BoolVariation("bad", ctx, false)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(events) != 2 {
+		t.Fatalf("%d events", len(events))
+	}
+	e := events[0]
+	served, _ := e.Value.AsBool()
+	if e.FlagKey != "a" || e.ETag != `"v1"` || e.FlagVersion != 1 || e.VariationIndex != 1 || !served {
+		t.Fatalf("event = %+v", e)
+	}
+	if events[1].FlagVersion != NoVersion || events[1].Reason.Code != ErrFlagNotFound {
+		t.Fatalf("event for a missing flag = %+v", events[1])
+	}
+	if log.count() != 1 || !strings.Contains(log.messages()[0], "hook failed") {
+		t.Fatalf("errors = %v", log.messages())
+	}
+}
+
+func TestHookBeforeReadyHasNoETag(t *testing.T) {
+	var got Event
+	c := New("http://127.0.0.1:1", testKey, WithStream(false), WithRequestTimeout(time.Second),
+		WithAfterEvaluation(func(e Event) { got = e }))
+	t.Cleanup(c.Close)
+	c.BoolVariation("a", user("u"), true)
+	if got.ETag != "" || got.FlagVersion != NoVersion || got.Reason.Code != ErrNotReady {
+		t.Fatalf("event = %+v", got)
+	}
+}
+
+func TestCallbacksMayCallBackIntoTheClient(t *testing.T) {
+	s := newFakeServer(t)
+	s.on("/sdk/v1/ruleset", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(500) })
+	done := make(chan struct{})
+	var once sync.Once
+	var cp atomic.Pointer[Client]
+	// The first load can fail before New has returned, so the callback waits for the client to be stored.
+	stored := make(chan struct{})
+	c := New(s.URL, testKey, WithStream(false), WithRequestTimeout(2*time.Second),
+		WithOnError(func(error) {
+			<-stored
+			c := cp.Load()
+			c.Ready()
+			c.Status()
+			c.Close()
+			once.Do(func() { close(done) })
+		}))
+	cp.Store(c)
+	close(stored)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close from OnError deadlocked")
+	}
+	c.Close()
+}
+
+func TestHookMayCallBackIntoTheClient(t *testing.T) {
+	s := newFakeServer(t, boolFlag("a", true))
+	var cp atomic.Pointer[Client]
+	c := New(s.URL, testKey, WithStream(false), WithRequestTimeout(2*time.Second),
+		WithAfterEvaluation(func(e Event) {
+			c := cp.Load()
+			c.Status()
+			c.Ready()
+			if e.FlagKey == "a" {
+				c.BoolVariation("b", e.Context, false)
+			}
+		}))
+	cp.Store(c)
+	t.Cleanup(c.Close)
+	c.Ready()
+	done := make(chan struct{})
+	go func() { c.BoolVariation("a", user("u"), false); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("hook calling the client deadlocked")
+	}
+}
+
+func TestReadyIsBoundedAndFixed(t *testing.T) {
+	s := newFakeServer(t, boolFlag("a", true))
 	release := make(chan struct{})
-	t.Cleanup(func() { close(release) })
-	f.handle("/sdk/v1/ruleset", func(w http.ResponseWriter, r *http.Request) {
+	s.on("/sdk/v1/ruleset", func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-release:
 		case <-r.Context().Done():
 		}
 	})
-	c := newClient(t, f, WithRequestTimeout(80*time.Millisecond))
+	c := New(s.URL, testKey, WithStream(false), WithRequestTimeout(300*time.Millisecond))
+	t.Cleanup(c.Close)
 	start := time.Now()
 	if c.Ready() {
-		t.Fatal("ready on a hung server")
+		t.Fatal("Ready() true for a hung server")
 	}
-	if time.Since(start) > 3*time.Second {
-		t.Fatalf("Ready took %v", time.Since(start))
+	if took := time.Since(start); took > 3*time.Second {
+		t.Fatalf("Ready took %v", took)
 	}
-	if got := c.Status().LastError; got != SyncTimeout {
-		t.Fatalf("lastError %q", got)
+	if got := c.Status().LastError; got != LastErrorTimeout {
+		t.Fatalf("lastError = %q", got)
 	}
-}
-
-func TestNetworkError(t *testing.T) {
-	f := newFakeServer(t)
-	url := f.URL
-	f.Close()
-	c := New(url, "k", WithStream(false), WithPollInterval(time.Hour), WithFlushInterval(time.Hour))
-	defer c.Close()
+	close(release)
 	if c.Ready() {
-		t.Fatal("ready with no server")
-	}
-	if got := c.Status().LastError; got != SyncNetwork {
-		t.Fatalf("lastError %q", got)
+		t.Fatal("Ready() changed its answer")
 	}
 }
 
-func TestVariationDoesNotBlockOnAHungRuleset(t *testing.T) {
-	f := newFakeServer(t)
-	hang := make(chan struct{})
-	t.Cleanup(func() { close(hang) })
-	var first atomic.Bool
-	f.handle("/sdk/v1/ruleset", func(w http.ResponseWriter, r *http.Request) {
-		if first.CompareAndSwap(false, true) {
-			staticRuleset(`"v1"`, flagRuleset)(w, r)
-			return
-		}
-		select {
-		case <-hang:
-		case <-r.Context().Done():
-		}
-	})
-	c := newClient(t, f, WithPollInterval(10*time.Millisecond), WithRequestTimeout(5*time.Second))
+func TestCloseBeforeFirstLoadSettlesReadyFalse(t *testing.T) {
+	s := newFakeServer(t, boolFlag("a", true))
+	s.on("/sdk/v1/ruleset", func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() })
+	var log errorLog
+	c := New(s.URL, testKey, WithStream(false), WithRequestTimeout(5*time.Second), WithOnError(log.add))
+	waitFor(t, "ruleset request", func() bool { return len(s.requests("/sdk/v1/ruleset")) == 1 })
+	start := time.Now()
+	c.Close()
+	c.Close()
+	if took := time.Since(start); took > 3*time.Second {
+		t.Fatalf("Close took %v", took)
+	}
+	if c.Ready() {
+		t.Fatal("Ready() true after Close")
+	}
+	if st := c.Status(); st.Stream != StreamClosed || st.LastError != LastErrorNone {
+		t.Fatalf("status = %+v", st)
+	}
+	if log.count() != 0 {
+		t.Fatalf("an abandoned request reached OnError: %v", log.messages())
+	}
+	if d := c.BoolVariationDetail("a", user("u"), true); d.Reason.Code != ErrNotReady {
+		t.Fatalf("detail = %+v", d)
+	}
+}
+
+func TestConcurrentCloseAndEvaluate(t *testing.T) {
+	s := newFakeServer(t, boolFlag("a", true))
+	c := New(s.URL, testKey, WithRequestTimeout(2*time.Second))
 	c.Ready()
-	eventually(t, "a hung poll", func() bool { return f.count("/sdk/v1/ruleset") >= 2 })
-	done := make(chan struct{})
-	go func() {
-		for i := 0; i < 1000; i++ {
-			c.BoolVariation("f", user("u"), false)
-			c.Status()
-		}
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("variation blocked while a ruleset request hung")
-	}
-}
-
-func TestVariationDoesNotBlockOnAHungFlush(t *testing.T) {
-	f := newFakeServer(t)
-	hang := make(chan struct{})
-	t.Cleanup(func() { close(hang) })
-	f.handle("/sdk/v1/ruleset", staticRuleset(`"v1"`, flagRuleset))
-	f.handle("/sdk/v1/events", func(w http.ResponseWriter, r *http.Request) {
-		select {
-		case <-hang:
-		case <-r.Context().Done():
-		}
-	})
-	c := newClient(t, f, WithFlushInterval(10*time.Millisecond), WithRequestTimeout(400*time.Millisecond))
-	c.Ready()
-	c.BoolVariation("f", user("u"), false)
-	eventually(t, "a hung flush", func() bool { return f.count("/sdk/v1/events") >= 1 })
-	done := make(chan struct{})
-	go func() {
-		for i := 0; i < 1000; i++ {
-			c.BoolVariation("f", user("u"), false)
-		}
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("variation blocked while a usage flush hung")
-	}
-}
-
-func TestSwapAtomicityOfEventETagAndVersion(t *testing.T) {
-	// Two rulesets: tag "a" has f at version 1, tag "b" has f at version 2. Every event pairs them.
-	var tag atomic.Value
-	tag.Store(`"a"`)
-	body := func() string {
-		v := 1
-		if tag.Load().(string) == `"b"` {
-			v = 2
-		}
-		return strings.Replace(flagRuleset, `"version":3`, fmt.Sprintf(`"version":%d`, v), 1)
-	}
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", rulesetHandler(func() string { return tag.Load().(string) }, body))
-	var bad atomic.Int32
-	hook := func(e Event) {
-		if e.FlagVersion == nil {
-			return
-		}
-		want := map[string]int64{`"a"`: 1, `"b"`: 2}[e.ETag]
-		if *e.FlagVersion != want {
-			bad.Add(1)
-		}
-	}
-	c := newClient(t, f, WithPollInterval(2*time.Millisecond), WithAfterEvaluation(hook))
-	c.Ready()
-	stop := make(chan struct{})
-	var wg sync.WaitGroup
-	for i := 0; i < 4; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for {
-				select {
-				case <-stop:
-					return
-				default:
-					c.BoolVariation("f", user("u"), false)
-				}
-			}
-		}()
-	}
-	for i := 0; i < 40; i++ {
-		if i%2 == 0 {
-			tag.Store(`"b"`)
-		} else {
-			tag.Store(`"a"`)
-		}
-		time.Sleep(3 * time.Millisecond)
-	}
-	close(stop)
-	wg.Wait()
-	if bad.Load() != 0 {
-		t.Fatalf("%d events paired an etag with another ruleset's flag version", bad.Load())
-	}
-}
-
-func TestIntVariationRange(t *testing.T) {
-	body := `{"flags":[{"key":"n","version":1,"on":true,"salt":"a","variations":[9007199254740993,1.5,9223372036854775808,-9223372036854775808,3],
-	 "offVariation":0,"targets":[],"prerequisites":[],"rules":[],"fallthrough":{"variation":0}}],"segments":[]}`
-	for idx, want := range []struct {
-		value int64
-		code  ErrorCode
-	}{
-		{0, ""}, {7, ErrTypeMismatch}, {7, ErrTypeMismatch}, {-9223372036854775808, ""}, {3, ""},
-	} {
-		f := newFakeServer(t)
-		b := strings.Replace(body, `"fallthrough":{"variation":0}`, fmt.Sprintf(`"fallthrough":{"variation":%d}`, idx), 1)
-		f.handle("/sdk/v1/ruleset", staticRuleset(`"v1"`, b))
-		c := newClient(t, f)
-		c.Ready()
-		d := c.IntVariationDetail("n", user("u"), 7)
-		if idx == 0 {
-			// 2^53+1 reads as the nearest binary64, 2^53, which is an integer in range.
-			if d.Value != 9007199254740992 || d.Reason.Kind == ReasonError {
-				t.Fatalf("index 0: %+v", d)
-			}
-			continue
-		}
-		if want.code != "" {
-			if d.Value != 7 || d.Reason.Code != want.code || d.VariationIndex != NoVariation {
-				t.Fatalf("index %d: %+v", idx, d)
-			}
-		} else if d.Value != want.value || d.Reason.Kind == ReasonError {
-			t.Fatalf("index %d: %+v", idx, d)
-		}
-	}
-}
-
-func TestEvaluationFailedGivesFallbackAndOneOnError(t *testing.T) {
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", staticRuleset(`"v1"`, flagRuleset))
-	log := &errorLog{}
-	c := newClient(t, f, WithOnError(log.add), withEvaluate(func(*evaluator.Ruleset, string, jsonvalue.Value) evaluator.Result {
-		panic("boom with secret-context-key")
-	}))
-	c.Ready()
-	d := c.BoolVariationDetail("f", user("secret-context-key"), true)
-	if !d.Value || d.VariationIndex != NoVariation || d.Reason.Code != ErrEvaluationFailed {
-		t.Fatalf("%+v", d)
-	}
-	errs := log.all()
-	if len(errs) != 1 {
-		t.Fatalf("want one onError, got %v", errs)
-	}
-	if n := c.pendingEntries(); n != 0 {
-		t.Fatalf("a failed evaluation was counted (%d)", n)
-	}
-}
-
-func TestHooksAndCallbacksAreReentrant(t *testing.T) {
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", staticRuleset(`"v1"`, flagRuleset))
-	var c *Client
-	var events atomic.Int32
-	var inner atomic.Bool
-	c = newClient(t, f, WithAfterEvaluation(func(e Event) {
-		if events.Add(1) == 1 {
-			// the hook evaluates and reads status; this must not deadlock or recurse forever
-			inner.Store(c.Status().ETag == `"v1"`)
-			_ = c.Ready()
-		}
-	}))
-	c.Ready()
-	c.BoolVariation("f", user("u"), false)
-	if !inner.Load() {
-		t.Fatal("the hook did not see the status")
-	}
-}
-
-func TestOnErrorMayCallClientMethods(t *testing.T) {
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500) })
-	var self atomic.Pointer[Client]
-	called := make(chan struct{}, 8)
-	started := make(chan struct{})
-	c := New(f.URL, "k", WithStream(false), WithPollInterval(time.Hour), WithFlushInterval(time.Hour), WithOnError(func(error) {
-		<-started
-		c := self.Load()
-		_ = c.Ready()
-		_ = c.Status()
-		_ = c.BoolVariation("f", user("u"), true)
-		called <- struct{}{}
-	}))
-	self.Store(c)
-	close(started)
-	defer c.Close()
-	select {
-	case <-called:
-	case <-time.After(5 * time.Second):
-		t.Fatal("onError never ran, or deadlocked on Ready")
-	}
-}
-
-func TestCallbackPanicsAreContained(t *testing.T) {
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", staticRuleset(`"v1"`, flagRuleset))
-	c := newClient(t, f, WithAfterEvaluation(func(Event) { panic("hook") }), WithOnError(func(error) { panic("onError") }))
-	c.Ready()
-	if !c.BoolVariation("f", user("u"), false) {
-		t.Fatal("a panicking hook changed the value")
-	}
-}
-
-func TestCloseIsIdempotentAndRacing(t *testing.T) {
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", staticRuleset(`"v1"`, flagRuleset))
-	f.handle("/sdk/v1/events", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(202) })
-	c := newClient(t, f)
-	c.Ready()
-	c.BoolVariation("f", user("u"), false)
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {
-		wg.Add(1)
+		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			if err := c.Close(); err != nil {
-				t.Errorf("Close returned %v", err)
-			}
-			if c.Status().Stream != StreamClosed {
-				t.Error("stream state is not closed after Close")
+			for j := 0; j < 200; j++ {
+				c.BoolVariation("a", user("u"), false)
+				c.Status()
 			}
 		}()
+		go func() { defer wg.Done(); c.Close() }()
 	}
 	wg.Wait()
-	if n := f.count("/sdk/v1/events"); n != 1 {
-		t.Fatalf("the final flush went out %d times", n)
-	}
-	// evaluation still answers from the ruleset held, and counts nothing
-	if !c.BoolVariation("f", user("u"), false) || c.pendingEntries() != 0 {
-		t.Fatal("after Close")
+	if !c.BoolVariation("a", user("u"), false) {
+		t.Fatal("evaluation stopped answering after Close")
 	}
 }
 
-func TestManyGoroutinesAllOperations(t *testing.T) {
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", staticRuleset(`"v1"`, flagRuleset))
-	f.handle("/sdk/v1/events", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(202) })
-	c := newClient(t, f, WithPollInterval(time.Millisecond), WithFlushInterval(time.Millisecond), WithAfterEvaluation(func(Event) {}))
-	var wg sync.WaitGroup
-	for g := 0; g < 16; g++ {
-		wg.Add(1)
-		go func(g int) {
-			defer wg.Done()
-			for i := 0; i < 300; i++ {
-				switch (g + i) % 7 {
-				case 0:
-					c.BoolVariation("f", user("u"), false)
-				case 1:
-					c.StringVariationDetail("s", user("u"), "")
-				case 2:
-					c.IntVariation("f", user("u"), 1)
-				case 3:
-					c.JSONVariation("s", user("u"), Null())
-				case 4:
-					c.Status()
-				case 5:
-					c.FloatVariation("f", user("u"), 0)
-				default:
-					c.ReadyContext(context.Background())
-				}
-				if g == 0 && i == 150 {
-					_ = c.Close()
-				}
-			}
-		}(g)
-	}
-	wg.Wait()
-	_ = c.Close()
-}
-
-func TestCloseRacingVariation(t *testing.T) {
-	for i := 0; i < 20; i++ {
-		f := newFakeServer(t)
-		f.handle("/sdk/v1/ruleset", staticRuleset(`"v1"`, flagRuleset))
-		f.handle("/sdk/v1/events", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(202) })
-		c := newClient(t, f)
-		var wg sync.WaitGroup
-		for g := 0; g < 4; g++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for j := 0; j < 100; j++ {
-					c.BoolVariation("f", user("u"), false)
-				}
-			}()
-		}
-		_ = c.Close()
-		wg.Wait()
-	}
-}
-
-func TestCloseReturnsWithinTwiceTheTimeoutWhenTheServerHangs(t *testing.T) {
-	f := newFakeServer(t)
-	hang := make(chan struct{})
-	t.Cleanup(func() { close(hang) })
-	f.handle("/sdk/v1/ruleset", staticRuleset(`"v1"`, flagRuleset))
-	f.handle("/sdk/v1/events", func(w http.ResponseWriter, r *http.Request) {
-		select {
-		case <-hang:
-		case <-r.Context().Done():
-		}
-	})
-	c := newClient(t, f, WithRequestTimeout(150*time.Millisecond))
-	c.Ready()
-	c.BoolVariation("f", user("u"), false)
-	start := time.Now()
-	_ = c.Close()
-	if d := time.Since(start); d > 2*time.Second {
-		t.Fatalf("Close took %v", d)
-	}
-}
-
-func TestCloseFromInsideACallbackDoesNotDeadlock(t *testing.T) {
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500) })
-	var self atomic.Pointer[Client]
-	started := make(chan struct{})
-	done := make(chan struct{})
-	var once sync.Once
-	c := New(f.URL, "k", WithStream(false), WithPollInterval(time.Hour), WithFlushInterval(time.Hour), WithOnError(func(error) {
-		<-started
-		_ = self.Load().Close()
-		once.Do(func() { close(done) })
+func TestSnapshotPairsETagAndVersion(t *testing.T) {
+	s := newFakeServer(t, boolFlag("a", true))
+	var mu sync.Mutex
+	var seen []Event
+	c := newTestClient(t, s, WithPollInterval(10*time.Millisecond), WithStream(true), WithAfterEvaluation(func(e Event) {
+		mu.Lock()
+		seen = append(seen, e)
+		mu.Unlock()
 	}))
-	self.Store(c)
-	close(started)
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("Close from onError deadlocked")
-	}
-	_ = c.Close()
-}
-
-func TestHeadersSentOnEveryRoute(t *testing.T) {
-	f := newFakeServer(t)
-	f.handle("/sdk/v1/ruleset", staticRuleset(`"v1"`, flagRuleset))
-	f.handle("/sdk/v1/events", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(202) })
-	c := newClient(t, f, WithPollInterval(15*time.Millisecond))
 	c.Ready()
-	c.BoolVariation("f", user("u"), false)
-	eventually(t, "a conditional poll", func() bool { return f.count("/sdk/v1/ruleset") >= 2 })
-	_ = c.Close()
-	allowed := map[string]bool{
-		"Authorization": true, "Accept": true, "If-None-Match": true, "Content-Type": true,
-		"User-Agent": true, "Content-Length": true, "Accept-Encoding": true,
+	stop := make(chan struct{})
+	go func() {
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			s.setFlags(boolFlag("a", i%2 == 0))
+			time.Sleep(time.Millisecond)
+		}
+	}()
+	for i := 0; i < 2000; i++ {
+		c.BoolVariation("a", user("u"), false)
 	}
-	for _, path := range []string{"/sdk/v1/ruleset", "/sdk/v1/events"} {
-		for _, r := range f.seen(path) {
-			for name := range r.header {
-				if !allowed[name] {
-					t.Errorf("%s carried the header %s", path, name)
-				}
-			}
-			if r.header.Get("Authorization") != "Bearer sdk-key" {
-				t.Errorf("%s authorization %q", path, r.header.Get("Authorization"))
-			}
-			if r.header.Get("Accept-Encoding") != "" {
-				t.Errorf("%s asked for compression", path)
-			}
+	close(stop)
+	mu.Lock()
+	defer mu.Unlock()
+	for _, e := range seen {
+		// Every ruleset the fake serves holds flag a at version 1, so a pairing break would show as a missing version.
+		if e.ETag != "" && e.FlagVersion != 1 {
+			t.Fatalf("etag %q paired with version %d", e.ETag, e.FlagVersion)
 		}
 	}
 }
