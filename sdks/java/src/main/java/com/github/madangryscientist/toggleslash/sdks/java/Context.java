@@ -1,151 +1,81 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
-import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Json;
-import com.github.madangryscientist.toggleslash.sdks.java.evaluation.JsonException;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 /**
- * Who a flag is evaluated for: a single context (a {@code key}, an optional {@code kind} that
- * defaults to {@code user}, and optional {@code attributes}) or a multi context. A context is
- * immutable. One that is not valid is still a context: evaluating with it gives {@code ERROR
- * INVALID_CONTEXT} and never throws.
+ * Helpers that build evaluation contexts as plain maps. A context is any {@code Map<String,
+ * Object>} the evaluation spec accepts; these only save typing.
  */
 public final class Context {
-  private final Object tree;
+  private Context() {}
 
-  private Context(Object tree) {
-    this.tree = tree;
+  /**
+   * A user context.
+   *
+   * @param key the context key
+   * @return a context of kind {@code user}
+   */
+  public static Map<String, Object> of(String key) {
+    return of("user", key);
   }
 
   /**
-   * A context from the contract's shape: a map with {@code key}, and optionally {@code kind} and
-   * {@code attributes} (or {@code kind: "multi"} and {@code contexts}). Numbers become doubles,
-   * collections lists and any other value its {@code toString()}; a null map is an invalid context.
+   * A single-kind context.
+   *
+   * @param kind the kind
+   * @param key the context key
+   * @return the context
    */
-  public static Context of(Map<String, ?> shape) {
-    return new Context(shape == null ? null : copy(shape, 0));
-  }
-
-  /** A context from JSON text. Text that is not JSON is an invalid context, not an error. */
-  public static Context fromJson(String json) {
-    if (json == null) {
-      return new Context(null);
-    }
-    try {
-      return new Context(Json.parse(json));
-    } catch (JsonException e) {
-      return new Context(null);
-    }
-  }
-
-  /** A {@code user} context with this key. */
-  public static Context user(String key) {
-    return kind("user", key);
-  }
-
-  /** A context of this kind with this key. */
-  public static Context kind(String kind, String key) {
-    Map<String, Object> shape = new LinkedHashMap<>();
-    shape.put("kind", kind);
-    shape.put("key", key);
-    return new Context(shape);
-  }
-
-  /** The multi context of these single contexts, each under its own kind. */
-  public static Context multi(Context... contexts) {
-    Map<String, Object> entries = new LinkedHashMap<>();
-    if (contexts != null) {
-      for (Context context : contexts) {
-        if (context != null && context.tree instanceof Map<?, ?> single) {
-          Map<String, Object> entry = new LinkedHashMap<>();
-          entry.put("key", single.get("key"));
-          if (single.get("attributes") != null) {
-            entry.put("attributes", single.get("attributes"));
-          }
-          Object kind = single.get("kind");
-          entries.put(kind instanceof String text ? text : "user", entry);
-        }
-      }
-    }
-    Map<String, Object> shape = new LinkedHashMap<>();
-    shape.put("kind", "multi");
-    shape.put("contexts", entries);
-    return new Context(shape);
+  public static Map<String, Object> of(String kind, String key) {
+    Map<String, Object> context = new LinkedHashMap<>();
+    context.put("kind", kind);
+    context.put("key", key);
+    return context;
   }
 
   /**
-   * A copy of this context with one more attribute (on a single context; a multi one is unchanged).
+   * A copy of a single-kind context with one more attribute.
+   *
+   * @param context a context made by {@link #of(String)} or {@link #of(String, String)}
+   * @param name the attribute name
+   * @param value the attribute value
+   * @return a new context
    */
-  public Context with(String attribute, Object value) {
-    if (!(tree instanceof Map<?, ?> single) || "multi".equals(single.get("kind"))) {
-      return this;
-    }
-    Map<String, Object> shape = new LinkedHashMap<>();
-    for (Map.Entry<?, ?> entry : single.entrySet()) {
-      shape.put((String) entry.getKey(), entry.getValue());
-    }
-    Map<String, Object> attributes = new LinkedHashMap<>();
-    if (single.get("attributes") instanceof Map<?, ?> existing) {
-      for (Map.Entry<?, ?> entry : existing.entrySet()) {
-        attributes.put((String) entry.getKey(), entry.getValue());
-      }
-    }
-    attributes.put(Objects.toString(attribute), copy(value, 0));
-    shape.put("attributes", attributes);
-    return new Context(shape);
+  @SuppressWarnings("unchecked")
+  public static Map<String, Object> with(Map<String, Object> context, String name, Object value) {
+    Map<String, Object> copy = new LinkedHashMap<>(context);
+    Object existing = copy.get("attributes");
+    Map<String, Object> attributes =
+        existing instanceof Map<?, ?> m
+            ? new LinkedHashMap<>((Map<String, Object>) m)
+            : new LinkedHashMap<>();
+    attributes.put(name, value);
+    copy.put("attributes", attributes);
+    return copy;
   }
 
-  /** The JSON tree the evaluator reads; null for an invalid context. Not for callers to change. */
-  Object tree() {
-    return tree;
-  }
-
-  /** The context as JSON text; {@code null} for an invalid context. */
-  public String toJson() {
-    return Json.write(tree);
-  }
-
-  @Override
-  public String toString() {
-    // A context holds end-user data, so its text form names nothing in it.
-    return "Context";
-  }
-
-  private static Object copy(Object value, int depth) {
-    if (depth > 64) {
-      return null;
-    }
-    if (value == null || value instanceof String || value instanceof Boolean) {
-      return value;
-    }
-    if (value instanceof Number number) {
-      return number.doubleValue();
-    }
-    if (value instanceof Map<?, ?> map) {
-      Map<String, Object> out = new LinkedHashMap<>();
-      for (Map.Entry<?, ?> entry : map.entrySet()) {
-        out.put(String.valueOf(entry.getKey()), copy(entry.getValue(), depth + 1));
+  /**
+   * A multi-kind context from single-kind contexts.
+   *
+   * @param parts single-kind contexts; each one's {@code kind} names its entry
+   * @return the multi-kind context
+   */
+  @SafeVarargs
+  public static Map<String, Object> multi(Map<String, Object>... parts) {
+    Map<String, Object> contexts = new LinkedHashMap<>();
+    for (Map<String, Object> part : parts) {
+      Object kind = part.get("kind");
+      Map<String, Object> entry = new LinkedHashMap<>();
+      entry.put("key", part.get("key"));
+      if (part.get("attributes") != null) {
+        entry.put("attributes", part.get("attributes"));
       }
-      return out;
+      contexts.put(kind == null ? "user" : kind.toString(), entry);
     }
-    if (value instanceof Iterable<?> items) {
-      List<Object> out = new ArrayList<>();
-      for (Object item : items) {
-        out.add(copy(item, depth + 1));
-      }
-      return out;
-    }
-    if (value instanceof Object[] items) {
-      List<Object> out = new ArrayList<>();
-      for (Object item : items) {
-        out.add(copy(item, depth + 1));
-      }
-      return out;
-    }
-    return String.valueOf(value);
+    Map<String, Object> multi = new LinkedHashMap<>();
+    multi.put("kind", "multi");
+    multi.put("contexts", contexts);
+    return multi;
   }
 }

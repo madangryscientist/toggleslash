@@ -2,97 +2,45 @@
 
 ## Prompt version
 
-- Prompt: 7622421acf08c310e86e160394d1b26ee36f0f12
+- Prompt: 26598eee3b61a0b44edc1c6d50c5d4e4ad08b813
 - Model: Sonnet 5.5 (`claude-sonnet-5-5`)
-- Date: 2026-11-10
-- Input: language Java; runtime chosen: the JVM, developed on Temurin 25 LTS; minimum version chosen: Java 17
-  (`maven.compiler.release` is 17); package manager chosen: Maven
-- Toolchain: pinned in `mise.toml`: Temurin 25.0.5+8 LTS (`temurin-25.0.5+8.0.LTS`), Maven 3.10.0,
-  google-java-format 1.37.0, Checkstyle 14.4.0. JUnit Jupiter 6.1.3 is the one test dependency in `pom.xml`.
-  Bun 1.4.2 runs the harness (the repository's pin).
+- Date: 2026-11-12
+- Input: language Java; runtime chosen: Temurin 25.0.5 LTS (the build), run on the JVM; minimum version chosen: Java 17 (`--release 17`, per `language-notes/java.md` line 6); package manager chosen: Maven
+- Toolchain: `mise.toml` pins `java = temurin-25.0.5+8.0.LTS` (`java -version` prints `openjdk version "25.0.5" 2026-10-20 LTS`), `maven = 3.10.0` (`Apache Maven 3.10.0`), `checkstyle = 14.4.0` (`Checkstyle version: 14.4.0`), `google-java-format = 2.0.0` (`google-java-format: Version 2.0.0`). `pom.xml` pins `org.junit.jupiter:junit-jupiter` 6.1.3 (test scope; the only dependency), `maven-clean-plugin` 3.5.0, `maven-resources-plugin` 3.5.0, `maven-compiler-plugin` 3.16.0 (`--release 17`, `-Xlint:all -Werror`), `build-helper-maven-plugin` 3.8.0, `maven-surefire-plugin` 3.6.1, `maven-jar-plugin` 3.5.1. Coordinates: group `com.github.madangryscientist.toggleslash`, artifact `toggleslash-sdk-java`, version 0.0.0 (never published).
 
 ## Results
 
-- Vectors: 1371 passed of 1371; bucket pins: 17 passed of 17 (`bin/test`; the phase 2 count command prints `1371 17`)
-- Conformance: `scenarios: 81 passed, 0 failed, 0 skipped; vectors: 1369 passed, 0 failed, 2 skipped`
+- Vectors: 1371 passed of 1371; bucket pins: 17 passed of 17 (`bin/test` prints `vectors: 1371 pins: 17`)
+- Conformance: `scenarios: 83 passed, 0 failed, 0 skipped; vectors: 1369 passed, 0 failed, 2 skipped` (run twice from the repository root after the last change to the tree, same line both times)
 - Capabilities advertised: `integer-accessor`
-- Native tests: 17 passed of 17 (15 in `ClientTest`, 2 in `VectorsTest`, which runs all the vectors and pins)
+- Native tests: 44 passed of 44 (0 failures, 0 errors) in the one Maven module, which compiles the test service into the test source root and has no tests of its own. By class: `ClientTest` 20, `StreamTest` 5, `HoldTest` 4, `TlsTest` 1, `JsonTest` 6, `Utf8Test` 7, `VectorsTest` 1. `VectorsTest.everyVectorAndPin` is one JUnit test that loops over 1371 vectors and 17 pins, which have their own line above.
+- Ten runs of `bin/test` in a row, from the committed tree: all ten exit 0, each 44 tests, 0 failures (12 to 13 s each). One more run with `nproc` = 12 busy shell loops (`while :; do :; done`, normal priority) started before `bin/test` and kept running to its end, build included: exit 0, 44 tests, 0 failures, 19 s.
 
 ## Decisions
 
-1. Minimum Java 17, developed on the Temurin 25 LTS: 17 is the oldest LTS that has `java.net.http.HttpClient`,
-   records, sealed types and pattern `instanceof`, and 25 is the current LTS. `--release 17` makes the compiler
-   refuse an API newer than 17.
-2. Maven over Gradle: one declarative file, no wrapper script to pin, and mise installs it.
-3. Lint and format: google-java-format (format) and Checkstyle (rules) over Spotless or Error Prone, plus
-   `javac -Xlint:all -Werror`. Both tools come from mise, so `bin/lint` needs nothing else.
-4. JUnit Jupiter only: no mocking library, no assertion library. The fake server is a loopback
-   `com.sun.net.httpserver.HttpServer` in `FakeServer.java`, so tests exercise real sockets.
-5. Coordinates: groupId `com.github.madangryscientist.toggleslash`, artifactId `toggleslash-sdk-java`, version
-   `0.1.0-SNAPSHOT`. The root package is `com.github.madangryscientist.toggleslash.sdks.java`, from the repository
-   path `sdks/java`. Nothing is published.
-6. HTTP: `java.net.http.HttpClient` (no dependency), HTTP/1.1, redirects `NEVER`. Each client has two `Http`
-   wrappers, each with its own `HttpClient`: one for sync (ruleset and stream), aborted at `close`, and one for
-   usage, which is not aborted so the final flush at `close` can go out.
-7. Whole-request bound: `sendAsync` plus `future.get(timeout)` plus `cancel(true)`, and the body is read only for a
-   200. `HttpRequest.timeout` alone ends at the response headers and would not bound a slow body.
-8. The stream is a custom `BodySubscriber` (`Http.Stream`) with back-pressure of one and a
-   `LinkedBlockingQueue`. The 60 s watchdog is `queue.poll(streamIdle)`; abort pushes a sentinel and cancels the
-   subscription.
-9. JSON: a hand-written parser (`evaluation/Json.java`), so numbers, duplicate keys and `NaN` follow
-   `docs/evaluation.md` and not a library's choices. The evaluator has its own `Pattern`/`PatternParser` (a Pike VM),
-   and does not use `java.util.regex`.
-10. Typed accessors only (`boolVariation`, `stringVariation`, `doubleVariation`, `intVariation`, `jsonVariation`
-    and the `Detail` forms), with `integer-accessor` advertised. `intVariation` returns a `long`.
-11. The test service is Maven test source (`test-service/src` added with build-helper), so one `mvn test-compile`
-    builds the SDK, its tests and the service; `bin/test-service` compiles only when the class file is missing.
-12. Two daemon threads per client (`toggleslash-sync`, `toggleslash-flush`), and an unclosed client does not keep the
-    JVM alive. `close` is a CAS plus a latch, so two racing closes both return after the first finishes.
-13. Test seams are package-private methods on `Options.Builder` (`clock`, `nanoTime`, `jitter`, `streamIdle`,
-    `evaluator`), plus package-private accessors on `Client` (`syncHoldRemaining`, `usageHoldRemaining`,
-    `flushNow`). No global and no environment variable.
-14. The `afterEvaluation` hook runs on the caller's thread, synchronously, under a catch of `Throwable` that sends
-    the failure to `onError`. A plain `Consumer`, no futures.
-15. CI uses `jdx/mise-action` with `install_args: java maven google-java-format checkstyle`, so CI and the
-    developer machine use the same pins.
+1. Redirects are never followed (`HttpClient.Redirect.NEVER`): the ruleset URL is the operator's own server, and a redirect would carry the `Authorization` header somewhere new (contract 7, 12).
+2. HTTP/1.1 only (`HttpClient.Version.HTTP_1_1`): the stream is plain SSE and the contract names no HTTP/2 behaviour; this also keeps the JDK from adding `Upgrade`/`HTTP2-Settings` headers to a cleartext request (see the header table).
+3. CI toolchain: `jdx/mise-action` with `install_args: java maven checkstyle google-java-format` over `actions/setup-java`, because it installs the two lint tools from `mise.toml` too. Settled by `language-notes/java.md` line 24.
+4. Checkstyle runs as a bare JAR resolved inside `mise exec` (`mise exec -- sh -c 'command -v checkstyle'`), settled by `language-notes/java.md` line 14. `google-java-format` is run with `--dry-run --set-exit-if-changed`, settled by line 23; a question-style Javadoc fails `SummaryJavadoc`, also line 23, and I reworded one (`Clauses.matches`).
+5. Lint: `checkstyle.xml` names its rule set (a Google-style core with Javadoc rules) and gives a reason beside every rule it leaves out. It reads `src/main/java` only: the tests and the test service are covered by google-java-format and by `-Xlint:all -Werror`, since Javadoc and naming rules add noise to test methods without catching bugs. `JavadocMethod` uses `accessModifiers=public,protected` because package-private helpers are documented by their names. Line length 100.
+6. `StreamState` constants are lowercase to match the contract's spelling (`off`, `connecting`, `connected`, `disconnected`, `closed`): the public spelling is the contract's, not Java's convention.
+7. JSON nesting limit 1000 (`JsonTest.nestingHasALimit`): contract 7 "Bounds" names no depth limit, so this is only a stack guard against a hostile ruleset and a context, and a parse past it is `bad_ruleset`.
+8. A context is converted once and eagerly into the evaluator's own tree, with a depth and cycle guard and an `Unsupported` sentinel for a value with no JSON form (`ClientTest.anEvaluationThatRaisesAnswersEvaluationFailedWithOneOnError` feeds a hostile map). A map that changes during evaluation cannot change an answer.
+9. `Reason` carries `ruleIndex` and `flagKey` beside the kind and error code: contract 4 names them as reason fields.
+10. `EvaluationEvent.flagVersion` above 2^63 - 1 is reported as none; settled by contract 10, the `flagVersion` row ("MAY report a version above 2^63 minus 1 as none").
+11. A served JSON tree is read-only (`Kinds.freeze`, test `aServedJsonTreeIsReadOnly`): a caller's mutation must not change the next caller's answer.
+12. `ready()` waits at most `requestTimeout` plus 1 s for the first load, then settles with whatever is held (`ClientTest.readyAnswersFalseWhenTheRulesetNeverComes`): contract 5.3 requires a bound and names none.
+13. The generic accessor's class table: `Boolean`, `String`, `Long`/`Integer`/`Short`/`Byte`, `Double`/`Float`, `Map`/`List`, null; any other class (`BigDecimal`, tested) gives the fallback and `TYPE_MISMATCH`. Settled by contract 4, "Typed languages", and `CHECKLIST.md` line "A fallback of a class with no JSON kind".
+14. A hook's returned `CompletionStage` is watched with `whenComplete`; a plain `Future` is read only if already done (never blocked on). A failure of either goes to `onError`.
+15. Test seam: `Tuning` (watchdog length, clock, injected `HttpClient`) is a package-private record taken by the package-private `Client.create(Options, Tuning)`. It is an option on create, never a global or an environment variable the SDK reads.
+16. Holds are monotonic and capped at 300 s in `Hub.retryAfter`; the ruleset and stream routes share one hold and the events route has its own (contract 7.4, 9; test names under the checklist).
+17. Layout: the test service sits under `sdks/java/test-service/src` and is compiled by `build-helper-maven-plugin` as a test source root, so one `mvn` build covers it and `bin/test-service` runs it from `target/`.
+18. The prior Java SDK was removed in this task's first commit and I did not read it, in the tree or in git history, as the brief requires. I read the committed sibling SDKs only as the prompt allows.
+19. No question was put to the planner this run: nothing the prompt told me to assume and record turned up. (Zero `Asked the planner:` entries.)
 
 ## Guesses
 
-1. "The exact current stable release" of Java: the latest feature release is not an LTS. Where: PROMPT.md, phase 0
-   (toolchain pin). Assumed: the current LTS (Temurin 25.0.5+8), because a JDK feature release leaves support after six
-   months and an SDK's users run LTS.
-2. Which Maven coordinates to use. Where: PROMPT.md, phase 1 item 7 gives the Go-style host path and says to
-   follow the language's convention; Maven has no host path. Assumed: group id `com.github.madangryscientist.toggleslash`
-   (the reverse-domain form of the given path), root package `<groupId>.sdks.java`.
-3. How to bound a whole request body in `java.net.http`. Where: PROMPT.md, phase 1 item 3 and contract 7.1 say the
-   bound covers the body; neither says how in any one library. Assumed: `sendAsync` with `future.get(timeout)` and
-   `cancel(true)`, because `HttpRequest.timeout` ends at the response headers. A first try with
-   `BodyHandlers.fromSubscriber` held the response future until the body ended, so the stream open timed out and
-   23 stream scenarios failed with `lastError: timeout`; the fix was a `BodySubscriber` that hands itself over at once.
-4. Checkstyle under mise is a bare JAR with no launcher. Where: PROMPT.md, phase 5 (`bin/lint`). Assumed:
-   `java -jar "$(command -v checkstyle)"`.
-5. No race detector exists for Java. Where: CHECKLIST.md, "Native tests", first line. Assumed: stress tests with many
-   threads, a racing `close`, a hang in each request, and `-Xlint` for what the compiler can find; the line is met
-   by `everyOperationFromManyThreadsWithCloseRacingAndTwoClosesRacing`.
-6. Where the test service lives for a Maven project. Where: PROMPT.md, phase 1 item 7 (package layout) and
-   phase 4. Assumed: `test-service/` as a second test source root (decision 11).
-7. `language-notes/java.md` does not exist. Where: PROMPT.md, phase 0 item 9 ("if it exists"). Assumed: nothing in
-   it, which is correct for a first run, and proposed below.
-8. A fresh checkout needs the network once for `mvn`, and a sandboxed run is offline. Where: PROMPT.md, phase 0
-   (set up). Assumed: the first `bin/test` run, online, caches the plugins; later runs work offline.
-9. A JDK 17 `HttpClient` is not `AutoCloseable` (that came in 21). Where: contract 11 (`close` stops everything).
-   Assumed: abort the in-flight requests and stop the threads; the client's selector thread is daemon and idle, so
-   nothing is left running that matters.
-10. Headers the JDK adds. Where: CHECKLIST.md, "Code and documents", the header line. Listed in the Checklist
-    below: `Host`, `User-Agent` (`Java-http-client/<version>`, the library and version only) and `Content-Length`.
-    There is no `Connection` header on an HTTP/1.1 client, and no `Accept-Encoding` is sent.
-11. A `Retry-After` longer than nine digits. Where: contract 7.4. Assumed: treated as above 300, so held for 300 s,
-    which avoids an overflow in the parse.
-12. A 200 stream whose body is empty and ends at once. Where: contract 7.2 and `stream.json`. Assumed: it ends
-    cleanly with no `lastError`; the TypeScript SDK reports `http_200` for a missing body. The scenarios pass
-    either way.
-13. A fallback for the integer accessor given as a JSON number. Where: sdk-test-service.md, "Accessors" (`int`).
-    Assumed: a whole number in signed 64 bits, taken as a `long`.
+None.
 
 ## Stuck points
 
@@ -100,112 +48,84 @@ None.
 
 ## Proposed prompt changes
 
-1. For guess 1, in `PROMPT.md` phase 0, after "the exact current stable release", add: "For a language with
-   long-term-support releases, pin the newest LTS and say so in `DESIGN.md`."
-2. For guess 2, in `PROMPT.md` phase 1 item 7, after "use this repository's `github.com/madangryscientist/toggleslash/sdks/<lang>`",
-   add: "Where the convention is reverse-domain (Maven), use `com.github.madangryscientist.toggleslash` as the group."
-3. For guess 3, in `language-notes/java.md`: "`HttpRequest.timeout` ends at the headers. Do not use `BodyHandlers.fromSubscriber`
-   for the stream: it answers the response future only when the body ends. Make the subscriber the body and hand it
-   over at once."
-4. For guess 4, in `language-notes/java.md`: "Checkstyle under mise is a bare JAR: run `java -jar "$(command -v
-   checkstyle)" -c checkstyle.xml src/main/java`."
-5. For guess 5, in `CHECKLIST.md`, first native line, after "where the language has one", add: "A language with none
-   says so in `RUN.md` and names the stress test that stands in."
-6. For guess 6, in `docs/sdk-authoring/PROMPT.md` phase 4, add: "Put the test service where your build tool compiles
-   it with the tests, and say where in `test-service/README.md`."
-7. For guess 7, create `docs/sdk-authoring/language-notes/java.md` with the facts of guesses 1, 3, 4, 8, 9 and 12:
-   LTS pin, the `HttpClient` body rule, the Checkstyle JAR, a first online `mvn` run to cache plugins, no closable
-   `HttpClient` before 21 (two clients, abort the sync one, leave the usage one for the final flush), and
-   the Maven plus build-helper layout for the service.
-8. For guess 10, in `CHECKLIST.md` header line, add: "`User-Agent` values such as `Java-http-client/<version>`
-   name only the library and the version and are allowed with the listing."
-9. For guess 12, in `docs/sdk-contract.md` section 7.2, say whether a 200 with an empty body is `http_200` or a
-   clean end, so SDKs agree.
+None. Every tool fact this run learned (Checkstyle as a bare JAR, `--set-exit-if-changed`, the `SummaryJavadoc` period, `jdx/mise-action`) is already in `language-notes/java.md` (lines 14, 22, 23, 24), and the run followed it. Two things the notes do not say, offered for `language-notes/java.md` only: `-Xlint:all -Werror` rejects `close()` called on an `AutoCloseable` that is also a try-with-resources variable ("explicit call to close()"), which bites a test that closes a client to test `close`; and Checkstyle's `JavadocMethod` takes `accessModifiers`, so a lint that should skip package-private methods needs `public, protected` there.
 
 ## Checklist
 
-- [x] `bin/test` runs every vector but `buckets.json` and every pin, count equal to the phase 2 count: `VectorsTest`
-  (2 tests) reads `fixtures/evaluation/*.json` at test time; `bin/test` prints 17 passed; the count command printed
-  `1371 17` and the harness reports `vectors: 1369 passed` with the 2 named skips (1371 minus 2).
-- [x] Harness exits 0 with only the 2 named vector skips: `bun run conformance -- --service sdks/java/bin/test-service`
-  printed `scenarios: 81 passed, 0 failed, 0 skipped; vectors: 1369 passed, 0 failed, 2 skipped`, with
-  `integer-accessor` advertised, so no scenario skipped.
-- [x] Both context shapes: the harness, `privacy.json`, `kinds.json` vectors through the service.
-- [x] Result order and the mismatch rule with the SDK's own codes: the harness, `evaluation.json`, `usage.json`.
-- [x] `integer-accessor`, fraction is `TYPE_MISMATCH` and `2.0` is `2`: the harness, `evaluation.json`; also
-  `ClientTest.theIntegerAccessorTakesWholeNumbersInSigned64BitsAndNothingElse`.
-- [x] No failure makes an operation raise: the harness (the service answers 500 on anything raised, and no scenario
-  got one).
-- [x] `NOT_READY` before the first load: the harness, `load.json`.
-- [x] `ready` settles, bounded, repeatable, false after `close` if unsettled: the harness, `load.json`, `close.json`.
-- [x] A non-ruleset answer never replaces the one held: the harness, `status.json`.
-- [x] Ruleset request, `If-None-Match`, ETag kept exactly, URL joining: the harness, `load.json`, `status.json`.
-- [x] The stream: the harness, `stream.json`, `load.json`, `status.json`.
-- [x] The loop and the jittered backoff: the harness, `backoff.json`, `stream.json`.
-- [x] `429` and `Retry-After` on every route: the harness, `rate-limit.json`.
-- [x] Status fields, states and `lastError` codes: the harness, `status.json`, shape check on each status read.
-- [x] Usage counts: the harness, `usage.json`, `rate-limit.json`.
-- [x] Hook events and `onError`, a raising hook and a raising `onError`: the harness, `hooks.json`.
-- [x] `close` in order, twice at once, during a hold, with a final flush: the harness, `close.json`,
-  `rate-limit.json`, `usage.json`, `status.json`.
-- [x] No context, key or attribute in any request or `onError` message, no extra header: the harness,
-  `privacy.json` and the per-scenario checks. Source search for logs and error values: `grep -rln
-  "Logger\|System.out\|System.err\|printStackTrace" src/main` finds nothing (the SDK writes no log line), and
-  `grep -rn "new ToggleSlashException" src/main` finds `Usage.java:116,144,154` and `Sync.java:171`, each built from a
-  fixed code, an HTTP status or a fixed message, never from a context.
-- [x] Many threads on every operation, `close` racing `variation`, two `close` calls racing:
-  `ClientTest.everyOperationFromManyThreadsWithCloseRacingAndTwoClosesRacing`. No race detector exists for Java, so
-  this is a stress test (see guess 5).
-- [x] `variation` returns within a bound while a ruleset request and a usage flush hang:
-  `ClientTest.variationReturnsQuicklyWhileARulesetRequestAndAUsageFlushHang`.
-- [x] A reader sees one ruleset across a swap, the hook's `etag` and `flagVersion` pair:
-  `ClientTest.aHooksEtagAndFlagVersionBelongToTheSameRulesetUnderConcurrentSwaps`.
-- [x] Hook and `onError` calling back into the client do not deadlock:
-  `ClientTest.aHookAndAnOnErrorThatCallBackIntoTheClientDoNotDeadlock`.
-- [x] A silent stream is dropped as `timeout`, a keep-alive restarts the 60 s, through a seam on a real loopback
-  socket: `ClientTest.aStreamWithNoBytesIsDroppedAsTimeout`, `ClientTest.aKeepAliveRestartsTheWatchdog` (seam
-  `Options.Builder.streamIdle`, `FakeServer` socket that goes quiet).
-- [x] `Retry-After` above 300 held for 300 s on the three routes:
-  `ClientTest.aRetryAfterAbove300IsHeldFor300SecondsOnTheRulesetRoute`, `...OnTheStreamRoute`, `...OnTheEventsRoute`.
-- [x] Counts either side of UTC midnight go out as two days:
-  `ClientTest.countsRecordedEitherSideOfUtcMidnightGoOutAsTwoDays`.
-- [x] An evaluation that raises gives the fallback, `ERROR EVALUATION_FAILED` and one `onError`:
-  `ClientTest.anEvaluationThatRaisesGivesTheFallbackEvaluationFailedAndOneOnError`.
-- [x] n/a: no futures. The Java hook is a plain `Consumer<EvaluationEvent>`, so there is no later failure to route.
-- [x] A served number outside signed 64 bits is `TYPE_MISMATCH` on the integer accessor:
-  `ClientTest.theIntegerAccessorTakesWholeNumbersInSigned64BitsAndNothingElse`, and the harness `huge` scenario.
-- [x] A client never closed does not keep the process alive: `ClientTest.theSdksThreadsAreDaemonThreads` and
-  `ClientTest.aClientThatIsNeverClosedDoesNotKeepTheProcessFromExiting` (a child JVM, `UnclosedMain`, that never closes).
-- [x] `DESIGN.md` passes the phase 1 row check and `README.md` has the mapping table: both in `sdks/java`;
-  the row check in PROMPT.md phase 1 was run and printed nothing, and `README.md` line 48 links to the mapping table.
-- [x] Mapping names keep the canonical meaning and defaults, and reason kinds, error codes, stream states and
-  `lastError` codes keep their spelling: `Status`, `StreamState`, `ReasonKind` and `ErrorCode` use the contract's
-  spellings, held by the harness's status shape check.
-- [x] No platform regular expression in the evaluator: `grep -rn "java.util.regex" src/main/.../evaluation`
-  finds nothing. The only `.matches(` hit is `Clauses.java:57`, a call on the SDK's own `Pattern` class.
-- [x] Every runtime dependency has a `DESIGN.md` line: there are none (`DESIGN.md`, "Dependencies"); `pom.xml`
-  lists JUnit Jupiter as the one test-scope dependency.
-- [x] No telemetry and no header beyond the protocol's: `grep -n` on the header names finds only `Sync.java:223`
-  (`Authorization`), `:225` (`If-None-Match`), `:269` (`Authorization`), `:270` (`Accept`) and `Usage.java:137`
-  (`Authorization`), `:138` (`Content-Type`). Headers the JDK `HttpClient` adds, each naming no user or machine:
-  `Host` (the server's own authority, from the URL), `User-Agent` (`Java-http-client/<version>`, the library and
-  JDK version only, not the host or user), `Content-Length` (the body size on the events POST). No
-  `Connection` header (HTTP/1.1 client) and no `Accept-Encoding`.
-- [x] Every extra is one contract 13 allows: typed accessors, a `Detail` form, the `flushNow` and seam accessors
-  (package-private test seams), and nothing that weakens contract 5 or sends anything new.
-- [x] Seams are options on the builder, never a global or an environment variable: `Options.Builder.clock`,
-  `nanoTime`, `jitter`, `streamIdle`, `evaluator` (all package-private); the SDK reads no environment variable.
-- [x] `bin/lint`, `bin/test`, `bin/test-service` exist, are executable, `cd` to the SDK and use only the mise pin:
-  `ls -l bin` shows mode `-rwxr-xr-x` on all three; each runs through `mise exec`.
-- [x] `test-service/README.md` maps every accessor to an SDK method: bool, string, number, int, json and any.
-- [x] `.github/workflows/sdk-java.yml` follows the skeleton, filters on paths and pins each action by commit SHA:
-  `actions/checkout`, `oven-sh/setup-bun` and `jdx/mise-action` are each pinned to a 40-character SHA with the version
-  in a comment.
-- [x] No em dash or en dash: `bun scripts/check-dashes.ts` exits 0.
-- [x] `bun run format:check` passes (phase 5 check exited 0).
-- [x] Only `sdks/java/` and the one workflow file changed: the phase 6 scope check prints `scope ok`.
-- [x] No package published and no name reserved: nothing was uploaded or registered; the version is
-  `0.1.0-SNAPSHOT`.
-- [x] Commit subject is `chore(sdk-java): a Java server SDK built from the authoring prompt`, not `feat`, with no
-  `Co-Authored-By` and no AI attribution line.
-- [x] `RUN.md` follows `RUN-TEMPLATE.md`, with evidence for every line of this list: this file.
+The two executable checks
+
+- [x] `bin/test` runs every vector but `buckets.json` and every pin, all pass, count equals the phase 2 command's: `VectorsTest.everyVectorAndPin` reads `../../fixtures/evaluation` at test time; `bin/test` prints `vectors: 1371 pins: 17`.
+- [x] `bin/test` 10 in a row plus one CPU-loaded run, counts in Results: ten runs of 44 tests, 0 failures; loaded run (12 busy loops, started before, running through the build and tests) 44 tests, 0 failures. The tree did not change after the ten.
+- [x] Harness exits 0, only the 2 named vector skips: `scenarios: 83 passed, 0 failed, 0 skipped; vectors: 1369 passed, 0 failed, 2 skipped`. With `integer-accessor` advertised, no scenario is skipped.
+
+What the harness checks
+
+- [x] Both context shapes: harness `privacy.json` and the `kinds.json` vectors, passing in the run above.
+- [x] Result order and mismatch rule: harness `evaluation.json`, `usage.json`.
+- [x] `integer-accessor` fraction and `2.0`: harness `evaluation.json`; native `ClientTest.integerAccessorsCheckTheRange`.
+- [x] Nothing raises: the harness answers 500 on any raise, and no scenario failed.
+- [x] `NOT_READY` at once before the first load: harness `load.json`; native `beforeTheFirstLoadTheAnswerIsNotReadyAndNothingBlocks`.
+- [x] `ready` bounded, repeatable, false after `close`: harness `load.json`, `close.json`.
+- [x] A non-ruleset never replaces the held one: harness `status.json`.
+- [x] Ruleset request, `If-None-Match`, ETag, URL joining: harness `load.json`, `status.json`.
+- [x] Stream events, SSE parsing, refresh on change: harness `stream.json`, `load.json`, `status.json`; native `aChangedEventFetchesTheNewRuleset`.
+- [x] Loop and jittered backoff: harness `backoff.json`, `stream.json`.
+- [x] `429` and `Retry-After` on every route: harness `rate-limit.json`.
+- [x] Status fields, states and `lastError` codes: harness `status.json` and the shape check.
+- [x] Usage counts: harness `usage.json`, `rate-limit.json`.
+- [x] Hook events and `onError`: harness `hooks.json`.
+- [x] `close` ordering, twice at once, during a hold, final flush: harness `close.json`, `rate-limit.json`, `usage.json`, `status.json`.
+- [x] Privacy (no context, key or attribute in a request or `onError` message, no header beyond the protocol's): harness `privacy.json` and the per-scenario checks; native `requestsCarryOnlyTheKeyAndNeverTheContext` (a sentinel context value never appears in any request, and the headers are an allow-list). Source search for logs and error values: `grep -rn "System\.\(out\|err\)\|Logger\|printStackTrace\|\.getMessage()" src/main` prints nothing, so the SDK writes no log line. Every `new SdkException(` in `src/main` (`Client.java:321`, `Usage.java:141,189,192,199`, `Sync.java:146,371`) builds its message from a fixed word, an exception class name (`getSimpleName`), an error code or an HTTP status, never from a context, key or attribute.
+
+Native tests
+
+- [x] Every operation from many threads, `close` racing `variation`, two `close` calls racing, no error or deadlock: `ClientTest.closeRacingVariationAndRacingClosesEndCleanly` (20 rounds, each waiting for the workers to make progress, with a bound on the wait). Java has no race detector, so this stress test stands in.
+- [x] SHOULD, an `https` URL reaches the TLS path with a local certificate: `TlsTest.loadsOverTlsWhenTheCertificateIsTrustedAndRefusesItWhenNot` (a `keytool` PKCS12 certificate and `HttpsServer`: a trusting injected client loads, the default client gets `lastError` `network`).
+- [x] `variation` returns within a bound while a ruleset request hangs and while a usage flush hangs: `ClientTest.readyAnswersFalseWhenTheRulesetNeverComes` and `closeAbandonsAHangingRulesetRequest` (ruleset), `aSlowFlushDoesNotBlockVariation` (flush).
+- [x] A reader sees one ruleset across a swap: `ClientTest.aRulesetSwapNeverShowsATornPair` (the hook's `etag` and `flagVersion` belong together under concurrent swaps; the swap is one `AtomicReference` write of a `Core` record).
+- [x] A hook and an `onError` that call back into the client do not deadlock, and `ready` from inside returns: `ClientTest.callbacksMayCallBackIntoTheClient` calls `status`, `variation` and `ready` from both callbacks. `ready` is bounded by `requestTimeout` plus 1 s (decision 12), so even a call made before the first load settles cannot wait forever.
+- [x] A stream quiet for 60 s drops as `timeout`, a keep-alive restarts it, through a seam on a real quiet loopback socket: `StreamTest.aQuietStreamTripsTheWatchdogAndReconnects` and `keepAliveCommentsHoldTheWatchdogOffWithoutBreakingConnection` (`Tuning.watchdog`).
+- [x] `Retry-After` above 300 held for 300 s on the ruleset, stream and events routes through a seam: `HoldTest.retryAfterReadsWholeSecondsAndCapsAtThreeHundred`, `aRulesetAnswerOf429HoldsTheRulesRoutesAtMostThreeHundredSeconds`, `aStreamAnswerOf429HoldsTheRulesRoutesToo`, `anEventsAnswerOf429HoldsOnlyTheEventsRoute` (`Tuning.clock`).
+- [x] Counts either side of a UTC midnight go out as two days: `StreamTest.usageSplitsAtUtcMidnight` (a fake `Clock`).
+- [x] An evaluation that raises gives the fallback, `ERROR EVALUATION_FAILED` and one `onError`: `ClientTest.anEvaluationThatRaisesAnswersEvaluationFailedWithOneOnError`.
+- [x] A hook's future that fails later goes to `onError` and changes neither answer nor count: `ClientTest.aHookSeesTheEvaluationAndItsFailuresGoToOnError` (a thrown exception and a failed `CompletableFuture`).
+- [x] A served number outside signed 64 bits is `TYPE_MISMATCH` on the integer accessor: harness `huge` scenario in `evaluation.json`; `Kinds.integer` checks `d >= -2^63 && d < 2^63`, and `ClientTest.integerAccessorsCheckTheRange`.
+- [x] A client never closed does not keep the process from exiting: every SDK thread is a daemon `SdkThread`; `ClientTest.daemonThreadsOnlyAndNoThreadOutlivesClose`.
+- [x] A typed accessor that admits null, given a null fallback and served another kind, answers `TYPE_MISMATCH`: `ClientTest.aStringAccessorWithANullFallbackAcceptsOnlyAString` (`stringVariationDetail("count", ctx, null)` on a served number gives value null and `TYPE_MISMATCH`; `Client.stringVariationDetail` asks for `Want.STRING`, not `Want.ANY`). A null fallback on the generic or JSON accessor accepts any kind (contract 4, line 112).
+- [x] Generic accessor with an integer fallback type: `ClientTest.integerAccessorsCheckTheRange` (served `2.0` gives 2 as `Integer`, `Short`, `Byte` and `Long`; a fraction or out-of-range value gives the fallback and `TYPE_MISMATCH`); a class with no JSON kind: `genericAccessorsHandleNullFallbacksAndClassesWithNoJsonKind` (`BigDecimal`).
+- [x] The hook event's `value` for the integer accessor has the type the mapping table names: `Long` for `intVariation` (DESIGN.md mapping table, row `accessor shape`); `integerAccessorsCheckTheRange` and the `hooks.json` scenarios.
+- [x] A context attribute of each numeric type matches as the JSON number of its value: `ClientTest.contextAttributesOfEveryNumericTypeMatchAWholeNumber` (`int`, `long`, `short`, `byte`, `double`, `float`, `BigDecimal`, `BigInteger`).
+
+Code and documents
+
+- [x] `DESIGN.md` has the mapping table with a row for every contract 2 name, and `README.md` links to it.
+- [x] Names, defaults and spellings are canonical: reason kinds, error codes, stream states (lowercase constants) and `lastError` codes kept as the contract spells them; the harness's status shape check passes.
+- [x] No regular expression from the platform in the evaluator: `grep -rn "java.util.regex\|Pattern\.compile" src/main/java/.../eval` finds nothing (the only `Pattern` hits are `PatternVm`, the hand-written engine). `Main.java` of the test service uses `java.util.regex` for its own route table, which is not the evaluator.
+- [x] The lint configuration names its rule set and each ignored rule carries a reason: `checkstyle.xml`.
+- [x] Every runtime dependency has a `DESIGN.md` line: there is none (`DESIGN.md`, "Dependencies": "Runtime: none").
+- [x] No telemetry and no extra header: the request-header source search (`grep -rn '\.header(\|setHeader' src/main`) finds `Authorization` (`Hub.java:397`), `Content-Type` (`Usage.java:181`), `Accept: text/event-stream` (`Sync.java:234`) and `If-None-Match` (`Sync.java:161`, the conditional ruleset request). Captured on a loopback listener with the SDK's test service (one request per route, the key shown as `<key>`):
+
+  | Route | Headers the SDK sets | Headers the JDK `HttpClient` added |
+  | --- | --- | --- |
+  | `GET /sdk/v1/ruleset` | `Authorization` | `Host`, `User-Agent: Java-http-client/25.0.5` |
+  | `GET /sdk/v1/ruleset` (conditional) | `Authorization`, `If-None-Match: "e1"` | `Host`, `User-Agent: Java-http-client/25.0.5` |
+  | `GET /sdk/v1/stream` | `Authorization`, `Accept: text/event-stream` | `Host`, `User-Agent: Java-http-client/25.0.5` |
+  | `POST /sdk/v1/events` | `Authorization`, `Content-Type: application/json` | `Host`, `User-Agent: Java-http-client/25.0.5`, `Content-Length: 73` |
+
+  Why none identifies a user or a machine: `Host` is the operator's own server address, which the operator already knows; `User-Agent` is the library name and the JDK version only (no host name, user name or machine id, and the same on every machine running that JDK); `Content-Length` is the size of a body that holds only flag keys, variation indexes and a day. The client sends no `Accept-Encoding`, `Connection` or `Upgrade` header (HTTP/1.1 only, decision 2).
+- [x] Every extra is one contract 13 allows (the `Tuning` seam, read-only JSON, the bounded `ready`, `close`); none weakens contract 5 or sends anything new.
+- [x] Seams are options on create, not globals or environment variables: `Tuning` via the package-private `Client.create(Options, Tuning)` (decision 15); a grep for `System.getenv` and `System.getProperty` in `src/main` finds nothing.
+- [x] `bin/lint`, `bin/test` and `bin/test-service` exist, are executable, `cd` to the SDK and use only the toolchain `mise.toml` pins (`mise exec --`).
+- [x] `test-service/README.md` maps every accessor (`bool`, `string`, `number`, `int`, `json`, `any`) to a Java method, and names the capability `integer-accessor`.
+- [x] `.github/workflows/sdk-java.yml` follows the skeleton, filters on its paths (including the fixtures, the contract, the protocol and the harness), and pins every action by commit SHA (copied from `ci.yml`, plus `jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b`, v5.2.7).
+- [x] A `status` read racing a stream failure never shows that failure's `lastError` beside `connected`: `StreamTest.aStatusReadNeverShowsAFailureBesideConnected` (3 reader threads for 3 s). Java has no race detector; status is one immutable snapshot built under the `Hub` lock.
+
+Repository
+
+- [x] No dash: `bun scripts/check-dashes.ts` exits 0 after `git add -A`.
+- [x] `bun run format:check` passes ("All matched files use the correct format").
+- [x] Only `sdks/java/` and `.github/workflows/sdk-java.yml` changed: the phase 6 scope check prints `scope ok`.
+- [x] Nothing published and no name reserved.
+- [x] One Conventional Commit, `chore(sdk-java): the Java server SDK regenerated cold from the authoring prompt`, not `feat`, no `Co-Authored-By` and no AI attribution line; the wip commits are squashed away.
+- [x] The workflow job is `runs-on: ubuntu-latest` with no `if:`, triggers `pull_request` and `push` only, installs its own toolchain; `bun scripts/check-workflows.ts .github/workflows/*.yml` prints `8 workflow(s) read, 0 failure(s)`.
+- [x] `RUN.md` has every template section (the phase 6 section check prints nothing) and evidence for each line.
