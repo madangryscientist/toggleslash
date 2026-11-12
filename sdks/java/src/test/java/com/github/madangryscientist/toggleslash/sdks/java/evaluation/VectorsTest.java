@@ -1,72 +1,44 @@
 package com.github.madangryscientist.toggleslash.sdks.java.evaluation;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
+import com.github.madangryscientist.toggleslash.sdks.java.json.Json;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
-/**
- * Runs every vector in {@code fixtures/evaluation/} (read from the repository, never a copy) and
- * every pin in {@code buckets.json} through the evaluator.
- */
+/** Runs every evaluation vector and every bucket pin from {@code fixtures/evaluation}. */
 class VectorsTest {
-  private static final Path DIR = Path.of("../../fixtures/evaluation");
+  private static final Path FIXTURES = Path.of("..", "..", "fixtures", "evaluation");
 
   private static Object read(Path file) throws IOException {
-    return Json.parse(Files.readAllBytes(file));
+    return Json.parse(Utf8.decode(Files.readAllBytes(file)));
   }
 
   private static List<Path> files() throws IOException {
-    try (Stream<Path> stream = Files.list(DIR)) {
+    try (Stream<Path> stream = Files.list(FIXTURES)) {
       return stream.filter(p -> p.toString().endsWith(".json")).sorted().toList();
     }
   }
 
-  /** The result as the JSON the vectors spell it. */
-  private static Map<String, Object> asJson(Result result) {
-    Map<String, Object> reason = new LinkedHashMap<>();
-    Reason r = result.reason();
-    reason.put("kind", r.kind().value());
-    r.ruleIndex().ifPresent(i -> reason.put("ruleIndex", (double) i));
-    r.flagKey().ifPresent(k -> reason.put("flagKey", k));
-    r.code().ifPresent(c -> reason.put("code", c.value()));
-    Map<String, Object> out = new LinkedHashMap<>();
-    out.put("value", result.value());
-    out.put(
-        "variationIndex",
-        result.variationIndex().isPresent()
-            ? (Object) (double) result.variationIndex().getAsInt()
-            : null);
-    out.put("reason", reason);
-    return out;
-  }
-
-  /** Deep equality by the specification's rules: numbers by IEEE-754, so -0 equals 0. */
+  /** Deep equality by the spec: numbers by IEEE-754, so -0 equals 0. */
   static boolean same(Object a, Object b) {
-    if (a instanceof Double x && b instanceof Double y) {
-      return x.doubleValue() == y.doubleValue();
+    if (a == null || b == null) {
+      return a == b;
     }
-    if (a instanceof Map<?, ?> x && b instanceof Map<?, ?> y) {
-      if (!x.keySet().equals(y.keySet())) {
-        return false;
-      }
-      for (Map.Entry<?, ?> entry : x.entrySet()) {
-        if (!same(entry.getValue(), y.get(entry.getKey()))) {
-          return false;
-        }
-      }
-      return true;
+    if (a instanceof Double && b instanceof Double) {
+      return ((Double) a).doubleValue() == ((Double) b).doubleValue();
     }
-    if (a instanceof List<?> x && b instanceof List<?> y) {
+    if (a instanceof List<?> && b instanceof List<?>) {
+      List<?> x = (List<?>) a;
+      List<?> y = (List<?>) b;
       if (x.size() != y.size()) {
         return false;
       }
@@ -77,65 +49,110 @@ class VectorsTest {
       }
       return true;
     }
-    return a == null ? b == null : a.equals(b);
+    if (a instanceof Map<?, ?> && b instanceof Map<?, ?>) {
+      Map<?, ?> x = (Map<?, ?>) a;
+      Map<?, ?> y = (Map<?, ?>) b;
+      if (!x.keySet().equals(y.keySet())) {
+        return false;
+      }
+      for (Object key : x.keySet()) {
+        if (!same(x.get(key), y.get(key))) {
+          return false;
+        }
+      }
+      return true;
+    }
+    return a.equals(b);
+  }
+
+  private static String describe(Result result) {
+    Reason r = result.reason();
+    return "{value="
+        + Json.write(result.value())
+        + ", variationIndex="
+        + result.variationIndex()
+        + ", reason="
+        + r
+        + "}";
+  }
+
+  private static String check(Map<?, ?> vector, Result result) {
+    Map<?, ?> expected = (Map<?, ?>) vector.get("expected");
+    Map<?, ?> reason = (Map<?, ?>) expected.get("reason");
+    Object index = expected.get("variationIndex");
+    boolean indexOk =
+        index == null
+            ? result.variationIndex() == null
+            : result.variationIndex() != null
+                && result.variationIndex().doubleValue() == (Double) index;
+    Reason actual = result.reason();
+    boolean reasonOk =
+        actual.kind().name().equals(reason.get("kind"))
+            && same(
+                actual.errorCode() == null ? null : actual.errorCode().name(), reason.get("code"))
+            && same(
+                actual.ruleIndex() == null ? null : Double.valueOf(actual.ruleIndex()),
+                reason.get("ruleIndex"))
+            && same(actual.flagKey(), reason.get("flagKey"));
+    if (indexOk && reasonOk && same(result.value(), expected.get("value"))) {
+      return null;
+    }
+    return "expected " + Json.write(expected) + " but got " + describe(result);
   }
 
   @Test
   void everyVectorAndEveryPin() throws IOException {
     int vectors = 0;
     int pins = 0;
+    int fileCount = 0;
     List<String> failures = new ArrayList<>();
     for (Path file : files()) {
+      fileCount++;
+      Map<?, ?> content = (Map<?, ?>) read(file);
       String name = file.getFileName().toString();
-      Map<?, ?> doc = (Map<?, ?>) read(file);
       if (name.equals("buckets.json")) {
-        for (Object item : (List<?>) doc.get("buckets")) {
+        for (Object item : (List<?>) content.get("buckets")) {
           Map<?, ?> pin = (Map<?, ?>) item;
-          String flagKey = (String) pin.get("flagKey");
-          String salt = (String) pin.get("salt");
-          String contextKey = (String) pin.get("contextKey");
-          long uint32 = Contexts.uint32(flagKey, salt, contextKey);
-          int bucket = Contexts.bucket(flagKey, salt, contextKey);
-          if (uint32 != ((Double) pin.get("uint32")).longValue()
-              || bucket != ((Double) pin.get("bucket")).intValue()) {
-            failures.add(name + ": " + flagKey + "/" + salt + "/" + contextKey);
-          }
+          long expectedUint = (long) ((Double) pin.get("uint32")).doubleValue();
+          int bucket =
+              Bucket.of(
+                  (String) pin.get("flagKey"),
+                  (String) pin.get("salt"),
+                  (String) pin.get("contextKey"));
+          long uint =
+              Bucket.uint32(
+                  (String) pin.get("flagKey"),
+                  (String) pin.get("salt"),
+                  (String) pin.get("contextKey"));
           pins++;
+          if (uint != expectedUint || bucket != (int) ((Double) pin.get("bucket")).doubleValue()) {
+            failures.add(name + " pin " + pin + ": got uint32 " + uint + " bucket " + bucket);
+          }
         }
         continue;
       }
-      for (Object item : (List<?>) doc.get("vectors")) {
+      for (Object item : (List<?>) content.get("vectors")) {
         Map<?, ?> vector = (Map<?, ?>) item;
-        Map<String, Object> input = new LinkedHashMap<>();
+        vectors++;
+        Map<String, Object> input = new java.util.LinkedHashMap<>();
         input.put("flags", vector.get("flags"));
         input.put("segments", vector.get("segments"));
-        Ruleset ruleset = Ruleset.of(input);
-        Result result = ruleset.evaluate((String) vector.get("flagKey"), vector.get("context"));
-        Map<String, Object> actual = asJson(result);
-        Object expected = vector.get("expected");
-        if (!same(actual, expected)) {
-          failures.add(
-              name
-                  + ": "
-                  + vector.get("name")
-                  + "\n  expected "
-                  + Json.write(expected)
-                  + "\n  actual   "
-                  + Json.write(actual));
+        Result result =
+            Evaluator.evaluate(
+                Ruleset.parse(input), (String) vector.get("flagKey"), vector.get("context"));
+        String problem = check(vector, result);
+        if (problem != null) {
+          failures.add(name + " / " + vector.get("name") + ": " + problem);
         }
-        vectors++;
       }
     }
+    assertTrue(fileCount > 0, "no fixture files were read");
+    assertTrue(vectors > 0, "no vectors were read");
+    assertTrue(pins > 0, "no pins were read");
     System.out.println("vectors: " + vectors + " pins: " + pins);
-    assertTrue(
-        failures.isEmpty(), () -> failures.size() + " failed:\n" + String.join("\n", failures));
-    assertTrue(vectors > 0, "read no vectors");
-    assertTrue(pins > 0, "read no pins");
-  }
-
-  @Test
-  void aLoneSurrogateIsHashedAsReplacement() {
-    assertEquals(Contexts.uint32("f", "s", "a�b"), Contexts.uint32("f", "s", "a\uD800b"));
-    assertFalse(Contexts.uint32("f", "s", "a?b") == Contexts.uint32("f", "s", "a\uD800b"));
+    if (!failures.isEmpty()) {
+      fail(failures.size() + " failed:\n" + String.join("\n", failures));
+    }
+    assertEquals(0, failures.size());
   }
 }

@@ -1,66 +1,38 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
-import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.charset.CharsetDecoder;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A server-sent events parser, to the WHATWG rules: lines end in LF, CRLF or a lone CR; a line that
- * starts with a colon is a comment; the event name defaults to {@code message}; several {@code
- * data} lines are joined with LF; an event with no {@code data} line is dropped; an event still
- * open when the input ends is discarded (it is never flushed). Bytes are decoded as UTF-8 across
- * chunk boundaries, with U+FFFD for bad bytes.
+ * An incremental Server-Sent Events parser to the WHATWG rules, over text already decoded. Feed it
+ * text in any chunking. A line ends at LF, CRLF or a lone CR (a CR at the end of a chunk waits for
+ * a possible LF). A line starting with a colon is a comment. Only {@code event} and {@code data}
+ * are read. An event with no data line is dropped, and the name defaults to {@code message}. An
+ * event incomplete at the end is never returned.
  */
 final class SseParser {
-  /** One dispatched event. */
+  /** One event: its name and its data. */
   record Event(String name, String data) {}
 
-  private final CharsetDecoder decoder =
-      StandardCharsets.UTF_8
-          .newDecoder()
-          .onMalformedInput(CodingErrorAction.REPLACE)
-          .onUnmappableCharacter(CodingErrorAction.REPLACE);
-  private ByteBuffer pending = ByteBuffer.allocate(0);
   private final StringBuilder line = new StringBuilder();
-  private final StringBuilder data = new StringBuilder();
+  private boolean afterCr;
   private String name = "";
+  private final StringBuilder data = new StringBuilder();
   private boolean hasData;
-  private boolean skipLf;
-  private boolean atStart = true;
 
-  /** Feeds the next bytes and returns the events they completed. */
-  List<Event> feed(byte[] chunk, int length) {
-    ByteBuffer input = ByteBuffer.allocate(pending.remaining() + length);
-    input.put(pending);
-    input.put(chunk, 0, length);
-    input.flip();
-    CharBuffer out = CharBuffer.allocate(input.remaining() + 1);
-    decoder.decode(input, out, false);
-    pending = ByteBuffer.allocate(input.remaining());
-    pending.put(input);
-    pending.flip();
-    out.flip();
+  /** Takes the next piece of text and returns the events it completed. */
+  List<Event> feed(CharSequence text) {
     List<Event> events = new ArrayList<>();
-    while (out.hasRemaining()) {
-      char c = out.get();
-      if (atStart) {
-        atStart = false;
-        if (c == '﻿') {
-          continue;
-        }
-      }
-      if (skipLf) {
-        skipLf = false;
+    for (int i = 0; i < text.length(); i++) {
+      char c = text.charAt(i);
+      if (afterCr) {
+        afterCr = false;
         if (c == '\n') {
           continue;
         }
       }
       if (c == '\r') {
-        skipLf = true;
+        afterCr = true;
         endLine(events);
       } else if (c == '\n') {
         endLine(events);
@@ -75,12 +47,7 @@ final class SseParser {
     String text = line.toString();
     line.setLength(0);
     if (text.isEmpty()) {
-      if (hasData) {
-        events.add(new Event(name.isEmpty() ? "message" : name, data.toString()));
-      }
-      name = "";
-      data.setLength(0);
-      hasData = false;
+      dispatch(events);
       return;
     }
     if (text.charAt(0) == ':') {
@@ -101,5 +68,14 @@ final class SseParser {
       data.append(value);
       hasData = true;
     }
+  }
+
+  private void dispatch(List<Event> events) {
+    if (hasData) {
+      events.add(new Event(name.isEmpty() ? "message" : name, data.toString()));
+    }
+    name = "";
+    data.setLength(0);
+    hasData = false;
   }
 }

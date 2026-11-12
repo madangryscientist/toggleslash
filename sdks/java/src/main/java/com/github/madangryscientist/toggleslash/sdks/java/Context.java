@@ -1,151 +1,127 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
-import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Json;
-import com.github.madangryscientist.toggleslash.sdks.java.evaluation.JsonException;
+import com.github.madangryscientist.toggleslash.sdks.java.json.Json;
+import com.github.madangryscientist.toggleslash.sdks.java.json.JsonException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 /**
- * Who a flag is evaluated for: a single context (a {@code key}, an optional {@code kind} that
- * defaults to {@code user}, and optional {@code attributes}) or a multi context. A context is
- * immutable. One that is not valid is still a context: evaluating with it gives {@code ERROR
- * INVALID_CONTEXT} and never throws.
+ * An evaluation context: a single context ({@code key}, optional {@code kind} and {@code
+ * attributes}) or a multi context ({@code kind: "multi"} and {@code contexts}), exactly as {@code
+ * docs/evaluation.md} defines them. A value that is not valid is not an exception: the evaluation
+ * answers {@code ERROR INVALID_CONTEXT} and the caller gets its fallback.
  */
 public final class Context {
-  private final Object tree;
+  private final Object value;
 
-  private Context(Object tree) {
-    this.tree = tree;
+  private Context(Object value) {
+    this.value = value;
   }
 
   /**
-   * A context from the contract's shape: a map with {@code key}, and optionally {@code kind} and
-   * {@code attributes} (or {@code kind: "multi"} and {@code contexts}). Numbers become doubles,
-   * collections lists and any other value its {@code toString()}; a null map is an invalid context.
+   * A context from a native map. Values may be {@code Boolean}, any {@code Number} (read as the
+   * nearest {@code double}), any {@code CharSequence}, a {@code Map} with {@code String} keys, a
+   * {@code Collection} or null. Anything else makes the context invalid.
+   *
+   * @param map the context as a map
+   * @return the context, never null
    */
-  public static Context of(Map<String, ?> shape) {
-    return new Context(shape == null ? null : copy(shape, 0));
+  public static Context of(Map<String, ?> map) {
+    return new Context(convert(map, 0));
   }
 
-  /** A context from JSON text. Text that is not JSON is an invalid context, not an error. */
-  public static Context fromJson(String json) {
-    if (json == null) {
-      return new Context(null);
-    }
+  /**
+   * A context from raw JSON text. It keeps a number such as {@code 1e999} and a lone surrogate
+   * escape as the spec reads them. Text that is not JSON is an invalid context.
+   *
+   * @param json the JSON text
+   * @return the context, never null
+   */
+  public static Context parse(String json) {
     try {
-      return new Context(Json.parse(json));
+      return new Context(json == null ? null : Json.parse(json));
     } catch (JsonException e) {
       return new Context(null);
     }
   }
 
-  /** A {@code user} context with this key. */
+  /**
+   * A {@code user} context with a key.
+   *
+   * @param key the key
+   * @return the context, never null
+   */
   public static Context user(String key) {
-    return kind("user", key);
-  }
-
-  /** A context of this kind with this key. */
-  public static Context kind(String kind, String key) {
-    Map<String, Object> shape = new LinkedHashMap<>();
-    shape.put("kind", kind);
-    shape.put("key", key);
-    return new Context(shape);
-  }
-
-  /** The multi context of these single contexts, each under its own kind. */
-  public static Context multi(Context... contexts) {
-    Map<String, Object> entries = new LinkedHashMap<>();
-    if (contexts != null) {
-      for (Context context : contexts) {
-        if (context != null && context.tree instanceof Map<?, ?> single) {
-          Map<String, Object> entry = new LinkedHashMap<>();
-          entry.put("key", single.get("key"));
-          if (single.get("attributes") != null) {
-            entry.put("attributes", single.get("attributes"));
-          }
-          Object kind = single.get("kind");
-          entries.put(kind instanceof String text ? text : "user", entry);
-        }
-      }
-    }
-    Map<String, Object> shape = new LinkedHashMap<>();
-    shape.put("kind", "multi");
-    shape.put("contexts", entries);
-    return new Context(shape);
+    return user(key, null);
   }
 
   /**
-   * A copy of this context with one more attribute (on a single context; a multi one is unchanged).
+   * A {@code user} context with a key and attributes.
+   *
+   * @param key the key
+   * @param attributes the attributes, or null; see {@link #of(Map)} for the values
+   * @return the context, never null
    */
-  public Context with(String attribute, Object value) {
-    if (!(tree instanceof Map<?, ?> single) || "multi".equals(single.get("kind"))) {
-      return this;
+  public static Context user(String key, Map<String, ?> attributes) {
+    Map<String, Object> map = new LinkedHashMap<>();
+    map.put("key", key);
+    if (attributes != null) {
+      map.put("attributes", attributes);
     }
-    Map<String, Object> shape = new LinkedHashMap<>();
-    for (Map.Entry<?, ?> entry : single.entrySet()) {
-      shape.put((String) entry.getKey(), entry.getValue());
+    return of(map);
+  }
+
+  /**
+   * The value in the JSON model the evaluator reads: null, Boolean, Double, String, List or Map.
+   */
+  Object value() {
+    return value;
+  }
+
+  /**
+   * The nesting past which a native value is refused, so a cyclic map cannot overflow the stack.
+   */
+  private static final int MAX_DEPTH = 512;
+
+  private static Object convert(Object input, int depth) {
+    if (depth > MAX_DEPTH) {
+      throw new IllegalArgumentException("too deep");
     }
-    Map<String, Object> attributes = new LinkedHashMap<>();
-    if (single.get("attributes") instanceof Map<?, ?> existing) {
-      for (Map.Entry<?, ?> entry : existing.entrySet()) {
-        attributes.put((String) entry.getKey(), entry.getValue());
+    if (input == null || input instanceof Boolean || input instanceof String) {
+      return input;
+    }
+    if (input instanceof Number) {
+      return ((Number) input).doubleValue();
+    }
+    if (input instanceof CharSequence) {
+      return input.toString();
+    }
+    if (input instanceof Map<?, ?>) {
+      Map<String, Object> out = new LinkedHashMap<>();
+      for (Map.Entry<?, ?> entry : ((Map<?, ?>) input).entrySet()) {
+        if (!(entry.getKey() instanceof String)) {
+          throw new IllegalArgumentException("key");
+        }
+        out.put((String) entry.getKey(), convert(entry.getValue(), depth + 1));
       }
+      return out;
     }
-    attributes.put(Objects.toString(attribute), copy(value, 0));
-    shape.put("attributes", attributes);
-    return new Context(shape);
+    if (input instanceof Collection<?>) {
+      List<Object> out = new ArrayList<>();
+      for (Object item : (Collection<?>) input) {
+        out.add(convert(item, depth + 1));
+      }
+      return out;
+    }
+    throw new IllegalArgumentException("type");
   }
 
-  /** The JSON tree the evaluator reads; null for an invalid context. Not for callers to change. */
-  Object tree() {
-    return tree;
-  }
-
-  /** The context as JSON text; {@code null} for an invalid context. */
-  public String toJson() {
-    return Json.write(tree);
-  }
-
+  /** An invalid context is never described, and a valid one never prints what it holds. */
   @Override
   public String toString() {
-    // A context holds end-user data, so its text form names nothing in it.
     return "Context";
-  }
-
-  private static Object copy(Object value, int depth) {
-    if (depth > 64) {
-      return null;
-    }
-    if (value == null || value instanceof String || value instanceof Boolean) {
-      return value;
-    }
-    if (value instanceof Number number) {
-      return number.doubleValue();
-    }
-    if (value instanceof Map<?, ?> map) {
-      Map<String, Object> out = new LinkedHashMap<>();
-      for (Map.Entry<?, ?> entry : map.entrySet()) {
-        out.put(String.valueOf(entry.getKey()), copy(entry.getValue(), depth + 1));
-      }
-      return out;
-    }
-    if (value instanceof Iterable<?> items) {
-      List<Object> out = new ArrayList<>();
-      for (Object item : items) {
-        out.add(copy(item, depth + 1));
-      }
-      return out;
-    }
-    if (value instanceof Object[] items) {
-      List<Object> out = new ArrayList<>();
-      for (Object item : items) {
-        out.add(copy(item, depth + 1));
-      }
-      return out;
-    }
-    return String.valueOf(value);
   }
 }

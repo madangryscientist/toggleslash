@@ -1,142 +1,586 @@
 package com.github.madangryscientist.toggleslash.sdks.java.evaluation;
 
-import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Contexts.KindContext;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.OptionalInt;
 import java.util.Set;
-import java.util.function.Function;
 
 /**
- * A validated, indexed ruleset ({@code {flags, segments}} as JSON hands it over), and the
- * evaluation of one flag against it, to {@code docs/evaluation.md}. It is immutable and safe to
- * share between threads. Neither creating one nor evaluating on it throws: a bad flag becomes an
- * {@code ERROR} result when it is evaluated.
+ * A ruleset validated and indexed once, so each evaluation skips that work. {@link #parse} never
+ * throws: a bad flag becomes an {@code ERROR} result when it is evaluated. {@code
+ * docs/evaluation.md} is normative for what counts as malformed. Null and absent are the same for
+ * an optional field.
  */
 public final class Ruleset {
-  /** Prerequisite links from the requested flag; {@code docs/evaluation.md} pins the limit. */
-  private static final int MAX_PREREQUISITE_DEPTH = 32;
+  // ---- the model ----
 
-  private enum Status {
-    MALFORMED,
-    BROKEN,
-    READY
-  }
+  /** The ops, in the spelling of the spec. */
+  enum Op {
+    IN("in"),
+    CONTAINS("contains"),
+    STARTS_WITH("startsWith"),
+    ENDS_WITH("endsWith"),
+    LT("lt"),
+    LTE("lte"),
+    GT("gt"),
+    GTE("gte"),
+    SEMVER_EQ("semverEq"),
+    SEMVER_LT("semverLt"),
+    SEMVER_LTE("semverLte"),
+    SEMVER_GT("semverGt"),
+    SEMVER_GTE("semverGte"),
+    BEFORE("before"),
+    AFTER("after"),
+    MATCHES("matches"),
+    SEGMENT_MATCH("segmentMatch");
 
-  /** A target that lists a key: its place in {@code targets} and the variation it serves. */
-  private record TargetHit(int order, int variation) {}
+    private final String wire;
 
-  /** A flag after validation. {@code header} is the flag itself when it has a valid header. */
-  private record FlagEntry(
-      Status status, Map<?, ?> flag, ErrorCode code, Map<String, Map<String, TargetHit>> targets) {}
+    Op(String wire) {
+      this.wire = wire;
+    }
 
-  /** A segment after validation, with the keys it lists by kind. */
-  private record ReadySegment(
-      Map<?, ?> segment, Map<String, Set<String>> included, Map<String, Set<String>> excluded) {}
-
-  /** Per-evaluation state. */
-  private static final class Run {
-    final Map<String, KindContext> contexts;
-    final Set<String> active = new HashSet<>();
-    final Map<String, Result> completed = new HashMap<>();
-
-    Run(Map<String, KindContext> contexts) {
-      this.contexts = contexts;
+    static Op of(Object text) {
+      for (Op op : values()) {
+        if (op.wire.equals(text)) {
+          return op;
+        }
+      }
+      return null;
     }
   }
 
-  private static final Object MALFORMED_SEGMENT = new Object();
+  /** A clause: an attribute test, or a segmentMatch. */
+  static final class Clause {
+    final Op op;
+    final String attribute;
 
-  private final Map<String, FlagEntry> flags;
-  private final Map<String, Object> segments;
+    /** Doubles (finite), strings and booleans. */
+    final List<Object> values;
 
-  private Ruleset(Map<String, FlagEntry> flags, Map<String, Object> segments) {
+    final boolean negate;
+    final String contextKind;
+
+    /** One compiled pattern per value for {@code matches} (null for an invalid one), else null. */
+    final Pattern[] patterns;
+
+    /** The segment keys of a segmentMatch. */
+    final List<String> segmentKeys;
+
+    Clause(
+        Op op,
+        String attribute,
+        List<Object> values,
+        boolean negate,
+        String contextKind,
+        List<String> segmentKeys) {
+      this.op = op;
+      this.attribute = attribute;
+      this.values = values;
+      this.negate = negate;
+      this.contextKind = contextKind;
+      this.segmentKeys = segmentKeys;
+      if (op == Op.MATCHES) {
+        this.patterns = new Pattern[values.size()];
+        for (int i = 0; i < patterns.length; i++) {
+          Object value = values.get(i);
+          patterns[i] = value instanceof String ? Pattern.compile((String) value) : null;
+        }
+      } else {
+        this.patterns = null;
+      }
+    }
+  }
+
+  /** One weighted variation of a rollout. */
+  record Weighted(int variation, int weight) {}
+
+  /** A rollout. */
+  record Rollout(String contextKind, List<Weighted> variations) {}
+
+  /** A variation, or a rollout. */
+  record Serve(int variation, Rollout rollout) {}
+
+  /** A rule: clauses, then what it serves. */
+  record Rule(List<Clause> clauses, Serve serve) {}
+
+  /** A target. */
+  record Target(int variation, List<String> contextKeys, String contextKind) {}
+
+  /** A prerequisite. {@code variation} is a count, which can be larger than any variation index. */
+  record Prerequisite(String flagKey, double variation) {}
+
+  /** The part of a flag that serving the off variation needs. */
+  record Header(String key, boolean on, List<Object> variations, Integer offVariation) {}
+
+  /** A flag that fits the spec. */
+  static final class Flag {
+    Header header;
+    String salt;
+    double version;
+    List<Target> targets;
+    List<Prerequisite> prerequisites;
+    List<Rule> rules;
+    Serve fallthrough;
+
+    /** Targets by kind, then by key; the first target in array order holds each key. */
+    Map<String, Map<String, int[]>> targetIndex;
+  }
+
+  /** A flag entry: malformed, broken (valid header, a code) or ready. */
+  static final class Entry {
+    final Header header;
+    final ErrorCode brokenCode;
+    final Flag flag;
+
+    Entry(Header header, ErrorCode brokenCode, Flag flag) {
+      this.header = header;
+      this.brokenCode = brokenCode;
+      this.flag = flag;
+    }
+
+    boolean isMalformed() {
+      return header == null;
+    }
+
+    boolean isBroken() {
+      return header != null && flag == null;
+    }
+  }
+
+  /** A segment rule. */
+  record SegmentRule(List<Clause> clauses, Integer weight, String rolloutContextKind) {}
+
+  /** A segment that fits the spec, with its key lists by kind. */
+  static final class ReadySegment {
+    String key;
+    String salt;
+    List<SegmentRule> rules;
+    Map<String, Set<String>> included;
+    Map<String, Set<String>> excluded;
+  }
+
+  private static final ReadySegment MALFORMED_SEGMENT = new ReadySegment();
+
+  final Map<String, Entry> flags;
+  final Map<String, ReadySegment> segments;
+
+  private Ruleset(Map<String, Entry> flags, Map<String, ReadySegment> segments) {
     this.flags = flags;
     this.segments = segments;
   }
 
-  /**
-   * Validates and indexes a ruleset once, so each evaluation skips that work. Anything that is not
-   * a record with a {@code flags} and a {@code segments} array is an empty ruleset on that side.
-   */
-  public static Ruleset of(Object input) {
-    Object rawFlags = Validate.isRecord(input) ? Validate.field(input, "flags") : null;
-    Object rawSegments = Validate.isRecord(input) ? Validate.field(input, "segments") : null;
-    Map<String, Object> segments = indexByKey(rawSegments, Ruleset::compileSegment);
-    Map<String, FlagEntry> flags = indexByKey(rawFlags, item -> compileFlag(item, segments));
-    return new Ruleset(flags, segments);
+  static boolean isMalformed(ReadySegment segment) {
+    return segment == MALFORMED_SEGMENT;
+  }
+
+  /** The number of flags the ruleset indexes, malformed ones included. */
+  public int flagCount() {
+    return flags.size();
   }
 
   /**
-   * Does a body parsed from JSON have the shape of a ruleset: {@code flags} and {@code segments}
-   * arrays?
+   * The flag's {@code version}, or null when the ruleset has no such flag or the flag is malformed
+   * (its header or its body does not fit the spec).
    */
-  public static boolean isRuleset(Object body) {
-    return Validate.isRecord(body)
-        && Validate.field(body, "flags") instanceof List
-        && Validate.field(body, "segments") instanceof List;
+  public Double flagVersion(String key) {
+    Entry entry = flags.get(key);
+    if (entry == null || entry.flag == null) {
+      return null;
+    }
+    return entry.flag.version;
   }
 
-  private static <T> Map<String, T> indexByKey(Object items, Function<Object, T> compile) {
-    Map<String, T> index = new HashMap<>();
-    if (items instanceof List<?> list) {
-      for (Object item : list) {
-        Object key = Validate.isRecord(item) ? Validate.field(item, "key") : null;
-        if (key instanceof String text && !index.containsKey(text)) {
-          index.put(text, compile.apply(item));
-        }
+  // ---- reading ----
+
+  private static boolean isCount(Object value) {
+    if (!(value instanceof Double)) {
+      return false;
+    }
+    double d = (Double) value;
+    return !Double.isInfinite(d) && !Double.isNaN(d) && d == Math.rint(d) && d >= 0;
+  }
+
+  private static boolean isKey(Object value) {
+    return value instanceof String && !((String) value).isEmpty();
+  }
+
+  private static Integer variationIndex(Object value, int count) {
+    if (!isCount(value) || (Double) value >= count) {
+      return null;
+    }
+    return (int) ((Double) value).doubleValue();
+  }
+
+  private static List<String> stringList(Object value) {
+    if (!(value instanceof List<?>)) {
+      return null;
+    }
+    List<String> out = new ArrayList<>();
+    for (Object item : (List<?>) value) {
+      if (!(item instanceof String)) {
+        return null;
+      }
+      out.add((String) item);
+    }
+    return out;
+  }
+
+  private static boolean isOptionalKind(Object value) {
+    return value == null || Contexts.isKind(value);
+  }
+
+  private static boolean isNegate(Object value) {
+    return value == null || value instanceof Boolean;
+  }
+
+  private static boolean isAttributeName(Object value) {
+    if (!isKey(value)) {
+      return false;
+    }
+    String text = (String) value;
+    return !text.startsWith("/") || References.parse(text) != null;
+  }
+
+  private static boolean isClauseValue(Object value) {
+    if (value instanceof Double) {
+      return !Double.isInfinite((Double) value) && !Double.isNaN((Double) value);
+    }
+    return value instanceof String || value instanceof Boolean;
+  }
+
+  private static Clause attributeClause(Object value) {
+    if (!(value instanceof Map<?, ?>)) {
+      return null;
+    }
+    Map<?, ?> map = (Map<?, ?>) value;
+    Op op = Op.of(map.get("op"));
+    if (op == null || op == Op.SEGMENT_MATCH) {
+      return null;
+    }
+    Object values = map.get("values");
+    if (!isAttributeName(map.get("attribute"))
+        || !isNegate(map.get("negate"))
+        || !isOptionalKind(map.get("contextKind"))
+        || !(values instanceof List<?>)) {
+      return null;
+    }
+    List<Object> checked = new ArrayList<>();
+    for (Object item : (List<?>) values) {
+      if (!isClauseValue(item)) {
+        return null;
+      }
+      checked.add(item);
+    }
+    return new Clause(
+        op,
+        (String) map.get("attribute"),
+        checked,
+        Boolean.TRUE.equals(map.get("negate")),
+        (String) map.get("contextKind"),
+        null);
+  }
+
+  private static Clause segmentClause(Object value) {
+    if (!(value instanceof Map<?, ?>)) {
+      return null;
+    }
+    Map<?, ?> map = (Map<?, ?>) value;
+    if (!"segmentMatch".equals(map.get("op")) || !isNegate(map.get("negate"))) {
+      return null;
+    }
+    List<String> keys = stringList(map.get("values"));
+    if (keys == null) {
+      return null;
+    }
+    return new Clause(
+        Op.SEGMENT_MATCH, null, List.of(), Boolean.TRUE.equals(map.get("negate")), null, keys);
+  }
+
+  private static Rollout rollout(Object value, int variationCount) {
+    if (!(value instanceof Map<?, ?>)) {
+      return null;
+    }
+    Map<?, ?> map = (Map<?, ?>) value;
+    if (!isOptionalKind(map.get("contextKind"))) {
+      return null;
+    }
+    Object variations = map.get("variations");
+    if (!(variations instanceof List<?>) || ((List<?>) variations).isEmpty()) {
+      return null;
+    }
+    List<Weighted> out = new ArrayList<>();
+    double total = 0;
+    for (Object item : (List<?>) variations) {
+      if (!(item instanceof Map<?, ?>)) {
+        return null;
+      }
+      Map<?, ?> entry = (Map<?, ?>) item;
+      Integer variation = variationIndex(entry.get("variation"), variationCount);
+      Object weight = entry.get("weight");
+      if (variation == null || !isCount(weight) || (Double) weight > Bucket.COUNT) {
+        return null;
+      }
+      out.add(new Weighted(variation, (int) ((Double) weight).doubleValue()));
+      total += (Double) weight;
+    }
+    if (total != Bucket.COUNT) {
+      return null;
+    }
+    return new Rollout((String) map.get("contextKind"), out);
+  }
+
+  private static Serve serve(Object value, int variationCount) {
+    if (!(value instanceof Map<?, ?>)) {
+      return null;
+    }
+    Map<?, ?> map = (Map<?, ?>) value;
+    Object variation = map.get("variation");
+    Object rollout = map.get("rollout");
+    if (rollout == null) {
+      Integer index = variationIndex(variation, variationCount);
+      return index == null ? null : new Serve(index, null);
+    }
+    if (variation != null) {
+      return null;
+    }
+    Rollout parsed = rollout(rollout, variationCount);
+    return parsed == null ? null : new Serve(-1, parsed);
+  }
+
+  private static Rule rule(Object value, int variationCount) {
+    if (!(value instanceof Map<?, ?>)) {
+      return null;
+    }
+    Object clauses = ((Map<?, ?>) value).get("clauses");
+    if (!(clauses instanceof List<?>)) {
+      return null;
+    }
+    List<Clause> out = new ArrayList<>();
+    for (Object item : (List<?>) clauses) {
+      Clause clause = attributeClause(item);
+      if (clause == null) {
+        clause = segmentClause(item);
+      }
+      if (clause == null) {
+        return null;
+      }
+      out.add(clause);
+    }
+    Serve serve = serve(value, variationCount);
+    return serve == null ? null : new Rule(out, serve);
+  }
+
+  private static Target target(Object value, int variationCount) {
+    if (!(value instanceof Map<?, ?>)) {
+      return null;
+    }
+    Map<?, ?> map = (Map<?, ?>) value;
+    Integer variation = variationIndex(map.get("variation"), variationCount);
+    List<String> keys = stringList(map.get("contextKeys"));
+    if (variation == null || keys == null || !isOptionalKind(map.get("contextKind"))) {
+      return null;
+    }
+    return new Target(variation, keys, (String) map.get("contextKind"));
+  }
+
+  private static Prerequisite prerequisite(Object value) {
+    if (!(value instanceof Map<?, ?>)) {
+      return null;
+    }
+    Map<?, ?> map = (Map<?, ?>) value;
+    if (!isKey(map.get("flagKey")) || !isCount(map.get("variation"))) {
+      return null;
+    }
+    return new Prerequisite((String) map.get("flagKey"), (Double) map.get("variation"));
+  }
+
+  /**
+   * What serving the off variation needs; checked apart so {@code on: false} survives a bad rule.
+   */
+  private static Header header(Object value) {
+    if (!(value instanceof Map<?, ?>)) {
+      return null;
+    }
+    Map<?, ?> map = (Map<?, ?>) value;
+    Object variations = map.get("variations");
+    if (!(map.get("on") instanceof Boolean)
+        || !isKey(map.get("key"))
+        || !(variations instanceof List<?>)
+        || ((List<?>) variations).isEmpty()) {
+      return null;
+    }
+    List<Object> list = new ArrayList<>((List<?>) variations);
+    Object off = map.get("offVariation");
+    Integer offIndex = null;
+    if (off != null) {
+      offIndex = variationIndex(off, list.size());
+      if (offIndex == null) {
+        return null;
+      }
+    }
+    return new Header((String) map.get("key"), (Boolean) map.get("on"), list, offIndex);
+  }
+
+  /** The body of a flag, or null when it does not fit the spec. */
+  private static Flag body(Map<?, ?> map, Header header) {
+    int count = header.variations().size();
+    Object salt = map.get("salt");
+    if (!(salt instanceof String) || !isCount(map.get("version"))) {
+      return null;
+    }
+    Flag flag = new Flag();
+    flag.header = header;
+    flag.salt = (String) salt;
+    flag.version = (Double) map.get("version");
+    flag.targets = new ArrayList<>();
+    flag.prerequisites = new ArrayList<>();
+    flag.rules = new ArrayList<>();
+    if (!(map.get("targets") instanceof List<?>)
+        || !(map.get("prerequisites") instanceof List<?>)
+        || !(map.get("rules") instanceof List<?>)) {
+      return null;
+    }
+    for (Object item : (List<?>) map.get("targets")) {
+      Target target = target(item, count);
+      if (target == null) {
+        return null;
+      }
+      flag.targets.add(target);
+    }
+    for (Object item : (List<?>) map.get("prerequisites")) {
+      Prerequisite prerequisite = prerequisite(item);
+      if (prerequisite == null) {
+        return null;
+      }
+      flag.prerequisites.add(prerequisite);
+    }
+    for (Object item : (List<?>) map.get("rules")) {
+      Rule rule = rule(item, count);
+      if (rule == null) {
+        return null;
+      }
+      flag.rules.add(rule);
+    }
+    flag.fallthrough = serve(map.get("fallthrough"), count);
+    return flag.fallthrough == null ? null : flag;
+  }
+
+  private static Map<String, Map<String, int[]>> targetIndex(Flag flag) {
+    Map<String, Map<String, int[]>> index = new HashMap<>();
+    for (int order = 0; order < flag.targets.size(); order++) {
+      Target target = flag.targets.get(order);
+      String kind = target.contextKind() == null ? Contexts.DEFAULT_KIND : target.contextKind();
+      Map<String, int[]> keys = index.computeIfAbsent(kind, k -> new HashMap<>());
+      for (String contextKey : target.contextKeys()) {
+        keys.putIfAbsent(contextKey, new int[] {order, target.variation()});
       }
     }
     return index;
   }
 
-  private static Map<String, Set<String>> keysByKind(Object userKeys, Object lists) {
-    Map<String, Set<String>> index = new HashMap<>();
-    Set<String> users = new HashSet<>();
-    for (Object key : (List<?>) userKeys) {
-      users.add((String) key);
+  // ---- segments ----
+
+  private static SegmentRule segmentRule(Object value) {
+    if (!(value instanceof Map<?, ?>)) {
+      return null;
     }
-    index.put(Contexts.DEFAULT_KIND, users);
-    if (lists instanceof List<?> list) {
-      for (Object entry : list) {
-        String kind = (String) Validate.field(entry, "contextKind");
-        Set<String> keys = index.computeIfAbsent(kind, k -> new HashSet<>());
-        for (Object value : (List<?>) Validate.field(entry, "values")) {
-          keys.add((String) value);
-        }
+    Map<?, ?> map = (Map<?, ?>) value;
+    Object weight = map.get("weight");
+    if (weight != null && (!isCount(weight) || (Double) weight > Bucket.COUNT)) {
+      return null;
+    }
+    if (!isOptionalKind(map.get("rolloutContextKind"))
+        || !(map.get("clauses") instanceof List<?>)) {
+      return null;
+    }
+    List<Clause> clauses = new ArrayList<>();
+    for (Object item : (List<?>) map.get("clauses")) {
+      Clause clause = attributeClause(item);
+      if (clause == null) {
+        return null;
       }
+      clauses.add(clause);
     }
-    return index;
+    Integer parsedWeight = weight == null ? null : (int) ((Double) weight).doubleValue();
+    return new SegmentRule(clauses, parsedWeight, (String) map.get("rolloutContextKind"));
   }
 
-  private static Object compileSegment(Object value) {
-    if (!Validate.isSegment(value)) {
+  /** Context lists of other kinds: kind then keys; null when they do not fit the spec. */
+  private static boolean addContextLists(Object lists, Map<String, Set<String>> into) {
+    if (lists == null) {
+      return true;
+    }
+    if (!(lists instanceof List<?>)) {
+      return false;
+    }
+    for (Object item : (List<?>) lists) {
+      if (!(item instanceof Map<?, ?>)) {
+        return false;
+      }
+      Map<?, ?> map = (Map<?, ?>) item;
+      List<String> values = stringList(map.get("values"));
+      if (!Contexts.isKind(map.get("contextKind")) || values == null) {
+        return false;
+      }
+      into.computeIfAbsent((String) map.get("contextKind"), k -> new HashSet<>()).addAll(values);
+    }
+    return true;
+  }
+
+  private static ReadySegment segment(Object value) {
+    if (!(value instanceof Map<?, ?>)) {
       return MALFORMED_SEGMENT;
     }
-    return new ReadySegment(
-        (Map<?, ?>) value,
-        keysByKind(Validate.field(value, "included"), Validate.field(value, "includedContexts")),
-        keysByKind(Validate.field(value, "excluded"), Validate.field(value, "excludedContexts")));
+    Map<?, ?> map = (Map<?, ?>) value;
+    List<String> included = stringList(map.get("included"));
+    List<String> excluded = stringList(map.get("excluded"));
+    if (!isKey(map.get("key"))
+        || !(map.get("salt") instanceof String)
+        || included == null
+        || excluded == null
+        || !(map.get("rules") instanceof List<?>)) {
+      return MALFORMED_SEGMENT;
+    }
+    ReadySegment ready = new ReadySegment();
+    ready.key = (String) map.get("key");
+    ready.salt = (String) map.get("salt");
+    ready.included = new HashMap<>();
+    ready.included.put(Contexts.DEFAULT_KIND, new HashSet<>(included));
+    ready.excluded = new HashMap<>();
+    ready.excluded.put(Contexts.DEFAULT_KIND, new HashSet<>(excluded));
+    if (!addContextLists(map.get("includedContexts"), ready.included)
+        || !addContextLists(map.get("excludedContexts"), ready.excluded)) {
+      return MALFORMED_SEGMENT;
+    }
+    ready.rules = new ArrayList<>();
+    for (Object item : (List<?>) map.get("rules")) {
+      SegmentRule rule = segmentRule(item);
+      if (rule == null) {
+        return MALFORMED_SEGMENT;
+      }
+      ready.rules.add(rule);
+    }
+    return ready;
   }
 
   /**
    * The first reference to a segment that is missing or malformed, in rule, clause, value order.
    */
-  private static ErrorCode segmentProblem(Map<?, ?> flag, Map<String, Object> segments) {
-    for (Object rule : (List<?>) flag.get("rules")) {
-      for (Object clause : (List<?>) Validate.field(rule, "clauses")) {
-        if (!"segmentMatch".equals(Validate.field(clause, "op"))) {
+  private static ErrorCode segmentProblem(Flag flag, Map<String, ReadySegment> segments) {
+    for (Rule rule : flag.rules) {
+      for (Clause clause : rule.clauses()) {
+        if (clause.op != Op.SEGMENT_MATCH) {
           continue;
         }
-        for (Object key : (List<?>) Validate.field(clause, "values")) {
-          Object segment = segments.get(key);
+        for (String key : clause.segmentKeys) {
+          ReadySegment segment = segments.get(key);
           if (segment == null) {
             return ErrorCode.SEGMENT_NOT_FOUND;
           }
-          if (segment == MALFORMED_SEGMENT) {
+          if (isMalformed(segment)) {
             return ErrorCode.MALFORMED_SEGMENT;
           }
         }
@@ -145,269 +589,52 @@ public final class Ruleset {
     return null;
   }
 
-  private static Map<String, Map<String, TargetHit>> targetIndex(Map<?, ?> flag) {
-    Map<String, Map<String, TargetHit>> index = new HashMap<>();
-    List<?> targets = (List<?>) flag.get("targets");
-    for (int order = 0; order < targets.size(); order++) {
-      Object target = targets.get(order);
-      Object kind = Validate.field(target, "contextKind");
-      Map<String, TargetHit> keys =
-          index.computeIfAbsent(
-              kind == null ? Contexts.DEFAULT_KIND : (String) kind, k -> new HashMap<>());
-      int variation = ((Double) Validate.field(target, "variation")).intValue();
-      for (Object contextKey : (List<?>) Validate.field(target, "contextKeys")) {
-        keys.putIfAbsent((String) contextKey, new TargetHit(order, variation));
-      }
+  private static Entry entry(Object value, Map<String, ReadySegment> segments) {
+    Header header = header(value);
+    if (header == null) {
+      return new Entry(null, null, null);
     }
-    return index;
-  }
-
-  private static FlagEntry compileFlag(Object value, Map<String, Object> segments) {
-    if (!Validate.isFlagHeader(value)) {
-      return new FlagEntry(Status.MALFORMED, null, null, null);
-    }
-    Map<?, ?> flag = (Map<?, ?>) value;
-    int variationCount = ((List<?>) flag.get("variations")).size();
-    if (!Validate.isFlagBody(value, variationCount)) {
-      return new FlagEntry(Status.BROKEN, flag, ErrorCode.MALFORMED_FLAG, null);
+    Flag flag = body((Map<?, ?>) value, header);
+    if (flag == null) {
+      return new Entry(header, ErrorCode.MALFORMED_FLAG, null);
     }
     ErrorCode code = segmentProblem(flag, segments);
     if (code != null) {
-      return new FlagEntry(Status.BROKEN, flag, code, null);
+      return new Entry(header, code, null);
     }
-    return new FlagEntry(Status.READY, flag, null, targetIndex(flag));
+    flag.targetIndex = targetIndex(flag);
+    return new Entry(header, null, flag);
   }
 
   /**
-   * The {@code version} of the flag {@code key}, or empty when there is no such flag or it is
-   * malformed.
+   * Validates and indexes a ruleset ({@code {flags, segments}} as the JSON parser hands it over). A
+   * duplicate key keeps the first.
    */
-  public Optional<Double> flagVersion(String key) {
-    FlagEntry entry = flags.get(key);
-    if (entry == null || entry.status() == Status.MALFORMED) {
-      return Optional.empty();
+  public static Ruleset parse(Object input) {
+    Object rawFlags = null;
+    Object rawSegments = null;
+    if (input instanceof Map<?, ?>) {
+      rawFlags = ((Map<?, ?>) input).get("flags");
+      rawSegments = ((Map<?, ?>) input).get("segments");
     }
-    return entry.flag().get("version") instanceof Double version
-        ? Optional.of(version)
-        : Optional.empty();
-  }
-
-  /** How many flags this ruleset holds. */
-  public int flagCount() {
-    return flags.size();
-  }
-
-  /**
-   * Evaluates one flag for one context (a JSON tree: a {@code Map} with a {@code key} and optional
-   * {@code kind} and {@code attributes}, or a multi context). It never throws for a bad flag, bad
-   * context or missing flag: those are {@code ERROR} results.
-   */
-  public Result evaluate(String flagKey, Object context) {
-    Map<String, KindContext> contexts = Contexts.normalise(context);
-    if (contexts == null) {
-      return Result.failure(ErrorCode.INVALID_CONTEXT);
-    }
-    return evaluateFlag(new Run(contexts), flagKey, 0);
-  }
-
-  private static Object variationValue(Map<?, ?> flag, int index) {
-    return ((List<?>) flag.get("variations")).get(index);
-  }
-
-  private static Result served(Map<?, ?> flag, int index, Reason reason) {
-    return new Result(variationValue(flag, index), OptionalInt.of(index), reason);
-  }
-
-  private static Result offResult(Map<?, ?> flag, Reason reason) {
-    Object index = flag.get("offVariation");
-    if (index == null) {
-      return new Result(null, OptionalInt.empty(), reason);
-    }
-    return served(flag, ((Double) index).intValue(), reason);
-  }
-
-  private static int rolloutVariation(Object rollout, int position) {
-    int chosen = 0;
-    long cumulative = 0;
-    for (Object item : (List<?>) Validate.field(rollout, "variations")) {
-      chosen = ((Double) Validate.field(item, "variation")).intValue();
-      cumulative += ((Double) Validate.field(item, "weight")).longValue();
-      if (position < cumulative) {
-        break;
-      }
-    }
-    return chosen;
-  }
-
-  private static Result serveResult(
-      Map<?, ?> flag, Object serve, Map<String, KindContext> contexts, Reason reason) {
-    Object rollout = Validate.field(serve, "rollout");
-    int index;
-    if (rollout != null) {
-      String kind = (String) Validate.field(rollout, "contextKind");
-      int position =
-          Contexts.kindBucket((String) flag.get("key"), (String) flag.get("salt"), kind, contexts);
-      index = rolloutVariation(rollout, position);
-    } else {
-      index = ((Double) Validate.field(serve, "variation")).intValue();
-    }
-    return served(flag, index, reason);
-  }
-
-  private static boolean listsContext(
-      Map<String, Set<String>> keys, Map<String, KindContext> contexts) {
-    for (Map.Entry<String, KindContext> entry : contexts.entrySet()) {
-      Set<String> set = keys.get(entry.getKey());
-      if (set != null && set.contains(entry.getValue().key())) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private static boolean segmentRuleMatches(
-      Object rule, ReadySegment ready, Map<String, KindContext> contexts) {
-    for (Object clause : (List<?>) Validate.field(rule, "clauses")) {
-      if (!Clauses.attributeClauseMatches(clause, contexts)) {
-        return false;
-      }
-    }
-    Object weight = Validate.field(rule, "weight");
-    if (weight == null) {
-      return true;
-    }
-    int position =
-        Contexts.kindBucket(
-            (String) ready.segment().get("key"),
-            (String) ready.segment().get("salt"),
-            (String) Validate.field(rule, "rolloutContextKind"),
-            contexts);
-    return position < (Double) weight;
-  }
-
-  private static boolean segmentMatches(ReadySegment ready, Map<String, KindContext> contexts) {
-    if (listsContext(ready.excluded(), contexts)) {
-      return false;
-    }
-    if (listsContext(ready.included(), contexts)) {
-      return true;
-    }
-    for (Object rule : (List<?>) ready.segment().get("rules")) {
-      if (segmentRuleMatches(rule, ready, contexts)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private boolean clauseMatches(Object clause, Run run) {
-    if (!"segmentMatch".equals(Validate.field(clause, "op"))) {
-      return Clauses.attributeClauseMatches(clause, run.contexts);
-    }
-    boolean matched = false;
-    for (Object key : (List<?>) Validate.field(clause, "values")) {
-      if (segments.get(key) instanceof ReadySegment ready && segmentMatches(ready, run.contexts)) {
-        matched = true;
-        break;
-      }
-    }
-    return Boolean.TRUE.equals(Validate.field(clause, "negate")) ? !matched : matched;
-  }
-
-  private static boolean prerequisiteMet(Object prerequisite, Result result) {
-    ReasonKind kind = result.reason().kind();
-    boolean reachedServe =
-        kind == ReasonKind.TARGET_MATCH
-            || kind == ReasonKind.RULE_MATCH
-            || kind == ReasonKind.FALLTHROUGH;
-    return reachedServe
-        && result.variationIndex().isPresent()
-        && result.variationIndex().getAsInt() == (Double) Validate.field(prerequisite, "variation");
-  }
-
-  private Result checkPrerequisites(Map<?, ?> flag, Run run, int depth) {
-    for (Object prerequisite : (List<?>) flag.get("prerequisites")) {
-      String key = (String) Validate.field(prerequisite, "flagKey");
-      Result result = evaluateFlag(run, key, depth + 1);
-      if (result.reason().kind() == ReasonKind.ERROR) {
-        return result;
-      }
-      if (!prerequisiteMet(prerequisite, result)) {
-        return offResult(flag, Reason.prerequisiteFailed(key));
-      }
-    }
-    return null;
-  }
-
-  private static Integer targetedVariation(
-      Map<String, Map<String, TargetHit>> targets, Map<String, KindContext> contexts) {
-    TargetHit first = null;
-    for (Map.Entry<String, KindContext> entry : contexts.entrySet()) {
-      Map<String, TargetHit> keys = targets.get(entry.getKey());
-      TargetHit hit = keys == null ? null : keys.get(entry.getValue().key());
-      if (hit != null && (first == null || hit.order() < first.order())) {
-        first = hit;
-      }
-    }
-    return first == null ? null : first.variation();
-  }
-
-  private Result evaluateEntry(FlagEntry entry, Run run, int depth) {
-    if (entry.status() == Status.MALFORMED) {
-      return Result.failure(ErrorCode.MALFORMED_FLAG);
-    }
-    Map<?, ?> flag = entry.flag();
-    if (!((Boolean) flag.get("on"))) {
-      return offResult(flag, Reason.of(ReasonKind.OFF));
-    }
-    if (entry.status() == Status.BROKEN) {
-      return Result.failure(entry.code());
-    }
-    Result blocked = checkPrerequisites(flag, run, depth);
-    if (blocked != null) {
-      return blocked;
-    }
-    Integer targeted = targetedVariation(entry.targets(), run.contexts);
-    if (targeted != null) {
-      return served(flag, targeted, Reason.of(ReasonKind.TARGET_MATCH));
-    }
-    List<?> rules = (List<?>) flag.get("rules");
-    for (int ruleIndex = 0; ruleIndex < rules.size(); ruleIndex++) {
-      Object rule = rules.get(ruleIndex);
-      boolean all = true;
-      for (Object clause : (List<?>) Validate.field(rule, "clauses")) {
-        if (!clauseMatches(clause, run)) {
-          all = false;
-          break;
+    Map<String, ReadySegment> segments = new HashMap<>();
+    if (rawSegments instanceof List<?>) {
+      for (Object item : (List<?>) rawSegments) {
+        Object key = item instanceof Map<?, ?> ? ((Map<?, ?>) item).get("key") : null;
+        if (key instanceof String && !segments.containsKey(key)) {
+          segments.put((String) key, segment(item));
         }
       }
-      if (all) {
-        return serveResult(flag, rule, run.contexts, Reason.ruleMatch(ruleIndex));
+    }
+    Map<String, Entry> flags = new HashMap<>();
+    if (rawFlags instanceof List<?>) {
+      for (Object item : (List<?>) rawFlags) {
+        Object key = item instanceof Map<?, ?> ? ((Map<?, ?>) item).get("key") : null;
+        if (key instanceof String && !flags.containsKey(key)) {
+          flags.put((String) key, entry(item, segments));
+        }
       }
     }
-    return serveResult(
-        flag, flag.get("fallthrough"), run.contexts, Reason.of(ReasonKind.FALLTHROUGH));
-  }
-
-  private Result evaluateFlag(Run run, String key, int depth) {
-    Result completed = run.completed.get(key);
-    if (completed != null) {
-      return completed;
-    }
-    if (run.active.contains(key)) {
-      return Result.failure(ErrorCode.PREREQUISITE_CYCLE);
-    }
-    if (depth > MAX_PREREQUISITE_DEPTH) {
-      return Result.failure(ErrorCode.PREREQUISITE_DEPTH_EXCEEDED);
-    }
-    FlagEntry entry = flags.get(key);
-    if (entry == null) {
-      return Result.failure(ErrorCode.FLAG_NOT_FOUND);
-    }
-    run.active.add(key);
-    Result result = evaluateEntry(entry, run, depth);
-    run.active.remove(key);
-    run.completed.put(key, result);
-    return result;
+    return new Ruleset(flags, segments);
   }
 }

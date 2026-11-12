@@ -1,47 +1,37 @@
 package com.github.madangryscientist.toggleslash.sdks.java.evaluation;
 
-import java.util.Objects;
-import java.util.Optional;
-import java.util.OptionalInt;
-
 /**
- * Why a flag answered as it did. {@code ruleIndex} is present for {@code RULE_MATCH}, {@code
- * flagKey} for {@code PREREQUISITE_FAILED} (the prerequisite that was not met) and {@code code} for
- * {@code ERROR}.
+ * The reason of an evaluation. {@code errorCode} is set exactly when {@code kind} is {@code ERROR};
+ * {@code ruleIndex} only for {@code RULE_MATCH}; {@code flagKey} only for {@code
+ * PREREQUISITE_FAILED}.
+ *
+ * @param kind the kind
+ * @param errorCode the code of an {@code ERROR}, otherwise null
+ * @param ruleIndex the index in the flag's rules of a {@code RULE_MATCH}, otherwise null
+ * @param flagKey the direct prerequisite that failed, otherwise null
  */
-public record Reason(
-    ReasonKind kind, OptionalInt ruleIndex, Optional<String> flagKey, Optional<ErrorCode> code) {
+public record Reason(ReasonKind kind, ErrorCode errorCode, Integer ruleIndex, String flagKey) {
+  /** The flag is off. */
+  public static final Reason OFF = new Reason(ReasonKind.OFF, null, null, null);
 
-  /** Checks that nothing is null. */
-  public Reason {
-    Objects.requireNonNull(kind);
-    Objects.requireNonNull(ruleIndex);
-    Objects.requireNonNull(flagKey);
-    Objects.requireNonNull(code);
-  }
+  /** A target matched. */
+  public static final Reason TARGET_MATCH = new Reason(ReasonKind.TARGET_MATCH, null, null, null);
 
-  /** A reason that carries nothing but its kind. */
-  public static Reason of(ReasonKind kind) {
-    return new Reason(kind, OptionalInt.empty(), Optional.empty(), Optional.empty());
-  }
+  /** The fallthrough served. */
+  public static final Reason FALLTHROUGH = new Reason(ReasonKind.FALLTHROUGH, null, null, null);
 
-  /** {@code RULE_MATCH} for the rule at {@code ruleIndex}. */
-  public static Reason ruleMatch(int ruleIndex) {
-    return new Reason(
-        ReasonKind.RULE_MATCH, OptionalInt.of(ruleIndex), Optional.empty(), Optional.empty());
-  }
-
-  /** {@code PREREQUISITE_FAILED} for the prerequisite {@code flagKey}. */
-  public static Reason prerequisiteFailed(String flagKey) {
-    return new Reason(
-        ReasonKind.PREREQUISITE_FAILED,
-        OptionalInt.empty(),
-        Optional.of(flagKey),
-        Optional.empty());
-  }
-
-  /** {@code ERROR} with {@code code}. */
+  /** An {@code ERROR} with a code. */
   public static Reason error(ErrorCode code) {
-    return new Reason(ReasonKind.ERROR, OptionalInt.empty(), Optional.empty(), Optional.of(code));
+    return new Reason(ReasonKind.ERROR, code, null, null);
+  }
+
+  /** A {@code RULE_MATCH} at an index. */
+  public static Reason rule(int index) {
+    return new Reason(ReasonKind.RULE_MATCH, null, index, null);
+  }
+
+  /** A {@code PREREQUISITE_FAILED} naming the prerequisite. */
+  public static Reason prerequisiteFailed(String flagKey) {
+    return new Reason(ReasonKind.PREREQUISITE_FAILED, null, null, flagKey);
   }
 }

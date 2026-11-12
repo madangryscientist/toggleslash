@@ -1,34 +1,38 @@
 # The Java SDK's test service
 
-`src/.../TestService.java` wraps the SDK in the protocol of
-[`docs/sdk-test-service.md`](../../../docs/sdk-test-service.md), so the conformance harness can drive the SDK
-from outside. It is a plain `com.sun.net.httpserver.HttpServer` on `127.0.0.1` and a port the OS picks, with
-no dependency beyond the SDK and the JDK:
+`src/com/github/madangryscientist/toggleslash/sdks/java/testservice/Main.java` wraps `Client` in the protocol
+of [`docs/sdk-test-service.md`](../../../docs/sdk-test-service.md), so the conformance harness can drive the
+SDK from outside:
 
 ```bash
-sdks/java/bin/test    # builds everything, the test service included, as part of `mvn clean test`
 bun run conformance -- --service "sdks/java/bin/test-service"
 ```
 
-It advertises `integer-accessor`: Java has `long` next to `double`, so the `int` accessor is real.
+`bin/test-service` builds the classes with Maven when they are missing or older than a source (the build
+output goes to stderr), then runs `java -cp target/classes:target/test-classes ...testservice.Main`. The
+service uses the JDK's own `com.sun.net.httpserver`, so it adds no dependency, and it is compiled as a test
+source root (`build-helper-maven-plugin` in `pom.xml`), so it never reaches the SDK's jar.
+
+It advertises one capability, `integer-accessor`: Java has `long` and `Client.longVariation`.
 
 | Protocol | Java SDK |
 | --- | --- |
-| `POST /clients` | `Client.create(Options.builder(url, sdkKey)...build())`; `stream`, `pollIntervalMs`, `flushIntervalMs` and `requestTimeoutMs` become `stream(boolean)`, `pollInterval(Duration)`, `flushInterval(Duration)` and `requestTimeout(Duration)`; `onError` always records, and throws after recording when `onErrorThrows` is set |
+| `POST /clients` | `Client.create(Options)`; `stream`, `pollIntervalMs`, `flushIntervalMs` and `requestTimeoutMs` pass through (as `Duration.ofMillis`), `onError` always records the throwable's message |
 | `ready` | `client.ready()` |
-| `evaluate`, accessor `bool` | `client.boolVariationDetail(key, context, fallback)` |
-| `evaluate`, accessor `string` | `client.stringVariationDetail(key, context, fallback)` |
-| `evaluate`, accessor `number` | `client.doubleVariationDetail(key, context, fallback)` |
-| `evaluate`, accessor `int` | `client.intVariationDetail(key, context, fallback)`, the JSON fallback number taken as a `long` |
-| `evaluate`, accessors `json` and `any` | `client.jsonVariationDetail(key, context, fallback)`, the fallback passed through as the JSON value it arrived as |
-| `status` | `client.status()`, written as the four keys of the protocol (`lastSyncAt` as epoch milliseconds) |
-| `hook-events` | the events `Options.Builder.afterEvaluation` received (installed when `hook` or `hookThrows` is set; `hookThrows` throws after recording) |
-| `errors` | what `Options.Builder.onError` received, each as its message |
+| `evaluate`, accessor `bool` | `client.boolVariationDetail(flagKey, context, (Boolean) fallback)` |
+| `evaluate`, accessor `string` | `client.stringVariationDetail(...)` |
+| `evaluate`, accessor `number` | `client.numberVariationDetail(...)` with the fallback as a `double` |
+| `evaluate`, accessor `int` | `client.longVariationDetail(...)` with the fallback as a `long` (a fallback that is not whole answers 400) |
+| `evaluate`, accessors `json` and `any` | `client.jsonVariationDetail(flagKey, context, fallback)`: the fallback may be null or of any kind |
+| `status` | `client.status()`; `lastSyncAt` as epoch milliseconds, `stream` as `StreamState.wire()` |
+| `hook-events` | the `EvaluationEvent`s `Options.afterEvaluation` received, with `reason` mapped to `{ kind, code, ruleIndex, flagKey }` and `context` the JSON the harness sent |
+| `errors` | what `onError` received, each as its message |
 | `close` | `client.close()` |
 
-The context goes in as raw JSON (`Context.fromJson`), valid or not: an invalid one is a case the SDK answers
-with `ERROR INVALID_CONTEXT`. A call that fails or throws answers 500 with its text, and the harness fails the
-scenario. The service serves concurrently (a cached thread pool) and keeps a client answerable after `close`.
+The typed accessors (`bool`, `string`, `number`, `int`) answer 400 to a fallback that is null or of another
+kind, which the protocol allows. A number that is not finite in a result is written as JSON `null`.
 
-`bin/test-service` starts the built classes (`java -cp target/classes:target/test-classes`) and builds them
-only if they are missing, because the harness waits 30 s for the `listening` line.
+A context that is a JSON object goes through `Context.of`; anything else (null, a string, an array) becomes an
+invalid context, so the SDK answers `ERROR INVALID_CONTEXT` as the scenarios expect.
+
+It catches nothing the SDK throws: a call that raises answers 500 with the stack trace.

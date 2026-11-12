@@ -1,20 +1,24 @@
-#!/bin/sh
-# Starts the conformance test service and prints "listening http://127.0.0.1:<port>" once it does.
-# It runs the built classes; it builds them only when there are none (bin/test rebuilds every time).
-set -eu
-cd "$(dirname "$0")/.."
-
-run() {
-  if command -v mise >/dev/null 2>&1; then
-    mise exec -- "$@"
-  else
-    "$@"
-  fi
-}
-
-SERVICE=target/test-classes/com/github/madangryscientist/toggleslash/sdks/java/testservice/TestService.class
-if [ ! -f "$SERVICE" ]; then
-  run mvn -B -q -DskipTests test-compile >&2
+#!/usr/bin/env bash
+# Starts the Java SDK's conformance test service and prints `listening http://127.0.0.1:<port>`. Build output
+# goes to stderr so stdout carries only that line. It builds only when the classes are missing or older than
+# a source, so the harness does not wait for Maven on every run.
+#   bun run conformance -- --service "sdks/java/bin/test-service"
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$here"
+main="target/test-classes/com/github/madangryscientist/toggleslash/sdks/java/testservice/Main.class"
+client="target/classes/com/github/madangryscientist/toggleslash/sdks/java/Client.class"
+stale=false
+if [ ! -f "$main" ] || [ ! -f "$client" ]; then
+  stale=true
+elif [ -n "$(find src test-service/src pom.xml -newer "$main" -type f -print -quit)" ]; then
+  stale=true
 fi
-exec mise exec -- java -cp target/classes:target/test-classes \
-  com.github.madangryscientist.toggleslash.sdks.java.testservice.TestService
+if [ "$stale" = true ]; then
+  if ! mvn --version >/dev/null 2>&1; then
+    echo "bin/test-service: mvn is not on PATH; run 'mise install' in sdks/java" >&2
+    exit 1
+  fi
+  mvn --batch-mode --no-transfer-progress -q -DskipTests test-compile >&2
+fi
+exec java -cp target/classes:target/test-classes com.github.madangryscientist.toggleslash.sdks.java.testservice.Main

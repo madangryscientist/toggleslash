@@ -1,9 +1,9 @@
 package com.github.madangryscientist.toggleslash.sdks.java.evaluation;
 
 /**
- * Instants, to the "Dates" section of {@code docs/evaluation.md}. A hand-written walk over the
- * string: no {@code java.time} parser, so the accepted forms are exactly the specification's. The
- * result is Unix milliseconds as a binary64 number, or null when the text is not an instant.
+ * Instants, to the "Dates" section of the evaluation spec: a hand-written walk over the string,
+ * with no library, so the result is Unix milliseconds as a double, or null when the text is not an
+ * instant.
  */
 final class Dates {
   private Dates() {}
@@ -12,14 +12,21 @@ final class Dates {
     return c >= '0' && c <= '9';
   }
 
-  /** {@code length} ASCII digits at {@code start}, or -1 when any is not a digit. */
+  /**
+   * {@code length} ASCII digits at {@code start} as a number; -1 when any is missing or not a
+   * digit.
+   */
   private static int digits(String text, int start, int length) {
+    if (start < 0 || start + length > text.length()) {
+      return -1;
+    }
     int value = 0;
     for (int i = start; i < start + length; i++) {
-      if (i >= text.length() || !isDigit(text.charAt(i))) {
+      char c = text.charAt(i);
+      if (!isDigit(c)) {
         return -1;
       }
-      value = value * 10 + (text.charAt(i) - '0');
+      value = value * 10 + (c - '0');
     }
     return value;
   }
@@ -35,18 +42,19 @@ final class Dates {
     return month == 4 || month == 6 || month == 9 || month == 11 ? 30 : 31;
   }
 
-  /** Days since 1970-01-01 in the proleptic Gregorian calendar ("days from civil"). */
+  /**
+   * Days since 1970-01-01 in the proleptic Gregorian calendar ("days from civil"), years 1 to 9999.
+   */
   private static long daysFromCivil(int year, int month, int day) {
-    long y = month <= 2 ? year - 1L : year;
-    long era = Math.floorDiv(y, 400L);
-    long yearOfEra = y - era * 400;
-    long monthIndex = month > 2 ? month - 3 : month + 9;
-    long dayOfYear = (153 * monthIndex + 2) / 5 + day - 1;
-    long dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear;
-    return era * 146097 + dayOfEra - 719468;
+    int y = month <= 2 ? year - 1 : year;
+    int era = Math.floorDiv(y, 400);
+    int yearOfEra = y - era * 400;
+    int monthIndex = month > 2 ? month - 3 : month + 9;
+    int dayOfYear = (153 * monthIndex + 2) / 5 + day - 1;
+    int dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear;
+    return (long) era * 146097 + dayOfEra - 719468;
   }
 
-  /** The days since 1970-01-01 of {@code YYYY-MM-DD} at the start of the text, or null. */
   private static Long parseDate(String text) {
     int year = digits(text, 0, 4);
     int month = digits(text, 5, 2);
@@ -63,11 +71,10 @@ final class Dates {
     return daysFromCivil(year, month, day);
   }
 
-  /** The seconds since midnight of {@code HH:MM:SS} at {@code start}, or -1. */
-  private static int parseTime(String text, int start) {
-    int hour = digits(text, start, 2);
-    int minute = digits(text, start + 3, 2);
-    int second = digits(text, start + 6, 2);
+  private static int parseTime(String text, int at) {
+    int hour = digits(text, at, 2);
+    int minute = digits(text, at + 3, 2);
+    int second = digits(text, at + 6, 2);
     if (hour < 0 || minute < 0 || second < 0) {
       return -1;
     }
@@ -77,28 +84,6 @@ final class Dates {
     return (hour * 60 + minute) * 60 + second;
   }
 
-  /** The offset that is all of the text from {@code start}, in minutes east of UTC; null if not. */
-  private static Integer parseOffset(String text, int start) {
-    int length = text.length() - start;
-    if (length == 1 && text.charAt(start) == 'Z') {
-      return 0;
-    }
-    if (length != 6 || text.charAt(start + 3) != ':') {
-      return null;
-    }
-    char signChar = text.charAt(start);
-    if (signChar != '+' && signChar != '-') {
-      return null;
-    }
-    int hour = digits(text, start + 1, 2);
-    int minute = digits(text, start + 4, 2);
-    if (hour < 0 || minute < 0 || hour > 23 || minute > 59) {
-      return null;
-    }
-    return (signChar == '+' ? 1 : -1) * (hour * 60 + minute);
-  }
-
-  /** The separators in place; the shortest form is {@code 0001-01-01T00:00:00Z}. */
   private static boolean hasShape(String text) {
     return text.length() >= 20
         && text.charAt(4) == '-'
@@ -106,6 +91,30 @@ final class Dates {
         && text.charAt(10) == 'T'
         && text.charAt(13) == ':'
         && text.charAt(16) == ':';
+  }
+
+  /**
+   * The offset ({@code Z}, plus or minus HH:MM) that is all of the text from {@code at}, in minutes
+   * east of UTC.
+   */
+  private static Integer parseOffset(String text, int at) {
+    int length = text.length() - at;
+    if (length == 1 && text.charAt(at) == 'Z') {
+      return 0;
+    }
+    if (length != 6) {
+      return null;
+    }
+    char signChar = text.charAt(at);
+    if ((signChar != '+' && signChar != '-') || text.charAt(at + 3) != ':') {
+      return null;
+    }
+    int hour = digits(text, at + 1, 2);
+    int minute = digits(text, at + 4, 2);
+    if (hour < 0 || minute < 0 || hour > 23 || minute > 59) {
+      return null;
+    }
+    return (signChar == '+' ? 1 : -1) * (hour * 60 + minute);
   }
 
   /** {@code YYYY-MM-DDTHH:MM:SS[.f+](Z|+HH:MM|-HH:MM)} as Unix milliseconds, or null. */
@@ -118,8 +127,8 @@ final class Dates {
     if (days == null || seconds < 0) {
       return null;
     }
-    int ms = 0;
     int end = 19;
+    int milliseconds = 0;
     if (text.charAt(19) == '.') {
       end = 20;
       while (end < text.length() && isDigit(text.charAt(end))) {
@@ -131,21 +140,21 @@ final class Dates {
       // The first three digits are the milliseconds; a shorter fraction is padded on the right.
       int kept = Math.min(end - 20, 3);
       int scale = kept == 1 ? 100 : kept == 2 ? 10 : 1;
-      ms = digits(text, 20, kept) * scale;
+      milliseconds = digits(text, 20, kept) * scale;
     }
     Integer offsetMinutes = parseOffset(text, end);
     if (offsetMinutes == null) {
       return null;
     }
-    long total = days * 86_400_000L + seconds * 1000L + ms - offsetMinutes * 60_000L;
-    return (double) total;
+    return (double) (days * 86_400_000L + seconds * 1000L + milliseconds - offsetMinutes * 60_000L);
   }
 
   /** A finite number is Unix milliseconds, a string is parsed, anything else is not an instant. */
   static Double toInstant(Object value) {
-    if (value instanceof Double d) {
-      return Double.isFinite(d) ? d : null;
+    if (value instanceof Double) {
+      double d = (Double) value;
+      return Double.isNaN(d) || Double.isInfinite(d) ? null : (Double) value;
     }
-    return value instanceof String s ? parseInstant(s) : null;
+    return value instanceof String ? parseInstant((String) value) : null;
   }
 }

@@ -1,75 +1,76 @@
 # ToggleSlash server SDK for Java
 
-Feature flags evaluated locally, in your process, from a ruleset the ToggleSlash server keeps current. It
-meets [`docs/sdk-contract.md`](../../docs/sdk-contract.md), has no runtime dependency outside the JDK
-(Java 17 or later) and is **not published**: there is no version to install from a registry.
+The Java server SDK: it keeps one environment's ruleset current and evaluates flags locally, to
+[`docs/evaluation.md`](../../docs/evaluation.md) and [`docs/sdk-contract.md`](../../docs/sdk-contract.md). It
+needs Java 17 or newer, has no runtime dependency, and is private and unpublished: no registry carries it.
 
 ## Quickstart
 
-Install from a checkout of this repository: build it and put the jar on your class path.
+From a checkout, with no tag, compile the SDK and put its classes on your class path:
 
 ```sh
-cd sdks/java
-mise install            # the pinned Java and Maven, once
-mise exec -- mvn -B -q -DskipTests package   # writes target/toggleslash-sdk-java-0.1.0-SNAPSHOT.jar
+(cd sdks/java && mise trust && mise install)      # the toolchain, once
+mvn -q -f sdks/java/pom.xml compile
+javac -cp sdks/java/target/classes Shop.java
+java -cp sdks/java/target/classes:. Shop
 ```
-
-Then:
 
 ```java
 import com.github.madangryscientist.toggleslash.sdks.java.Client;
 import com.github.madangryscientist.toggleslash.sdks.java.Context;
+import com.github.madangryscientist.toggleslash.sdks.java.Detail;
 import com.github.madangryscientist.toggleslash.sdks.java.Options;
+import java.util.Map;
 
-public final class Main {
+public final class Shop {
   public static void main(String[] args) {
-    // Read the key from the environment, never from source.
     Options options =
-        Options.builder("https://flags.example.com", System.getenv("TOGGLESLASH_SDK_KEY")).build();
-    try (Client client = Client.create(options)) { // close() sends the last usage counts
-      client.ready(); // optional: waits for the first load, never longer than the request timeout
-      Context user = Context.user("user-42").with("plan", "pro");
+        Options.builder()
+            .url("https://flags.example.test")
+            .sdkKey(System.getenv("TOGGLESLASH_SDK_KEY"))
+            .build();
+    try (Client client = Client.create(options)) {
+      client.ready(); // optional: waits for the first load, bounded by the request timeout
+
+      Context user = Context.user("u1", Map.of("plan", "pro"));
       if (client.boolVariation("new-checkout", user, false)) {
-        // ...
+        System.out.println("new checkout");
       }
+
+      Detail<String> banner = client.stringVariationDetail("banner", user, "none");
+      System.out.println(banner.value() + " " + banner.variationIndex() + " " + banner.reason().kind());
     }
   }
 }
 ```
 
-`Client.create` returns at once and never throws. `...Variation` and its `...VariationDetail` twins never wait
-for the network: before the first load they answer your fallback with the reason `ERROR` / `NOT_READY`. A
-client is safe to use from many threads. Options are `stream`, `pollInterval`, `flushInterval`,
-`requestTimeout`, `afterEvaluation` and `onError`.
-
-## The API
-
-Every name in the contract and its Java spelling is in the table in
-[`DESIGN.md`](DESIGN.md#the-mapping-table), along with the design choices behind it.
+`Client.create` returns at once and starts two daemon threads. Before the first load, and when a flag is missing,
+malformed or of another type, an accessor answers the fallback, and the `Detail` form says why. The accessors are
+`boolVariation`, `stringVariation`, `longVariation`, `numberVariation` and `jsonVariation`, each with a `Detail`
+twin; [`DESIGN.md`](DESIGN.md) holds the full mapping table of the contract's names onto Java.
 
 ## Guarantees
 
-The contract's section 5, as this SDK keeps it:
+From contract section 5:
 
-1. It never throws at a caller, whatever the server, the network, a context, a hook or `onError` does.
-2. `variation`, `variationDetail` and `status` never do I/O and never wait.
-3. `ready` settles after the first attempt and gives the same answer every time.
-4. While the server is unreachable it keeps evaluating from the last good ruleset.
-5. Only something with the shape of a ruleset replaces a ruleset.
+- No operation throws at the caller, whatever the server, the network or the context does.
+- An evaluation never waits on the network: it reads the ruleset held, or answers `NOT_READY` before the first load.
+- `ready` settles after the first attempt, bounded, and may be called again with the same answer.
+- An answer that is not a ruleset never replaces the one held, and a ruleset and its ETag are swapped together.
+- Every operation is safe from many threads at once, and `close` is safe to call twice or concurrently.
+- A callback that throws, or calls back into the client, neither breaks the client nor deadlocks it.
+- No context, context key or attribute appears in a request, an error or a log line.
+- Usage counts are batched, kept through a failure the server may recover from, and flushed once more on `close`.
 
-It also sends no context, context key or attribute anywhere: usage counts carry a flag, a variation index and
-a day.
-
-## Running the checks
-
-The toolchain is pinned in [`mise.toml`](mise.toml) (`mise install` from this directory). The `bin` scripts
-find it themselves.
+## Toolchain and checks
 
 ```sh
-sdks/java/bin/lint      # google-java-format --dry-run, Checkstyle, javac -Xlint:all -Werror
-sdks/java/bin/test      # mvn clean test: every evaluation vector, the native tests, and the test service's build
-bun run conformance -- --service sdks/java/bin/test-service   # from the repository root: the conformance harness
+(cd sdks/java && mise trust && mise install)   # Temurin, Maven, Checkstyle and google-java-format, as mise.toml pins them
+
+sdks/java/bin/lint            # Checkstyle and google-java-format, no warnings allowed
+sdks/java/bin/test            # JUnit tests, every evaluation vector included
+bun run conformance -- --service sdks/java/bin/test-service    # from the repository root, after bun install
 ```
 
-The test service is described in [`test-service/README.md`](test-service/README.md). A report of the run that
-built this SDK is in [`RUN.md`](RUN.md).
+`bin/test-service` builds the test service on first use. See [`test-service/README.md`](test-service/README.md) for
+the accessor mapping, [`DESIGN.md`](DESIGN.md) for the design and [`RUN.md`](RUN.md) for the run that built this.

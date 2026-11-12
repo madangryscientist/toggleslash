@@ -1,56 +1,111 @@
 <?xml version="1.0"?>
-<!DOCTYPE module PUBLIC
-    "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
-    "https://checkstyle.org/dtds/configuration_1_3.dtd">
-<!-- Layout is google-java-format's. This file holds what a formatter cannot: unused code, missing
-     braces, missing documentation on the public API, and the habits that hide bugs. Any finding fails. -->
+<!DOCTYPE module PUBLIC "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN" "https://checkstyle.org/dtds/configuration_1_3.dtd">
+<!--
+  The rule set bin/lint holds src/main/java to. It is a correctness and readability subset, not a style guide:
+  google-java-format owns layout (bin/lint checks it separately), so no whitespace or indentation rule is here.
+
+  Rules left out on purpose, each with its reason:
+    IllegalCatch       the SDK catches Throwable and RuntimeException deliberately: contract 5.1 says nothing
+                       throws at a caller, and a hook or onError may throw anything.
+    MagicNumber        the protocol's numbers (500 entries, 300 s, 60 s) are named constants where they
+                       matter, and a rule that flags every 1000 or 2 buries those.
+    FinalParameters    noise: the formatter and the compiler already keep parameters honest.
+    DesignForExtension every class here is final or package-private, so there is nothing to extend.
+    JavadocPackage     the root package is described in README.md; a package-info for each of three packages
+                       would only repeat it.
+    TodoComment        the repository's own check-slop rule governs TODOs (they carry an issue number).
+    HiddenField        constructors and records name their parameters after their fields by design.
+    LeftCurly          google-java-format owns brace placement, and it puts the brace of a block inside a switch
+                       case on its own line.
+    UnnecessaryParentheses
+                       `a || (b && c)` and `(x & y) == z` are clearer grouped, and the formatter keeps them.
+    AvoidInlineConditionals, InnerAssignment
+                       the code reads better with `a == null ? b : c`, and an assignment in a loop condition
+                       is not used.
+-->
 <module name="Checker">
-  <property name="severity" value="error"/>
   <property name="charset" value="UTF-8"/>
-  <module name="FileTabCharacter"/>
+  <property name="severity" value="error"/>
+  <property name="fileExtensions" value="java"/>
+
   <module name="NewlineAtEndOfFile"/>
+  <module name="FileTabCharacter"/>
   <module name="RegexpSingleline">
     <property name="format" value="\s+$"/>
-    <property name="message" value="trailing whitespace"/>
+    <property name="message" value="Trailing whitespace"/>
   </module>
+
+  <module name="LineLength">
+    <property name="max" value="120"/>
+    <property name="ignorePattern" value="^(package|import) .*|https?://"/>
+  </module>
+
   <module name="TreeWalker">
+    <!-- Naming -->
+    <module name="ConstantName"/>
+    <module name="LocalFinalVariableName"/>
+    <module name="LocalVariableName"/>
+    <module name="MemberName"/>
+    <module name="MethodName"/>
+    <module name="PackageName"/>
+    <module name="ParameterName"/>
+    <module name="StaticVariableName"/>
+    <module name="TypeName"/>
+    <module name="RecordComponentName"/>
+
+    <!-- Imports -->
     <module name="AvoidStarImport"/>
-    <module name="UnusedImports"/>
-    <module name="RedundantImport"/>
     <module name="IllegalImport"/>
-    <module name="OneTopLevelClass"/>
+    <module name="RedundantImport"/>
+    <module name="UnusedImports"/>
+
+    <!-- Blocks -->
     <module name="NeedBraces"/>
-    <module name="ModifierOrder"/>
-    <module name="RedundantModifier"/>
-    <module name="MissingOverride"/>
+    <module name="RightCurly"/>
+    <module name="EmptyBlock">
+      <property name="option" value="text"/>
+    </module>
+    <module name="EmptyCatchBlock">
+      <property name="exceptionVariableName" value="expected|ignored"/>
+    </module>
+
+    <!-- Coding -->
+    <module name="ArrayTypeStyle"/>
     <module name="EmptyStatement"/>
     <module name="EqualsHashCode"/>
     <module name="FallThrough"/>
+    <module name="MissingOverride"/>
     <module name="MissingSwitchDefault"/>
+    <module name="MultipleVariableDeclarations"/>
+    <module name="OneStatementPerLine"/>
     <module name="SimplifyBooleanExpression"/>
     <module name="SimplifyBooleanReturn"/>
     <module name="StringLiteralEquality"/>
     <module name="UpperEll"/>
-    <module name="ArrayTypeStyle"/>
-    <module name="HideUtilityClassConstructor"/>
+    <module name="OneTopLevelClass"/>
+    <module name="NoFinalizer"/>
+
+    <!-- Design -->
     <module name="FinalClass"/>
+    <module name="HideUtilityClassConstructor"/>
     <module name="InterfaceIsType"/>
-    <module name="MultipleVariableDeclarations"/>
-    <module name="OneStatementPerLine"/>
-    <module name="TypeName"/>
-    <module name="MethodName"/>
-    <module name="MemberName"/>
-    <module name="ParameterName"/>
-    <module name="LocalVariableName"/>
-    <module name="ConstantName"/>
-    <module name="PackageName"/>
+    <module name="MutableException"/>
+
+    <!-- Modifiers -->
+    <module name="ModifierOrder"/>
+    <module name="RedundantModifier"/>
+
+    <!-- Javadoc: every public type and method says what it is -->
     <module name="MissingJavadocType">
       <property name="scope" value="public"/>
     </module>
     <module name="MissingJavadocMethod">
       <property name="scope" value="public"/>
       <property name="allowMissingPropertyJavadoc" value="true"/>
-      <property name="ignoreMethodNamesRegex" value="^(main)$"/>
+      <property name="allowedAnnotations" value="Override"/>
     </module>
+    <module name="InvalidJavadocPosition"/>
+    <module name="SummaryJavadoc"/>
+    <module name="JavadocParagraph"/>
   </module>
 </module>

@@ -1,6 +1,7 @@
 # Maven output
 target/
-# Editors and tools
+
+# The IDE
 .idea/
 *.iml
 .vscode/

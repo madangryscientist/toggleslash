@@ -1,21 +1,17 @@
 package com.github.madangryscientist.toggleslash.sdks.java.evaluation;
 
-/** Why a flag answered as it did, spelled as in the contract. */
+/** Why an evaluation gave its answer: the kinds of the evaluation spec, in their spelling. */
 public enum ReasonKind {
+  /** The flag is off. */
   OFF,
-  TARGET_MATCH,
-  RULE_MATCH,
-  FALLTHROUGH,
+  /** A prerequisite flag was not met. */
   PREREQUISITE_FAILED,
-  ERROR;
-
-  /** The canonical spelling, as it appears on the wire and in the specification. */
-  public String value() {
-    return name();
-  }
-
-  @Override
-  public String toString() {
-    return name();
-  }
+  /** The context is listed in a target. */
+  TARGET_MATCH,
+  /** A rule matched. */
+  RULE_MATCH,
+  /** No rule matched, so the fallthrough served. */
+  FALLTHROUGH,
+  /** The evaluation failed; the error code says how. */
+  ERROR
 }

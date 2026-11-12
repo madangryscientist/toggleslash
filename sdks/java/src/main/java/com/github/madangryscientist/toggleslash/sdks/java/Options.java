@@ -1,218 +1,150 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
-import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Result;
-import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Ruleset;
-import java.time.Clock;
 import java.time.Duration;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 import java.util.function.DoubleSupplier;
-import java.util.function.LongSupplier;
 
-/**
- * What {@link Client#create(Options)} reads. Build one with {@link #builder(String, String)}. A
- * duration that is null, zero or negative is the default.
- */
+/** What a client is built from. Make one with {@link #builder()}. */
 public final class Options {
-  static final Duration DEFAULT_POLL_INTERVAL = Duration.ofSeconds(30);
-  static final Duration DEFAULT_FLUSH_INTERVAL = Duration.ofSeconds(30);
-  static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(10);
+  static final Duration DEFAULT_INTERVAL = Duration.ofSeconds(30);
+  static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(10);
+  static final Duration DEFAULT_IDLE = Duration.ofSeconds(60);
 
-  /** The server sends a keep-alive every 25 s; this long without a byte and the stream is dead. */
-  static final Duration DEFAULT_STREAM_IDLE = Duration.ofSeconds(60);
-
-  /** How one evaluation is done; a test seam, so a test can make it fail. */
-  @FunctionalInterface
-  interface Evaluator {
-    Result evaluate(Ruleset ruleset, String flagKey, Object context);
-  }
-
-  private final String url;
-  private final String sdkKey;
-  private final boolean stream;
-  private final Duration pollInterval;
-  private final Duration flushInterval;
-  private final Duration requestTimeout;
-  private final Consumer<EvaluationEvent> afterEvaluation;
-  private final Consumer<Throwable> onError;
-  private final Clock clock;
-  private final LongSupplier nanoTime;
-  private final DoubleSupplier jitter;
-  private final Duration streamIdle;
-  private final Evaluator evaluator;
+  final String url;
+  final String sdkKey;
+  final boolean stream;
+  final Duration pollInterval;
+  final Duration flushInterval;
+  final Duration requestTimeout;
+  final Duration streamIdleTimeout;
+  final AfterEvaluation afterEvaluation;
+  final Consumer<Throwable> onError;
+  final Clock clock;
+  final DoubleSupplier random;
 
   private Options(Builder b) {
-    this.url = b.url;
-    this.sdkKey = b.sdkKey;
-    this.stream = b.stream;
-    this.pollInterval = positive(b.pollInterval, DEFAULT_POLL_INTERVAL);
-    this.flushInterval = positive(b.flushInterval, DEFAULT_FLUSH_INTERVAL);
-    this.requestTimeout = positive(b.requestTimeout, DEFAULT_REQUEST_TIMEOUT);
+    String base = b.url == null ? "" : b.url;
+    int end = base.length();
+    while (end > 0 && base.charAt(end - 1) == '/') {
+      end--;
+    }
+    this.url = base.substring(0, end);
+    this.sdkKey = b.sdkKey == null ? "" : b.sdkKey;
+    this.stream = b.stream == null || b.stream;
+    this.pollInterval = positive(b.pollInterval, DEFAULT_INTERVAL);
+    this.flushInterval = positive(b.flushInterval, DEFAULT_INTERVAL);
+    this.requestTimeout = positive(b.requestTimeout, DEFAULT_TIMEOUT);
+    this.streamIdleTimeout = positive(b.streamIdleTimeout, DEFAULT_IDLE);
     this.afterEvaluation = b.afterEvaluation;
     this.onError = b.onError;
-    this.clock = b.clock;
-    this.nanoTime = b.nanoTime;
-    this.jitter = b.jitter;
-    this.streamIdle = positive(b.streamIdle, DEFAULT_STREAM_IDLE);
-    this.evaluator = b.evaluator;
+    this.clock = b.clock == null ? Clock.SYSTEM : b.clock;
+    this.random = b.random == null ? Math::random : b.random;
   }
 
-  private static Duration positive(Duration value, Duration fallback) {
-    return value == null || value.isZero() || value.isNegative() ? fallback : value;
+  /** A null, zero or negative duration is not given: the default stands. */
+  private static Duration positive(Duration given, Duration fallback) {
+    if (given == null || given.isZero() || given.isNegative()) {
+      return fallback;
+    }
+    return given;
   }
 
-  /**
-   * Starts options for a server at {@code url} (for example {@code https://flags.example.com}; a
-   * trailing slash is dropped) and a server SDK key ({@code fs_server_...}).
-   */
-  public static Builder builder(String url, String sdkKey) {
-    return new Builder(url, sdkKey);
+  /** A new builder with every option unset. */
+  public static Builder builder() {
+    return new Builder();
   }
 
-  String url() {
-    return url;
-  }
-
-  String sdkKey() {
-    return sdkKey;
-  }
-
-  boolean stream() {
-    return stream;
-  }
-
-  Duration pollInterval() {
-    return pollInterval;
-  }
-
-  Duration flushInterval() {
-    return flushInterval;
-  }
-
-  Duration requestTimeout() {
-    return requestTimeout;
-  }
-
-  Consumer<EvaluationEvent> afterEvaluation() {
-    return afterEvaluation;
-  }
-
-  Consumer<Throwable> onError() {
-    return onError;
-  }
-
-  Clock clock() {
-    return clock;
-  }
-
-  LongSupplier nanoTime() {
-    return nanoTime;
-  }
-
-  DoubleSupplier jitter() {
-    return jitter;
-  }
-
-  Duration streamIdle() {
-    return streamIdle;
-  }
-
-  Evaluator evaluator() {
-    return evaluator;
-  }
-
-  /** Builds {@link Options}. */
+  /** Collects options. Every setter returns the builder. */
   public static final class Builder {
-    private final String url;
-    private final String sdkKey;
-    private boolean stream = true;
+    private String url;
+    private String sdkKey;
+    private Boolean stream;
     private Duration pollInterval;
     private Duration flushInterval;
     private Duration requestTimeout;
-    private Consumer<EvaluationEvent> afterEvaluation;
+    private Duration streamIdleTimeout;
+    private AfterEvaluation afterEvaluation;
     private Consumer<Throwable> onError;
-    private Clock clock = Clock.systemUTC();
-    private LongSupplier nanoTime = System::nanoTime;
-    private DoubleSupplier jitter = () -> ThreadLocalRandom.current().nextDouble();
-    private Duration streamIdle;
-    private Evaluator evaluator = Ruleset::evaluate;
+    private Clock clock;
+    private DoubleSupplier random;
 
-    private Builder(String url, String sdkKey) {
-      this.url = url;
-      this.sdkKey = sdkKey;
-    }
+    private Builder() {}
 
-    /** Follow the stream (default true). False polls only. */
-    public Builder stream(boolean stream) {
-      this.stream = stream;
+    /**
+     * The server's base URL, e.g. {@code https://flags.example.com}. Required; trailing slashes go.
+     */
+    public Builder url(String value) {
+      this.url = value;
       return this;
     }
 
-    /** How often to poll when the stream is down or off, and the longest reconnect wait (30 s). */
-    public Builder pollInterval(Duration pollInterval) {
-      this.pollInterval = pollInterval;
+    /** A server SDK key ({@code fs_server_...}). Required. A client key cannot read the ruleset. */
+    public Builder sdkKey(String value) {
+      this.sdkKey = value;
       return this;
     }
 
-    /** How often usage counts are sent (30 s). */
-    public Builder flushInterval(Duration flushInterval) {
-      this.flushInterval = flushInterval;
+    /** Follow the stream (the default). False polls only. */
+    public Builder stream(boolean value) {
+      this.stream = value;
       return this;
     }
 
     /**
-     * The longest any one request may take, and so the longest {@code ready} and {@code close} wait
-     * (10 s).
+     * How often to poll when the stream is down or off, and the longest reconnect wait (default 30
+     * s).
      */
-    public Builder requestTimeout(Duration requestTimeout) {
-      this.requestTimeout = requestTimeout;
+    public Builder pollInterval(Duration value) {
+      this.pollInterval = value;
+      return this;
+    }
+
+    /** How often usage counts are sent (default 30 s). */
+    public Builder flushInterval(Duration value) {
+      this.flushInterval = value;
+      return this;
+    }
+
+    /** The longest any one request may take, body included (default 10 s). */
+    public Builder requestTimeout(Duration value) {
+      this.requestTimeout = value;
+      return this;
+    }
+
+    /** Called after every evaluation, on the caller's thread; see {@link AfterEvaluation}. */
+    public Builder afterEvaluation(AfterEvaluation value) {
+      this.afterEvaluation = value;
       return this;
     }
 
     /**
-     * Called synchronously on the caller's thread after every evaluation, a fallback included. An
-     * exception it throws goes to {@code onError} and never reaches the caller.
+     * Told about every failure the SDK absorbs, on the thread that hit it. An exception it throws
+     * is ignored.
      */
-    public Builder afterEvaluation(Consumer<EvaluationEvent> hook) {
-      this.afterEvaluation = hook;
+    public Builder onError(Consumer<Throwable> value) {
+      this.onError = value;
       return this;
     }
 
-    /**
-     * Told about every failure the SDK absorbs. It is never needed for correctness; an exception it
-     * throws is ignored.
-     */
-    public Builder onError(Consumer<Throwable> onError) {
-      this.onError = onError;
+    /** For tests: how long the stream may go without a byte before it is dropped (default 60 s). */
+    public Builder streamIdleTimeout(Duration value) {
+      this.streamIdleTimeout = value;
       return this;
     }
 
-    Builder clock(Clock clock) {
-      this.clock = clock;
+    /** For tests: the time and the waits every timer goes through. */
+    public Builder clock(Clock value) {
+      this.clock = value;
       return this;
     }
 
-    Builder nanoTime(LongSupplier nanoTime) {
-      this.nanoTime = nanoTime;
+    /** For tests: the source of the backoff jitter, in [0, 1). */
+    public Builder random(DoubleSupplier value) {
+      this.random = value;
       return this;
     }
 
-    Builder jitter(DoubleSupplier jitter) {
-      this.jitter = jitter;
-      return this;
-    }
-
-    Builder streamIdle(Duration streamIdle) {
-      this.streamIdle = streamIdle;
-      return this;
-    }
-
-    Builder evaluator(Evaluator evaluator) {
-      this.evaluator = evaluator;
-      return this;
-    }
-
-    /** The options. */
+    /** Builds the options. */
     public Options build() {
       return new Options(this);
     }

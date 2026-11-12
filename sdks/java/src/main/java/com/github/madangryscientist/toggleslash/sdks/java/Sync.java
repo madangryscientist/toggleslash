@@ -1,338 +1,319 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
-import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Json;
 import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Ruleset;
-import java.time.Clock;
-import java.time.Duration;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Utf8;
+import com.github.madangryscientist.toggleslash.sdks.java.json.Json;
+import java.net.http.HttpTimeoutException;
 import java.time.Instant;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.OptionalLong;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import java.util.function.DoubleSupplier;
 
 /**
- * Keeps one ruleset current: it fetches with {@code If-None-Match}, follows the stream when it can
- * and polls when it cannot. Nothing in here throws at a caller; every failure goes to the error
- * callback and leaves the last good ruleset in place. The state (ruleset and tag together, the last
- * sync, the last error and the stream's state) changes under {@link #state}; no lock is held across
- * I/O or a callback.
+ * Keeps one ruleset current (section 7 of the contract): the conditional load, the stream, the
+ * poll, the backoff and the Retry-After hold. It runs on one daemon thread. Nothing in it throws at
+ * a caller; every failure goes to {@code onError} and leaves the last good ruleset in place.
  */
 final class Sync {
-  /** The ruleset held and the ETag it came with (null when the server sent none). */
-  record Snapshot(Ruleset ruleset, String etag) {}
+  private static final long BACKOFF_BASE_MILLIS = 1_000L;
 
-  private static final Duration BACKOFF_BASE = Duration.ofSeconds(1);
-
-  private final Http http;
-  private final String baseUrl;
-  private final String sdkKey;
-  private final Duration requestTimeout;
-  private final Duration pollInterval;
-  private final Duration streamIdle;
-  private final boolean streamOn;
+  private final Options options;
+  private final HttpCalls http;
   private final Clock clock;
-  private final DoubleSupplier jitter;
-  private final Hold hold;
   private final Consumer<Throwable> report;
-  private final Runnable onFirstLoad;
-  private final CountDownLatch stop = new CountDownLatch(1);
-  private final Object state = new Object();
+  private final long idleMillis;
 
-  private volatile Snapshot snapshot;
+  /** Counted down by {@code close}; every wait of the SDK ends with it. */
+  final CountDownLatch stop = new CountDownLatch(1);
+
+  /** Completed once, when the first attempt has settled: true if a ruleset is held. */
+  final CompletableFuture<Boolean> firstLoad = new CompletableFuture<>();
+
   private volatile boolean stopped;
-  private Instant lastSyncAt;
+  private volatile Snapshot snapshot;
+  private volatile Status status;
+  private volatile long retryAt;
+
+  private final Object stateLock = new Object();
+  // The fields below are guarded by stateLock, and only copied there.
+  private Long lastSyncMillis;
   private String lastError;
   private StreamState streamState;
+  private boolean closed;
 
-  Sync(
-      Http http,
-      Options options,
-      String baseUrl,
-      Hold hold,
-      Consumer<Throwable> report,
-      Runnable onFirstLoad) {
+  Sync(Options options, HttpCalls http, Consumer<Throwable> report) {
+    this.options = options;
     this.http = http;
-    this.baseUrl = baseUrl;
-    this.sdkKey = options.sdkKey();
-    this.requestTimeout = options.requestTimeout();
-    this.pollInterval = options.pollInterval();
-    this.streamIdle = options.streamIdle();
-    this.streamOn = options.stream();
-    this.clock = options.clock();
-    this.jitter = options.jitter();
-    this.hold = hold;
+    this.clock = options.clock;
     this.report = report;
-    this.onFirstLoad = onFirstLoad;
-    this.streamState = streamOn ? StreamState.CONNECTING : StreamState.OFF;
+    this.idleMillis = options.streamIdleTimeout.toMillis();
+    this.streamState = options.stream ? StreamState.CONNECTING : StreamState.OFF;
+    this.status = new Status(null, null, streamState, null);
   }
 
-  /** The ruleset held with its tag; null before the first load. One read, one consistent pair. */
   Snapshot snapshot() {
     return snapshot;
   }
 
   Status status() {
-    synchronized (state) {
-      Snapshot held = snapshot;
-      return new Status(
-          Optional.ofNullable(held == null ? null : held.etag()),
-          Optional.ofNullable(lastSyncAt),
-          stopped ? StreamState.CLOSED : streamState,
-          Optional.ofNullable(lastError));
-    }
+    return status;
   }
 
-  /** Stops the loop and abandons the request in flight. */
-  void stop() {
-    synchronized (state) {
-      stopped = true;
-    }
-    stop.countDown();
-    http.abort();
-  }
-
-  /** The body of the sync thread: load once, then follow until stopped. */
+  /** The thread body: one load, then follow until {@link #halt()}. */
   void run() {
     try {
       refresh();
-    } finally {
-      onFirstLoad.run();
-    }
-    int failures = 0;
-    while (!stopped) {
-      if (streamOn && !sleep(0)) {
-        return;
-      }
-      boolean connected = streamOn && follow();
-      failures = connected ? 0 : failures + 1;
-      if (!sleep(delay(failures).toNanos())) {
-        return;
-      }
-      // Sleep first: the ruleset was only just loaded, or the stream only just failed. A stream
-      // that
-      // was up needs no poll, since reconnecting announces the tag and catches up on its own.
-      if (!connected && !stopped) {
-        refresh();
-      }
-    }
-  }
-
-  /** Waits for {@code nanos}, or until the hold has passed if that is later. False once stopped. */
-  private boolean sleep(long nanos) {
-    long wait = Math.max(nanos, hold.remainingNanos());
-    try {
-      if (wait > 0) {
-        return !stop.await(wait, TimeUnit.NANOSECONDS);
+      firstLoad.complete(snapshot != null);
+      int failures = 0;
+      while (!stopped) {
+        try {
+          if (options.stream) {
+            sleep(0);
+          }
+          if (stopped) {
+            return;
+          }
+          boolean connected = options.stream && follow();
+          failures = connected ? 0 : failures + 1;
+          sleep(delay(failures));
+          if (!connected && !stopped) {
+            refresh();
+          }
+        } catch (RuntimeException e) {
+          // A defect must not end the loop: say so, wait a poll interval and go on.
+          fail("network", e);
+          sleep(options.pollInterval.toMillis());
+        }
       }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      return false;
+    } finally {
+      firstLoad.complete(snapshot != null);
     }
-    return !stopped;
   }
 
   /**
-   * Exponential from a second up to the poll interval, jittered; with no stream, just the interval.
+   * Stops following the server: nothing new starts and the request in flight is abandoned,
+   * silently.
    */
-  Duration delay(int failures) {
-    if (!streamOn) {
-      return pollInterval;
+  void halt() {
+    stopped = true;
+    synchronized (stateLock) {
+      closed = true;
+      publish();
     }
-    long exponential = BACKOFF_BASE.toNanos() << Math.min(failures, 16);
-    long ceiling = Math.min(pollInterval.toNanos(), exponential);
-    return Duration.ofNanos((long) (ceiling * (0.5 + jitter.getAsDouble() / 2)));
+    stop.countDown();
+    http.abandon();
   }
 
-  /** The ruleset has been confirmed current as of now. Callers hold {@link #state}. */
-  private void synced() {
-    lastSyncAt = clock.instant();
-    lastError = null;
-  }
-
-  private void markSynced() {
-    synchronized (state) {
-      synced();
+  private void sleep(long millis) throws InterruptedException {
+    long wait = Math.max(millis, retryAt - clock.now());
+    if (wait > 0) {
+      clock.sleep(wait, stop);
     }
   }
 
-  /** Records a failed attempt and tells {@code onError}, unless the failure is only the close. */
-  private boolean fail(String code, String message) {
-    synchronized (state) {
-      if (stopped) {
-        return false;
+  /** Exponential from a second up to the poll interval, jittered; with no stream, the interval. */
+  private long delay(int failures) {
+    long poll = options.pollInterval.toMillis();
+    if (!options.stream) {
+      return poll;
+    }
+    long ceiling = Math.min(poll, BACKOFF_BASE_MILLIS * (1L << Math.min(failures, 16)));
+    return (long) (ceiling * (0.5 + options.random.getAsDouble() / 2));
+  }
+
+  /** One conditional load of the ruleset. */
+  private boolean refresh() throws InterruptedException {
+    try {
+      Snapshot held = snapshot;
+      HttpCalls.Reply reply = http.getRuleset(held == null ? null : held.etag());
+      int code = reply.status();
+      if (code == 304) {
+        if (held == null) {
+          throw new SyncException(
+              "http_304", "GET /sdk/v1/ruleset answered 304 with no ruleset held");
+        }
+      } else if (code == 200) {
+        install(parse(reply));
+      } else {
+        holdOff(reply);
+        throw new SyncException("http_" + code, "GET /sdk/v1/ruleset answered " + code);
       }
-      lastError = code;
-    }
-    report.accept(new ToggleSlashException(code, message));
-    return false;
-  }
-
-  private boolean fail(String route, Http.Failure failure) {
-    if (failure.kind() == Http.Kind.ABORTED) {
+      synced();
+      return true;
+    } catch (SyncException e) {
+      fail(e.code(), e);
       return false;
     }
-    if (failure.kind() == Http.Kind.TIMEOUT) {
-      return fail("timeout", route + " timed out");
-    }
-    return fail("network", route + " failed: network error");
   }
 
-  private void setState(StreamState next) {
-    synchronized (state) {
-      streamState = next;
-    }
-  }
-
-  /** The whole decimal seconds of a {@code Retry-After}, or empty if it is anything else. */
-  static OptionalLong retryAfterSeconds(Optional<String> header) {
-    if (header.isEmpty()) {
-      return OptionalLong.empty();
-    }
-    String text = header.get().strip();
-    if (text.isEmpty()) {
-      return OptionalLong.empty();
-    }
-    for (int i = 0; i < text.length(); i++) {
-      char c = text.charAt(i);
-      if (c < '0' || c > '9') {
-        return OptionalLong.empty();
-      }
-    }
-    if (text.length() > 9) {
-      return OptionalLong.of(Hold.MAX_SECONDS);
-    }
-    return OptionalLong.of(Long.parseLong(text));
-  }
-
-  private void honourRetryAfter(int status, Optional<String> header) {
-    if (status == 429) {
-      retryAfterSeconds(header).ifPresent(hold::extend);
-    }
-  }
-
-  /** One conditional fetch of the ruleset. True if it left the ruleset confirmed current. */
-  boolean refresh() {
-    String route = "GET /sdk/v1/ruleset";
-    Snapshot held = snapshot;
-    Map<String, String> headers = new LinkedHashMap<>();
-    headers.put("Authorization", "Bearer " + sdkKey);
-    if (held != null && held.etag() != null) {
-      headers.put("If-None-Match", held.etag());
-    }
-    Http.Reply reply;
+  private static Snapshot parse(HttpCalls.Reply reply) throws SyncException {
+    Object json;
     try {
-      reply = http.get(baseUrl + "/sdk/v1/ruleset", headers, requestTimeout);
-    } catch (Http.Failure failure) {
-      return fail(route, failure);
+      json = Json.parse(Utf8.decode(reply.body()));
+    } catch (RuntimeException e) {
+      throw new SyncException("bad_ruleset", "GET /sdk/v1/ruleset sent no JSON", e);
     }
-    if (reply.status() == 304) {
-      markSynced();
-      return true;
-    }
-    if (reply.status() != 200) {
-      honourRetryAfter(reply.status(), reply.retryAfter());
-      return fail("http_" + reply.status(), route + " answered " + reply.status());
+    if (!(json instanceof Map<?, ?> map)
+        || !(map.get("flags") instanceof List<?>)
+        || !(map.get("segments") instanceof List<?>)) {
+      throw new SyncException("bad_ruleset", "GET /sdk/v1/ruleset sent no flags and segments");
     }
     Ruleset ruleset;
     try {
-      Object body = Json.parse(reply.body());
-      if (!Ruleset.isRuleset(body)) {
-        return fail("bad_ruleset", route + " sent no flags and segments");
-      }
-      ruleset = Ruleset.of(body);
+      ruleset = Ruleset.parse(json);
     } catch (RuntimeException e) {
-      return fail("bad_ruleset", route + " sent a body that is not a ruleset");
+      throw new SyncException("bad_ruleset", "GET /sdk/v1/ruleset sent no usable ruleset", e);
     }
-    synchronized (state) {
-      snapshot = new Snapshot(ruleset, reply.etag().orElse(null));
-      synced();
-    }
-    return true;
+    // An empty ETag counts as none, so it is never sent back as If-None-Match.
+    String etag = reply.headers().firstValue("ETag").filter(s -> !s.isEmpty()).orElse(null);
+    return new Snapshot(ruleset, etag);
   }
 
   /**
-   * Follows {@code GET /sdk/v1/stream} until it ends or fails. True if it connected, so the caller
-   * can tell a stream that was up from one that never was.
+   * Follows {@code GET /sdk/v1/stream} until it ends or fails. True if it connected (and was not
+   * ended by a failed fetch), so the caller can tell a stream that was up from one that never was.
    */
-  private boolean follow() {
-    String route = "GET /sdk/v1/stream";
-    boolean connected = false;
-    Http.Stream stream = null;
-    setState(StreamState.CONNECTING);
+  private boolean follow() throws InterruptedException {
+    setStream(StreamState.CONNECTING);
+    boolean[] connected = {false};
+    StreamBody body = new StreamBody();
     try {
-      Map<String, String> headers = new LinkedHashMap<>();
-      headers.put("Authorization", "Bearer " + sdkKey);
-      headers.put("Accept", "text/event-stream");
-      Http.Opened opened = http.open(baseUrl + "/sdk/v1/stream", headers, requestTimeout);
-      if (opened.status() != 200) {
-        honourRetryAfter(opened.status(), opened.retryAfter());
-        fail("http_" + opened.status(), route + " answered " + opened.status());
-        return false;
+      HttpCalls.Reply reply = http.openStream(body);
+      if (reply.status() != 200) {
+        holdOff(reply);
+        throw new SyncException(
+            "http_" + reply.status(), "GET /sdk/v1/stream answered " + reply.status());
       }
-      stream = opened.stream();
-      SseParser parser = new SseParser();
-      while (!stopped) {
-        Object item = stream.next(streamIdle);
-        if (item == null) {
-          fail("timeout", route + " went quiet");
-          return connected;
-        }
-        if (item == Http.Stream.END || item == Http.Stream.ABORTED) {
-          return connected;
-        }
-        if (item instanceof Throwable) {
-          if (!stopped) {
-            fail("network", route + " failed: network error");
-          }
-          return connected;
-        }
-        byte[] chunk = (byte[]) item;
-        List<SseParser.Event> events = parser.feed(chunk, chunk.length);
-        for (SseParser.Event event : events) {
-          if (!event.name().equals("changed") && !event.name().equals("connected")) {
-            continue;
-          }
-          if (event.name().equals("connected")) {
-            connected = true;
-            synchronized (state) {
-              streamState = StreamState.CONNECTED;
-              lastError = null;
-            }
-          }
-          if (!onTag(event.data())) {
-            // The fetch the stream asked for failed, and a stream that stays up would never retry
-            // it. End it and count it as not connected, so the backoff and the poll take over.
-            return false;
-          }
-        }
-      }
-      return connected;
-    } catch (Http.Failure failure) {
-      fail(route, failure);
-      return connected;
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      return connected;
+      pump(body, connected);
+    } catch (SyncException e) {
+      fail(e.code(), e);
     } finally {
-      if (stream != null) {
-        http.release(stream);
+      body.cancel();
+      setStream(StreamState.DISCONNECTED);
+    }
+    return connected[0];
+  }
+
+  /**
+   * Reads events until the stream ends. The queue wait is the watchdog: a quiet stream is dropped.
+   */
+  private void pump(StreamBody body, boolean[] connected)
+      throws SyncException, InterruptedException {
+    Utf8.Decoder decoder = new Utf8.Decoder();
+    SseParser parser = new SseParser();
+    StringBuilder text = new StringBuilder();
+    while (true) {
+      Object item = body.queue.poll(idleMillis, TimeUnit.MILLISECONDS);
+      if (item == null) {
+        throw new SyncException("timeout", "the stream went quiet");
       }
-      setState(StreamState.DISCONNECTED);
+      if (item == StreamBody.END) {
+        return;
+      }
+      if (item instanceof StreamBody.Failure failure) {
+        Throwable cause = failure.error();
+        String code = cause instanceof HttpTimeoutException ? "timeout" : "network";
+        throw new SyncException(code, "the stream failed", cause);
+      }
+      byte[] chunk = (byte[]) item;
+      text.setLength(0);
+      decoder.decode(chunk, 0, chunk.length, text);
+      body.requestMore();
+      for (SseParser.Event event : parser.feed(text)) {
+        if (!event.name().equals("changed") && !event.name().equals("connected")) {
+          continue;
+        }
+        if (event.name().equals("connected")) {
+          connected[0] = true;
+          streamConnected();
+        }
+        if (!onTag(event.data())) {
+          // The fetch the stream asked for failed, and a stream that stays up would never retry it.
+          // End it
+          // and count it as not connected, so the backoff and the poll take over.
+          connected[0] = false;
+          return;
+        }
+      }
     }
   }
 
   /** The stream names the ruleset's ETag; fetch only when it is not the one held. */
-  private boolean onTag(String tag) {
+  private boolean onTag(String tag) throws InterruptedException {
     Snapshot held = snapshot;
-    if (held != null && tag.equals(held.etag())) {
-      markSynced();
+    if (held != null && held.etag() != null && tag.equals(held.etag())) {
+      synced();
       return true;
     }
     return refresh();
+  }
+
+  /** Remembers what a 429 asked for; a shorter answer never shortens a longer wait. */
+  private void holdOff(HttpCalls.Reply reply) {
+    long wait = RetryAfter.millis(reply.status(), reply.headers());
+    if (wait >= 0) {
+      retryAt = Math.max(retryAt, clock.now() + wait);
+    }
+  }
+
+  // ---- state ----
+
+  private void install(Snapshot next) {
+    synchronized (stateLock) {
+      snapshot = next;
+      publish();
+    }
+  }
+
+  private void synced() {
+    synchronized (stateLock) {
+      lastSyncMillis = clock.now();
+      lastError = null;
+      publish();
+    }
+  }
+
+  private void setStream(StreamState state) {
+    synchronized (stateLock) {
+      streamState = state;
+      publish();
+    }
+  }
+
+  private void streamConnected() {
+    synchronized (stateLock) {
+      streamState = StreamState.CONNECTED;
+      lastError = null;
+      publish();
+    }
+  }
+
+  /** A failure that is not the abandonment of a request by {@code close}. */
+  private void fail(String code, Throwable error) {
+    if (stopped) {
+      return;
+    }
+    synchronized (stateLock) {
+      lastError = code;
+      publish();
+    }
+    report.accept(error);
+  }
+
+  /** Builds the one consistent status. Called with {@code stateLock} held. */
+  private void publish() {
+    Snapshot held = snapshot;
+    Instant at = lastSyncMillis == null ? null : Instant.ofEpochMilli(lastSyncMillis);
+    status =
+        new Status(
+            held == null ? null : held.etag(),
+            at,
+            closed ? StreamState.CLOSED : streamState,
+            lastError);
   }
 }
