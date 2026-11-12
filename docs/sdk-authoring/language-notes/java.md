@@ -1,6 +1,6 @@
 # Java
 
-What the Java runs learned. Each fact cites its run: prompt `7622421`, FS-97, 2026-11-10, unless it is marked (FS-151), the run at prompt `01bdb48` on 2026-11-12, (FS-153), the run at prompt `19b29aa` on 2026-11-12, (FS-157), the run at prompt `f83c46d` on 2026-11-12, or (FS-159), the run at prompt `29ae975` on 2026-11-12.
+What the Java runs learned. Each fact cites its run: prompt `7622421`, FS-97, 2026-11-10, unless it is marked (FS-151), the run at prompt `01bdb48` on 2026-11-12, (FS-153), the run at prompt `19b29aa` on 2026-11-12, (FS-157), the run at prompt `f83c46d` on 2026-11-12, (FS-159), the run at prompt `29ae975` on 2026-11-12, or (FS-161), the run at prompt `546ffdb` on 2026-11-12.
 
 - **Toolchain.** Pin the newest LTS (Temurin 25 in that run). A feature release such as the current
   non-LTS one leaves support after six months. Minimum Java 17 is separate, set with `--release 17`.
@@ -22,3 +22,4 @@ What the Java runs learned. Each fact cites its run: prompt `7622421`, FS-97, 20
 - **Checkstyle 14 traps.** It has no `JavadocStyle` check; use `SummaryJavadoc` and `JavadocParagraph`. `LineLength` belongs under `Checker`, not `TreeWalker`. `JavadocVariable` takes `accessModifiers`, while `MissingJavadocMethod` and `MissingJavadocType` take `scope`; `JavadocPackage` needs a `package-info.java` in every package; `JavadocType` needs `allowMissingParamTags` set to true for a record or a type with nothing to document (FS-157). A `{@code}` with unbalanced braces breaks the Javadoc parser (FS-153).
 - **google-java-format exits 0 on a dry run.** `--dry-run <files>` prints the files it would change and exits 0, so `bin/lint` passes `--set-exit-if-changed` or fails on any output. The mise build is a native binary and runs on JDK 25. Checkstyle's `SummaryJavadoc` wants the first sentence to end in a full stop, so a question (`/** Does ...? */`) fails (FS-159).
 - **CI toolchain.** `jdx/mise-action` with `install_args: java maven checkstyle google-java-format` installs the whole toolchain from `mise.toml`, the two lint tools included, which `actions/setup-java` does not provide (FS-159).
+- **Generic accessor and numbers.** The JSON parser yields doubles, so a generic accessor whose fallback is an `Integer` or `Long` converts a whole served number to that class and answers `TYPE_MISMATCH` for a fraction or an out-of-range value (contract section 4, FS-161).
