@@ -1,329 +1,330 @@
-// Command test-service wraps the Go SDK in the HTTP protocol of docs/sdk-test-service.md, so the
-// conformance harness (packages/sdk-conformance) can drive it. It listens on 127.0.0.1 and prints
-// "listening http://127.0.0.1:<port>" once it does.
+// The Go SDK's conformance test service: an HTTP server that wraps toggleslash.New, so the harness in
+// packages/sdk-conformance can drive the SDK. The protocol is docs/sdk-test-service.md; the accessor mapping is
+// in this directory's README. It absorbs nothing the SDK returns: a panic answers 500 with its text, and the
+// harness fails the scenario.
 package main
 
 import (
-	"context"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net"
 	"net/http"
 	"os"
-	"regexp"
-	"strconv"
+	"strings"
 	"sync"
 	"time"
 
-	toggleslash "github.com/madangryscientist/toggleslash/sdks/go"
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonvalue"
+	"github.com/madangryscientist/toggleslash/sdks/go"
+	"github.com/madangryscientist/toggleslash/sdks/go/internal/jsonx"
 )
 
+// entry is one client the harness created, with the hook events and errors it asked to record.
 type entry struct {
-	client *toggleslash.Client
-
-	mu     sync.Mutex
-	events []jsonvalue.Value
-	errors []string
+	mu         sync.Mutex
+	client     *toggleslash.Client
+	hookEvents []any
+	errors     []string
 }
 
+// service holds every client the harness created.
 type service struct {
 	mu      sync.Mutex
 	clients map[string]*entry
-	created int
+	counter int
 }
 
-var clientRoute = regexp.MustCompile(`^/clients/([^/]+)/([a-z-]+)$`)
-
-func main() {
-	var lc net.ListenConfig
-	listener, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "cannot listen:", err)
-		os.Exit(1)
-	}
-	s := &service{clients: map[string]*entry{}}
-	fmt.Fprintf(os.Stdout, "listening http://%s\n", listener.Addr())
-	server := &http.Server{Handler: http.HandlerFunc(s.serve)}
-	if err := server.Serve(listener); err != nil {
-		fmt.Fprintln(os.Stderr, "serve:", err)
-		os.Exit(1)
-	}
+type reply struct {
+	status  int
+	payload any
 }
 
-func (s *service) serve(w http.ResponseWriter, r *http.Request) {
-	// The SDK must never throw at a caller: anything that escapes it is reported, not absorbed.
+// route splits "/clients/<id>/<action>" into the action path and the id. A request for "/" or "/clients" has no
+// id.
+func route(urlPath string) (path, id string) {
+	trimmed := strings.Trim(urlPath, "/")
+	switch {
+	case trimmed == "":
+		return "/", ""
+	case trimmed == "clients":
+		return "/clients", ""
+	case !strings.HasPrefix(trimmed, "clients/"):
+		return "/" + trimmed, ""
+	}
+	id, action, _ := strings.Cut(strings.TrimPrefix(trimmed, "clients/"), "/")
+	return "/" + action, id
+}
+
+// handle answers one request, with a panic turned into the protocol's 500 rather than a dropped connection.
+func (s *service) handle(method, path, id string, body []byte) (answer reply) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			http.Error(w, fmt.Sprint("panic: ", recovered), http.StatusInternalServerError)
+			answer = reply{status: 500, payload: fmt.Sprintf("panic: %v", recovered)}
 		}
 	}()
-	switch {
-	case r.Method == http.MethodGet && r.URL.Path == "/":
-		write(w, 200, object(
-			"name", jsonvalue.String("toggleslash-sdk (Go)"),
-			"capabilities", jsonvalue.Array([]jsonvalue.Value{jsonvalue.String("integer-accessor")}),
-		))
-		return
-	case r.Method == http.MethodPost && r.URL.Path == "/clients":
-		s.create(w, r)
-		return
+	switch method + " " + path {
+	case "GET /":
+		return reply{status: 200, payload: map[string]any{
+			"name":         "toggleslash-sdk (Go)",
+			"capabilities": []any{"integer-accessor"},
+		}}
+	case "POST /clients":
+		return s.create(body)
 	}
-	m := clientRoute.FindStringSubmatch(r.URL.Path)
-	if m == nil {
-		http.Error(w, "no such route", http.StatusNotFound)
-		return
+	client := s.lookup(id)
+	if client == nil {
+		return reply{status: 404, payload: "no such client"}
 	}
-	s.mu.Lock()
-	e := s.clients[m[1]]
-	s.mu.Unlock()
-	if e == nil {
-		http.Error(w, "no such client", http.StatusNotFound)
-		return
-	}
-	switch r.Method + " " + m[2] {
-	case "POST ready":
-		write(w, 200, object("ready", jsonvalue.Bool(e.client.Ready())))
-	case "POST evaluate":
-		e.evaluate(w, r)
-	case "GET status":
-		write(w, 200, statusValue(e.client.Status()))
-	case "GET hook-events":
-		e.mu.Lock()
-		events := append([]jsonvalue.Value(nil), e.events...)
-		e.mu.Unlock()
-		write(w, 200, object("events", jsonvalue.Array(events)))
-	case "GET errors":
-		e.mu.Lock()
-		messages := make([]jsonvalue.Value, len(e.errors))
-		for i, msg := range e.errors {
-			messages[i] = toggleslash.String(msg)
+	switch method + " " + path {
+	case "POST /ready":
+		return reply{status: 200, payload: map[string]any{"ready": client.client.Ready()}}
+	case "POST /evaluate":
+		return reply{status: 200, payload: evaluate(client.client, parseBody(body))}
+	case "GET /status":
+		return reply{status: 200, payload: statusOf(client.client.Status())}
+	case "GET /hook-events":
+		client.mu.Lock()
+		events := append([]any{}, client.hookEvents...)
+		client.mu.Unlock()
+		return reply{status: 200, payload: map[string]any{"events": events}}
+	case "GET /errors":
+		client.mu.Lock()
+		messages := append([]string{}, client.errors...)
+		client.mu.Unlock()
+		entries := make([]any, 0, len(messages))
+		for _, message := range messages {
+			entries = append(entries, message)
 		}
-		count := len(e.errors)
-		e.mu.Unlock()
-		write(w, 200, object("count", jsonvalue.Number(float64(count)), "messages", jsonvalue.Array(messages)))
-	case "POST close":
-		_ = e.client.Close()
-		write(w, 200, object())
-	default:
-		http.Error(w, "no such route", http.StatusNotFound)
+		return reply{status: 200, payload: map[string]any{"count": len(messages), "messages": entries}}
+	case "POST /close":
+		client.client.Close()
+		return reply{status: 200, payload: map[string]any{}}
 	}
+	return reply{status: 404, payload: "no such route"}
 }
 
-func readBody(r *http.Request) (jsonvalue.Value, error) {
-	raw, err := io.ReadAll(r.Body)
+func (s *service) lookup(id string) *entry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.clients[id]
+}
+
+func parseBody(body []byte) map[string]any {
+	if len(body) == 0 {
+		return map[string]any{}
+	}
+	value, err := jsonx.Parse(body)
 	if err != nil {
-		return jsonvalue.Null(), err
+		return map[string]any{}
 	}
-	if len(raw) == 0 {
-		return object(), nil
+	record, _ := value.(map[string]any)
+	if record == nil {
+		return map[string]any{}
 	}
-	return toggleslash.ParseValue(raw)
+	return record
 }
 
-func durationOption(body jsonvalue.Value, name string) (time.Duration, bool) {
-	v, _ := body.Field(name)
-	n, ok := v.AsNumber()
+func (s *service) create(body []byte) reply {
+	options := parseBody(body)
+	current := &entry{}
+	client := toggleslash.New(toggleslash.Options{
+		URL:            stringOf(options["url"]),
+		SDKKey:         stringOf(options["sdkKey"]),
+		Stream:         boolPointer(options["stream"]),
+		PollInterval:   millisDuration(options["pollIntervalMs"]),
+		FlushInterval:  millisDuration(options["flushIntervalMs"]),
+		RequestTimeout: millisDuration(options["requestTimeoutMs"]),
+		Hooks:          toggleslash.Hooks{AfterEvaluation: hookRecorder(current, options)},
+		OnError:        errorRecorder(current, options),
+	})
+	current.client = client
+	s.mu.Lock()
+	s.counter++
+	id := fmt.Sprintf("%d", s.counter)
+	s.clients[id] = current
+	s.mu.Unlock()
+	return reply{status: 201, payload: map[string]any{"id": id}}
+}
+
+func stringOf(value any) string {
+	text, _ := value.(string)
+	return text
+}
+
+func boolPointer(value any) *bool {
+	flag, ok := value.(bool)
 	if !ok {
-		return 0, false
+		return nil
 	}
-	return time.Duration(n * float64(time.Millisecond)), true
+	return &flag
 }
 
-func (s *service) create(w http.ResponseWriter, r *http.Request) {
-	body, err := readBody(r)
-	if err != nil {
-		http.Error(w, "the body is not JSON", http.StatusBadRequest)
-		return
+// millisDuration reads a protocol duration: whole milliseconds, or nothing when the field was absent.
+func millisDuration(value any) time.Duration {
+	number, ok := value.(float64)
+	if !ok || math.IsNaN(number) || math.IsInf(number, 0) || number <= 0 {
+		return 0
 	}
-	e := &entry{}
-	str := func(name string) string {
-		v, _ := body.Field(name)
-		out, _ := v.AsString()
-		return out
-	}
-	flag := func(name string) bool {
-		v, _ := body.Field(name)
-		out, _ := v.AsBool()
-		return out
-	}
-	var opts []toggleslash.Option
-	if v, ok := body.Field("stream"); ok {
-		if on, isBool := v.AsBool(); isBool {
-			opts = append(opts, toggleslash.WithStream(on))
-		}
-	}
-	if d, ok := durationOption(body, "pollIntervalMs"); ok {
-		opts = append(opts, toggleslash.WithPollInterval(d))
-	}
-	if d, ok := durationOption(body, "flushIntervalMs"); ok {
-		opts = append(opts, toggleslash.WithFlushInterval(d))
-	}
-	if d, ok := durationOption(body, "requestTimeoutMs"); ok {
-		opts = append(opts, toggleslash.WithRequestTimeout(d))
-	}
-	hookThrows := flag("hookThrows")
-	if flag("hook") || hookThrows {
-		opts = append(opts, toggleslash.WithAfterEvaluation(func(ev toggleslash.Event) {
-			e.mu.Lock()
-			e.events = append(e.events, eventValue(ev))
-			e.mu.Unlock()
-			if hookThrows {
-				panic("the hook threw, as the test asked")
-			}
-		}))
-	}
-	onErrorThrows := flag("onErrorThrows")
-	opts = append(opts, toggleslash.WithOnError(func(err error) {
-		e.mu.Lock()
-		e.errors = append(e.errors, err.Error())
-		e.mu.Unlock()
-		if onErrorThrows {
-			panic("onError threw, as the test asked")
-		}
-	}))
-	e.client = toggleslash.New(str("url"), str("sdkKey"), opts...)
-
-	s.mu.Lock()
-	s.created++
-	id := strconv.Itoa(s.created)
-	s.clients[id] = e
-	s.mu.Unlock()
-	write(w, 201, object("id", toggleslash.String(id)))
+	return time.Duration(number * float64(time.Millisecond))
 }
 
-func (e *entry) evaluate(w http.ResponseWriter, r *http.Request) {
-	body, err := readBody(r)
-	if err != nil {
-		http.Error(w, "the body is not JSON", http.StatusBadRequest)
-		return
-	}
-	keyValue, _ := body.Field("flagKey")
-	flagKey, _ := keyValue.AsString()
-	contextValue, _ := body.Field("context")
-	ctx := toggleslash.ContextOf(contextValue)
-	fallback, _ := body.Field("fallback")
-	accessor := "any"
-	if v, ok := body.Field("accessor"); ok {
-		if s, isString := v.AsString(); isString {
-			accessor = s
+func errorRecorder(current *entry, options map[string]any) func(error) {
+	return func(err error) {
+		current.mu.Lock()
+		current.errors = append(current.errors, err.Error())
+		current.mu.Unlock()
+		if throws, _ := options["onErrorThrows"].(bool); throws {
+			panic("onError panicked, as the test asked")
 		}
 	}
-
-	var (
-		value jsonvalue.Value
-		index int
-		why   toggleslash.Reason
-	)
-	switch accessor {
-	case "bool":
-		b, ok := fallback.AsBool()
-		if !ok {
-			http.Error(w, "the bool accessor needs a boolean fallback", http.StatusBadRequest)
-			return
-		}
-		d := e.client.BoolVariationDetail(flagKey, ctx, b)
-		value, index, why = toggleslash.Bool(d.Value), d.VariationIndex, d.Reason
-	case "string":
-		s, ok := fallback.AsString()
-		if !ok {
-			http.Error(w, "the string accessor needs a string fallback", http.StatusBadRequest)
-			return
-		}
-		d := e.client.StringVariationDetail(flagKey, ctx, s)
-		value, index, why = jsonvalue.String(d.Value), d.VariationIndex, d.Reason
-	case "number":
-		n, ok := fallback.AsNumber()
-		if !ok {
-			http.Error(w, "the number accessor needs a number fallback", http.StatusBadRequest)
-			return
-		}
-		d := e.client.FloatVariationDetail(flagKey, ctx, n)
-		value, index, why = toggleslash.Number(d.Value), d.VariationIndex, d.Reason
-	case "int":
-		n, ok := fallback.AsNumber()
-		if !ok || n != math.Trunc(n) || n < -(1<<63) || n >= 1<<63 {
-			http.Error(w, "the int accessor needs an integer fallback", http.StatusBadRequest)
-			return
-		}
-		d := e.client.IntVariationDetail(flagKey, ctx, int64(n))
-		value, index, why = toggleslash.Number(float64(d.Value)), d.VariationIndex, d.Reason
-	case "json", "any":
-		d := e.client.JSONVariationDetail(flagKey, ctx, fallback)
-		value, index, why = d.Value, d.VariationIndex, d.Reason
-	default:
-		http.Error(w, "no such accessor", http.StatusBadRequest)
-		return
-	}
-	write(w, 200, object("value", value, "variationIndex", indexValue(index), "reason", reasonValue(why)))
 }
 
-func indexValue(i int) jsonvalue.Value {
-	if i == toggleslash.NoVariation {
-		return jsonvalue.Null()
+// hookRecorder installs the recording hook for hook or hookThrows, and none otherwise.
+func hookRecorder(current *entry, options map[string]any) func(toggleslash.EvaluationEvent) {
+	records, _ := options["hook"].(bool)
+	throws, _ := options["hookThrows"].(bool)
+	if !records && !throws {
+		return nil
 	}
-	return jsonvalue.Number(float64(i))
+	return func(event toggleslash.EvaluationEvent) {
+		current.mu.Lock()
+		current.hookEvents = append(current.hookEvents, eventJSON(event))
+		current.mu.Unlock()
+		if throws {
+			panic("the hook panicked, as the test asked")
+		}
+	}
 }
 
-func reasonValue(r toggleslash.Reason) jsonvalue.Value {
-	pairs := []any{"kind", toggleslash.String(string(r.Kind))}
-	switch r.Kind {
-	case toggleslash.ReasonRuleMatch:
-		pairs = append(pairs, "ruleIndex", jsonvalue.Number(float64(r.RuleIndex)))
-	case toggleslash.ReasonPrerequisiteFailed:
-		pairs = append(pairs, "flagKey", toggleslash.String(r.FlagKey))
+func eventJSON(event toggleslash.EvaluationEvent) map[string]any {
+	out := map[string]any{
+		"flagKey":        event.FlagKey,
+		"context":        event.Context,
+		"value":          event.Value,
+		"variationIndex": indexJSON(event.VariationIndex),
+		"reason":         reasonJSON(event.Reason),
+		"etag":           etagJSON(event.ETag),
+		"flagVersion":    nil,
+	}
+	if event.FlagVersion != nil {
+		out["flagVersion"] = *event.FlagVersion
+	}
+	return out
+}
+
+func indexJSON(index *int) any {
+	if index == nil {
+		return nil
+	}
+	return *index
+}
+
+func etagJSON(tag string) any {
+	if tag == "" {
+		return nil
+	}
+	return tag
+}
+
+func reasonJSON(reason toggleslash.Reason) map[string]any {
+	out := map[string]any{"kind": string(reason.Kind)}
+	switch reason.Kind {
 	case toggleslash.ReasonError:
-		pairs = append(pairs, "code", toggleslash.String(string(r.Code)))
+		out["code"] = string(reason.Code)
+	case toggleslash.ReasonRuleMatch:
+		out["ruleIndex"] = reason.RuleIndex
+	case toggleslash.ReasonPrerequisiteFailed:
+		out["flagKey"] = reason.FlagKey
 	}
-	return object(pairs...)
+	return out
 }
 
-func eventValue(ev toggleslash.Event) jsonvalue.Value {
-	etag := jsonvalue.Null()
-	if ev.ETag != "" {
-		etag = toggleslash.String(ev.ETag)
+func statusOf(status toggleslash.Status) map[string]any {
+	var synced any
+	if !status.LastSyncAt.IsZero() {
+		synced = status.LastSyncAt.UnixMilli()
 	}
-	version := jsonvalue.Null()
-	if ev.FlagVersion != nil {
-		version = jsonvalue.Number(float64(*ev.FlagVersion))
+	var lastError any
+	if status.LastError != "" {
+		lastError = string(status.LastError)
 	}
-	return object(
-		"flagKey", toggleslash.String(ev.FlagKey),
-		"context", ev.Context.Value(),
-		"value", ev.Value,
-		"variationIndex", indexValue(ev.VariationIndex),
-		"reason", reasonValue(ev.Reason),
-		"etag", etag,
-		"flagVersion", version,
-	)
+	return map[string]any{
+		"etag":       etagJSON(status.ETag),
+		"lastSyncAt": synced,
+		"stream":     string(status.Stream),
+		"lastError":  lastError,
+	}
 }
 
-func statusValue(st toggleslash.Status) jsonvalue.Value {
-	etag, lastError, lastSync := jsonvalue.Null(), jsonvalue.Null(), jsonvalue.Null()
-	if st.ETag != "" {
-		etag = toggleslash.String(st.ETag)
+// evaluate maps the protocol's accessor onto the SDK's method. The context is the JSON it arrived as, so the
+// vectors' 1e999 and lone surrogates reach the SDK as they were written.
+func evaluate(client *toggleslash.Client, body map[string]any) map[string]any {
+	flagKey := stringOf(body["flagKey"])
+	fallback := body["fallback"]
+	context, _ := body["context"].(map[string]any)
+	var detail toggleslash.Detail
+	switch stringOf(body["accessor"]) {
+	case "int":
+		number, ok := fallback.(float64)
+		if !ok || number != math.Trunc(number) {
+			panic("the int accessor needs a whole number fallback")
+		}
+		detail = client.Int64VariationDetail(flagKey, context, int64(number))
+	case "bool":
+		flag, ok := fallback.(bool)
+		if !ok {
+			panic("the bool accessor needs a boolean fallback")
+		}
+		detail = client.BoolVariationDetail(flagKey, context, flag)
+	case "string":
+		text, ok := fallback.(string)
+		if !ok {
+			panic("the string accessor needs a string fallback")
+		}
+		detail = client.StringVariationDetail(flagKey, context, text)
+	case "number":
+		number, ok := fallback.(float64)
+		if !ok {
+			panic("the number accessor needs a number fallback")
+		}
+		detail = client.Float64VariationDetail(flagKey, context, number)
+	default:
+		detail = client.VariationDetail(flagKey, context, fallback)
 	}
-	if st.LastError != "" {
-		lastError = toggleslash.String(string(st.LastError))
+	return map[string]any{
+		"value":          detail.Value,
+		"variationIndex": indexJSON(detail.VariationIndex),
+		"reason":         reasonJSON(detail.Reason),
 	}
-	if !st.LastSyncAt.IsZero() {
-		lastSync = jsonvalue.Number(float64(st.LastSyncAt.UnixMilli()))
-	}
-	return object("etag", etag, "lastSyncAt", lastSync, "stream", toggleslash.String(string(st.Stream)), "lastError", lastError)
 }
 
-// object builds a JSON object from alternating keys and values.
-func object(pairs ...any) jsonvalue.Value {
-	o := jsonvalue.NewObject()
-	for i := 0; i+1 < len(pairs); i += 2 {
-		o.Set(pairs[i].(string), pairs[i+1].(jsonvalue.Value))
+func main() {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "the test service cannot listen: %v\n", err)
+		os.Exit(1)
 	}
-	return jsonvalue.ObjectValue(o)
-}
-
-func write(w http.ResponseWriter, status int, v jsonvalue.Value) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_, _ = w.Write(jsonvalue.Marshal(v))
+	current := &service{clients: map[string]*entry{}}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
+		body, _ := io.ReadAll(request.Body)
+		path, id := route(request.URL.Path)
+		answer := current.handle(request.Method, path, id, body)
+		if text, ok := answer.payload.(string); ok {
+			writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			writer.WriteHeader(answer.status)
+			_, _ = writer.Write([]byte(text))
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(answer.status)
+		_, _ = writer.Write(jsonx.Encode(answer.payload))
+	})
+	server := &http.Server{Handler: mux, ErrorLog: log.New(io.Discard, "", 0)}
+	fmt.Printf("listening http://127.0.0.1:%d\n", listener.Addr().(*net.TCPAddr).Port)
+	if err := server.Serve(listener); err != nil {
+		fmt.Fprintf(os.Stderr, "the test service stopped: %v\n", err)
+		os.Exit(1)
+	}
 }

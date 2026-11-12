@@ -1,94 +1,259 @@
 package toggleslash
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"fmt"
 	"io"
-	"log"
+	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
-	"sort"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
 )
 
-// fakeClock is a clock a test moves by hand. Timers fire when Advance passes them.
-type fakeClock struct {
+// testConfig is a client that polls and never streams, with short intervals, unless a test changes a field.
+func testConfig(url string) config {
+	return config{
+		url:            url,
+		sdkKey:         "fs_server_test",
+		stream:         false,
+		pollInterval:   50 * time.Millisecond,
+		flushInterval:  time.Hour,
+		requestTimeout: 2 * time.Second,
+		now:            time.Now,
+		monotonic:      time.Now,
+		jitter:         func() float64 { return 0.5 },
+		streamIdle:     defaultStreamIdle,
+	}
+}
+
+// recordedRequest is one request the fake server saw.
+type recordedRequest struct {
+	method  string
+	path    string
+	host    string // net/http reads Host from the request line into r.Host, not into the header map
+	headers http.Header
+	body    []byte
+	at      time.Time
+}
+
+// fakeServer is a loopback HTTP server for the native tests. It records every request, header included, and
+// answers with handler when a test installs one, or with the default ruleset, stream and events answers.
+type fakeServer struct {
+	server *httptest.Server
 	mu     sync.Mutex
-	now    time.Time
-	timers map[*fakeTimer]struct{}
+	seen   []recordedRequest
+	handle http.HandlerFunc
+
+	flags    string
+	version  int
+	requests int
+	streams  map[chan string]struct{}
 }
 
-type fakeTimer struct {
-	clock *fakeClock
-	at    time.Time
-	ch    chan time.Time
+func newFakeServer(t *testing.T, flags string) *fakeServer {
+	t.Helper()
+	fake := &fakeServer{flags: flags, version: 1, streams: map[chan string]struct{}{}}
+	fake.server = httptest.NewServer(fake)
+	t.Cleanup(fake.server.Close)
+	return fake
 }
 
-func newFakeClock(start time.Time) *fakeClock {
-	return &fakeClock{now: start, timers: map[*fakeTimer]struct{}{}}
+func (f *fakeServer) url() string { return f.server.URL }
+
+func (f *fakeServer) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	body, _ := io.ReadAll(request.Body)
+	f.mu.Lock()
+	f.seen = append(f.seen, recordedRequest{
+		method:  request.Method,
+		path:    request.URL.Path,
+		host:    request.Host,
+		headers: request.Header.Clone(),
+		body:    body,
+		at:      time.Now(),
+	})
+	handler := f.handle
+	f.requests++
+	f.mu.Unlock()
+	if handler != nil {
+		handler(writer, request)
+		return
+	}
+	f.defaultAnswer(writer, request)
 }
 
-func (f *fakeClock) Now() time.Time {
+func (f *fakeServer) defaultAnswer(writer http.ResponseWriter, request *http.Request) {
+	switch request.URL.Path {
+	case "/sdk/v1/ruleset":
+		f.mu.Lock()
+		etag := fmt.Sprintf("\"v%d\"", f.version)
+		flags := f.flags
+		f.mu.Unlock()
+		if request.Header.Get("If-None-Match") == etag {
+			writer.Header().Set("ETag", etag)
+			writer.WriteHeader(http.StatusNotModified)
+			return
+		}
+		writer.Header().Set("ETag", etag)
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(writer, fmt.Sprintf(`{"flags":[%s],"segments":[]}`, flags))
+	case "/sdk/v1/stream":
+		writer.Header().Set("Content-Type", "text/event-stream")
+		writer.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintf(writer, "event: connected\ndata: %s\n\n", f.etag())
+		flush(writer)
+		events := make(chan string, 16)
+		f.mu.Lock()
+		f.streams[events] = struct{}{}
+		f.mu.Unlock()
+		defer func() {
+			f.mu.Lock()
+			delete(f.streams, events)
+			f.mu.Unlock()
+		}()
+		for {
+			select {
+			case text := <-events:
+				_, _ = io.WriteString(writer, text)
+				flush(writer)
+			case <-request.Context().Done():
+				return
+			}
+		}
+	case "/sdk/v1/events":
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(writer, `{"accepted":0,"unknownFlags":0}`)
+	default:
+		writer.WriteHeader(http.StatusNotFound)
+	}
+}
+
+func flush(writer http.ResponseWriter) {
+	if flusher, ok := writer.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+// set installs a handler that replaces the default answers.
+func (f *fakeServer) set(handler http.HandlerFunc) {
+	f.mu.Lock()
+	f.handle = handler
+	f.mu.Unlock()
+}
+
+// publish bumps the ruleset version and announces the new tag on every open stream.
+func (f *fakeServer) publish(flags string) {
+	f.mu.Lock()
+	f.flags = flags
+	f.version++
+	tag := fmt.Sprintf("\"v%d\"", f.version)
+	f.mu.Unlock()
+	f.announce("event: changed\ndata: " + tag + "\n\n")
+}
+
+// etag is the tag the server holds now.
+func (f *fakeServer) etag() string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.now
+	return fmt.Sprintf("\"v%d\"", f.version)
 }
 
-func (f *fakeClock) NewTimer(d time.Duration) timer {
+// announce writes text to every open stream.
+func (f *fakeServer) announce(text string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	t := &fakeTimer{clock: f, at: f.now.Add(d), ch: make(chan time.Time, 1)}
-	f.timers[t] = struct{}{}
-	return t
-}
-
-func (t *fakeTimer) C() <-chan time.Time { return t.ch }
-
-func (t *fakeTimer) Stop() bool {
-	t.clock.mu.Lock()
-	defer t.clock.mu.Unlock()
-	_, active := t.clock.timers[t]
-	delete(t.clock.timers, t)
-	return active
-}
-
-// Armed is how many timers are waiting.
-func (f *fakeClock) Armed() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return len(f.timers)
-}
-
-// Advance moves the clock and fires every timer that is due.
-func (f *fakeClock) Advance(d time.Duration) {
-	f.mu.Lock()
-	f.now = f.now.Add(d)
-	var due []*fakeTimer
-	for t := range f.timers {
-		if !t.at.After(f.now) {
-			due = append(due, t)
-			delete(f.timers, t)
+	for events := range f.streams {
+		select {
+		case events <- text:
+		default:
 		}
 	}
-	now := f.now
-	f.mu.Unlock()
-	for _, t := range due {
-		t.ch <- now
+}
+
+// openStreams is how many stream bodies the server holds open.
+func (f *fakeServer) openStreams() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.streams)
+}
+
+func (f *fakeServer) seenRequests() []recordedRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]recordedRequest{}, f.seen...)
+}
+
+func (f *fakeServer) countFor(path string) int {
+	count := 0
+	for _, request := range f.seenRequests() {
+		if request.path == path {
+			count++
+		}
 	}
+	return count
 }
 
-// waitArmed waits until at least n timers are waiting on the clock.
-func (f *fakeClock) waitArmed(t *testing.T, n int) {
-	t.Helper()
-	eventually(t, "a timer to be armed", func() bool { return f.Armed() >= n })
+// flagJSON is one valid boolean flag that serves `serves` at variation 1 and false at variation 0.
+func flagJSON(key string, serves bool, version int) string {
+	variation := 0
+	if serves {
+		variation = 1
+	}
+	return fmt.Sprintf(`{"key":%q,"variations":[false,true],"on":true,"offVariation":0,`+
+		`"targets":[],"prerequisites":[],"rules":[],"fallthrough":{"variation":%d},`+
+		`"salt":"s","version":%d}`, key, variation, version)
 }
 
-func eventually(t *testing.T, what string, cond func() bool) {
+// recorder collects what an OnError or a hook reports, safely: a callback runs on the SDK's goroutines.
+type recorder struct {
+	mu       sync.Mutex
+	received []error
+}
+
+func (r *recorder) add(err error) {
+	r.mu.Lock()
+	r.received = append(r.received, err)
+	r.mu.Unlock()
+}
+
+func (r *recorder) count() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.received)
+}
+
+func (r *recorder) messages() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]string, 0, len(r.received))
+	for _, err := range r.received {
+		out = append(out, err.Error())
+	}
+	return out
+}
+
+func (r *recorder) first() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.received) == 0 {
+		return nil
+	}
+	return r.received[0]
+}
+
+// waitFor polls until check is true, failing the test after the timeout.
+func waitFor(t *testing.T, timeout time.Duration, what string, check func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		if cond() {
+		if check() {
 			return
 		}
 		time.Sleep(2 * time.Millisecond)
@@ -96,145 +261,34 @@ func eventually(t *testing.T, what string, cond func() bool) {
 	t.Fatalf("timed out waiting for %s", what)
 }
 
-// recorded is one request the fake server saw.
-type recorded struct {
-	method string
-	path   string
-	header http.Header
-	body   string
-}
-
-// fakeServer is a ToggleSlash server on loopback that a test scripts per route.
-type fakeServer struct {
-	*httptest.Server
-	mu       sync.Mutex
-	requests []recorded
-	handlers map[string]http.HandlerFunc
-}
-
-func newFakeServer(t *testing.T) *fakeServer {
+// selfSignedCertificate mints a certificate for 127.0.0.1 that the test trusts through a pool, so the TLS path
+// is exercised with verification intact.
+func selfSignedCertificate(t *testing.T) (tls.Certificate, *x509.CertPool) {
 	t.Helper()
-	f := &fakeServer{handlers: map[string]http.HandlerFunc{}}
-	f.Server = httptest.NewServer(http.HandlerFunc(f.serve))
-	t.Cleanup(f.Close)
-	return f
-}
-
-func (f *fakeServer) serve(w http.ResponseWriter, r *http.Request) {
-	body, _ := io.ReadAll(r.Body)
-	f.mu.Lock()
-	f.requests = append(f.requests, recorded{method: r.Method, path: r.URL.Path, header: r.Header.Clone(), body: string(body)})
-	h := f.handlers[r.URL.Path]
-	f.mu.Unlock()
-	if h == nil {
-		http.NotFound(w, r)
-		return
-	}
-	h(w, r)
-}
-
-func (f *fakeServer) handle(path string, h http.HandlerFunc) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.handlers[path] = h
-}
-
-func (f *fakeServer) seen(path string) []recorded {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var out []recorded
-	for _, r := range f.requests {
-		if r.path == path {
-			out = append(out, r)
-		}
-	}
-	return out
-}
-
-func (f *fakeServer) count(path string) int { return len(f.seen(path)) }
-
-// ruleset serves body with an ETag, and a 304 when If-None-Match matches.
-func rulesetHandler(etag func() string, body func() string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		tag := etag()
-		if r.Header.Get("If-None-Match") == tag {
-			w.WriteHeader(http.StatusNotModified)
-			return
-		}
-		w.Header().Set("ETag", tag)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, body())
-	}
-}
-
-func staticRuleset(etag, body string) http.HandlerFunc {
-	return rulesetHandler(func() string { return etag }, func() string { return body })
-}
-
-// A ruleset with one boolean flag "f" that is on for everyone, and one string flag "s".
-const flagRuleset = `{"flags":[
- {"key":"f","version":3,"on":true,"salt":"a","variations":[false,true],"offVariation":0,
-  "targets":[],"prerequisites":[],"rules":[],"fallthrough":{"variation":1}},
- {"key":"s","version":1,"on":true,"salt":"b","variations":["x","y"],"offVariation":0,
-  "targets":[],"prerequisites":[],"rules":[],"fallthrough":{"variation":1}}],
- "segments":[]}`
-
-func user(key string) Context { return UserContext(key, nil) }
-
-// eventsBody decodes a usage request's body into "flag:index:day=count" lines, sorted.
-func eventsOf(t *testing.T, body string) []string {
-	t.Helper()
-	v, err := ParseValue([]byte(body))
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		t.Fatalf("usage body is not JSON: %v", err)
+		t.Fatalf("generating a key: %v", err)
 	}
-	list, _ := v.Field("events")
-	items, _ := list.AsArray()
-	var out []string
-	for _, item := range items {
-		flag, _ := item.Field("flag")
-		idx, _ := item.Field("variationIndex")
-		cnt, _ := item.Field("count")
-		day, _ := item.Field("day")
-		fs, _ := flag.AsString()
-		ds, _ := day.AsString()
-		i, _ := idx.AsNumber()
-		n, _ := cnt.AsNumber()
-		out = append(out, fs+":"+strconv.Itoa(int(i))+":"+ds+"="+strconv.Itoa(int(n)))
+	template := x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "toggle slash test"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1")},
 	}
-	sort.Strings(out)
-	return out
-}
-
-// errorLog collects what WithOnError receives.
-type errorLog struct {
-	mu   sync.Mutex
-	errs []error
-}
-
-func (l *errorLog) add(err error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.errs = append(l.errs, err)
-}
-
-func (l *errorLog) all() []string {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	out := make([]string, len(l.errs))
-	for i, e := range l.errs {
-		out[i] = e.Error()
+	der, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("minting a certificate: %v", err)
 	}
-	return out
-}
-
-// newFakeTLS is a fakeServer over TLS with a certificate made for the test.
-func newFakeTLS(t *testing.T) *fakeServer {
-	t.Helper()
-	f := &fakeServer{handlers: map[string]http.HandlerFunc{}}
-	f.Server = httptest.NewUnstartedServer(http.HandlerFunc(f.serve))
-	f.Config.ErrorLog = log.New(io.Discard, "", 0)
-	f.StartTLS()
-	t.Cleanup(f.Close)
-	return f
+	leaf, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatalf("reading the certificate back: %v", err)
+	}
+	pool := x509.NewCertPool()
+	pool.AddCert(leaf)
+	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key, Leaf: leaf}, pool
 }

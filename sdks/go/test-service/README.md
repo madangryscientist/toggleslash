@@ -1,33 +1,38 @@
-# Go test service
+# The Go SDK's conformance test service
 
-The conformance test service for the Go SDK, to the protocol in
-[`docs/sdk-test-service.md`](../../../docs/sdk-test-service.md). It is `package main` in this directory,
-one more package of the same module, so `go vet ./...` and `go build ./...` compile it with the SDK and
-`bin/test` builds it last, into `.build/test-service`. `bin/test-service` runs that binary and builds it
-only when it is missing.
+`main.go` wraps `toggleslash.New` in the HTTP protocol of
+[`docs/sdk-test-service.md`](../../../docs/sdk-test-service.md), so the harness in `packages/sdk-conformance` can
+drive the SDK. It uses the standard library only (`net/http`, one goroutine per connection, so the harness's
+parallel scenarios and a `ready` that waits do not queue behind each other) and keeps a client answerable after
+`close`. Anything the SDK panics on answers 500 with the panic's text, and the harness fails the scenario.
 
-It listens on `127.0.0.1`, port 0, and prints `listening http://127.0.0.1:<port>` on stdout (unbuffered in
-Go). It serves each request in its own goroutine, so a `ready` that waits does not hold up the others, and a
-panic that reaches a handler is answered 500 with its text. It advertises `integer-accessor`.
+`bin/test` builds it into `.build/test-service` as its last step; `bin/test-service` starts that binary and builds
+it only when it is missing. Run it from the repository root:
+
+```sh
+bun run conformance -- --service sdks/go/bin/test-service
+```
+
+## Where it lives
+
+`test-service/main.go` is a `main` package in this module, so `go build ./...` compiles it with the SDK and its
+tests, and `go vet` and golangci-lint read it too. It reads its request bodies with the SDK's own JSON reader
+(`internal/jsonx`), so a `1e999` and a lone surrogate reach the SDK exactly as the fixtures wrote them, and it
+writes answers with the same package's writer, which sends a non-finite number as `null` (JSON cannot hold one).
+
+## Capabilities
+
+`integer-accessor`: the SDK has `Int64Variation` and `Int64VariationDetail`.
 
 ## Accessor mapping
 
-| `accessor` | SDK method | Fallback it takes |
-| --- | --- | --- |
-| `bool` | `BoolVariationDetail` | a JSON boolean, else 400 |
-| `string` | `StringVariationDetail` | a JSON string, else 400 |
-| `number` | `FloatVariationDetail` | a JSON number, else 400 |
-| `int` | `IntVariationDetail` (`int64`) | a whole JSON number inside the `int64` range, else 400 |
-| `json`, `any` | `JSONVariationDetail` | any JSON value, `null` included |
+| Harness accessor | SDK call |
+| --- | --- |
+| `bool` | `client.BoolVariationDetail(flag, context, fallback)` |
+| `string` | `client.StringVariationDetail(flag, context, fallback)` |
+| `number` | `client.Float64VariationDetail(flag, context, fallback)` (a whole number and a fraction are both numbers) |
+| `int` | `client.Int64VariationDetail(flag, context, fallback)`: a whole `float64` fallback becomes an `int64` |
+| `json`, `any` | `client.VariationDetail(flag, context, fallback)`: the expected kind is read off the fallback, and a `null` fallback accepts any kind |
 
-The context is passed through as the JSON value it arrived as (`ContextOf`). A number that is not finite is
-written back as `null`. The reason is written with only the fields its kind has (`ruleIndex`, `flagKey`,
-`code`), and a variation index of `-1` is written as `null`.
-
-## Options and hooks
-
-`stream`, `pollIntervalMs`, `flushIntervalMs` and `requestTimeoutMs` become `WithStream`,
-`WithPollInterval`, `WithFlushInterval` and `WithRequestTimeout`. `hook` installs `WithAfterEvaluation`, which
-records each event; `hookThrows` records and then panics, and `onErrorThrows` makes the always-installed
-`WithOnError` record and then panic. The SDK recovers both. A status is written with `etag` and `lastError` as
-`null` when empty, and `lastSyncAt` as whole epoch milliseconds or `null`.
+A typed accessor given a fallback of another kind answers 500 (the protocol allows a 400 there; no scenario sends
+one). `lastSyncAt`, a `time.Time` in the SDK, is sent as whole epoch milliseconds or null.

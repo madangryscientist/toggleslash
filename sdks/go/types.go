@@ -1,50 +1,41 @@
 package toggleslash
 
-import (
-	"strconv"
-	"time"
+import "time"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/internal/evaluator"
-)
-
-// ReasonKind says how a flag came to its value. The values keep the spelling of docs/evaluation.md.
+// ReasonKind is why a flag evaluated the way it did. The spelling is the contract's.
 type ReasonKind string
 
-// The reason kinds.
+// The reason kinds of docs/evaluation.md, spelled as the contract spells them.
 const (
-	ReasonOff                ReasonKind = evaluator.ReasonOff
-	ReasonPrerequisiteFailed ReasonKind = evaluator.ReasonPrerequisiteFailed
-	ReasonTargetMatch        ReasonKind = evaluator.ReasonTargetMatch
-	ReasonRuleMatch          ReasonKind = evaluator.ReasonRuleMatch
-	ReasonFallthrough        ReasonKind = evaluator.ReasonFallthrough
-	ReasonError              ReasonKind = evaluator.ReasonError
+	ReasonOff                ReasonKind = "OFF"
+	ReasonPrerequisiteFailed ReasonKind = "PREREQUISITE_FAILED"
+	ReasonTargetMatch        ReasonKind = "TARGET_MATCH"
+	ReasonRuleMatch          ReasonKind = "RULE_MATCH"
+	ReasonFallthrough        ReasonKind = "FALLTHROUGH"
+	ReasonError              ReasonKind = "ERROR"
 )
 
-// ErrorCode says why a reason of kind ReasonError is an error: the evaluator's codes and the SDK's own.
+// ErrorCode is the code of an ERROR reason: the evaluator's, then the SDK's own.
 type ErrorCode string
 
-// The error codes.
+// The error codes of docs/evaluation.md and contract section 4, spelled as they are written there.
 const (
-	ErrInvalidContext           ErrorCode = evaluator.CodeInvalidContext
-	ErrFlagNotFound             ErrorCode = evaluator.CodeFlagNotFound
-	ErrSegmentNotFound          ErrorCode = evaluator.CodeSegmentNotFound
-	ErrMalformedFlag            ErrorCode = evaluator.CodeMalformedFlag
-	ErrMalformedSegment         ErrorCode = evaluator.CodeMalformedSegment
-	ErrPrerequisiteCycle        ErrorCode = evaluator.CodePrerequisiteCycle
-	ErrPrerequisiteDepthExceeds ErrorCode = evaluator.CodePrerequisiteDepthExceeds
-
-	// ErrNotReady: no ruleset has loaded yet.
-	ErrNotReady ErrorCode = "NOT_READY"
-	// ErrTypeMismatch: the flag served a value of a different kind than the fallback.
-	ErrTypeMismatch ErrorCode = "TYPE_MISMATCH"
-	// ErrEvaluationFailed: the evaluation panicked. The failure went to the OnError callback.
-	ErrEvaluationFailed ErrorCode = "EVALUATION_FAILED"
+	CodeInvalidContext            ErrorCode = "INVALID_CONTEXT"
+	CodeFlagNotFound              ErrorCode = "FLAG_NOT_FOUND"
+	CodeSegmentNotFound           ErrorCode = "SEGMENT_NOT_FOUND"
+	CodeMalformedFlag             ErrorCode = "MALFORMED_FLAG"
+	CodeMalformedSegment          ErrorCode = "MALFORMED_SEGMENT"
+	CodePrerequisiteCycle         ErrorCode = "PREREQUISITE_CYCLE"
+	CodePrerequisiteDepthExceeded ErrorCode = "PREREQUISITE_DEPTH_EXCEEDED"
+	CodeNotReady                  ErrorCode = "NOT_READY"
+	CodeTypeMismatch              ErrorCode = "TYPE_MISMATCH"
+	CodeEvaluationFailed          ErrorCode = "EVALUATION_FAILED"
 )
 
-// StreamState is the state of the client's connection to the stream.
+// StreamState is how the stream is doing (contract section 8).
 type StreamState string
 
-// The stream states.
+// The stream states of contract section 8, spelled as the contract spells them.
 const (
 	StreamOff          StreamState = "off"
 	StreamConnecting   StreamState = "connecting"
@@ -53,87 +44,103 @@ const (
 	StreamClosed       StreamState = "closed"
 )
 
-// SyncErrorCode is why the most recent ruleset or stream attempt failed. The empty value is none.
-type SyncErrorCode string
+// LastError is why the most recent ruleset or stream attempt failed (contract section 8). The three codes
+// below are the fixed ones; an answer with another status is `http_<status>` (for example "http_429").
+type LastError string
 
-// The codes that do not carry a number. An HTTP status is "http_<status>", for example "http_503".
+// The fixed lastError codes of contract section 8.
 const (
-	SyncTimeout    SyncErrorCode = "timeout"
-	SyncBadRuleset SyncErrorCode = "bad_ruleset"
-	SyncNetwork    SyncErrorCode = "network"
+	LastErrorTimeout    LastError = "timeout"
+	LastErrorBadRuleset LastError = "bad_ruleset"
+	LastErrorNetwork    LastError = "network"
 )
 
-func httpErrorCode(status int) SyncErrorCode {
-	return SyncErrorCode("http_" + strconv.Itoa(status))
-}
-
-// NoVariation is the variation index of a result that is the caller's fallback.
-const NoVariation = -1
-
-// Reason says why a result is what it is. RuleIndex is set for ReasonRuleMatch, FlagKey for
-// ReasonPrerequisiteFailed and Code for ReasonError; the other fields are zero.
+// Reason is the evaluator's reason. Code is set for ReasonError, RuleIndex for ReasonRuleMatch (and only
+// then) and FlagKey for ReasonPrerequisiteFailed.
 type Reason struct {
 	Kind      ReasonKind
+	Code      ErrorCode
 	RuleIndex int
 	FlagKey   string
-	Code      ErrorCode
 }
 
-// Detail is a value with the variation index it came from and the reason.
-type Detail[T any] struct {
-	Value T
-	// VariationIndex is NoVariation (-1) when Value is the fallback.
-	VariationIndex int
+// Detail is what VariationDetail and the typed detail methods answer: the served value (or the caller's
+// fallback), its variation index, and the reason. VariationIndex is nil whenever Value is the fallback.
+type Detail struct {
+	Value          any
+	VariationIndex *int
 	Reason         Reason
 }
 
-// Status is what the client has loaded and how its stream is doing, read at one moment.
+// Status is a snapshot of what the SDK has loaded. ETag and LastError are empty when there is none, and
+// LastSyncAt is the zero time until the first sync. It never holds a URL, a key, an error message or a
+// context.
 type Status struct {
-	// ETag of the ruleset held, as received; empty before the first load.
-	ETag string
-	// LastSyncAt is when the client last confirmed its ruleset matches the server; the zero time if never.
+	ETag       string
 	LastSyncAt time.Time
 	Stream     StreamState
-	// LastError is why the most recent ruleset or stream attempt failed; empty is none.
-	LastError SyncErrorCode
+	LastError  LastError
 }
 
-// Event is what the WithAfterEvaluation callback receives after each evaluation.
-type Event struct {
-	FlagKey string
-	// Context is the context the caller passed.
-	Context Context
-	// Value is what the caller is about to get. For an integer accessor it is the nearest binary64.
-	Value Value
-	// VariationIndex is NoVariation (-1) for a fallback.
-	VariationIndex int
+// EvaluationEvent is what one evaluation did, handed to Hooks.AfterEvaluation. It carries the context the
+// caller passed; the SDK itself sends none of it anywhere.
+//
+// Value is in the accessor's own type: an int64 for the integer accessor, a bool, a string, a float64 or a
+// JSON value (any) for the others. FlagVersion is nil when the ruleset has no such flag or the flag is
+// malformed.
+type EvaluationEvent struct {
+	FlagKey        string
+	Context        Context
+	Value          any
+	VariationIndex *int
 	Reason         Reason
-	// ETag of the ruleset held at this evaluation; empty before the first load.
-	ETag string
-	// FlagVersion is the flag's version in that ruleset; nil when the ruleset has no such flag, the flag
-	// is malformed, or the version is above the largest int64.
-	FlagVersion *int64
+	ETag           string
+	FlagVersion    *int64
 }
 
-func fromEvaluator(r evaluator.Reason) Reason {
-	return Reason{Kind: ReasonKind(r.Kind), RuleIndex: r.RuleIndex, FlagKey: r.FlagKey, Code: ErrorCode(r.Code)}
+// Hooks are the SDK's observers. AfterEvaluation is called after every Variation and VariationDetail call, a
+// fallback included, on the caller's goroutine, before the call returns. Its return value is ignored, and a
+// panic in it goes to OnError.
+type Hooks struct {
+	AfterEvaluation func(EvaluationEvent)
 }
 
-func errorReason(code ErrorCode) Reason {
-	return Reason{Kind: ReasonError, Code: code}
+// Context is a single context or a multi context, exactly as docs/evaluation.md defines them: a map whose
+// values are nil, bool, string, the language's numeric types, []any or map[string]any. No "kind" means
+// "user". An invalid context is not an error: the evaluation answers the fallback with INVALID_CONTEXT.
+type Context = map[string]any
+
+// Error is a failure the SDK absorbed and told OnError about. Code is the lastError code of a failed ruleset,
+// stream or usage request ("timeout", "bad_ruleset", "network" or "http_<status>"), and empty for another
+// failure (a hook that panicked, an evaluation that failed, counts lost at close). Its message never carries a
+// URL, a key or anything about a context.
+type Error struct {
+	Message string
+	Code    LastError
 }
 
-// SyncError is the error the WithOnError callback receives for a failed ruleset or stream request
-// (Usage is false) or a failed usage request (Usage is true). Its text holds the code and nothing else: no
-// URL, key, header or context.
-type SyncError struct {
-	Code  SyncErrorCode
-	Usage bool
-}
+// Error returns the message alone, which is fixed text the SDK built.
+func (e *Error) Error() string { return e.Message }
 
-func (e *SyncError) Error() string {
-	if e.Usage {
-		return "toggleslash: usage request failed: " + string(e.Code)
-	}
-	return "toggleslash: ruleset request failed: " + string(e.Code)
+// Options builds a Client. URL and SDKKey are required. Stream, PollInterval, FlushInterval and
+// RequestTimeout are optional: a nil Stream means on, and a zero (or negative) duration means the default.
+type Options struct {
+	// URL is the server's base URL. Trailing "/" characters are removed.
+	URL string
+	// SDKKey is a server key (fs_server_...).
+	SDKKey string
+	// Stream follows GET /sdk/v1/stream. nil means on; a pointer to false means poll only.
+	Stream *bool
+	// PollInterval is how often to poll when the stream is down or off, and the longest reconnect wait.
+	// Zero means 30 s.
+	PollInterval time.Duration
+	// FlushInterval is how often usage counts are sent. Zero means 30 s.
+	FlushInterval time.Duration
+	// RequestTimeout is the longest any one request may take, body included. Zero means 10 s.
+	RequestTimeout time.Duration
+
+	// Hooks are called after each evaluation.
+	Hooks Hooks
+	// OnError is told about every failure the SDK absorbs. It is never needed for correctness.
+	OnError func(error)
 }

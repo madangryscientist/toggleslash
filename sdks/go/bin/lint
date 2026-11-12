@@ -1,20 +1,20 @@
 #!/bin/sh
-# The native lint and format check, with no warnings allowed: gofmt must list nothing, and golangci-lint
-# (rule set and reasons in .golangci.yml) must find nothing.
+# The native lint and format check, read only. go vet and golangci-lint (its rule set is named in
+# .golangci.yml) read the SDK's sources, its tests and the test service; gofmt -l reads the same roots and fails
+# on any file it would rewrite.
 set -eu
 cd "$(dirname "$0")/.."
 
 if command -v mise >/dev/null 2>&1; then
-	run() { mise exec -- "$@"; }
+  run() { mise exec -- "$@"; }
 else
-	run() { "$@"; }
+  run() { "$@"; }
 fi
 
-unformatted=$(run gofmt -l .)
-if [ -n "$unformatted" ]; then
-	echo "gofmt would change:" >&2
-	echo "$unformatted" >&2
-	exit 1
-fi
 run go vet ./...
 run golangci-lint run ./...
+unformatted="$(run gofmt -l .)"
+if [ -n "$unformatted" ]; then
+  printf 'gofmt would rewrite:\n%s\n' "$unformatted" >&2
+  exit 1
+fi

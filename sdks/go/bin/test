@@ -1,26 +1,42 @@
 #!/bin/sh
-# Builds everything, runs the native tests under the race detector (never a cached result), prints the
-# vector and pin counts, and builds the test service binary last. The race detector needs cgo, so a C
-# compiler is pinned in mise.toml (zig) and named by path: a zig elsewhere on PATH can shadow it.
+# Builds every package, then runs every test under the race detector (the vectors included), prints the vector
+# and pin counts, and builds the test service's binary last. A cold build is not cached: -count=1.
 set -eu
-here=$(cd "$(dirname "$0")" && pwd)
-cd "$here/.."
+cd "$(dirname "$0")/.."
 
+# Every tool runs through `mise exec --` when mise is on PATH; in CI a setup step puts them there. The race
+# detector needs cgo and a C compiler, and the pinned zig is named by its path so a zig elsewhere cannot shadow
+# it.
 if command -v mise >/dev/null 2>&1; then
-	zig=$(mise where zig)/zig
-	run() { mise exec -- "$@"; }
+  run() { mise exec -- "$@"; }
+  CC="$(mise where zig)/zig cc"
+  export CC
 else
-	zig=$(command -v zig)
-	run() { "$@"; }
+  run() { "$@"; }
+  if command -v zig >/dev/null 2>&1; then
+    CC="$(command -v zig) cc"
+    export CC
+  fi
 fi
-export CGO_ENABLED=1
-export CC="$zig cc"
+CGO_ENABLED=1
+export CGO_ENABLED
 
-run go vet ./...
+# Build: the SDK's sources and the test service, so a compile error anywhere fails the run.
+run go build ./...
+
+# Test: everything, under the race detector, never a cached result.
 run go test -race -count=1 ./...
 
-counts=$(run go test -race -count=1 -v -run '^(TestVectors|TestBucketPins)$' ./internal/evaluator |
-	awk '/ vectors: [0-9]+$/ { v = $NF } / pins: [0-9]+$/ { p = $NF } END { if (v == "" || p == "") exit 1; print "vectors: " v " pins: " p }')
-echo "$counts"
+# The counts Entry points requires. They come from two tests, and plain `go test` hides t.Logf on a pass, so the
+# two are run again verbosely and their lines are joined.
+output="$(run go test -count=1 -v -run '^(TestVectors|TestBucketPins)$' .)"
+vectors="$(printf '%s\n' "$output" | sed -n 's/.*vectors: \([0-9][0-9]*\).*/\1/p' | head -n 1)"
+pins="$(printf '%s\n' "$output" | sed -n 's/.*pins: \([0-9][0-9]*\).*/\1/p' | head -n 1)"
+if [ -z "$vectors" ] || [ -z "$pins" ]; then
+  printf 'the vector count line is missing from:\n%s\n' "$output" >&2
+  exit 1
+fi
+printf 'vectors: %s pins: %s\n' "$vectors" "$pins"
 
+# Last, the test service's binary, which `bin/test-service` starts without a build.
 run go build -o .build/test-service ./test-service

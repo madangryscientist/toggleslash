@@ -1,3 +1,5 @@
+# Everything bin/lint and bin/test call. `go` is the pinned toolchain; `zig` is the C compiler `-race` needs
+# (Go's race detector requires cgo), named by path in bin/test; `golangci-lint` is the lint.
 [tools]
 go = "1.27.4"
 golangci-lint = "2.15.0"

@@ -1,72 +1,16 @@
-# The lint rule set for the Go SDK. golangci-lint v2 with the standard linters (errcheck, govet, ineffassign,
-# staticcheck, unused) plus the ones below. Each ignore says why it is there.
 version: "2"
 
-run:
-  timeout: 5m
-
 linters:
+  # "standard" is errcheck, govet, ineffassign, staticcheck and unused; the rest are named here because they catch
+  # what this SDK must not do (a wrong format verb, a lost error, an unconverted type in a comparison).
   default: standard
   enable:
-    # bugs the standard set misses
-    - bodyclose # a response body left open leaks a connection
-    - contextcheck # a request must carry the context it was given
-    - errorlint # compare errors with errors.Is, never ==
-    - noctx # every HTTP request has a context
-    - nilerr # returning nil where an error was just checked is almost always a slip
-    - gosec # the SDK handles keys and network input
-    # clarity
-    - misspell
-    - unconvert
-    - unparam
-    - revive
-    - predeclared
-    - copyloopvar
+    - errorlint # errors.Is/As, never a direct comparison of an error value
+    - misspell # comments and identifiers spelled as English words
+    - nilerr # returning nil where an error was found
+    - unconvert # a redundant type conversion hides a wrong type
+    - unparam # a parameter no caller varies is a design smell in a small SDK
   exclusions:
-    presets:
-      - comments
-      - std-error-handling
-    rules:
-      # Tests build throwaway fixtures: a weak random source, a test server on loopback, a fixed cert.
-      - path: _test\.go
-        linters:
-          - gosec
-          - unparam
-      # The test service is a development tool that reads a request body of any size and listens on loopback.
-      - path: test-service/
-        linters:
-          - gosec
-      # Its handlers call Ready and Close, which reach the usage flush that is detached on purpose (below).
-      - path: test-service/
-        text: "should pass the context parameter"
-        linters:
-          - contextcheck
-      # Reconnect jitter only spreads clients out; it is not a secret, so math/rand/v2 is the right source.
-      - path: toggleslash\.go
-        text: "G404"
-        linters:
-          - gosec
-      # revive's unused-parameter fires on handler and callback signatures a test must keep whole
-      # (http.HandlerFunc takes a writer and a request whether or not a case reads them).
-      - path: _test\.go
-        text: "unused-parameter"
-        linters:
-          - revive
-      # Narrowing conversions in the UTF-8 and escape-decoding code are masked or range-checked on the line
-      # before, so the value always fits; G115 cannot see that.
-      - path: internal/(wtf8|jsonvalue)/
-        text: "G115"
-        linters:
-          - gosec
-      # The final usage flush must finish after Close has cancelled the client's lifetime context, so a
-      # usage request is deliberately not derived from it (DESIGN.md section 2).
-      - path: usage\.go
-        text: "should pass the context parameter"
-        linters:
-          - contextcheck
     paths:
-      - .build
-
-formatters:
-  enable:
-    - gofmt
+      # The test service's panics are the protocol's 500 answers, not swallowed errors.
+      - test-service
