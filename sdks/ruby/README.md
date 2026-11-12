@@ -1,83 +1,69 @@
 # ToggleSlash server SDK for Ruby
 
-Feature flags evaluated locally, in your process, from a ruleset the ToggleSlash server keeps current. It
-meets [`docs/sdk-contract.md`](../../docs/sdk-contract.md), has no runtime dependency beyond the Ruby standard
-library (3.3 or later) and is **not published**: there is no package index entry to install from.
+The Ruby server SDK of [ToggleSlash](../../README.md). It follows the language-neutral
+[`docs/sdk-contract.md`](../../docs/sdk-contract.md) and evaluates flags locally, to
+[`docs/evaluation.md`](../../docs/evaluation.md), against a ruleset it keeps current from the server. It has no
+runtime dependency (Ruby 3.3 or newer; the standard library only) and is not published anywhere: use it from a
+checkout of this repository.
 
 ## Quickstart
 
-Install from a checkout of this repository, by putting `sdks/ruby/lib` on the load path (`ruby -I sdks/ruby/lib`,
-or `$LOAD_PATH.unshift`), or with a Gemfile line that points at the directory:
+In a `Gemfile`, from a checkout of this repository (no tag, no registry):
 
 ```ruby
-gem 'toggleslash', path: 'sdks/ruby'
+gem "toggleslash", path: "path/to/checkout/sdks/ruby"
 ```
 
-Then:
+or add `sdks/ruby/lib` to the load path.
 
 ```ruby
-require 'toggleslash'
+require "toggleslash"
 
-client = ToggleSlash.create(url: 'https://flags.example.com', sdk_key: ENV.fetch('TOGGLESLASH_SDK_KEY'))
-begin
-  client.ready # optional: waits for the first load, never longer than request_timeout
-  context = { 'key' => 'user-42', 'plan' => 'pro' }
-  if client.bool_variation('new-checkout', context, false)
-    # ...
-  end
-ensure
-  client.close # sends the last usage counts and stops the two background threads
-end
+client = Toggleslash.create(
+  url: "https://toggleslash.example.invalid", # the server's base URL
+  sdk_key: "sdk-key-from-the-dashboard"       # a server SDK key
+)
+
+puts "ruleset loaded" if client.ready # waits for the first load attempt, bounded by request_timeout
+
+context = { "key" => "user-42", "plan" => "pro" }
+puts "new checkout" if client.variation("new-checkout", context, false) # the fallback fixes the expected kind
+
+detail = client.variation_detail("banner-text", context, "welcome")
+puts [detail.value, detail.variation_index, detail.reason.kind].inspect
+
+client.close # flushes usage counts and stops the background threads
 ```
 
-`create` returns at once and never raises. `variation` and its typed siblings never wait for the network:
-before the first load they answer your fallback with the reason `:ERROR` / `:NOT_READY`.
+## Mapping from the contract
 
-Read the key from the environment, never from source.
-
-## The API
-
-Every name in the contract and its Ruby spelling is in the table in
-[`DESIGN.md`](DESIGN.md#mapping-table-contract-section-2), along with the design choices behind it. In short:
-
-| Contract | Ruby |
-| --- | --- |
-| `create` | `ToggleSlash.create(url:, sdk_key:, stream: true, poll_interval: 30, flush_interval: 30, request_timeout: 10, hooks: nil, on_error: nil)` |
-| `ready` | `client.ready` returns `true` or `false` |
-| `variation`, `variationDetail` | `client.variation(flag_key, context, fallback)`, `client.variation_detail(...)` |
-| typed accessors | `bool_`, `string_`, `number_`, `int_`, `json_` + `variation` and `variation_detail` |
-| `status` | `client.status` returns `ToggleSlash::Status` (`etag`, `last_sync_at`, `stream`, `last_error`) |
-| `close` | `client.close` |
-| `hooks.afterEvaluation` | `hooks: { after_evaluation: ->(event) { ... } }` |
-| `onError` | `on_error: ->(error) { ... }` |
-
-Durations are `Numeric` seconds. Reason kinds, error codes, stream states and `last_error` codes are Symbols
-with the contract's spelling (`:RULE_MATCH`, `:NOT_READY`, `:connected`, `:http_503`).
+The full table (every name, option and default, and what is a `Detail`, a `Status` and a `StreamState`) is
+section 1 of [`DESIGN.md`](DESIGN.md). In short: `Toggleslash.create`, `client.ready`, `client.variation(...)`,
+`client.variation_detail(...)`, `client.int_variation(...)` and `client.int_variation_detail(...)` for the
+integer accessor, `client.status`, `client.close`; keyword options `stream`, `poll_interval`, `flush_interval`,
+`request_timeout` (seconds), `hooks` (`Toggleslash::Hooks.new(after_evaluation: callable)`) and `on_error`.
 
 ## Guarantees
 
-The contract's section 5, as this SDK keeps it:
+- Nothing raises at a caller: a failure becomes your fallback with an `ERROR` reason, goes to `on_error`, or both.
+- `variation`, `variation_detail` and `status` read memory only: they never wait on the network, a load or a flush.
+- `ready` settles after the first attempt, is bounded by `request_timeout`, and gives the same answer each time.
+- The SDK keeps evaluating from the last good ruleset while the server is unreachable; only a valid ruleset replaces one.
+- No evaluation context, attribute or SDK key appears in a request body or URL (the key is the `Authorization`
+  header only), a log line, a status or an error the SDK builds.
+- `close` is safe to call twice and from many threads, and returns within about twice `request_timeout`.
 
-1. It never raises at a caller, whatever the server, the network, a context, a hook or `on_error` does.
-2. `variation`, `variation_detail` and `status` never do I/O and never wait.
-3. `ready` settles after the first attempt and gives the same answer every time.
-4. While the server is unreachable it keeps evaluating from the last good ruleset.
-5. Only something with the shape of a ruleset replaces a ruleset.
+## Check it
 
-It also sends no context, context key or attribute anywhere: usage counts carry a flag, a variation index and
-a day. A client that is never closed does not keep the process from exiting (its two threads do not outlive
-the main thread).
-
-## Running the checks
-
-The toolchain is pinned in [`mise.toml`](mise.toml) (`mise install` from this directory). The `bin` scripts
-find it themselves.
+Install the toolchain once, then run from the root of the repository:
 
 ```sh
-sdks/ruby/bin/lint      # ruby -wc on every file, then RuboCop
-sdks/ruby/bin/test      # every unit test and every evaluation vector, with Ruby warnings as errors
-bun run conformance -- --service sdks/ruby/bin/test-service   # from the repository root: the conformance harness
+(cd sdks/ruby && mise trust && mise install)
+sdks/ruby/bin/lint                                            # RuboCop, then a syntax check under ruby -w
+sdks/ruby/bin/test                                            # Minitest under ruby -w, and every evaluation vector
+bun run conformance -- --service sdks/ruby/bin/test-service   # the shared conformance harness
 ```
 
-The test service is described in [`test-service/README.md`](test-service/README.md). A report of the run that
-built this SDK is in [`RUN.md`](RUN.md).
+`mise.toml` pins Ruby and RuboCop; with `mise` installed the scripts use those versions. See
+[`test-service/README.md`](test-service/README.md) for the conformance service, [`DESIGN.md`](DESIGN.md) for the
+design decisions and [`RUN.md`](RUN.md) for the report of the run that wrote this SDK.

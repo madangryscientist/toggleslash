@@ -1,53 +1,50 @@
 # frozen_string_literal: true
 
-require 'socket'
+require "socket"
+require "openssl"
 
-# A ToggleSlash server on a loopback port, as far as the SDK's tests need one. It serves a ruleset with an ETag
-# (and 304 on a matching If-None-Match), takes usage counts, and answers the stream route 503 until a test
-# gives it a handler. A test replaces any route's behaviour with `on(path) { |request, io| ... }`.
+# A ToggleSlash server on a loopback port, for the SDK's own tests. A test registers a handler per
+# (method, path); the handler gets the request and the socket and returns a Hash to answer in one piece
+# (`status`, `headers`, `body`), or nil when it wrote the answer itself (a stream, or nothing at all).
 class FakeServer
-  Request = Struct.new(:method, :path, :headers, :body, :at)
+  Request = Struct.new(:verb, :path, :headers, :body)
+
+  def self.flag(key, variations, serve, version: 1, rules: [])
+    { "key" => key, "on" => true, "variations" => variations, "offVariation" => 0, "salt" => "salt-#{key}",
+      "version" => version, "targets" => [], "prerequisites" => [], "rules" => rules,
+      "fallthrough" => { "variation" => serve } }
+  end
+
+  def self.ruleset(*flags)
+    Toggleslash::Json.generate({ "flags" => flags, "segments" => [] })
+  end
+
+  # on: true (index 1 of [false, true]); name: "b"; num: 1.5; big: 2^63, beyond signed 64 bits.
+  RULESET = ruleset(flag("on", [false, true], 1, version: 3), flag("name", %w[a b], 1),
+                    flag("num", [1.5, 2], 0, version: 2), flag("big", [9_223_372_036_854_775_808, 1], 0)).freeze
 
   attr_reader :port, :requests
 
-  def initialize
-    @server = TCPServer.new('127.0.0.1', 0)
-    @port = @server.addr[1]
-    @lock = Mutex.new
-    @requests = []
+  def initialize(ssl_context: nil)
+    @tcp = TCPServer.new("127.0.0.1", 0)
+    @server = ssl_context ? OpenSSL::SSL::SSLServer.new(@tcp, ssl_context) : @tcp
+    @tls = !ssl_context.nil?
+    @port = @tcp.addr[1]
     @handlers = {}
+    @requests = []
+    @lock = Mutex.new
     @sockets = []
-    @etag_number = 1
-    @flags = [flag('f', true, 1)]
-    @stop = false
-    @acceptor = Thread.new { accept_loop }
-    @acceptor.report_on_exception = false
+    @stopped = false
+    @thread = Thread.new { accept_loop }
+    @thread.report_on_exception = false
   end
 
   def url
-    "http://127.0.0.1:#{@port}"
+    "#{@tls ? "https" : "http"}://127.0.0.1:#{@port}"
   end
 
-  def flag(key, value, version)
-    { 'key' => key, 'variations' => [false, true, value], 'on' => true, 'offVariation' => 0, 'targets' => [],
-      'prerequisites' => [], 'rules' => [], 'fallthrough' => { 'variation' => 2 }, 'salt' => 's',
-      'version' => version }
-  end
-
-  # Replaces the ruleset and bumps the ETag, which is `"v<n>"`.
-  def publish(flags)
-    @lock.synchronize do
-      @etag_number += 1
-      @flags = flags
-    end
-  end
-
-  def etag
-    @lock.synchronize { %("v#{@etag_number}") }
-  end
-
-  def on(path, &handler)
-    @lock.synchronize { @handlers[path] = handler }
+  def route(method, path, &handler)
+    @lock.synchronize { @handlers["#{method} #{path}"] = handler }
   end
 
   def requests_to(path)
@@ -55,87 +52,93 @@ class FakeServer
   end
 
   def stop
-    @stop = true
-    @server.close unless @server.closed?
-    @lock.synchronize { @sockets.dup }.each { |socket| socket.close unless socket.closed? }
-  rescue IOError, SystemCallError
-    nil
+    @stopped = true
+    begin
+      @tcp.close
+    rescue IOError
+      nil
+    end
+    @lock.synchronize { @sockets.dup }.each do |socket|
+      socket.close
+    rescue IOError, SystemCallError, OpenSSL::SSL::SSLError
+      nil
+    end
   end
 
-  # Writes a complete answer with a Content-Length.
-  def self.respond(io, status, headers = {}, body = '')
-    lines = ["HTTP/1.1 #{status} X", "Content-Length: #{body.bytesize}", 'Connection: close']
-    headers.each { |name, value| lines << "#{name}: #{value}" }
-    io.write("#{lines.join("\r\n")}\r\n\r\n#{body}")
+  # Serves a ruleset with a fixed ETag on the ruleset route, 304 when If-None-Match names it.
+  def serve_ruleset(body = RULESET, etag: '"v1"')
+    route("GET", "/sdk/v1/ruleset") do |request, _socket|
+      if request.headers["if-none-match"] == etag
+        { status: 304, headers: { "ETag" => etag } }
+      else
+        { status: 200, headers: { "ETag" => etag, "Content-Type" => "application/json" }, body: body }
+      end
+    end
   end
 
-  # Starts a chunked event stream and returns; the caller writes events with `event`.
-  def self.open_stream(io)
-    io.write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n" \
-             "Connection: close\r\n\r\n")
+  def self.head(socket, status, headers = {})
+    lines = headers.map { |name, value| "#{name}: #{value}\r\n" }.join
+    socket.write("HTTP/1.1 #{status} X\r\n#{lines}Connection: close\r\n\r\n")
   end
 
-  def self.event(io, text)
-    io.write("#{text.bytesize.to_s(16)}\r\n#{text}\r\n")
+  # The head of an event stream; `chunk` writes one HTTP chunk.
+  def self.sse_head(socket)
+    head(socket, 200, "Content-Type" => "text/event-stream", "Transfer-Encoding" => "chunked")
+  end
+
+  def self.chunk(socket, data)
+    socket.write("#{data.bytesize.to_s(16)}\r\n#{data}\r\n")
   end
 
   private
 
   def accept_loop
-    until @stop
+    until @stopped
       socket = @server.accept
       @lock.synchronize { @sockets << socket }
-      Thread.new(socket) do |connection|
-        Thread.current.report_on_exception = false
-        serve(connection)
-      end
+      thread = Thread.new { serve(socket) }
+      thread.report_on_exception = false
     end
-  rescue IOError, SystemCallError
+  rescue IOError, SystemCallError, OpenSSL::SSL::SSLError
     nil
   end
 
   def serve(socket)
-    request = read(socket)
-    return if request.nil?
+    request = read_request(socket)
+    return unless request
 
     @lock.synchronize { @requests << request }
-    handler = @lock.synchronize { @handlers[request.path] }
-    handler ? handler.call(request, socket) : default(request, socket)
-  rescue IOError, SystemCallError
+    handler = @lock.synchronize { @handlers["#{request.verb} #{request.path}"] }
+    answer = handler ? handler.call(request, socket) : { status: 404 }
+    write_answer(socket, answer) if answer.is_a?(Hash)
+  rescue IOError, SystemCallError, OpenSSL::SSL::SSLError
     nil
   ensure
-    socket.close unless socket.closed?
-  end
-
-  def read(socket)
-    line = socket.gets("\r\n")&.chomp
-    return nil if line.nil?
-
-    method, path = line.split
-    headers = {}
-    while (header = socket.gets("\r\n")) && header != "\r\n"
-      name, value = header.chomp.split(':', 2)
-      headers[name.downcase] = value.to_s.strip
-    end
-    length = headers['content-length'].to_i
-    Request.new(method, path, headers, length.positive? ? socket.read(length) : '', Time.now)
-  end
-
-  def default(request, socket)
-    case request.path
-    when '/sdk/v1/ruleset' then ruleset(request, socket)
-    when '/sdk/v1/events' then self.class.respond(socket, 200)
-    else self.class.respond(socket, 503)
+    begin
+      socket.close unless socket.closed?
+    rescue IOError, SystemCallError, OpenSSL::SSL::SSLError
+      nil
     end
   end
 
-  def ruleset(request, socket)
-    tag, flags = @lock.synchronize { [%("v#{@etag_number}"), @flags] }
-    if request.headers['if-none-match'] == tag
-      self.class.respond(socket, 304, 'ETag' => tag)
-    else
-      self.class.respond(socket, 200, { 'ETag' => tag, 'Content-Type' => 'application/json' },
-                         ToggleSlash::Json.generate({ 'flags' => flags, 'segments' => [] }))
-    end
+  def read_request(socket)
+    head = +""
+    head << socket.readpartial(65_536) until head.include?("\r\n\r\n")
+    head, rest = head.split("\r\n\r\n", 2)
+    lines = head.split("\r\n")
+    method, path, = lines.first.split
+    headers = lines.drop(1).to_h { |line| line.split(":", 2).then { |name, value| [name.downcase, value.strip] } }
+    length = headers["content-length"].to_i
+    rest << socket.readpartial(length - rest.bytesize) while rest.bytesize < length
+    Request.new(method, path, headers, rest)
+  rescue EOFError
+    nil
+  end
+
+  def write_answer(socket, answer)
+    body = answer[:body].to_s
+    headers = { "Content-Length" => body.bytesize }.merge(answer[:headers] || {})
+    FakeServer.head(socket, answer[:status] || 200, headers)
+    socket.write(body)
   end
 end

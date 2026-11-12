@@ -1,39 +1,53 @@
 # frozen_string_literal: true
 
-require_relative 'test_helper'
+require_relative "test_helper"
 
 class SseTest < Minitest::Test
-  def parse(text, split: nil)
-    parser = ToggleSlash::Sse::Parser.new
-    chunks = split ? text.b.chars.each_slice(split).map(&:join) : [text]
-    chunks.flat_map { |chunk| parser.feed(chunk) }.map { |event| [event.name, event.data] }
+  def parse(*chunks)
+    parser = Toggleslash::SseParser.new
+    chunks.flat_map { |chunk| parser.feed(chunk.b) }
   end
 
-  def test_names_and_data_in_every_split
-    text = "event: changed\ndata: \"v2\"\n\n: comment\ndata: a\ndata: b\n\nevent: z\r\ndata: x\r\n\r\n"
-    expected = [['changed', '"v2"'], ['message', "a\nb"], ['z', 'x']]
-    [nil, 1, 2, 3, 7].each { |split| assert_equal expected, parse(text, split: split), "split #{split}" }
+  def test_named_events_and_the_default_name
+    assert_equal [%w[changed x], %w[message y]], parse("event: changed\ndata: x\n\ndata: y\n\n")
   end
 
-  def test_a_lone_cr_ends_a_line_and_a_trailing_cr_waits_for_its_lf
-    assert_equal [%w[message x]], parse("data: x\r\rdata: y")
-    parser = ToggleSlash::Sse::Parser.new
-    assert_empty parser.feed("data: x\r")
-    assert_equal([%w[message x]], parser.feed("\n\n").map { |event| [event.name, event.data] })
+  def test_line_ends_lf_crlf_and_lone_cr
+    assert_equal [%w[a 1], %w[b 2], %w[c 3]],
+                 parse("event: a\ndata: 1\n\nevent: b\r\ndata: 2\r\n\r\nevent: c\rdata: 3\r\r")
   end
 
-  def test_a_byte_order_mark_is_skipped_once_and_an_event_without_data_is_dropped
-    assert_equal [%w[a 1]], parse("\xEF\xBB\xBFevent: a\ndata: 1\n\nevent: b\n\n".b)
+  def test_crlf_split_across_reads
+    assert_equal [%w[a 1]], parse("event: a\r", "\ndata: 1\r", "\n\r", "\n")
   end
 
-  def test_an_unfinished_event_is_never_returned_and_a_field_without_a_colon_has_an_empty_value
-    assert_empty parse("event: a\ndata: 1\n")
-    assert_equal [['message', '']], parse("data\n\n")
+  def test_several_data_lines_join_with_lf
+    assert_equal [%W[message a\nb]], parse("data: a\ndata: b\n\n")
   end
 
-  def test_invalid_utf8_is_scrubbed_not_raised
-    events = parse("data: \xFF\n\n".b)
-    assert_equal 1, events.size
-    assert_predicate events.first[1], :valid_encoding?
+  def test_comments_unknown_fields_and_an_event_with_no_data_are_ignored
+    assert_equal [], parse(": keep alive\nid: 7\nretry: 5\nfoo: bar\n\nevent: only\n\n")
+  end
+
+  def test_utf8_split_across_reads
+    bytes = "data: \u00e9\u4e2d\n\n".b
+    assert_equal [%w[message é中]], parse(bytes.byteslice(0, 8), bytes.byteslice(8, bytes.bytesize))
+  end
+
+  def test_a_byte_order_mark_at_the_start_is_skipped_even_when_split
+    assert_equal [%w[message x]], parse("\xEF\xBB\xBFdata: x\n\n".b)
+    assert_equal [%w[message x]], parse("\xEF".b, "\xBB\xBFdata: x\n\n".b)
+  end
+
+  def test_an_incomplete_event_is_never_returned
+    assert_equal [], parse("event: a\ndata: 1\n")
+  end
+
+  def test_invalid_utf8_becomes_the_replacement_character
+    assert_equal [["message", "a\uFFFDb"]], parse("data: a\xFFb\n\n")
+  end
+
+  def test_a_value_may_omit_the_space_and_keeps_a_second_one
+    assert_equal [["message", " x"], ["message", "y"]], parse("data:  x\n\ndata:y\n\n")
   end
 end

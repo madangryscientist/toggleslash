@@ -1,327 +1,282 @@
 # frozen_string_literal: true
 
-require 'timeout'
-require_relative 'test_support'
+require_relative "support"
+require "timeout"
 
 class ClientTest < Minitest::Test
-  include ClientSupport
+  include Support
 
-  def test_loads_a_ruleset_and_evaluates_locally
-    client = build
+  CONTEXT = { "key" => "u" }.freeze
+
+  def seamed_client(server, **)
+    client = Toggleslash::Client.new(url: server.url, sdk_key: "k", stream: false, poll_interval: 60,
+                                     flush_interval: 60,
+                                     request_timeout: 5, **).start
+    (@clients ||= []) << client
+    client
+  end
+
+  def ready_client(**)
+    server = build_server
+    server.serve_ruleset
+    client = build_client(server, **)
     assert client.ready
-    assert_equal true, client.bool_variation('f', CONTEXT, false)
-    assert_equal server.etag, client.status.etag
-    assert_equal :off, client.status.stream
+    [server, client]
   end
 
-  def test_evaluating_before_the_first_load_is_not_ready_at_once
-    server.on('/sdk/v1/ruleset') { |_request, _io| sleep 5 }
-    client = build
-    started = ToggleSlash::Clock.monotonic
-    detail = client.variation_detail('f', CONTEXT, false)
-    assert_operator ToggleSlash::Clock.monotonic - started, :<, 0.5
-    assert_equal :NOT_READY, detail.reason.code
-    assert_equal false, detail.value
+  def test_evaluates_after_the_first_load
+    _server, client = ready_client
+    detail = client.variation_detail("on", { "key" => "u" }, false)
+    assert_equal true, detail.value
+    assert_equal 1, detail.variation_index
+    assert_equal "FALLTHROUGH", detail.reason.kind
   end
 
-  def test_a_second_poll_sends_if_none_match_and_a_304_is_a_sync
-    client = build(poll_interval: 0.05)
-    assert client.ready
-    wait_until(5, 'a 304 poll') { server.requests_to('/sdk/v1/ruleset').size >= 3 }
-    assert_equal server.etag, server.requests_to('/sdk/v1/ruleset')[2].headers['if-none-match']
-    assert_nil client.status.last_error
-  end
-
-  def test_operations_called_from_many_threads_with_close_racing
-    client = build(poll_interval: 0.02, flush_interval: 0.02)
-    assert client.ready
-    stop = false
-    errors = Queue.new
-    workers = Array.new(12) do |n|
-      Thread.new do
-        until stop
-          client.variation('f', CONTEXT, false)
-          client.int_variation_detail('f', CONTEXT, 0)
-          client.status
-          client.ready
-          client.close if n.zero?
-          Thread.pass
-        end
-      rescue StandardError, ScriptError => e
-        errors << e
-      end
-    end
-    sleep 0.3
-    closers = Array.new(4) { Thread.new { Timeout.timeout(5) { client.close } } }
-    closers.each { |closer| closer.join(6) || flunk('close did not return') }
-    stop = true
-    workers.each { |worker| worker.join(5) || flunk('a worker did not stop') }
-    assert_empty Array.new(errors.size) { errors.pop }
-    assert_equal :closed, client.status.stream
-  end
-
-  def test_a_close_from_on_error_on_the_sdk_threads_and_the_closing_thread_does_not_deadlock
-    server.on('/sdk/v1/ruleset') { |_request, io| FakeServer.respond(io, 500) }
-    holder = []
-    closed = Queue.new
-    on_error = lambda do |_error|
-      holder.first.close
-      closed << true
-    end
-    client = build(on_error: on_error, poll_interval: 0.05, flush_interval: 0.05)
-    holder << client
-    Timeout.timeout(5) { closed.pop }
-    Timeout.timeout(5) { client.close }
-    assert_equal :closed, client.status.stream
-  end
-
-  def test_close_waits_for_a_hung_usage_flush_for_at_most_the_request_timeout
-    server.on('/sdk/v1/events') { |_request, _io| sleep 5 }
-    client = build(flush_interval: 0.05, request_timeout: 0.5)
-    assert client.ready
-    client.variation('f', CONTEXT, false)
-    wait_until(5, 'the flush') { server.requests_to('/sdk/v1/events').any? }
-    started = ToggleSlash::Clock.monotonic
-    client.close
-    assert_operator ToggleSlash::Clock.monotonic - started, :<, 3
-  end
-
-  def test_variation_returns_while_a_ruleset_request_hangs
-    client = build
-    assert client.ready
-    server.on('/sdk/v1/ruleset') { |_request, _io| sleep 5 }
-    server.publish([server.flag('f', false, 2)])
-    sleep 0.2
-    assert_returns_quickly { client.variation('f', CONTEXT, false) }
-  end
-
-  def test_variation_returns_while_a_usage_flush_hangs
-    server.on('/sdk/v1/events') { |_request, _io| sleep 5 }
-    client = build(flush_interval: 0.05)
-    assert client.ready
-    client.variation('f', CONTEXT, false)
-    wait_until(5, 'the flush') { server.requests_to('/sdk/v1/events').any? }
-    assert_returns_quickly { client.variation_detail('f', CONTEXT, false) }
-  end
-
-  def test_a_hook_sees_an_etag_and_flag_version_of_the_same_ruleset_across_swaps
-    seen = Queue.new
-    client = build(poll_interval: 0.01, hooks: { after_evaluation: ->(event) { seen << event } })
-    assert client.ready
-    publisher = Thread.new do
-      2.upto(60) do |n|
-        server.publish([server.flag('f', true, n)])
-        sleep 0.01
-      end
-    end
-    reader = Thread.new do
-      while publisher.alive?
-        client.variation('f', CONTEXT, false)
-        Thread.pass
-      end
-    end
-    [publisher, reader].each(&:join)
-    events = Array.new(seen.size) { seen.pop }
-    refute_empty events
-    events.each do |event|
-      assert_equal %("v#{event.flag_version}"), event.etag, 'the etag and the flag version come from two rulesets'
-    end
-    assert_operator events.map(&:flag_version).uniq.size, :>, 1
-  end
-
-  def test_a_hook_and_on_error_that_call_back_into_the_client_do_not_deadlock
-    holder = []
-    reentered = false
-    hook = lambda do |_event|
-      next if reentered
-
-      reentered = true
-      holder.first.status
-      holder.first.variation('f', CONTEXT, false)
-      raise 'the hook raised'
-    end
-    reported = Queue.new
-    on_error = lambda do |error|
-      holder.first.status
-      holder.first.variation('f', CONTEXT, false)
-      reported << error.message
-    end
-    client = build(hooks: { after_evaluation: hook }, on_error: on_error)
-    holder << client
-    assert client.ready
-    Timeout.timeout(5) do
-      assert_equal true, client.variation('f', CONTEXT, false)
-      assert_equal 'the hook raised', reported.pop
-    end
-  end
-
-  def test_an_evaluation_that_raises_gives_the_fallback_and_one_on_error
-    failing = Object.new
-    def failing.evaluate(*)
-      raise 'the evaluator broke'
-    end
-    errors = []
-    client = build(evaluator: failing, on_error: ->(error) { errors << error.message })
-    assert client.ready
-    detail = client.variation_detail('f', CONTEXT, 'fallback')
-    assert_equal 'fallback', detail.value
+  def test_not_ready_before_a_load_answers_the_fallback
+    server = build_server
+    gate = Queue.new
+    server.route("GET", "/sdk/v1/ruleset") { |_request, _socket| gate.pop && { status: 500 } }
+    client = build_client(server)
+    detail = client.variation_detail("on", { "key" => "u" }, "fb")
+    assert_equal "fb", detail.value
     assert_nil detail.variation_index
-    assert_equal :ERROR, detail.reason.kind
-    assert_equal :EVALUATION_FAILED, detail.reason.code
-    assert_equal ['the evaluator broke'], errors
+    assert_equal %w[ERROR NOT_READY], [detail.reason.kind, detail.reason.code]
+    gate << true
   end
 
-  def test_an_on_error_that_raises_is_ignored
-    failing = Object.new
-    def failing.evaluate(*)
-      raise 'the evaluator broke'
+  def test_unknown_flag_gives_the_fallback_and_the_evaluator_reason
+    _server, client = ready_client
+    detail = client.variation_detail("nope", { "key" => "u" }, 7)
+    assert_equal 7, detail.value
+    assert_equal "FLAG_NOT_FOUND", detail.reason.code
+  end
+
+  def test_type_mismatch_gives_the_fallback
+    _server, client = ready_client
+    detail = client.variation_detail("on", { "key" => "u" }, "text")
+    assert_equal "text", detail.value
+    assert_nil detail.variation_index
+    assert_equal "TYPE_MISMATCH", detail.reason.code
+  end
+
+  def test_a_null_fallback_accepts_any_kind
+    _server, client = ready_client
+    assert_equal true, client.variation("on", { "key" => "u" }, nil)
+    assert_equal "b", client.variation("name", { "key" => "u" }, nil)
+  end
+
+  def test_a_class_with_no_json_kind_never_matches
+    _server, client = ready_client
+    fallback = Object.new
+    detail = client.variation_detail("on", { "key" => "u" }, fallback)
+    assert_same fallback, detail.value
+    assert_equal "TYPE_MISMATCH", detail.reason.code
+    assert_equal "TYPE_MISMATCH", client.variation_detail("on", { "key" => "u" }, :sym).reason.code
+  end
+
+  # `variation` is dynamically typed: an integer fallback is the JSON kind number, so a served 2.0 comes back
+  # as served. The integer accessor is the typed path (the next test); this is a recorded n/a in RUN.md.
+  def test_the_generic_accessor_with_an_integer_fallback_returns_the_served_number
+    server = build_server
+    server.serve_ruleset(FakeServer.ruleset(FakeServer.flag("two", [2.0, 2.5, 3], 0)))
+    client = build_client(server)
+    assert client.ready
+    assert_equal 2.0, client.variation("two", CONTEXT, 0)
+    assert_equal 2, client.int_variation("two", CONTEXT, 0)
+  end
+
+  def test_the_integer_accessor
+    server = build_server
+    server.serve_ruleset(FakeServer.ruleset(
+                           FakeServer.flag("two", [2.0], 0), FakeServer.flag("frac", [2.5], 0),
+                           FakeServer.flag("max", [9_223_372_036_854_774_784], 0),
+                           FakeServer.flag("min", [-9_223_372_036_854_775_808], 0),
+                           FakeServer.flag("over", [9_223_372_036_854_775_808], 0),
+                           FakeServer.flag("under", [-9_223_372_036_854_777_856], 0),
+                           FakeServer.flag("float_over", [1.0e30], 0)
+                         ))
+    client = build_client(server)
+    assert client.ready
+    value = client.int_variation("two", CONTEXT, 0)
+    assert_instance_of Integer, value
+    assert_equal 2, value
+    assert_equal 9_223_372_036_854_774_784, client.int_variation("max", CONTEXT, 0)
+    assert_equal(-9_223_372_036_854_775_808, client.int_variation("min", CONTEXT, 0))
+    %w[frac over under float_over].each do |flag|
+      detail = client.int_variation_detail(flag, CONTEXT, 5)
+      assert_equal 5, detail.value, flag
+      assert_equal "TYPE_MISMATCH", detail.reason.code, flag
     end
-    client = build(evaluator: failing, on_error: ->(_error) { raise 'on_error broke' })
-    assert client.ready
-    assert_equal :EVALUATION_FAILED, client.variation_detail('f', CONTEXT, 1).reason.code
+    assert_equal "TYPE_MISMATCH", client.int_variation_detail("two", CONTEXT, "x").reason.code
   end
 
-  def test_a_hook_that_is_not_callable_is_ignored
-    client = build(hooks: { after_evaluation: 'nope' })
+  # A nil fallback says nothing about the kind, but the integer accessor's own kind is a number: a served
+  # string is TYPE_MISMATCH (contract 4, "The mismatch rule").
+  def test_the_integer_accessor_with_a_nil_fallback_accepts_a_number_only
+    server = build_server
+    server.serve_ruleset(FakeServer.ruleset(FakeServer.flag("two", [2.0], 0), FakeServer.flag("text", ["a"], 0),
+                                            FakeServer.flag("frac", [2.5], 0)))
+    client = build_client(server)
     assert client.ready
-    assert_equal true, client.variation('f', CONTEXT, false)
+    assert_equal 2, client.int_variation("two", CONTEXT, nil)
+    text = client.int_variation_detail("text", CONTEXT, nil)
+    assert_nil text.value
+    assert_equal "TYPE_MISMATCH", text.reason.code
+    assert_equal "TYPE_MISMATCH", client.int_variation_detail("frac", CONTEXT, nil).reason.code
   end
 
-  def test_the_integer_accessor_follows_the_signed_64_bit_rule
-    flags = [['whole', 2.0], ['half', 1.5], ['big', 2**63], ['edge', -(2**63)], ['top', (2**63) - 1],
-             ['huge', 1e30], ['many', 12_345_678_901_234_567_890]]
-    server.publish(flags.map { |key, value| server.flag(key, value, 1) })
-    client = build
+  def test_a_hook_sees_the_value_for_the_integer_accessor_as_an_integer
+    events = []
+    server = build_server
+    server.serve_ruleset(FakeServer.ruleset(FakeServer.flag("two", [2.0], 0, version: 4)))
+    client = build_client(server, hooks: Toggleslash::Hooks.new(after_evaluation: ->(event) { events << event }))
     assert client.ready
-    expected = { 'whole' => 2, 'half' => :mismatch, 'big' => :mismatch, 'edge' => -(2**63), 'top' => :mismatch_or_max,
-                 'huge' => :mismatch, 'many' => :mismatch }
-    expected.each do |key, want|
-      detail = client.int_variation_detail(key, CONTEXT, 0)
-      case want
-      when :mismatch then assert_equal :TYPE_MISMATCH, detail.reason.code, key
-      when :mismatch_or_max then assert_includes [:TYPE_MISMATCH, nil], detail.reason.code
-      else
-        assert_equal want, detail.value, key
-        assert_kind_of Integer, detail.value
-      end
-    end
+    client.int_variation("two", { "key" => "u" }, 0)
+    assert_equal 1, events.size
+    assert_instance_of Integer, events[0].value
+    assert_equal 4, events[0].flag_version
+    assert_equal '"v1"', events[0].etag
   end
 
-  def test_a_nil_fallback_accepts_any_kind_and_other_kinds_mismatch
-    client = build
+  def test_a_hook_that_raises_goes_to_on_error_and_the_answer_stands
+    errors = Queue.new
+    server = build_server
+    server.serve_ruleset
+    hook = ->(_event) { raise "hook broke" }
+    client = build_client(server, hooks: Toggleslash::Hooks.new(after_evaluation: hook), on_error: lambda { |e|
+      errors << e
+    })
     assert client.ready
-    assert_equal true, client.variation('f', CONTEXT, nil)
-    assert_equal :TYPE_MISMATCH, client.variation_detail('f', CONTEXT, 'x').reason.code
-    assert_equal :TYPE_MISMATCH, client.number_variation_detail('f', CONTEXT, 0).reason.code
-    assert_equal :TYPE_MISMATCH, client.json_variation_detail('f', CONTEXT, {}).reason.code
+    assert_equal true, client.variation("on", { "key" => "u" }, false)
+    assert_equal "hook broke", errors.pop.message
   end
 
-  def test_counts_either_side_of_a_utc_midnight_go_out_as_two_days
-    clock = ClientSupport::FakeClock.new(Time.utc(2026, 11, 10, 23, 59, 59))
-    client = build(clock: clock)
-    assert client.ready
-    3.times { client.variation('f', CONTEXT, false) }
-    clock.time = Time.utc(2026, 11, 11, 0, 0, 1)
-    2.times { client.variation('f', CONTEXT, false) }
-    client.close
-    body = ToggleSlash::Json.parse(server.requests_to('/sdk/v1/events').first.body)
-    days = body['events'].to_h { |entry| [entry['day'], entry['count']] }
-    assert_equal({ '2026-11-10' => 3, '2026-11-11' => 2 }, days)
-  end
-
-  def test_nothing_is_counted_after_close_begins_and_close_flushes
-    client = build
-    assert client.ready
-    client.variation('f', CONTEXT, false)
-    client.close
-    client.variation('f', CONTEXT, false)
-    assert_equal true, client.variation('f', CONTEXT, false), 'evaluation still answers after close'
-    assert_equal 1, ToggleSlash::Json.parse(server.requests_to('/sdk/v1/events').first.body)['events'].first['count']
-    assert_equal :closed, client.status.stream
-  end
-
-  def test_a_batch_holds_at_most_500_entries_and_usage_carries_no_context
-    flags = Array.new(600) { |n| server.flag("flag#{n}", true, 1) }
-    server.publish(flags)
-    client = build
-    assert client.ready
-    600.times { |n| client.variation("flag#{n}", { 'key' => 'secret-user', 'plan' => 'secret-plan' }, false) }
-    client.close
-    posts = server.requests_to('/sdk/v1/events')
-    assert_equal([500, 100], posts.map { |post| ToggleSlash::Json.parse(post.body)['events'].size })
-    posts.each do |post|
-      refute_includes post.body, 'secret'
-      assert_equal 'application/json', post.headers['content-type']
-    end
-  end
-
-  def test_a_retry_after_above_300_is_held_for_300_seconds_on_the_ruleset_route
-    server.on('/sdk/v1/ruleset') { |_request, io| FakeServer.respond(io, 429, 'Retry-After' => '99999') }
-    client = build
+  def test_on_error_that_raises_is_swallowed
+    server = build_server
+    server.route("GET", "/sdk/v1/ruleset") { { status: 500 } }
+    client = build_client(server, on_error: ->(_e) { raise "nope" })
     refute client.ready
-    assert_equal :http_429, client.status.last_error
-    assert_in_delta 300, client.hold_remaining(:sync), 5
+    assert_equal "http_500", client.status.last_error
   end
 
-  def test_a_retry_after_above_300_is_held_for_300_seconds_on_the_stream_route
-    server.on('/sdk/v1/stream') { |_request, io| FakeServer.respond(io, 429, 'Retry-After' => '99999') }
-    client = build(stream: true)
+  def test_an_evaluator_that_raises_gives_the_fallback_and_one_on_error
+    errors = Queue.new
+    server = build_server
+    server.serve_ruleset
+    client = seamed_client(server, on_error: ->(e) { errors << e }, evaluator: ->(*) { raise "boom" })
     assert client.ready
-    wait_until(5, 'the stream 429') { client.status.last_error == :http_429 }
-    assert_in_delta 300, client.hold_remaining(:sync), 5
-    assert_in_delta 0, client.hold_remaining(:usage), 0.001
+    detail = client.variation_detail("on", { "key" => "u" }, "fb")
+    assert_equal "fb", detail.value
+    assert_equal %w[ERROR EVALUATION_FAILED], [detail.reason.kind, detail.reason.code]
+    error = errors.pop
+    assert_equal "EVALUATION_FAILED", error.code
+    refute_includes error.message, "boom"
+    assert errors.empty?
   end
 
-  def test_the_events_route_has_its_own_hold_capped_at_300
-    server.on('/sdk/v1/events') { |_request, io| FakeServer.respond(io, 429, 'Retry-After' => '99999') }
-    errors = []
-    client = build(flush_interval: 0.05, on_error: ->(error) { errors << error.message })
+  def test_an_evaluator_that_raises_a_deep_stack_error_is_contained
+    server = build_server
+    server.serve_ruleset
+    client = seamed_client(server, evaluator: ->(*) { raise SystemStackError })
     assert client.ready
-    client.variation('f', CONTEXT, false)
-    wait_until(5, 'the 429') { server.requests_to('/sdk/v1/events').any? }
-    wait_until(5, 'the hold') { client.hold_remaining(:usage).positive? }
-    assert_in_delta 300, client.hold_remaining(:usage), 5
-    assert_in_delta 0, client.hold_remaining(:sync), 0.001
-    client.variation('f', CONTEXT, false)
+    assert_equal "EVALUATION_FAILED", client.variation_detail("on", { "key" => "u" }, 1).reason.code
+  end
+
+  def test_callbacks_that_call_back_into_the_client_do_not_deadlock
+    server = build_server
+    server.serve_ruleset
+    inner = Queue.new
+    client_box = []
+    inside = false
+    hook = lambda do |_event|
+      next if inside
+
+      inside = true
+      client_box[0].variation("on", { "key" => "x" }, false)
+      client_box[0].status
+      inner << client_box[0].ready
+    end
+    client = build_client(server, hooks: Toggleslash::Hooks.new(after_evaluation: hook))
+    client_box << client
+    assert client.ready
+    client.variation("on", { "key" => "u" }, false)
+    assert_equal true, Timeout.timeout(5) { inner.pop }
+  end
+
+  def test_ready_and_close_from_the_sdks_own_thread_return_at_once
+    server = build_server
+    server.serve_ruleset
+    results = Queue.new
+    client_box = []
+    on_error = lambda do |_error|
+      results << [client_box[0].ready, client_box[0].close]
+    end
+    client = build_client(server, on_error: on_error)
+    client_box << client
+    assert client.ready
+    server.route("GET", "/sdk/v1/ruleset") { { status: 500 } }
     client.close
-    assert_equal 1, server.requests_to('/sdk/v1/events').size
-    assert(errors.any? { |message| message.include?('closed with 1 usage counts unsent: the server asked to wait') })
+    other = build_client(server, poll_interval: 0.05, on_error: on_error)
+    client_box[0] = other
+    result = Timeout.timeout(5) { results.pop }
+    assert_equal [false, nil], result
   end
 
-  def test_a_client_that_is_never_closed_does_not_keep_the_process_alive
-    script = <<~RUBY
-      require 'toggleslash'
-      ToggleSlash.create(url: 'http://127.0.0.1:#{server.port}', sdk_key: 'k', stream: true)
-      sleep 0.2
-    RUBY
-    started = ToggleSlash::Clock.monotonic
-    pid = Process.spawn(RbConfig.ruby, '-w', '-I', File.expand_path('../lib', __dir__), '-e', script)
-    _pid, exit_status = Timeout.timeout(10) { Process.wait2(pid) }
-    assert_predicate exit_status, :success?
-    assert_operator ToggleSlash::Clock.monotonic - started, :<, 8
+  def test_inspect_hides_the_key
+    _server, client = ready_client
+    refute_includes client.inspect, "sdk-secret-key"
+    refute_includes client.to_s, "sdk-secret-key"
   end
 
-  def test_unknown_and_bad_options_take_defaults
-    client = ToggleSlash.create(url: server.url, sdk_key: 'k', stream: false, poll_interval: -1, bogus: 1,
-                                request_timeout: 'x', hooks: 3, on_error: 7)
-    clients << client
+  def test_durations_fall_back_to_the_default
+    d = Toggleslash::Client
+    assert_equal 30.0, d.duration(0, 30.0)
+    assert_equal 30.0, d.duration(-1, 30.0)
+    assert_equal 30.0, d.duration("5", 30.0)
+    assert_equal 30.0, d.duration(Float::NAN, 30.0)
+    assert_equal 30.0, d.duration(Float::INFINITY, 30.0)
+    assert_equal 30.0, d.duration(nil, 30.0)
+    assert_equal 0.25, d.duration(0.25, 30.0)
+    assert_equal 31_536_000.0, d.duration(10**12, 30.0)
+  end
+
+  def test_close_is_safe_twice_and_concurrent_and_the_client_answers_after
+    _server, client = ready_client
+    threads = Array.new(4) { Thread.new { client.close } }
+    threads.each(&:join)
+    client.close
+    assert_equal "closed", client.status.stream
+    assert_equal true, client.variation("on", { "key" => "u" }, false)
+  end
+
+  def test_a_context_attribute_of_each_numeric_type_matches_as_its_value
+    rule = { "clauses" => [{ "attribute" => "n", "op" => "in", "values" => [5] }], "variation" => 1 }
+    server = build_server
+    server.serve_ruleset(FakeServer.ruleset(FakeServer.flag("n", [false, true], 0, rules: [rule])))
+    client = build_client(server)
     assert client.ready
-    assert_equal true, client.variation('f', CONTEXT, false)
+    numbers = [5, 5.0, Rational(5), Rational(10, 2), (2**3) - 3, 5.0.to_r, Float(5)]
+    begin
+      require "bigdecimal"
+      numbers << BigDecimal("5")
+    rescue LoadError
+      nil
+    end
+    numbers.each do |number|
+      assert_equal true, client.variation("n", { "key" => "u", "attributes" => { "n" => number } }, false),
+                   number.inspect
+    end
+    assert_equal false, client.variation("n", { "key" => "u", "attributes" => { "n" => 6 } }, true)
+    assert_equal false, client.variation("n", { "key" => "u", "attributes" => { "n" => Complex(5, 1) } }, true)
   end
 
-  def test_a_url_that_cannot_be_reached_never_raises
-    client = ToggleSlash.create(url: 'not a url', sdk_key: 'k')
-    clients << client
-    refute client.ready
-    assert_equal :network, client.status.last_error
-    assert_equal 5, client.variation('f', CONTEXT, 5)
-  end
-
-  private
-
-  def assert_returns_quickly
-    started = ToggleSlash::Clock.monotonic
-    yield
-    assert_operator ToggleSlash::Clock.monotonic - started, :<, 0.5
+  def test_a_fractional_numeric_attribute_keeps_its_value
+    rule = { "clauses" => [{ "attribute" => "n", "op" => "gt", "values" => [0.5] }], "variation" => 1 }
+    server = build_server
+    server.serve_ruleset(FakeServer.ruleset(FakeServer.flag("n", [false, true], 0, rules: [rule])))
+    client = build_client(server)
+    assert client.ready
+    assert_equal true, client.variation("n", { "key" => "u", "attributes" => { "n" => Rational(3, 4) } }, false)
+    assert_equal false, client.variation("n", { "key" => "u", "attributes" => { "n" => Rational(1, 4) } }, true)
   end
 end

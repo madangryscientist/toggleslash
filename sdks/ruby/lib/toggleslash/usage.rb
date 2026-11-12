@@ -1,125 +1,164 @@
 # frozen_string_literal: true
 
-require_relative 'config'
-require_relative 'http'
-require_relative 'json'
-require_relative 'state'
-
-module ToggleSlash
-  # Counts how often each flag variation was served, per UTC day, and sends the totals in batches
-  # (contract section 9). `record` is a hash add under a lock held for nothing else, so it is safe on a
-  # request path and never waits for a flush. A failure is handed to `report` after the flush lock has been
-  # let go, so a callback that calls back into the client cannot deadlock it.
-  class UsageReporter
-    # The server takes 1000 events and 128 KiB a request; an entry is at most about 140 bytes, so 500 stay
-    # under both.
+module Toggleslash
+  # Usage counts: (flag, variation index, UTC day) to a count, flushed in batches (contract 9).
+  class Usage
     MAX_BATCH = 500
+    MAX_HOLD = 300.0
 
-    Entry = Struct.new(:flag, :variation_index, :day, :count)
+    # The seconds a `Retry-After` asks for, capped at 300, or nil when the header is not whole decimal
+    # digits (spaces around it are ignored).
+    def self.retry_after(response)
+      raw = response.header("retry-after")
+      return nil unless raw.is_a?(String)
 
-    def initialize(config, hold, report)
-      @config = config
-      @hold = hold
+      text = raw.gsub(/\A +| +\z/, "")
+      return nil unless text.match?(/\A[0-9]+\z/)
+      return MAX_HOLD if text.length > 6
+
+      [text.to_i.to_f, MAX_HOLD].min
+    end
+
+    def self.retryable?(status)
+      status >= 500 || status == 408 || status == 429
+    end
+
+    def initialize(endpoint:, headers:, transport:, clock:, request_timeout:, report:)
+      @endpoint = endpoint
+      @headers = headers
+      @transport = transport
+      @clock = clock
+      @request_timeout = request_timeout
       @report = report
       @lock = Mutex.new
       @flush_lock = Mutex.new
-      @pending = {}
-      @counting = true
+      @counts = {}
+      @stopped = false
+      @hold_until = 0.0
     end
 
-    def record(flag, variation_index)
-      day = @config.clock.now.getutc.strftime('%Y-%m-%d')
+    def add(flag, index, day)
       @lock.synchronize do
-        return unless @counting
+        return if @stopped
 
-        add(Entry.new(flag.dup.freeze, variation_index, day, 1))
+        key = [flag, index, day]
+        count = @counts[key]
+        if count
+          @counts[key] = count + 1
+        else
+          @counts[[flag.dup.freeze, index, day]] = 1
+        end
       end
     end
 
-    # Nothing is counted from now on.
-    def stop_counting
-      @lock.synchronize { @counting = false }
+    # Nothing more is counted (called by `close` before the final flush).
+    def stop
+      @lock.synchronize { @stopped = true }
     end
 
-    # Sends what is pending. A call during another flush waits for it first. Each request is bounded by
-    # `request_timeout`, and `close` waits for a flush that is running (contract 11, step 3).
-    def flush
-      errors = []
-      @flush_lock.synchronize { send_pending(errors) }
-      errors.each { |error| @report.call(error) }
+    # The number of entries waiting to be sent.
+    def pending
+      @lock.synchronize { @counts.size }
     end
 
-    # The last flush, on closing. It does not wait out a Retry-After and does not ignore one: counts still
-    # held back then are lost, and that is reported.
-    def finish
-      flush
-      unsent = @lock.synchronize { @pending.size }
-      return unless unsent.positive? && @hold.holding?
+    def holding?
+      @clock.monotonic < @lock.synchronize { @hold_until }
+    end
 
-      @report.call(StandardError.new("closed with #{unsent} usage counts unsent: the server asked to wait"))
+    # Sends what is pending, in batches of at most 500, one request at a time. `lock_timeout` bounds the wait
+    # for a flush already running (`close` passes one); nil waits as long as it takes.
+    def flush(lock_timeout = nil)
+      return unless acquire(lock_timeout)
+
+      reports = []
+      begin
+        send_pending(reports)
+      ensure
+        @flush_lock.unlock
+      end
+      # The callbacks run with no lock held (contract 6.4).
+      reports.each { |code, message| @report.call(code, message) }
     end
 
     private
 
-    # Merges an entry into the pending map. The caller holds @lock.
-    def add(entry)
-      key = [entry.flag, entry.variation_index, entry.day]
-      existing = @pending[key]
-      if existing
-        existing.count += entry.count
-      else
-        @pending[key] = entry
+    def send_pending(reports)
+      return if holding?
+
+      taken = @lock.synchronize do
+        entries = @counts.to_a
+        @counts = {}
+        entries
       end
+      send_all(taken, reports)
     end
 
-    def send_pending(errors)
-      return if @hold.holding?
-
-      entries = @lock.synchronize do
-        taken = @pending.values
-        @pending = {}
-        taken
+    def acquire(timeout)
+      if timeout.nil?
+        @flush_lock.lock
+        return true
       end
+
+      deadline = Clock.monotonic + timeout
+      until @flush_lock.try_lock
+        return false if Clock.monotonic >= deadline
+
+        sleep(0.005)
+      end
+      true
+    end
+
+    def send_all(taken, reports)
       start = 0
-      while start < entries.length
-        unless post(entries[start, MAX_BATCH], errors)
-          @lock.synchronize { entries[start..].each { |entry| add(entry) } }
+      while start < taken.size
+        outcome = send_batch(taken[start, MAX_BATCH], reports)
+        if outcome == :kept
+          readd(taken[start, taken.size - start])
           return
         end
         start += MAX_BATCH
       end
     end
 
-    # What to do with a batch the server did not take: try it again later, or give up on it.
-    def retryable?(status)
-      status >= 500 || status == 408 || status == 429
-    end
-
-    # False when the batch should be kept for another try.
-    def post(batch, errors)
-      body = Json.generate('events' => batch.map { |entry| wire(entry) })
-      response = Http.request(@config.target, 'POST', '/sdk/v1/events',
-                              deadline: Clock.monotonic + @config.request_timeout, body: body,
-                              headers: { 'Authorization' => "Bearer #{@config.sdk_key}",
-                                         'Content-Type' => 'application/json' })
-      begin
-        status = response.status
-        retry_header = response.header('retry-after')
-      ensure
-        response.close
+    def readd(entries)
+      @lock.synchronize do
+        entries.each { |key, count| @counts[key] = (@counts[key] || 0) + count }
       end
-      return true if status.between?(200, 299)
-
-      @hold.extend_by(Http.retry_after(status, retry_header))
-      errors << StandardError.new("POST /sdk/v1/events answered #{status}")
-      !retryable?(status)
-    rescue *RECOVERABLE => e
-      errors << e
-      false
     end
 
-    def wire(entry)
-      { 'flag' => entry.flag, 'variationIndex' => entry.variation_index, 'count' => entry.count, 'day' => entry.day }
+    def send_batch(batch, reports)
+      body = Json.generate({ "events" => batch.map do |(flag, index, day), count|
+        { "flag" => flag, "variationIndex" => index, "count" => count, "day" => day }
+      end })
+      headers = @headers.merge("Content-Type" => "application/json")
+      response = request(headers, body, reports)
+      return :kept unless response
+
+      status = response.status
+      return :sent if status >= 200 && status < 300
+
+      code = LastError.http(status)
+      reports << [code, "usage request failed: #{code}"]
+      hold(response) if status == 429
+      self.class.retryable?(status) ? :kept : :dropped
+    end
+
+    def request(headers, body, reports)
+      @transport.fetch(@endpoint, "POST", "/sdk/v1/events", headers, body, @request_timeout, nil)
+    rescue Http::RequestTimeout
+      reports << [LastError::TIMEOUT, "usage request failed: timeout"]
+      nil
+    rescue StandardError
+      reports << [LastError::NETWORK, "usage request failed: network"]
+      nil
+    end
+
+    def hold(response)
+      seconds = self.class.retry_after(response)
+      return unless seconds
+
+      until_time = @clock.monotonic + seconds
+      @lock.synchronize { @hold_until = [@hold_until, until_time].max }
     end
   end
 end

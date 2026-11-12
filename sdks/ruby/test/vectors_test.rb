@@ -1,56 +1,78 @@
 # frozen_string_literal: true
 
-require_relative 'test_helper'
+require_relative "test_helper"
 
-# Runs every shared evaluation vector and bucket pin from fixtures/evaluation/, read from the repository at
-# test time (never a copy), through the same JSON parser the client uses.
+# Every shared evaluation vector and every bucket pin (docs/evaluation.md, "The vectors").
 class VectorsTest < Minitest::Test
-  include TestSupport
+  DIR = File.join(TestSupport::FIXTURES, "evaluation")
+  TALLY = { vectors: 0, pins: 0 } # rubocop:disable Style/MutableConstant -- counted as the tests run
 
-  DIRECTORY = File.join(REPO_ROOT, 'fixtures', 'evaluation')
-  COUNTS = { vectors: 0, pins: 0 } # rubocop:disable Style/MutableConstant
-
-  Minitest.after_run do
-    puts "vectors: #{COUNTS[:vectors]} pins: #{COUNTS[:pins]}"
+  def self.load(path)
+    Toggleslash::Json.parse(File.binread(path))
   end
 
-  def read(name)
-    ToggleSlash::Json.parse(File.binread(File.join(DIRECTORY, name)))
-  end
-
-  def test_fixtures_exist
-    names = Dir.children(DIRECTORY).select { |name| name.end_with?('.json') }
-    refute_empty names, 'no fixture files were found'
-  end
-
-  Dir.children(DIRECTORY).sort.select { |name| name.end_with?('.json') && name != 'buckets.json' }.each do |name|
-    define_method("test_vectors_#{name.delete_suffix('.json')}") do
-      vectors = read(name).fetch('vectors')
-      refute_empty vectors, "#{name} holds no vectors"
-      vectors.each { |vector| check_vector(name, vector) }
+  # Deep equality that tells true from 1 and compares numbers as binary64.
+  def same?(left, right)
+    if [true, false].include?(left) || right == true || right == false
+      left.equal?(right)
+    elsif left.is_a?(Numeric) && right.is_a?(Numeric)
+      left == right || (left.respond_to?(:nan?) && left.nan? && right.respond_to?(:nan?) && right.nan?)
+    elsif left.is_a?(Hash) && right.is_a?(Hash)
+      left.keys.sort == right.keys.sort && left.all? { |k, v| same?(v, right[k]) }
+    elsif left.is_a?(Array) && right.is_a?(Array)
+      left.size == right.size && left.zip(right).all? { |a, b| same?(a, b) }
+    else
+      left.instance_of?(right.class) && left == right
     end
   end
 
-  def check_vector(file, vector)
-    ruleset = ToggleSlash::Eval::Rules.build({ 'flags' => vector['flags'], 'segments' => vector['segments'] })
-    detail = ToggleSlash::Eval::Evaluator.evaluate(ruleset, vector['flagKey'], vector['context'])
-    expected = vector['expected']
-    COUNTS[:vectors] += 1
-    assert same_json?(detail.wire, expected),
-           "#{file}: #{vector['name']}\n  expected #{ToggleSlash::Json.generate(expected)}\n  got      #{ToggleSlash::Json.generate(detail.wire)}"
+  def reason_hash(reason)
+    out = { "kind" => reason.kind }
+    out["code"] = reason.code unless reason.code.nil?
+    out["ruleIndex"] = reason.rule_index unless reason.rule_index.nil?
+    out["flagKey"] = reason.flag_key unless reason.flag_key.nil?
+    out
   end
 
-  def test_bucket_pins
-    pins = read('buckets.json').fetch('buckets')
-    refute_empty pins, 'buckets.json holds no pins'
+  def test_vectors
+    paths = Dir[File.join(DIR, "*.json")].reject { |p| File.basename(p) == "buckets.json" }.sort
+    refute_empty paths, "no vector files found"
+    failures = []
+    paths.each do |path|
+      vectors = self.class.load(path)["vectors"]
+      refute_empty vectors, "no vectors in #{File.basename(path)}"
+      vectors.each do |vector|
+        TALLY[:vectors] += 1
+        message = check(vector)
+        failures << "#{File.basename(path)}: #{vector["name"]}: #{message}" if message
+      end
+    end
+    assert_empty failures, failures.first(10).join("\n")
+  end
+
+  def check(vector)
+    ruleset = Toggleslash::Eval.load_ruleset("flags" => vector["flags"], "segments" => vector["segments"])
+    value, index, reason = Toggleslash::Eval.evaluate(ruleset, vector["flagKey"], vector["context"])
+    expected = vector["expected"]
+    return "value #{value.inspect}, wanted #{expected["value"].inspect}" unless same?(value, expected["value"])
+    unless index == expected["variationIndex"]
+      return "index #{index.inspect}, wanted #{expected["variationIndex"].inspect}"
+    end
+
+    got = reason_hash(reason)
+    "reason #{got.inspect}, wanted #{expected["reason"].inspect}" unless same?(got, expected["reason"])
+  end
+
+  def test_pins
+    pins = self.class.load(File.join(DIR, "buckets.json"))["buckets"]
+    refute_empty pins, "no pins found"
     pins.each do |pin|
-      key = pin['flagKey']
-      label = "buckets.json: #{key} #{pin['salt']} #{pin['contextKey']}"
-      assert_equal pin['uint32'], ToggleSlash::Eval::Bucket.uint32(key, pin['salt'], pin['contextKey']),
-                   "#{label} uint32"
-      assert_equal pin['bucket'], ToggleSlash::Eval::Bucket.bucket(key, pin['salt'], pin['contextKey']),
-                   "#{label} bucket"
-      COUNTS[:pins] += 1
+      TALLY[:pins] += 1
+      args = [pin["flagKey"], pin["salt"], pin["contextKey"]]
+      assert_equal pin["uint32"], Toggleslash::Eval::Bucket.uint32(*args), args.inspect
+      assert_equal pin["bucket"], Toggleslash::Eval::Bucket.bucket(*args), args.inspect
     end
   end
+
+  Minitest.after_run { puts "vectors: #{TALLY[:vectors]} pins: #{TALLY[:pins]}" }
 end

@@ -1,279 +1,321 @@
 # frozen_string_literal: true
 
-require 'strscan'
-require_relative 'eval/text'
+require "strscan"
 
-module ToggleSlash
-  # A JSON parser and generator that keep what docs/evaluation.md ("Reading JSON") asks for and the standard
-  # `json` library does not: numbers as IEEE-754 binary64 (`1e999` is Infinity, `9007199254740993` reads as
-  # `9007199254740992`), `-0.0`, a lone surrogate (`"\ud800"`) kept as its own three bytes, and the last of
-  # two duplicate keys winning.
-  #
-  # A string is a Ruby String in UTF-8 (WTF-8 when it holds a lone surrogate, so it is then not
-  # `valid_encoding?`). An object is a Hash with String keys, an array an Array, `null` is nil.
+module Toggleslash
+  # A JSON reader and writer that hold what the spec needs and the standard library does not: binary64
+  # numbers (1e999 is an infinity, with no warning), lone surrogates kept in strings, a byte order mark
+  # skipped, invalid UTF-8 replaced the WHATWG way, the last duplicate key winning.
   module Json
     class ParseError < StandardError; end
 
-    MAX_DEPTH = 512
-    # An integer literal of at most this many digits is exact in binary64, so it stays an Integer.
-    SAFE_DIGITS = 15
-    WHITESPACE = /[ \t\n\r]*/
-    NUMBER = /-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/
-    PLAIN = /[^"\\\x00-\x1f]+/n
-    ESCAPES = { '"' => '"', '\\' => '\\', '/' => '/', 'b' => "\b", 'f' => "\f", 'n' => "\n", 'r' => "\r",
-                't' => "\t" }.freeze
+    MAX_DEPTH = 1000
+    EXPONENT_LIMIT = 400
+    NEGATIVE_ZERO = -0.0
+    POSITIVE_ZERO = 0.0
 
-    # One parse.
-    class Parser
-      # The scan runs over bytes, so a text that is not valid UTF-8 cannot make a regexp raise.
+    module_function
+
+    # Parses `input` (a String of bytes). Raises ParseError for text that is not JSON.
+    def parse(input)
+      text = input.b
+      text = text.byteslice(3, text.bytesize - 3) if text.start_with?("\xEF\xBB\xBF".b)
+      text.force_encoding(Encoding::UTF_8)
+      text = text.scrub("�") unless text.valid_encoding?
+      Reader.new(text).read
+    rescue SystemStackError
+      raise ParseError, "nested too deeply"
+    end
+
+    # Writes a value as JSON text. Every code unit above U+007F is escaped, so a lone surrogate survives.
+    def generate(value)
+      out = +""
+      write(value, out, 0)
+      out
+    end
+
+    def write(value, out, depth)
+      raise ParseError, "nested too deeply" if depth > MAX_DEPTH + 1
+
+      case value
+      when true then out << "true"
+      when false then out << "false"
+      when Integer then out << value.to_s
+      when Float then write_float(value, out)
+      when String then write_string(value, out)
+      when Symbol then write_string(value.to_s, out)
+      when Array then write_array(value, out, depth)
+      when Hash then write_object(value, out, depth)
+      else out << "null" # nil, and anything that is not a JSON value
+      end
+    end
+
+    def write_float(value, out)
+      out << if value.nan?
+               "null"
+             elsif value.infinite?
+               (value.positive? ? "1e999" : "-1e999")
+             else
+               value.to_s
+             end
+    end
+
+    def write_array(value, out, depth)
+      out << "["
+      index = 0
+      count = value.size
+      while index < count
+        out << "," if index.positive?
+        write(value[index], out, depth + 1)
+        index += 1
+      end
+      out << "]"
+    end
+
+    def write_object(value, out, depth)
+      out << "{"
+      keys = value.keys
+      index = 0
+      while index < keys.size
+        key = keys[index]
+        out << "," if index.positive?
+        write_string(key.to_s, out)
+        out << ":"
+        write(value[key], out, depth + 1)
+        index += 1
+      end
+      out << "}"
+    end
+
+    ESCAPES = { '"' => '\\"', "\\" => "\\\\", "\n" => "\\n", "\r" => "\\r", "\t" => "\\t", "\b" => "\\b",
+                "\f" => "\\f" }.freeze
+
+    def write_string(value, out)
+      out << '"'
+      text = Text.utf8(value)
+      if text.ascii_only?
+        text.each_char { |ch| out << escape_ascii(ch) }
+      else
+        Text.units(text).each do |unit|
+          out << (unit < 0x80 ? escape_ascii(unit.chr) : format("\\u%04x", unit))
+        end
+      end
+      out << '"'
+    end
+
+    def escape_ascii(char)
+      escaped = ESCAPES[char]
+      return escaped if escaped
+      return format("\\u%04x", char.ord) if char.ord < 0x20 || char.ord == 0x7F
+
+      char
+    end
+
+    # Converts the text of a JSON number to a Ruby number: an Integer for a short integer literal, a Float
+    # otherwise. Never warns, whatever the exponent.
+    def number(negative, int, frac, exp)
+      if frac.nil? && exp.nil? && int.length <= 15
+        return -0.0 if negative && int == "0"
+
+        value = int.to_i
+        return negative ? -value : value
+      end
+      to_double(negative, int, frac || "", exp)
+    end
+
+    def to_double(negative, int, frac, exp)
+      digits = int + frac
+      significant = digits.sub(/\A0+/, "")
+      return negative ? NEGATIVE_ZERO : POSITIVE_ZERO if significant.empty?
+
+      exponent = exp ? exp.to_i : 0
+      magnitude = int.length - (digits.length - significant.length) + exponent
+      return negative ? -Float::INFINITY : Float::INFINITY if magnitude > EXPONENT_LIMIT
+      return negative ? NEGATIVE_ZERO : POSITIVE_ZERO if magnitude < -EXPONENT_LIMIT
+
+      scale = exponent - frac.length
+      mantissa = digits.to_i
+      rational = scale >= 0 ? Rational(mantissa * (10**scale)) : Rational(mantissa, 10**-scale)
+      result = rational.to_f
+      negative ? -result : result
+    end
+
+    # The reader: one pass over the text with an explicit nesting depth.
+    class Reader
+      SIMPLE = { '"' => '"', "\\" => "\\", "/" => "/", "b" => "\b", "f" => "\f", "n" => "\n", "r" => "\r",
+                 "t" => "\t" }.freeze
+
       def initialize(text)
-        @scanner = StringScanner.new(text.b)
+        @s = StringScanner.new(text)
+        @depth = 0
       end
 
-      def parse
+      def read
         skip_space
-        value = read_value(0)
+        value = read_value
         skip_space
-        fail_at('unexpected text after the value') unless @scanner.eos?
+        fail_parse("trailing data") unless @s.eos?
         value
       end
 
       private
 
-      def fail_at(message)
-        raise ParseError, "#{message} at byte #{@scanner.pos}"
+      def fail_parse(message)
+        raise ParseError, "#{message} at byte #{@s.pos}"
       end
 
       def skip_space
-        @scanner.skip(WHITESPACE)
+        @s.skip(/[ \t\n\r]*/)
       end
 
-      def read_value(depth)
-        fail_at('nested too deeply') if depth > MAX_DEPTH
-        case @scanner.peek(1)
-        when '{' then read_object(depth)
-        when '[' then read_array(depth)
+      def read_value
+        skip_space
+        case @s.peek(1)
+        when "{" then read_object
+        when "[" then read_array
         when '"' then read_string
-        when 't' then literal('true', true)
-        when 'f' then literal('false', false)
-        when 'n' then literal('null', nil)
-        else read_number
+        when "t" then literal("true", true)
+        when "f" then literal("false", false)
+        when "n" then literal("null", nil)
+        when "-", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" then read_number
+        else fail_parse("unexpected character")
         end
       end
 
       def literal(word, value)
-        fail_at("expected #{word}") unless @scanner.skip(/#{word}/)
+        fail_parse("bad literal") unless @s.scan(word)
         value
       end
 
-      def read_object(depth)
-        @scanner.getch
-        result = {}
-        skip_space
-        return result if @scanner.skip(/\}/)
-
-        loop do
-          skip_space
-          fail_at('expected a string key') unless @scanner.peek(1) == '"'
-          key = read_string
-          skip_space
-          fail_at('expected :') unless @scanner.skip(/:/)
-          skip_space
-          result[key] = read_value(depth + 1)
-          skip_space
-          next if @scanner.skip(/,/)
-          return result if @scanner.skip(/\}/)
-
-          fail_at('expected , or }')
-        end
+      def enter
+        @depth += 1
+        fail_parse("nested too deeply") if @depth > MAX_DEPTH
       end
 
-      def read_array(depth)
-        @scanner.getch
-        result = []
+      def read_object
+        enter
+        @s.getch
+        result = {}
         skip_space
-        return result if @scanner.skip(/\]/)
-
+        if @s.skip(/\}/)
+          @depth -= 1
+          return result
+        end
         loop do
           skip_space
-          result << read_value(depth + 1)
+          fail_parse("expected a key") unless @s.peek(1) == '"'
+          key = read_string
           skip_space
-          next if @scanner.skip(/,/)
-          return result if @scanner.skip(/\]/)
+          fail_parse("expected a colon") unless @s.skip(/:/)
+          result[key] = read_value
+          skip_space
+          next if @s.skip(/,/)
+          break if @s.skip(/\}/)
 
-          fail_at('expected , or ]')
+          fail_parse("expected a comma or a closing brace")
         end
+        @depth -= 1
+        result
+      end
+
+      def read_array
+        enter
+        @s.getch
+        result = []
+        skip_space
+        if @s.skip(/\]/)
+          @depth -= 1
+          return result
+        end
+        loop do
+          result << read_value
+          skip_space
+          next if @s.skip(/,/)
+          break if @s.skip(/\]/)
+
+          fail_parse("expected a comma or a closing bracket")
+        end
+        @depth -= 1
+        result
       end
 
       def read_number
-        text = @scanner.scan(NUMBER)
-        fail_at('unexpected character') if text.nil?
-        Json.number(text)
+        negative = !@s.skip(/-/).nil?
+        int = @s.scan(/0|[1-9][0-9]*/)
+        fail_parse("bad number") unless int
+        frac = nil
+        if @s.skip(/\./)
+          frac = @s.scan(/[0-9]+/)
+          fail_parse("bad number") unless frac
+        end
+        exp = nil
+        if @s.scan(/[eE]/)
+          sign = @s.scan(/[+-]/)
+          digits = @s.scan(/[0-9]+/)
+          fail_parse("bad number") unless digits
+          exp = (sign == "-" ? "-" : "") + digits
+        end
+        Json.number(negative, int, frac, exp)
       end
 
       def read_string
-        @scanner.getch
-        buffer = String.new(encoding: Encoding::BINARY)
+        @s.getch
+        buffer = nil
         loop do
-          chunk = @scanner.scan(PLAIN)
-          buffer << chunk.b if chunk
-          char = @scanner.getch
-          fail_at('unterminated string') if char.nil?
-          return buffer.force_encoding(Encoding::UTF_8) if char == '"'
-
-          fail_at('control character in a string') unless char == '\\'
-
-          read_escape(buffer)
+          chunk = @s.scan(/[^"\\\x00-\x1f]+/)
+          if chunk
+            if buffer
+              buffer << chunk.b
+            else
+              buffer = chunk.b
+            end
+          end
+          buffer ||= String.new(encoding: Encoding::BINARY)
+          char = @s.getch
+          case char
+          when '"'
+            return buffer.force_encoding(Encoding::UTF_8)
+          when "\\"
+            buffer << escape.b
+          else
+            fail_parse("unterminated string or control character")
+          end
         end
       end
 
-      def read_escape(buffer)
-        char = @scanner.getch
-        fail_at('unterminated escape') if char.nil?
-        if char == 'u'
-          append_unit(buffer, read_hex4)
-        elsif ESCAPES.key?(char)
-          buffer << ESCAPES[char].b
-        else
-          fail_at('bad escape')
+      def escape
+        char = @s.getch
+        return SIMPLE[char] if SIMPLE.key?(char)
+
+        fail_parse("bad escape") unless char == "u"
+
+        unit = hex4
+        if unit >= 0xD800 && unit <= 0xDBFF && @s.peek(2) == "\\u"
+          save = @s.pos
+          @s.pos += 2
+          low = hex4_or_nil
+          return [0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00)].pack("U") if low && low >= 0xDC00 && low <= 0xDFFF
+
+          @s.pos = save
         end
+        encode_unit(unit)
       end
 
-      def read_hex4
-        hex = @scanner.scan(/[0-9a-fA-F]{4}/)
-        fail_at('bad \\u escape') if hex.nil?
-        hex.to_i(16)
+      def hex4
+        hex4_or_nil || fail_parse("bad unicode escape")
       end
 
-      # A high surrogate followed by an escaped low one is one code point; any other surrogate stays alone.
-      def append_unit(buffer, unit)
-        if unit.between?(0xD800, 0xDBFF) && @scanner.check(/\\u[dD][c-fC-F][0-9a-fA-F]{2}/)
-          @scanner.skip(/\\u/)
-          low = read_hex4
-          return buffer << [0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00)].pack('U').b
-        end
-        buffer << if unit.between?(0xD800, 0xDFFF)
-                    [0xE0 | (unit >> 12), 0x80 | ((unit >> 6) & 0x3F), 0x80 | (unit & 0x3F)].pack('C*')
-                  else
-                    [unit].pack('U').b
-                  end
+      def hex4_or_nil
+        digits = @s.scan(/[0-9a-fA-F]{4}/)
+        digits&.to_i(16)
       end
-    end
 
-    module_function
+      # A lone surrogate is written as its three-byte generalised UTF-8 form.
+      def encode_unit(unit)
+        return [unit].pack("U") unless unit >= 0xD800 && unit <= 0xDFFF
 
-    # Parses a JSON text. Raises ParseError when it is not one.
-    def parse(text)
-      Parser.new(text).parse
-    end
-
-    # A number literal as Integer (exact, at most 15 digits) or Float (binary64).
-    def number(text)
-      return text.to_i if text.match?(/\A-?[0-9]{1,#{SAFE_DIGITS}}\z/) && text != '-0'
-
-      float(text)
-    end
-
-    # `Float(text)` without the "out of range" warning: a literal far outside binary64 is Infinity or zero.
-    def float(text)
-      negative = text.start_with?('-')
-      mantissa, exponent = text.delete_prefix('-').split(/[eE]/, 2)
-      integer, fraction = mantissa.split('.', 2)
-      digits = integer.sub(/\A0+/, '')
-      scale = exponent.to_i
-      if digits.empty?
-        leading = (fraction || '').length - (fraction || '').sub(/\A0+/, '').length
-        return signed(0.0, negative) if (fraction || '').delete('0').empty?
-
-        scale -= leading
-      else
-        scale += digits.length
+        [0xE0 | (unit >> 12), 0x80 | ((unit >> 6) & 0x3F), 0x80 | (unit & 0x3F)].pack("C*")
       end
-      return signed(Float::INFINITY, negative) if scale > 310
-      return signed(0.0, negative) if scale < -325
-
-      Float(text)
-    end
-
-    def signed(value, negative)
-      negative ? -value : value
-    end
-
-    # Freezes a parsed value and everything in it, so a value handed to a caller cannot change a ruleset.
-    def freeze_deep(value)
-      case value
-      when Hash then value.each_value { |member| freeze_deep(member) }
-      when Array then value.each { |member| freeze_deep(member) }
-      end
-      value.freeze
-    end
-
-    # Generates a JSON text. A Hash key may be a String or a Symbol. A lone surrogate is written as `\ud800`,
-    # Infinity as `1e999` (which parses back to it) and NaN as null.
-    def generate(value)
-      out = String.new(encoding: Encoding::UTF_8)
-      write(out, value)
-      out
-    end
-
-    def write(out, value)
-      case value
-      when nil then out << 'null'
-      when true then out << 'true'
-      when false then out << 'false'
-      when Integer then out << value.to_s
-      when Float then out << float_text(value)
-      when String then write_string(out, value)
-      when Symbol then write_string(out, value.to_s)
-      when Array then write_array(out, value)
-      when Hash then write_object(out, value)
-      else write_string(out, value.to_s)
-      end
-    end
-
-    def float_text(value)
-      return 'null' if value.nan?
-      return (value.positive? ? '1e999' : '-1e999') if value.infinite?
-      return '-0.0' if value.zero? && (1.0 / value).negative?
-
-      value.to_s
-    end
-
-    def write_array(out, array)
-      out << '['
-      array.each_with_index do |item, index|
-        out << ',' if index.positive?
-        write(out, item)
-      end
-      out << ']'
-    end
-
-    def write_object(out, hash)
-      out << '{'
-      first = true
-      hash.each do |key, item|
-        out << ',' unless first
-        first = false
-        write_string(out, key.to_s)
-        out << ':'
-        write(out, item)
-      end
-      out << '}'
-    end
-
-    SHORT = { 0x22 => '\\"', 0x5C => '\\\\', 0x08 => '\\b', 0x0C => '\\f', 0x0A => '\\n', 0x0D => '\\r',
-              0x09 => '\\t' }.freeze
-
-    def write_string(out, string)
-      out << '"'
-      Eval::Text.codepoints(string).each do |point|
-        out << if SHORT.key?(point) then SHORT[point]
-               elsif point < 0x20 then format('\\u%04x', point)
-               elsif point.between?(0xD800, 0xDFFF) then format('\\u%04x', point)
-               else [point].pack('U')
-               end
-      end
-      out << '"'
     end
   end
 end

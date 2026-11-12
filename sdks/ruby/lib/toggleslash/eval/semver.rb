@@ -1,117 +1,99 @@
 # frozen_string_literal: true
 
-module ToggleSlash
+module Toggleslash
   module Eval
-    # Semantic versions, to the "Semantic versions" section of docs/evaluation.md. A hand-written walk over
-    # the string: no regular expression and no library. Nothing here converts a numeric part to a number.
+    # Semantic versions: a hand-written walk over the bytes (evaluation.md, "Semantic versions").
     module Semver
-      Version = Struct.new(:major, :minor, :patch, :prerelease)
+      DIGITS = (48..57).to_a.freeze # 0-9
+      IDENT = (DIGITS + (65..90).to_a + (97..122).to_a + [45]).freeze # 0-9 A-Z a-z -
 
-      module_function
-
-      def digit?(byte)
-        byte.between?(0x30, 0x39)
+      # A parsed version: [major, minor, patch, [prerelease identifiers]] with every part a String.
+      def self.numeric?(part)
+        !part.empty? && part.bytes.all? { |b| DIGITS.include?(b) } && (part == "0" || part.getbyte(0) != 48)
       end
 
-      def identifier_byte?(byte)
-        digit?(byte) || byte.between?(0x41, 0x5A) || byte.between?(0x61, 0x7A) || byte == 0x2D
-      end
-
-      def all_digits?(text)
-        text.each_byte.all? { |byte| digit?(byte) }
-      end
-
-      # `0` or digits with no leading zero.
-      def numeric_part?(text)
-        !text.empty? && all_digits?(text) && (text == '0' || text.getbyte(0) != 0x30)
-      end
-
-      # Dot-separated, none empty, each of ASCII letters, digits and `-`.
-      def identifiers(text)
+      def self.identifiers(text)
         return nil if text.empty?
 
-        parts = text.split('.', -1)
-        parts.each do |part|
-          return nil if part.empty?
-          return nil unless part.each_byte.all? { |byte| identifier_byte?(byte) }
-        end
+        parts = text.split(".", -1)
+        return nil if parts.any? { |part| part.empty? || !part.bytes.all? { |b| IDENT.include?(b) } }
+
         parts
       end
 
-      # Text before and after the first `char`; nil after when there is none.
-      def split_at(text, char)
-        at = text.index(char)
-        at ? [text[0, at], text[(at + 1)..]] : [text, nil]
+      def self.digits_only?(text)
+        text.bytes.all? { |b| DIGITS.include?(b) }
       end
 
-      def prerelease_identifiers(text)
-        parts = identifiers(text)
-        return nil if parts.nil?
+      # The parsed version, or nil when `text` is not one.
+      def self.parse(text)
+        rest = text
+        build = nil
+        plus = rest.index("+")
+        if plus
+          build = rest[(plus + 1)..]
+          rest = rest[0, plus]
+          return nil if identifiers(build).nil?
+        end
+        pre = nil
+        dash = rest.index("-")
+        if dash
+          pre = identifiers(rest[(dash + 1)..])
+          rest = rest[0, dash]
+          return nil if pre.nil?
+          return nil if pre.any? { |id| digits_only?(id) && id.size > 1 && id.getbyte(0) == 48 }
+        end
+        core = core_parts(rest, !build.nil? || !pre.nil?)
+        return nil if core.nil? || !core.all? { |part| numeric?(part) }
 
-        parts.all? { |part| !all_digits?(part) || numeric_part?(part) } ? parts : nil
+        [core[0], core[1], core[2], pre || []]
       end
 
-      def numeric_parts(text, short)
-        return nil if text.empty?
+      def self.core_parts(rest, has_suffix)
+        core = rest.split(".", -1)
+        return core if core.size == 3
+        return core + (["0"] * (3 - core.size)) if [1, 2].include?(core.size) && !has_suffix
 
-        numbers = text.split('.', -1)
-        return nil if numbers.length > 3 || (numbers.length < 3 && !short)
-
-        numbers.all? { |part| numeric_part?(part) } ? numbers : nil
+        nil
       end
 
-      # The version `text` spells, or nil when it is not one.
-      def parse(text)
-        return nil unless text.ascii_only?
-
-        without_build, build = split_at(text, '+')
-        return nil if !build.nil? && identifiers(build).nil?
-
-        core, prerelease = split_at(without_build, '-')
-        parsed = prerelease.nil? ? [] : prerelease_identifiers(prerelease)
-        return nil if parsed.nil?
-
-        numbers = numeric_parts(core, build.nil? && prerelease.nil?)
-        return nil if numbers.nil?
-
-        Version.new(numbers[0] || '0', numbers[1] || '0', numbers[2] || '0', parsed)
-      end
-
-      # Digit strings with no leading zero: the longer is larger, else by code unit.
-      def compare_numeric(left, right)
-        return left.length <=> right.length if left.length != right.length
+      def self.compare_numeric(left, right)
+        return left.size <=> right.size if left.size != right.size
 
         left <=> right
       end
 
-      def compare_identifier(left, right)
-        left_numeric = all_digits?(left)
-        right_numeric = all_digits?(right)
-        return compare_numeric(left, right) if left_numeric && right_numeric
-        return -1 if left_numeric
-        return 1 if right_numeric
+      # -1, 0 or 1 by SemVer 2.0.0 section 11 (build is not part of a parsed version).
+      def self.compare(left, right)
+        3.times do |i|
+          c = compare_numeric(left[i], right[i])
+          return c unless c.zero?
+        end
+        pre_left = left[3]
+        pre_right = right[3]
+        return 0 if pre_left.empty? && pre_right.empty?
+        return 1 if pre_left.empty?
+        return -1 if pre_right.empty?
 
-        left <=> right
+        [pre_left.size, pre_right.size].min.times do |i|
+          c = compare_identifier(pre_left[i], pre_right[i])
+          return c unless c.zero?
+        end
+        pre_left.size <=> pre_right.size
       end
 
-      def compare_prerelease(left, right)
-        # No prerelease is above any prerelease of the same core.
-        return right.length <=> left.length if left.empty? || right.empty?
-
-        [left.length, right.length].min.times do |index|
-          order = compare_identifier(left[index], right[index])
-          return order unless order.zero?
+      def self.compare_identifier(left, right)
+        left_digits = digits_only?(left)
+        right_digits = digits_only?(right)
+        if left_digits && right_digits
+          compare_numeric(left, right)
+        elsif left_digits
+          -1
+        elsif right_digits
+          1
+        else
+          left <=> right
         end
-        left.length <=> right.length
-      end
-
-      # -1, 0 or 1 by SemVer 2.0.0 section 11; build metadata is already gone.
-      def compare(left, right)
-        %i[major minor patch].each do |part|
-          order = compare_numeric(left[part], right[part])
-          return order unless order.zero?
-        end
-        compare_prerelease(left.prerelease, right.prerelease)
       end
     end
   end
