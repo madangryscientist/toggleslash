@@ -1,56 +1,84 @@
-<?xml version="1.0"?>
-<!DOCTYPE module PUBLIC
-    "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
-    "https://checkstyle.org/dtds/configuration_1_3.dtd">
-<!-- Layout is google-java-format's. This file holds what a formatter cannot: unused code, missing
-     braces, missing documentation on the public API, and the habits that hide bugs. Any finding fails. -->
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE module PUBLIC "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+  "https://checkstyle.org/dtds/configuration_1_3.dtd">
+<!--
+  The rule set: a hand-picked subset of Checkstyle 14's checks, not sun_checks or google_checks. It
+  reads src/main only (the public API), which is where the documentation rules belong. google-java-format
+  decides layout for every root (main, tests and the test service), so no layout rule is here except the
+  ones that catch what the formatter leaves alone.
+
+  Rules left out, and why:
+  - FinalParameters, DesignForExtension, MagicNumber, HiddenField, RegexpSingleline on trailing spaces:
+    style opinions that fight the formatter or this code base's records and builders.
+  - IllegalCatch: the SDK catches Throwable on purpose, because it must never throw at a caller (contract 5).
+  - InnerAssignment, AvoidInlineConditionals: used where they read more clearly than the alternative.
+  - JavadocMethod on package-private and private methods, and JavadocVariable on private members: only the
+    public surface must carry complete tags (a short note on an internal method is fine).
+  - ConstantName does not apply to enum constants, so the lower-case StreamState constants
+    (off, connecting, connected, disconnected, closed) pass; they are the contract's own spelling.
+-->
 <module name="Checker">
-  <property name="severity" value="error"/>
   <property name="charset" value="UTF-8"/>
-  <module name="FileTabCharacter"/>
+  <property name="severity" value="error"/>
+  <property name="fileExtensions" value="java"/>
   <module name="NewlineAtEndOfFile"/>
-  <module name="RegexpSingleline">
-    <property name="format" value="\s+$"/>
-    <property name="message" value="trailing whitespace"/>
+  <module name="FileTabCharacter"/>
+  <module name="JavadocPackage"/>
+  <module name="LineLength">
+    <property name="max" value="100"/>
+    <property name="ignorePattern" value="^package.*|^import.*|https?://"/>
   </module>
   <module name="TreeWalker">
+    <module name="OuterTypeFilename"/>
+    <module name="OneTopLevelClass"/>
     <module name="AvoidStarImport"/>
     <module name="UnusedImports"/>
     <module name="RedundantImport"/>
-    <module name="IllegalImport"/>
-    <module name="OneTopLevelClass"/>
-    <module name="NeedBraces"/>
     <module name="ModifierOrder"/>
     <module name="RedundantModifier"/>
-    <module name="MissingOverride"/>
+    <module name="NeedBraces"/>
     <module name="EmptyStatement"/>
-    <module name="EqualsHashCode"/>
-    <module name="FallThrough"/>
+    <module name="EmptyCatchBlock">
+      <property name="commentFormat" value=".+"/>
+    </module>
     <module name="MissingSwitchDefault"/>
+    <module name="FallThrough"/>
+    <module name="MultipleVariableDeclarations"/>
     <module name="SimplifyBooleanExpression"/>
     <module name="SimplifyBooleanReturn"/>
     <module name="StringLiteralEquality"/>
+    <module name="EqualsHashCode"/>
     <module name="UpperEll"/>
     <module name="ArrayTypeStyle"/>
-    <module name="HideUtilityClassConstructor"/>
-    <module name="FinalClass"/>
-    <module name="InterfaceIsType"/>
-    <module name="MultipleVariableDeclarations"/>
-    <module name="OneStatementPerLine"/>
+    <module name="PackageName">
+      <property name="format" value="^[a-z]+(\.[a-z][a-z0-9]*)*$"/>
+    </module>
     <module name="TypeName"/>
     <module name="MethodName"/>
     <module name="MemberName"/>
     <module name="ParameterName"/>
     <module name="LocalVariableName"/>
     <module name="ConstantName"/>
-    <module name="PackageName"/>
+    <module name="StaticVariableName"/>
     <module name="MissingJavadocType">
       <property name="scope" value="public"/>
     </module>
     <module name="MissingJavadocMethod">
       <property name="scope" value="public"/>
       <property name="allowMissingPropertyJavadoc" value="true"/>
-      <property name="ignoreMethodNamesRegex" value="^(main)$"/>
     </module>
+    <module name="JavadocVariable">
+      <property name="accessModifiers" value="public"/>
+    </module>
+    <module name="JavadocType">
+      <property name="allowMissingParamTags" value="true"/>
+    </module>
+    <module name="JavadocMethod">
+      <property name="accessModifiers" value="public, protected"/>
+    </module>
+    <module name="NonEmptyAtclauseDescription"/>
+    <module name="JavadocParagraph"/>
+    <module name="SummaryJavadoc"/>
+    <module name="InvalidJavadocPosition"/>
   </module>
 </module>

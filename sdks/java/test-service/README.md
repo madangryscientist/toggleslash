@@ -1,34 +1,37 @@
 # The Java SDK's test service
 
-`src/.../TestService.java` wraps the SDK in the protocol of
+`src/com/github/madangryscientist/toggleslash/sdks/java/testservice/Main.java` wraps `Client` in the protocol of
 [`docs/sdk-test-service.md`](../../../docs/sdk-test-service.md), so the conformance harness can drive the SDK
-from outside. It is a plain `com.sun.net.httpserver.HttpServer` on `127.0.0.1` and a port the OS picks, with
-no dependency beyond the SDK and the JDK:
+from outside. It uses the JDK's own `com.sun.net.httpserver` on `127.0.0.1`, a port the OS picks, and prints
+`listening http://127.0.0.1:<port>` once it is bound.
 
-```bash
-sdks/java/bin/test    # builds everything, the test service included, as part of `mvn clean test`
-bun run conformance -- --service "sdks/java/bin/test-service"
+`mvn test` compiles it with the tests (`build-helper-maven-plugin` adds `test-service/src` as a test source
+root). `bin/test-service` runs the compiled classes and builds only when they are missing:
+
+```sh
+bun run conformance -- --service sdks/java/bin/test-service
 ```
 
-It advertises `integer-accessor`: Java has `long` next to `double`, so the `int` accessor is real.
+It advertises one capability, `integer-accessor`: Java has an integer type distinct from its floating type.
 
 | Protocol | Java SDK |
 | --- | --- |
-| `POST /clients` | `Client.create(Options.builder(url, sdkKey)...build())`; `stream`, `pollIntervalMs`, `flushIntervalMs` and `requestTimeoutMs` become `stream(boolean)`, `pollInterval(Duration)`, `flushInterval(Duration)` and `requestTimeout(Duration)`; `onError` always records, and throws after recording when `onErrorThrows` is set |
+| `POST /clients` | `Client.create(Options)`; `stream`, `pollIntervalMs`, `flushIntervalMs` and `requestTimeoutMs` pass through (a millisecond count becomes a `Duration`), `onError` always records |
 | `ready` | `client.ready()` |
-| `evaluate`, accessor `bool` | `client.boolVariationDetail(key, context, fallback)` |
-| `evaluate`, accessor `string` | `client.stringVariationDetail(key, context, fallback)` |
-| `evaluate`, accessor `number` | `client.doubleVariationDetail(key, context, fallback)` |
-| `evaluate`, accessor `int` | `client.intVariationDetail(key, context, fallback)`, the JSON fallback number taken as a `long` |
-| `evaluate`, accessors `json` and `any` | `client.jsonVariationDetail(key, context, fallback)`, the fallback passed through as the JSON value it arrived as |
-| `status` | `client.status()`, written as the four keys of the protocol (`lastSyncAt` as epoch milliseconds) |
-| `hook-events` | the events `Options.Builder.afterEvaluation` received (installed when `hook` or `hookThrows` is set; `hookThrows` throws after recording) |
-| `errors` | what `Options.Builder.onError` received, each as its message |
-| `close` | `client.close()` |
+| `evaluate`, accessor `bool` | `client.boolVariationDetail(flagKey, context, fallback)` |
+| `evaluate`, accessor `string` | `client.stringVariationDetail(flagKey, context, fallback)` |
+| `evaluate`, accessor `number` | `client.floatVariationDetail(flagKey, context, fallback)` |
+| `evaluate`, accessor `int` | `client.intVariationDetail(flagKey, context, fallback)`, the fallback as a `long` |
+| `evaluate`, accessor `json` | `client.jsonVariationDetail(flagKey, context, fallback)` |
+| `evaluate`, accessor `any` | `client.variationDetail(flagKey, context, fallback)`, the generic method; a `null` fallback accepts any served kind |
+| `status` | `client.status()` |
+| `hook-events` | the `EvaluationEvent`s `afterEvaluation` received, as the SDK built them |
+| `errors` | what `onError` received, each as its message |
+| `close` | `client.close()`; the client stays answerable afterwards |
 
-The context goes in as raw JSON (`Context.fromJson`), valid or not: an invalid one is a case the SDK answers
-with `ERROR INVALID_CONTEXT`. A call that fails or throws answers 500 with its text, and the harness fails the
-scenario. The service serves concurrently (a cached thread pool) and keeps a client answerable after `close`.
+The `reason` in an answer is `{kind, ruleIndex?, flagKey?, code?}`: `code` is the Java `errorCode`, spelled as its
+enum constant. The context is passed through as the JSON it arrived as (a `Map`), so the SDK, not the service,
+answers an invalid one.
 
-`bin/test-service` starts the built classes (`java -cp target/classes:target/test-classes`) and builds them
-only if they are missing, because the harness waits 30 s for the `listening` line.
+The service catches nothing the SDK throws except to answer 500 with the error text, and a request that raises
+anywhere answers 500 too rather than dropping the connection.

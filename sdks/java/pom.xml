@@ -6,10 +6,10 @@
 
   <groupId>com.github.madangryscientist.toggleslash</groupId>
   <artifactId>toggleslash-sdk-java</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>0.0.0</version>
   <packaging>jar</packaging>
-  <name>ToggleSlash Java server SDK</name>
-  <description>A server SDK for ToggleSlash feature flags. Not published.</description>
+  <name>toggleslash-sdk-java</name>
+  <description>The ToggleSlash server SDK for Java. Not published.</description>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -30,11 +30,20 @@
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-clean-plugin</artifactId>
+        <version>3.5.0</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.5.0</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.14.0</version>
+        <version>3.16.0</version>
         <configuration>
-          <release>${maven.compiler.release}</release>
-          <showWarnings>true</showWarnings>
+          <release>17</release>
           <compilerArgs>
             <arg>-Xlint:all</arg>
             <arg>-Werror</arg>
@@ -44,10 +53,10 @@
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>build-helper-maven-plugin</artifactId>
-        <version>3.6.1</version>
+        <version>3.8.0</version>
         <executions>
           <execution>
-            <id>test-service-sources</id>
+            <id>add-test-service-source</id>
             <phase>generate-test-sources</phase>
             <goals>
               <goal>add-test-source</goal>
@@ -63,10 +72,15 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
-        <version>3.5.3</version>
+        <version>3.6.1</version>
         <configuration>
           <trimStackTrace>false</trimStackTrace>
         </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.5.1</version>
       </plugin>
     </plugins>
   </build>
