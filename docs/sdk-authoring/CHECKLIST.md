@@ -94,6 +94,16 @@ Each line is a native test in `$L`, named in `RUN.md`.
   languages"; the `huge` scenario).
 - [ ] A client that is never closed does not keep the process from exiting, where the runtime has daemon
   threads or background tasks (contract 6.6, SHOULD). Where background work can never keep the process alive (Go's goroutines), the line is met by construction: say so in `RUN.md` and name the function that starts that work.
+- [ ] A typed accessor whose type admits null (a nullable or optional string, say), given a null fallback
+  and served another kind, answers `TYPE_MISMATCH` (contract 4, the mismatch rule). `n/a: the accessor's type
+  cannot hold null` where it cannot (Go's `StringVariation` takes a `string`).
+- [ ] A generic accessor with an integer fallback type gives that type for a whole served number (a served
+  `2.0` is `2`) and `TYPE_MISMATCH` for a fraction or a value outside the type's range (contract 4, "Typed
+  languages"). `n/a: no generic method` where the language has none.
+- [ ] The hook event's `value` for the integer accessor has the type the SDK's mapping table names, the
+  language's JSON value type or the accessor's own integer type (contract 10, the `value` row).
+- [ ] A context attribute of each of the language's numeric types (every integer width, every float width)
+  matches as the JSON number of its value (contract 3).
 
 ## Code and documents
 

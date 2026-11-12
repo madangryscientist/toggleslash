@@ -218,6 +218,173 @@
       ]
     },
     {
+      "name": "a flag that names a missing segment has no flag version",
+      "contract": "10",
+      "steps": [
+        {
+          "do": "ruleset",
+          "flags": [
+            {
+              "key": "needs-seg",
+              "variations": [false, true],
+              "on": true,
+              "offVariation": 0,
+              "targets": [],
+              "prerequisites": [],
+              "rules": [
+                {
+                  "clauses": [
+                    {
+                      "op": "segmentMatch",
+                      "values": ["no-such-segment"]
+                    }
+                  ],
+                  "variation": 1
+                }
+              ],
+              "fallthrough": {
+                "variation": 0
+              },
+              "salt": "s",
+              "version": 7
+            }
+          ],
+          "segments": []
+        },
+        {
+          "do": "create",
+          "options": {
+            "hook": true
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "evaluate",
+          "flag": "needs-seg",
+          "fallback": false,
+          "expect": {
+            "value": false,
+            "variationIndex": null,
+            "reason": {
+              "kind": "ERROR",
+              "code": "SEGMENT_NOT_FOUND"
+            }
+          }
+        },
+        {
+          "do": "expect",
+          "hookEvents": {
+            "count": 1,
+            "events": [
+              {
+                "flagKey": "needs-seg",
+                "value": false,
+                "variationIndex": null,
+                "reason": {
+                  "kind": "ERROR",
+                  "code": "SEGMENT_NOT_FOUND"
+                },
+                "flagVersion": null
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "a flag in a prerequisite cycle keeps its flag version",
+      "contract": "10",
+      "steps": [
+        {
+          "do": "ruleset",
+          "flags": [
+            {
+              "key": "cycle-a",
+              "variations": [false, true],
+              "on": true,
+              "offVariation": 0,
+              "targets": [],
+              "prerequisites": [
+                {
+                  "flagKey": "cycle-b",
+                  "variation": 1
+                }
+              ],
+              "rules": [],
+              "fallthrough": {
+                "variation": 0
+              },
+              "salt": "s",
+              "version": 3
+            },
+            {
+              "key": "cycle-b",
+              "variations": [false, true],
+              "on": true,
+              "offVariation": 0,
+              "targets": [],
+              "prerequisites": [
+                {
+                  "flagKey": "cycle-a",
+                  "variation": 1
+                }
+              ],
+              "rules": [],
+              "fallthrough": {
+                "variation": 0
+              },
+              "salt": "s",
+              "version": 4
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {
+            "hook": true
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "evaluate",
+          "flag": "cycle-a",
+          "fallback": false,
+          "expect": {
+            "value": false,
+            "variationIndex": null,
+            "reason": {
+              "kind": "ERROR",
+              "code": "PREREQUISITE_CYCLE"
+            }
+          }
+        },
+        {
+          "do": "expect",
+          "hookEvents": {
+            "count": 1,
+            "events": [
+              {
+                "flagKey": "cycle-a",
+                "value": false,
+                "variationIndex": null,
+                "reason": {
+                  "kind": "ERROR",
+                  "code": "PREREQUISITE_CYCLE"
+                },
+                "flagVersion": 3
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "a hook that throws goes to onError, and the evaluation still answers and counts",
       "contract": "10",
       "steps": [
