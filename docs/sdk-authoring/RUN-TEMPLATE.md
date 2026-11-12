@@ -13,7 +13,7 @@ check and the planner read them. A section with nothing in it says "None." rathe
 - Date: <yyyy-mm-dd>
 - Input: language <name>; runtime <given, or "chosen: ...">; minimum version <given, or "chosen: ...">;
   package manager <given, or "chosen: ...">
-- Toolchain: <each tool and its exact version, as `mise.toml` pins them and as their version commands print>
+- Toolchain: <each tool and its exact version, as `mise.toml` pins them and as their version commands print; then the plugins and test libraries the build file pins (a `pom.xml`, a `go.mod`), with their versions>
 
 ## Results
 
