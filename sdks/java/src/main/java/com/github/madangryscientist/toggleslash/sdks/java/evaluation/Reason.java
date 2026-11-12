@@ -1,47 +1,74 @@
 package com.github.madangryscientist.toggleslash.sdks.java.evaluation;
 
-import java.util.Objects;
-import java.util.Optional;
-import java.util.OptionalInt;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
- * Why a flag answered as it did. {@code ruleIndex} is present for {@code RULE_MATCH}, {@code
- * flagKey} for {@code PREREQUISITE_FAILED} (the prerequisite that was not met) and {@code code} for
- * {@code ERROR}.
+ * Why a value was served.
+ *
+ * @param kind the kind
+ * @param ruleIndex the index of the matching rule, for {@link ReasonKind#RULE_MATCH} only
+ * @param flagKey the prerequisite that was not met, for {@link ReasonKind#PREREQUISITE_FAILED} only
+ * @param errorCode the error, for {@link ReasonKind#ERROR} only
  */
-public record Reason(
-    ReasonKind kind, OptionalInt ruleIndex, Optional<String> flagKey, Optional<ErrorCode> code) {
+public record Reason(ReasonKind kind, Integer ruleIndex, String flagKey, ErrorCode errorCode) {
+  /** The reason for a flag that is off. */
+  public static final Reason OFF = new Reason(ReasonKind.OFF, null, null, null);
 
-  /** Checks that nothing is null. */
-  public Reason {
-    Objects.requireNonNull(kind);
-    Objects.requireNonNull(ruleIndex);
-    Objects.requireNonNull(flagKey);
-    Objects.requireNonNull(code);
+  /** The reason for a target match. */
+  public static final Reason TARGET_MATCH = new Reason(ReasonKind.TARGET_MATCH, null, null, null);
+
+  /** The reason for the fallthrough. */
+  public static final Reason FALLTHROUGH = new Reason(ReasonKind.FALLTHROUGH, null, null, null);
+
+  /**
+   * A rule match.
+   *
+   * @param index the rule's index
+   * @return the reason
+   */
+  public static Reason ruleMatch(int index) {
+    return new Reason(ReasonKind.RULE_MATCH, index, null, null);
   }
 
-  /** A reason that carries nothing but its kind. */
-  public static Reason of(ReasonKind kind) {
-    return new Reason(kind, OptionalInt.empty(), Optional.empty(), Optional.empty());
-  }
-
-  /** {@code RULE_MATCH} for the rule at {@code ruleIndex}. */
-  public static Reason ruleMatch(int ruleIndex) {
-    return new Reason(
-        ReasonKind.RULE_MATCH, OptionalInt.of(ruleIndex), Optional.empty(), Optional.empty());
-  }
-
-  /** {@code PREREQUISITE_FAILED} for the prerequisite {@code flagKey}. */
+  /**
+   * An unmet prerequisite.
+   *
+   * @param flagKey the prerequisite's flag key
+   * @return the reason
+   */
   public static Reason prerequisiteFailed(String flagKey) {
-    return new Reason(
-        ReasonKind.PREREQUISITE_FAILED,
-        OptionalInt.empty(),
-        Optional.of(flagKey),
-        Optional.empty());
+    return new Reason(ReasonKind.PREREQUISITE_FAILED, null, flagKey, null);
   }
 
-  /** {@code ERROR} with {@code code}. */
+  /**
+   * An error.
+   *
+   * @param code the error code
+   * @return the reason
+   */
   public static Reason error(ErrorCode code) {
-    return new Reason(ReasonKind.ERROR, OptionalInt.empty(), Optional.empty(), Optional.of(code));
+    return new Reason(ReasonKind.ERROR, null, null, code);
+  }
+
+  /**
+   * The reason as the protocols spell it: {@code kind}, then {@code ruleIndex}, {@code flagKey} or
+   * {@code code} when the kind has one.
+   *
+   * @return a new map
+   */
+  public Map<String, Object> toMap() {
+    Map<String, Object> map = new LinkedHashMap<>();
+    map.put("kind", kind.name());
+    if (ruleIndex != null) {
+      map.put("ruleIndex", ruleIndex.doubleValue());
+    }
+    if (flagKey != null) {
+      map.put("flagKey", flagKey);
+    }
+    if (errorCode != null) {
+      map.put("code", errorCode.name());
+    }
+    return map;
   }
 }

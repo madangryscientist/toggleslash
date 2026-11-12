@@ -1,141 +1,142 @@
 package com.github.madangryscientist.toggleslash.sdks.java.evaluation;
 
-import java.io.ByteArrayOutputStream;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
-/**
- * Context normalisation and bucketing, to "Contexts" and "Buckets" in {@code docs/evaluation.md}.
- */
+/** A valid context as a map from kind to that kind's key and attributes. */
 final class Contexts {
+  /** What a kind that is read and absent means, everywhere. */
   static final String DEFAULT_KIND = "user";
 
-  /** The key and attributes of one kind, after normalising. Attributes is null when absent. */
-  record KindContext(String key, Map<?, ?> attributes) {}
+  /** The key and attributes of one kind. */
+  static final class KindContext {
+    final String key;
+    final Map<?, ?> attributes;
 
-  private Contexts() {}
+    KindContext(String key, Map<?, ?> attributes) {
+      this.key = key;
+      this.attributes = attributes;
+    }
+  }
+
+  final Map<String, KindContext> byKind;
+
+  private Contexts(Map<String, KindContext> byKind) {
+    this.byKind = byKind;
+  }
 
   private static KindContext readEntry(Map<?, ?> value) {
     Object key = value.get("key");
     Object attributes = value.get("attributes");
-    if (!(key instanceof String text) || text.isEmpty()) {
+    if (!(key instanceof String) || ((String) key).isEmpty()) {
       return null;
     }
     if (attributes == null) {
-      return new KindContext(text, null);
+      return new KindContext((String) key, null);
     }
-    return attributes instanceof Map<?, ?> map ? new KindContext(text, map) : null;
+    return attributes instanceof Map ? new KindContext((String) key, (Map<?, ?>) attributes) : null;
   }
 
-  private static Map<String, KindContext> readMulti(Map<?, ?> value) {
+  private static Contexts readMulti(Map<?, ?> value) {
     Object contexts = value.get("contexts");
-    if (value.get("key") != null
-        || value.get("attributes") != null
-        || !(contexts instanceof Map<?, ?> entries)) {
+    if (value.get("key") != null || value.get("attributes") != null || !(contexts instanceof Map)) {
       return null;
     }
     Map<String, KindContext> normalised = new LinkedHashMap<>();
-    for (Map.Entry<?, ?> entry : entries.entrySet()) {
+    for (Map.Entry<?, ?> entry : ((Map<?, ?>) contexts).entrySet()) {
       Object kind = entry.getKey();
+      Object raw = entry.getValue();
       if (!Validate.isKind(kind)
-          || !(entry.getValue() instanceof Map<?, ?> raw)
-          || raw.get("kind") != null) {
+          || !(raw instanceof Map)
+          || ((Map<?, ?>) raw).get("kind") != null) {
         return null;
       }
-      KindContext context = readEntry(raw);
-      if (context == null) {
+      KindContext one = readEntry((Map<?, ?>) raw);
+      if (one == null) {
         return null;
       }
-      normalised.put((String) kind, context);
+      normalised.put((String) kind, one);
     }
-    return normalised.isEmpty() ? null : normalised;
+    return normalised.isEmpty() ? null : new Contexts(normalised);
   }
 
-  /** The context as a map from kind to key and attributes, or null when it is not valid. */
-  static Map<String, KindContext> normalise(Object value) {
-    if (!(value instanceof Map<?, ?> record)) {
+  /** The context as kinds, or {@code null} when it is not valid. */
+  static Contexts normalise(Object value) {
+    if (!(value instanceof Map)) {
       return null;
     }
-    Object kind = record.get("kind");
+    Map<?, ?> map = (Map<?, ?>) value;
+    Object kind = map.get("kind");
     if (kind == null) {
       kind = DEFAULT_KIND;
     }
     if ("multi".equals(kind)) {
-      return readMulti(record);
+      return readMulti(map);
     }
     if (!Validate.isKind(kind)) {
       return null;
     }
-    KindContext entry = readEntry(record);
-    return entry == null ? null : Map.of((String) kind, entry);
+    KindContext one = readEntry(map);
+    if (one == null) {
+      return null;
+    }
+    Map<String, KindContext> single = new LinkedHashMap<>();
+    single.put((String) kind, one);
+    return new Contexts(single);
   }
 
   /**
-   * The bucket for the key of {@code kind} (null is {@code user}): the key as it is for {@code
-   * user}, {@code <kind>:<key>} for any other kind, and 0 when the context does not have that kind.
+   * The bucket for the key of a kind (null is {@code user}): the key as it is for {@code user},
+   * {@code <kind>:<key>} for any other kind, and 0 when the context does not have that kind.
    */
-  static int kindBucket(String key, String salt, String kind, Map<String, KindContext> contexts) {
+  int kindBucket(String key, String salt, String kind) {
     String chosen = kind == null ? DEFAULT_KIND : kind;
-    KindContext context = contexts.get(chosen);
+    KindContext context = byKind.get(chosen);
     if (context == null) {
       return 0;
     }
-    String contextKey = chosen.equals(DEFAULT_KIND) ? context.key() : chosen + ":" + context.key();
-    return bucket(key, salt, contextKey);
+    return Bucket.bucket(
+        key, salt, chosen.equals(DEFAULT_KIND) ? context.key : chosen + ":" + context.key);
+  }
+
+  /** Tells whether the context has, in any of its kinds, a key the lists hold for that kind. */
+  boolean listedIn(Map<String, java.util.Set<String>> keys) {
+    for (Map.Entry<String, KindContext> entry : byKind.entrySet()) {
+      java.util.Set<String> held = keys.get(entry.getKey());
+      if (held != null && held.contains(entry.getValue().key)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** A value of a context attribute as the evaluator reads it: see {@link #normaliseValue}. */
+  static boolean isListLike(Object value) {
+    return value instanceof List || value instanceof Object[];
   }
 
   /**
-   * SHA-256 of the UTF-8 bytes of {@code <key>.<salt>.<contextKey>}, the first 4 bytes as a
-   * big-endian uint32, modulo 100000.
+   * Reads a caller's attribute value as a JSON value: a {@link String}, a {@link Boolean}, a {@link
+   * Double} (any {@link Number}), a {@link List} (also an object array), a {@link Map}, or {@code
+   * null} for {@code null} and for any other class.
    */
-  static int bucket(String key, String salt, String contextKey) {
-    long value = uint32(key, salt, contextKey);
-    return (int) (value % Validate.BUCKET_COUNT);
-  }
-
-  /** The first four bytes of the digest as an unsigned big-endian integer. */
-  static long uint32(String key, String salt, String contextKey) {
-    byte[] digest = sha256(utf8(key + "." + salt + "." + contextKey));
-    return ((digest[0] & 0xffL) << 24)
-        | ((digest[1] & 0xffL) << 16)
-        | ((digest[2] & 0xffL) << 8)
-        | (digest[3] & 0xffL);
-  }
-
-  private static byte[] sha256(byte[] input) {
-    try {
-      return MessageDigest.getInstance("SHA-256").digest(input);
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException("SHA-256 is required of every Java platform", e);
+  static Object normaliseValue(Object value) {
+    if (value instanceof String || value instanceof Boolean || value instanceof Map) {
+      return value;
     }
-  }
-
-  /** UTF-8, with a lone surrogate as U+FFFD (Java's own encoder would write a question mark). */
-  static byte[] utf8(String text) {
-    ByteArrayOutputStream out = new ByteArrayOutputStream(text.length() + 8);
-    byte[] replacement = "�".getBytes(StandardCharsets.UTF_8);
-    int i = 0;
-    while (i < text.length()) {
-      char c = text.charAt(i);
-      if (Character.isHighSurrogate(c)
-          && i + 1 < text.length()
-          && Character.isLowSurrogate(text.charAt(i + 1))) {
-        out.writeBytes(text.substring(i, i + 2).getBytes(StandardCharsets.UTF_8));
-        i += 2;
-      } else if (Character.isSurrogate(c)) {
-        out.writeBytes(replacement);
-        i++;
-      } else {
-        int start = i;
-        while (i < text.length() && !Character.isSurrogate(text.charAt(i))) {
-          i++;
-        }
-        out.writeBytes(text.substring(start, i).getBytes(StandardCharsets.UTF_8));
-      }
+    if (value instanceof Number) {
+      return ((Number) value).doubleValue();
     }
-    return out.toByteArray();
+    if (value instanceof List) {
+      return value;
+    }
+    if (value instanceof Object[]) {
+      return java.util.Arrays.asList((Object[]) value);
+    }
+    if (value instanceof CharSequence) {
+      return value.toString();
+    }
+    return null;
   }
 }

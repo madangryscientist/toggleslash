@@ -1,153 +1,177 @@
 package com.github.madangryscientist.toggleslash.sdks.java.evaluation;
 
 import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Contexts.KindContext;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Model.AttributeClause;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Model.ClauseValue;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Model.Op;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
-/** Attribute clauses, to "Clauses" in {@code docs/evaluation.md}. Every input is already valid. */
+/** Whether one attribute clause holds. */
 final class Clauses {
-  private static final Set<String> STRING_OPS =
-      Set.of("contains", "startsWith", "endsWith", "matches");
-  private static final Set<String> TYPED_OPS =
-      Set.of("semverEq", "semverLt", "semverLte", "semverGt", "semverGte", "before", "after");
-
   private Clauses() {}
 
-  /** The value a name or a {@code /} reference reaches, or null when it is missing. */
-  private static Object readAttribute(KindContext context, String name) {
-    List<String> components = name.startsWith("/") ? Reference.parse(name) : List.of(name);
-    if (components == null || components.isEmpty()) {
-      return null;
-    }
-    String first = components.get(0);
+  /** The value a path reaches, or null when it is missing. */
+  private static Object readAttribute(KindContext context, List<String> path) {
+    String first = path.get(0);
     Object current = null;
     if (first.equals("key")) {
-      current = context.key();
-    } else if (context.attributes() != null) {
-      current = context.attributes().get(first);
+      current = context.key;
+    } else if (context.attributes != null) {
+      current = context.attributes.get(first);
     }
-    for (String component : components.subList(1, components.size())) {
-      if (!(current instanceof Map<?, ?> record)) {
+    for (int i = 1; i < path.size(); i++) {
+      if (!(current instanceof Map)) {
         return null;
       }
-      current = record.get(component);
+      current = ((Map<?, ?>) current).get(path.get(i));
     }
-    return current;
+    return Contexts.normaliseValue(current);
   }
 
-  /** -1, 0 or 1 for two finite numbers or two strings (by UTF-16 code unit); otherwise null. */
-  private static Integer compare(Object attribute, Object value) {
-    if (attribute instanceof Double a && value instanceof Double b) {
+  private static final int NO_ORDER = 2;
+
+  /** -1, 0 or 1 for two finite numbers or two strings (by UTF-16 code unit); otherwise NO_ORDER. */
+  private static int compare(Object attribute, Object value) {
+    if (attribute instanceof Double && value instanceof Double) {
+      double a = (Double) attribute;
+      double b = (Double) value;
       if (!Double.isFinite(a)) {
-        return null;
+        return NO_ORDER;
       }
       return a < b ? -1 : a > b ? 1 : 0;
     }
-    if (attribute instanceof String a && value instanceof String b) {
-      return Integer.signum(a.compareTo(b));
+    if (attribute instanceof String && value instanceof String) {
+      return Integer.signum(((String) attribute).compareTo((String) value));
     }
-    return null;
+    return NO_ORDER;
   }
 
-  private static boolean matchesString(String op, String attribute, String value) {
-    return switch (op) {
-      case "matches" -> {
-        Pattern pattern = Pattern.compile(value);
-        yield pattern != null && pattern.matches(attribute);
-      }
-      case "contains" -> attribute.contains(value);
-      case "startsWith" -> attribute.startsWith(value);
-      default -> attribute.endsWith(value);
-    };
+  private static boolean matchesString(Op op, String attribute, ClauseValue value) {
+    String text = (String) value.raw;
+    switch (op) {
+      case MATCHES:
+        return value.program != null && Regex.matches(value.program, attribute);
+      case CONTAINS:
+        return attribute.contains(text);
+      case STARTS_WITH:
+        return attribute.startsWith(text);
+      default:
+        return attribute.endsWith(text);
+    }
   }
 
-  private static boolean matchesOrder(String op, int order) {
-    return switch (op) {
-      case "lt" -> order < 0;
-      case "lte" -> order <= 0;
-      case "gt" -> order > 0;
-      default -> order >= 0;
-    };
+  private static boolean matchesOrder(Op op, int order) {
+    switch (op) {
+      case LT:
+        return order < 0;
+      case LTE:
+        return order <= 0;
+      case GT:
+        return order > 0;
+      default:
+        return order >= 0;
+    }
   }
 
-  private static boolean matchesSemver(String op, Object attribute, Object value) {
-    if (!(attribute instanceof String a) || !(value instanceof String b)) {
+  private static boolean matchesSemver(Op op, Object attribute, ClauseValue value) {
+    if (!(attribute instanceof String) || value.version == null) {
       return false;
     }
-    Semver.Version candidate = Semver.parse(a);
-    Semver.Version target = Semver.parse(b);
-    if (candidate == null || target == null) {
+    Semver.Version candidate = Semver.parse((String) attribute);
+    if (candidate == null) {
       return false;
     }
-    int order = Semver.compare(candidate, target);
-    return switch (op) {
-      case "semverEq" -> order == 0;
-      case "semverLt" -> order < 0;
-      case "semverLte" -> order <= 0;
-      case "semverGt" -> order > 0;
-      default -> order >= 0;
-    };
+    int order = Semver.compare(candidate, value.version);
+    switch (op) {
+      case SEMVER_EQ:
+        return order == 0;
+      case SEMVER_LT:
+        return order < 0;
+      case SEMVER_LTE:
+        return order <= 0;
+      case SEMVER_GT:
+        return order > 0;
+      default:
+        return order >= 0;
+    }
   }
 
-  private static boolean matchesDate(String op, Object attribute, Object value) {
-    Double candidate = Dates.toInstant(attribute);
-    Double target = Dates.toInstant(value);
-    if (candidate == null || target == null) {
+  private static boolean matchesDate(Op op, Object attribute, ClauseValue value) {
+    double candidate = Dates.toInstant(attribute);
+    double target = value.instant;
+    if (Double.isNaN(candidate) || Double.isNaN(target)) {
       return false;
     }
-    return op.equals("before") ? candidate < target : candidate > target;
+    return op == Op.BEFORE ? candidate < target : candidate > target;
   }
 
-  private static boolean matchesValue(String op, Object attribute, Object value) {
-    if (op.equals("in")) {
-      if (attribute instanceof Boolean) {
-        return attribute.equals(value);
-      }
-      Integer order = compare(attribute, value);
-      return order != null && order == 0;
+  private static boolean matchesValue(Op op, Object attribute, ClauseValue value) {
+    switch (op) {
+      case IN:
+        if (attribute instanceof Boolean) {
+          return attribute.equals(value.raw);
+        }
+        return compare(attribute, value.raw) == 0;
+      case CONTAINS:
+      case STARTS_WITH:
+      case ENDS_WITH:
+      case MATCHES:
+        return attribute instanceof String
+            && value.raw instanceof String
+            && matchesString(op, (String) attribute, value);
+      case SEMVER_EQ:
+      case SEMVER_LT:
+      case SEMVER_LTE:
+      case SEMVER_GT:
+      case SEMVER_GTE:
+        return matchesSemver(op, attribute, value);
+      case BEFORE:
+      case AFTER:
+        return matchesDate(op, attribute, value);
+      default:
+        int order = compare(attribute, value.raw);
+        return order != NO_ORDER && matchesOrder(op, order);
     }
-    if (STRING_OPS.contains(op)) {
-      return attribute instanceof String a && value instanceof String v && matchesString(op, a, v);
-    }
-    if (TYPED_OPS.contains(op)) {
-      return op.equals("before") || op.equals("after")
-          ? matchesDate(op, attribute, value)
-          : matchesSemver(op, attribute, value);
-    }
-    Integer order = compare(attribute, value);
-    return order != null && matchesOrder(op, order);
   }
 
   /**
-   * Does one attribute clause hold? It reads the context of its {@code contextKind}. A missing
-   * attribute, or a missing kind, fails it, whatever {@code negate} says.
+   * Does the clause hold? It reads the context of its kind. A missing attribute, or a missing kind,
+   * fails it, whatever negate says.
    */
-  static boolean attributeClauseMatches(Object clause, Map<String, KindContext> contexts) {
-    Object kind = Validate.field(clause, "contextKind");
-    KindContext context = contexts.get(kind == null ? Contexts.DEFAULT_KIND : (String) kind);
+  static boolean matches(AttributeClause clause, Contexts contexts) {
+    String kind = clause.contextKind == null ? Contexts.DEFAULT_KIND : clause.contextKind;
+    KindContext context = contexts.byKind.get(kind);
     if (context == null) {
       return false;
     }
-    Object attribute = readAttribute(context, (String) Validate.field(clause, "attribute"));
+    Object attribute = readAttribute(context, clause.path);
     if (attribute == null) {
       return false;
     }
-    String op = (String) Validate.field(clause, "op");
-    List<?> values = (List<?>) Validate.field(clause, "values");
-    List<?> candidates = attribute instanceof List<?> list ? list : List.of(attribute);
     boolean matched = false;
-    for (Object candidate : candidates) {
-      for (Object value : values) {
-        if (matchesValue(op, candidate, value)) {
+    if (attribute instanceof List) {
+      for (Object element : (List<?>) attribute) {
+        if (anyValue(clause, Contexts.normaliseValue(element))) {
           matched = true;
           break;
         }
       }
-      if (matched) {
-        break;
+    } else {
+      matched = anyValue(clause, attribute);
+    }
+    return clause.negate ? !matched : matched;
+  }
+
+  private static boolean anyValue(AttributeClause clause, Object candidate) {
+    if (candidate == null) {
+      return false;
+    }
+    for (ClauseValue value : clause.values) {
+      if (matchesValue(clause.op, candidate, value)) {
+        return true;
       }
     }
-    return Boolean.TRUE.equals(Validate.field(clause, "negate")) ? !matched : matched;
+    return false;
   }
 }

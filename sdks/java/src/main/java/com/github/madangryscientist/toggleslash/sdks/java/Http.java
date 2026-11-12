@@ -1,17 +1,14 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
-import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.net.http.HttpResponse.BodyHandler;
-import java.net.http.HttpResponse.BodyHandlers;
+import java.net.http.HttpTimeoutException;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,297 +19,251 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /**
- * The SDK's HTTP: HTTP/1.1, no redirects, every request bounded as a whole, and every request in
- * flight can be abandoned with {@link #abort()}. Only the headers a caller passes are set here; the
- * JDK adds {@code Host}, {@code User-Agent} and {@code Content-Length} on its own.
+ * Requests over the JDK's {@link HttpClient}. Each request is bounded as a whole, and each one in
+ * flight can be abandoned with {@link #abortAll}.
  */
 final class Http {
-  /** Why a request did not give an answer. */
-  enum Kind {
-    TIMEOUT,
-    NETWORK,
-    ABORTED
-  }
-
-  /** A request that gave no answer. The message is fixed text: no URL, key or context. */
+  /** A failed request: its {@code lastError} code. */
   static final class Failure extends Exception {
     private static final long serialVersionUID = 1L;
+    final String code;
 
-    private final transient Kind kind;
-
-    Failure(Kind kind) {
-      super(kind.name().toLowerCase(java.util.Locale.ROOT), null, false, false);
-      this.kind = kind;
-    }
-
-    Kind kind() {
-      return kind;
+    Failure(String code) {
+      super(code, null, false, false);
+      this.code = code;
     }
   }
 
-  /** An answer: the status, the body (read only for a 200), and the headers the SDK uses. */
-  record Reply(int status, byte[] body, Optional<String> etag, Optional<String> retryAfter) {}
+  /** A whole answer. */
+  static final class Response {
+    final int status;
+    final String etag;
+    final String retryAfter;
+    final byte[] body;
 
-  private static final byte[] NO_BODY = new byte[0];
+    Response(int status, String etag, String retryAfter, byte[] body) {
+      this.status = status;
+      this.etag = etag;
+      this.retryAfter = retryAfter;
+      this.body = body;
+    }
+  }
+
+  /** The marker for the end of a stream body. */
+  static final Object END = new Object();
+
+  /** The marker for a stream abandoned on purpose. */
+  static final Object ABORTED = new Object();
+
+  /** An open stream answer: status, then chunks on a queue. */
+  static final class StreamResponse {
+    final int status;
+    final String retryAfter;
+    final BlockingQueue<Object> queue;
+    private final Runnable cancel;
+    private volatile Flow.Subscription subscription;
+
+    StreamResponse(int status, String retryAfter, BlockingQueue<Object> queue, Runnable cancel) {
+      this.status = status;
+      this.retryAfter = retryAfter;
+      this.queue = queue;
+      this.cancel = cancel;
+    }
+
+    /** Asks for the next chunk. */
+    void more() {
+      Flow.Subscription current = subscription;
+      if (current != null) {
+        current.request(1);
+      }
+    }
+
+    void cancel() {
+      cancel.run();
+    }
+  }
 
   private final HttpClient client;
-  private final Set<CompletableFuture<?>> inflight = ConcurrentHashMap.newKeySet();
-  private final Set<Stream> streams = ConcurrentHashMap.newKeySet();
-  private volatile boolean aborted;
+  private final Set<Runnable> aborts = ConcurrentHashMap.newKeySet();
 
   Http(HttpClient client) {
     this.client = client;
   }
 
-  /** A client that speaks HTTP/1.1 and never follows a redirect. */
   static HttpClient newClient(Duration connectTimeout) {
     return HttpClient.newBuilder()
         .version(HttpClient.Version.HTTP_1_1)
-        .followRedirects(HttpClient.Redirect.NEVER)
         .connectTimeout(connectTimeout)
         .build();
   }
 
-  /** Abandons every request in flight and refuses new ones. */
-  void abort() {
-    aborted = true;
-    for (CompletableFuture<?> future : inflight) {
-      future.cancel(true);
-    }
-    for (Stream stream : streams) {
-      stream.abort();
-    }
-  }
-
-  private HttpRequest request(
-      String url, String method, String body, Map<String, String> headers, Duration timeout)
-      throws Failure {
-    try {
-      HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url)).timeout(timeout);
-      for (Map.Entry<String, String> header : headers.entrySet()) {
-        builder.header(header.getKey(), header.getValue());
+  /** Cancels every request in flight. */
+  void abortAll() {
+    for (Runnable abort : aborts) {
+      try {
+        abort.run();
+      } catch (RuntimeException ignored) {
+        // Nothing else to do for a request that cannot be cancelled.
       }
-      if (body == null) {
-        return builder.GET().build();
+    }
+  }
+
+  private static Failure failureOf(Throwable error) {
+    Throwable cause = error;
+    while (cause != null) {
+      if (cause instanceof HttpTimeoutException || cause instanceof TimeoutException) {
+        return new Failure(Status.TIMEOUT);
       }
-      return builder.method(method, HttpRequest.BodyPublishers.ofString(body)).build();
-    } catch (RuntimeException e) {
-      throw new Failure(Kind.NETWORK);
+      cause = cause.getCause();
     }
+    return new Failure(Status.NETWORK);
   }
 
-  private static BodyHandler<byte[]> wholeBody() {
-    return info ->
-        info.statusCode() == 200
-            ? BodyHandlers.ofByteArray().apply(info)
-            : BodyHandlers.replacing(NO_BODY).apply(info);
+  private static String first(HttpResponse<?> response, String name) {
+    return response.headers().firstValue(name).orElse(null);
   }
 
-  private static Reply reply(HttpResponse<byte[]> response) {
-    return new Reply(
-        response.statusCode(),
-        response.body(),
-        response.headers().firstValue("ETag"),
-        response.headers().firstValue("Retry-After"));
-  }
-
-  /** A GET whose whole answer, body included, arrives within {@code timeout}. */
-  Reply get(String url, Map<String, String> headers, Duration timeout) throws Failure {
-    return send(request(url, "GET", null, headers, timeout), timeout);
-  }
-
-  /** A POST of {@code body} that is answered within {@code timeout}. */
-  Reply post(String url, String body, Map<String, String> headers, Duration timeout)
-      throws Failure {
-    return send(request(url, "POST", body, headers, timeout), timeout);
-  }
-
-  private Reply send(HttpRequest request, Duration timeout) throws Failure {
-    if (aborted) {
-      throw new Failure(Kind.ABORTED);
-    }
+  /** One request, answered whole, bounded by the timeout from the send to the last byte. */
+  Response send(HttpRequest.Builder builder, Duration timeout) throws Failure {
     CompletableFuture<HttpResponse<byte[]>> future;
+    Runnable abort;
     try {
-      future = client.sendAsync(request, wholeBody());
+      HttpRequest request = builder.timeout(timeout).build();
+      future = client.sendAsync(request, HttpResponse.BodyHandlers.ofByteArray());
+      CompletableFuture<HttpResponse<byte[]>> started = future;
+      abort = () -> started.cancel(true);
     } catch (RuntimeException e) {
-      throw new Failure(Kind.NETWORK);
+      throw new Failure(Status.NETWORK);
     }
-    inflight.add(future);
+    aborts.add(abort);
     try {
-      if (aborted) {
-        future.cancel(true);
-      }
-      return reply(future.get(timeout.toNanos(), TimeUnit.NANOSECONDS));
+      HttpResponse<byte[]> response =
+          future.get(Math.max(1, timeout.toMillis()), TimeUnit.MILLISECONDS);
+      return new Response(
+          response.statusCode(),
+          first(response, "ETag"),
+          first(response, "Retry-After"),
+          response.body());
     } catch (TimeoutException e) {
       future.cancel(true);
-      throw new Failure(Kind.TIMEOUT);
+      throw new Failure(Status.TIMEOUT);
+    } catch (ExecutionException e) {
+      throw failureOf(e);
     } catch (CancellationException e) {
-      throw new Failure(aborted ? Kind.ABORTED : Kind.NETWORK);
+      throw new Failure(Status.NETWORK);
     } catch (InterruptedException e) {
       future.cancel(true);
       Thread.currentThread().interrupt();
-      throw new Failure(Kind.ABORTED);
-    } catch (ExecutionException e) {
-      throw new Failure(
-          e.getCause() instanceof java.net.http.HttpTimeoutException ? Kind.TIMEOUT : Kind.NETWORK);
+      throw new Failure(Status.NETWORK);
     } finally {
-      inflight.remove(future);
+      aborts.remove(abort);
     }
-  }
-
-  /** What opening the stream gave: a body to read on a 200, otherwise just the answer's headers. */
-  record Opened(int status, Optional<String> retryAfter, Stream stream) {}
-
-  /** Opens a stream; the open (not the stream) is bounded by {@code timeout}. */
-  Opened open(String url, Map<String, String> headers, Duration timeout) throws Failure {
-    HttpRequest request = request(url, "GET", null, headers, timeout);
-    if (aborted) {
-      throw new Failure(Kind.ABORTED);
-    }
-    Stream stream = new Stream();
-    // The answer completes with the headers, because the stream is its own body subscriber and
-    // hands
-    // itself over at once; BodyHandlers.fromSubscriber would hold the answer until the stream
-    // ended.
-    BodyHandler<Stream> handler =
-        info ->
-            info.statusCode() == 200
-                ? stream
-                : HttpResponse.BodySubscribers.replacing((Stream) null);
-    CompletableFuture<HttpResponse<Stream>> future;
-    try {
-      future = client.sendAsync(request, handler);
-    } catch (RuntimeException e) {
-      throw new Failure(Kind.NETWORK);
-    }
-    inflight.add(future);
-    streams.add(stream);
-    try {
-      if (aborted) {
-        future.cancel(true);
-      }
-      HttpResponse<Stream> response = future.get(timeout.toNanos(), TimeUnit.NANOSECONDS);
-      Optional<String> retryAfter = response.headers().firstValue("Retry-After");
-      if (response.statusCode() != 200) {
-        streams.remove(stream);
-        return new Opened(response.statusCode(), retryAfter, null);
-      }
-      if (aborted) {
-        stream.abort();
-      }
-      return new Opened(200, retryAfter, stream);
-    } catch (TimeoutException e) {
-      future.cancel(true);
-      stream.abort();
-      streams.remove(stream);
-      throw new Failure(Kind.TIMEOUT);
-    } catch (CancellationException e) {
-      streams.remove(stream);
-      throw new Failure(aborted ? Kind.ABORTED : Kind.NETWORK);
-    } catch (InterruptedException e) {
-      future.cancel(true);
-      stream.abort();
-      streams.remove(stream);
-      Thread.currentThread().interrupt();
-      throw new Failure(Kind.ABORTED);
-    } catch (ExecutionException e) {
-      streams.remove(stream);
-      throw new Failure(
-          e.getCause() instanceof java.net.http.HttpTimeoutException ? Kind.TIMEOUT : Kind.NETWORK);
-    } finally {
-      inflight.remove(future);
-    }
-  }
-
-  /** Forgets a stream that has been read to its end or dropped. */
-  void release(Stream stream) {
-    stream.abort();
-    streams.remove(stream);
   }
 
   /**
-   * The body of an open stream, handed over a chunk at a time with back-pressure: one chunk is
-   * requested, and the next only once the reader has taken it. Nothing here blocks the JDK's
-   * threads.
+   * Opens a stream: the answer is bounded by the timeout up to the headers, and the body then
+   * arrives on the queue as byte arrays, then {@link #END} or a Throwable or {@link #ABORTED}.
    */
-  static final class Stream implements HttpResponse.BodySubscriber<Stream> {
-    /** The stream ended cleanly. */
-    static final Object END = new Object();
-
-    /** The stream was abandoned. */
-    static final Object ABORTED = new Object();
-
-    private final LinkedBlockingQueue<Object> queue = new LinkedBlockingQueue<>();
-    private Flow.Subscription subscription;
-    private boolean cancelled;
-
-    @Override
-    public CompletableFuture<Stream> getBody() {
-      return CompletableFuture.completedFuture(this);
+  StreamResponse open(HttpRequest.Builder builder, Duration timeout) throws Failure {
+    CompletableFuture<HttpResponse<Flow.Publisher<List<ByteBuffer>>>> future;
+    try {
+      HttpRequest request = builder.build();
+      future = client.sendAsync(request, HttpResponse.BodyHandlers.ofPublisher());
+    } catch (RuntimeException e) {
+      throw new Failure(Status.NETWORK);
     }
-
-    @Override
-    public synchronized void onSubscribe(Flow.Subscription s) {
-      if (cancelled) {
-        s.cancel();
-        return;
-      }
-      subscription = s;
-      s.request(1);
-    }
-
-    @Override
-    public void onNext(List<ByteBuffer> buffers) {
-      int size = 0;
-      for (ByteBuffer buffer : buffers) {
-        size += buffer.remaining();
-      }
-      byte[] bytes = new byte[size];
-      int at = 0;
-      for (ByteBuffer buffer : buffers) {
-        int n = buffer.remaining();
-        buffer.get(bytes, at, n);
-        at += n;
-      }
-      queue.add(bytes);
-    }
-
-    @Override
-    public void onError(Throwable error) {
-      queue.add(error);
-    }
-
-    @Override
-    public void onComplete() {
-      queue.add(END);
-    }
-
-    /**
-     * The next chunk ({@code byte[]}), {@link #END}, {@link #ABORTED}, a {@code Throwable} that
-     * ended the stream, or null when {@code timeout} passed with nothing.
-     */
-    Object next(Duration timeout) throws InterruptedException {
-      Object item = queue.poll(timeout.toNanos(), TimeUnit.NANOSECONDS);
-      if (item instanceof byte[]) {
-        synchronized (this) {
-          if (subscription != null && !cancelled) {
-            subscription.request(1);
+    BlockingQueue<Object> queue = new LinkedBlockingQueue<>();
+    StreamResponse[] holder = new StreamResponse[1];
+    Runnable abort =
+        () -> {
+          future.cancel(true);
+          StreamResponse current = holder[0];
+          if (current != null) {
+            Flow.Subscription sub = current.subscription;
+            if (sub != null) {
+              sub.cancel();
+            }
           }
-        }
-      }
-      return item;
+          queue.offer(ABORTED);
+        };
+    aborts.add(abort);
+    HttpResponse<Flow.Publisher<List<ByteBuffer>>> response;
+    try {
+      response = future.get(Math.max(1, timeout.toMillis()), TimeUnit.MILLISECONDS);
+    } catch (TimeoutException e) {
+      future.cancel(true);
+      aborts.remove(abort);
+      throw new Failure(Status.TIMEOUT);
+    } catch (ExecutionException e) {
+      aborts.remove(abort);
+      throw failureOf(e);
+    } catch (CancellationException e) {
+      aborts.remove(abort);
+      throw new Failure(Status.NETWORK);
+    } catch (InterruptedException e) {
+      future.cancel(true);
+      aborts.remove(abort);
+      Thread.currentThread().interrupt();
+      throw new Failure(Status.NETWORK);
     }
+    Runnable cancel =
+        () -> {
+          abort.run();
+          aborts.remove(abort);
+        };
+    StreamResponse stream =
+        new StreamResponse(response.statusCode(), first(response, "Retry-After"), queue, cancel);
+    holder[0] = stream;
+    boolean keep = response.statusCode() == 200;
+    response
+        .body()
+        .subscribe(
+            new Flow.Subscriber<List<ByteBuffer>>() {
+              @Override
+              public void onSubscribe(Flow.Subscription subscription) {
+                stream.subscription = subscription;
+                if (keep) {
+                  subscription.request(1);
+                } else {
+                  subscription.cancel();
+                }
+              }
 
-    /** Stops the stream and wakes a reader that is waiting. */
-    synchronized void abort() {
-      if (cancelled) {
-        return;
-      }
-      cancelled = true;
-      if (subscription != null) {
-        subscription.cancel();
-      }
-      queue.add(ABORTED);
-    }
+              @Override
+              public void onNext(List<ByteBuffer> item) {
+                int size = 0;
+                for (ByteBuffer buffer : item) {
+                  size += buffer.remaining();
+                }
+                if (size == 0) {
+                  stream.more();
+                  return;
+                }
+                byte[] chunk = new byte[size];
+                int at = 0;
+                for (ByteBuffer buffer : item) {
+                  int n = buffer.remaining();
+                  buffer.get(chunk, at, n);
+                  at += n;
+                }
+                queue.offer(chunk);
+              }
+
+              @Override
+              public void onError(Throwable error) {
+                queue.offer(error);
+              }
+
+              @Override
+              public void onComplete() {
+                queue.offer(END);
+              }
+            });
+    return stream;
+  }
+
+  /** Releases the in-flight record of a stream that has ended. */
+  void finish(StreamResponse stream) {
+    stream.cancel();
   }
 }

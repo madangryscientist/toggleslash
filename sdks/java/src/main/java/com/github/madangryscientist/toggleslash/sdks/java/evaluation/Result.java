@@ -1,23 +1,21 @@
 package com.github.madangryscientist.toggleslash.sdks.java.evaluation;
 
-import java.util.Objects;
-import java.util.OptionalInt;
-
 /**
- * The answer to one evaluation. {@code value} is the served variation's JSON value (a {@code Map},
- * {@code List}, {@code String}, {@code Double}, {@code Boolean} or null) and is null when nothing
- * is served. It is shared with the ruleset, so a caller must not change it.
+ * The answer to one evaluation.
+ *
+ * @param value the served variation's JSON value ({@code null} when nothing is served); a parsed
+ *     tree is unmodifiable
+ * @param variationIndex the served variation's index, or {@code null} when none is served
+ * @param reason why
  */
-public record Result(Object value, OptionalInt variationIndex, Reason reason) {
-
-  /** Checks that the index and the reason are not null. */
-  public Result {
-    Objects.requireNonNull(variationIndex);
-    Objects.requireNonNull(reason);
-  }
-
-  /** An {@code ERROR} result: no value, no variation. */
+public record Result(Object value, Integer variationIndex, Reason reason) {
+  /**
+   * A failed evaluation: no value, no index, an error reason.
+   *
+   * @param code the error code
+   * @return the result
+   */
   public static Result failure(ErrorCode code) {
-    return new Result(null, OptionalInt.empty(), Reason.error(code));
+    return new Result(null, null, Reason.error(code));
   }
 }

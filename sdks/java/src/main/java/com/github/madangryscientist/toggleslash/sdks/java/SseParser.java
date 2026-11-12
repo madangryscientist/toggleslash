@@ -1,105 +1,98 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
-import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.charset.CharsetDecoder;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
-
 /**
- * A server-sent events parser, to the WHATWG rules: lines end in LF, CRLF or a lone CR; a line that
- * starts with a colon is a comment; the event name defaults to {@code message}; several {@code
- * data} lines are joined with LF; an event with no {@code data} line is dropped; an event still
- * open when the input ends is discarded (it is never flushed). Bytes are decoded as UTF-8 across
- * chunk boundaries, with U+FFFD for bad bytes.
+ * A Server-Sent Events parser, as the WHATWG standard reads a stream: LF, CRLF and a lone CR end a
+ * line, a line starting with a colon is a comment, and only {@code event} and {@code data} are
+ * read. An event still incomplete when the stream ends is never dispatched.
  */
 final class SseParser {
-  /** One dispatched event. */
-  record Event(String name, String data) {}
+  /** Receives each complete event. */
+  interface Sink {
+    /** Returns false to stop reading the stream. */
+    boolean event(String name, String data);
+  }
 
-  private final CharsetDecoder decoder =
-      StandardCharsets.UTF_8
-          .newDecoder()
-          .onMalformedInput(CodingErrorAction.REPLACE)
-          .onUnmappableCharacter(CodingErrorAction.REPLACE);
-  private ByteBuffer pending = ByteBuffer.allocate(0);
+  private final Sink sink;
   private final StringBuilder line = new StringBuilder();
   private final StringBuilder data = new StringBuilder();
-  private String name = "";
+  private String eventName = "";
   private boolean hasData;
-  private boolean skipLf;
+  private boolean afterCr;
   private boolean atStart = true;
+  private boolean stopped;
 
-  /** Feeds the next bytes and returns the events they completed. */
-  List<Event> feed(byte[] chunk, int length) {
-    ByteBuffer input = ByteBuffer.allocate(pending.remaining() + length);
-    input.put(pending);
-    input.put(chunk, 0, length);
-    input.flip();
-    CharBuffer out = CharBuffer.allocate(input.remaining() + 1);
-    decoder.decode(input, out, false);
-    pending = ByteBuffer.allocate(input.remaining());
-    pending.put(input);
-    pending.flip();
-    out.flip();
-    List<Event> events = new ArrayList<>();
-    while (out.hasRemaining()) {
-      char c = out.get();
+  SseParser(Sink sink) {
+    this.sink = sink;
+  }
+
+  /** Feeds decoded text; false once the sink asked to stop. */
+  boolean accept(CharSequence text) {
+    for (int i = 0; i < text.length() && !stopped; i++) {
+      char c = text.charAt(i);
       if (atStart) {
         atStart = false;
         if (c == '﻿') {
           continue;
         }
       }
-      if (skipLf) {
-        skipLf = false;
+      if (afterCr) {
+        afterCr = false;
         if (c == '\n') {
           continue;
         }
       }
       if (c == '\r') {
-        skipLf = true;
-        endLine(events);
+        endLine();
+        afterCr = true;
       } else if (c == '\n') {
-        endLine(events);
+        endLine();
       } else {
         line.append(c);
       }
     }
-    return events;
+    return !stopped;
   }
 
-  private void endLine(List<Event> events) {
-    String text = line.toString();
+  private void endLine() {
+    if (line.length() == 0) {
+      dispatch();
+      return;
+    }
+    if (line.charAt(0) != ':') {
+      int colon = line.indexOf(":");
+      String name;
+      String value;
+      if (colon < 0) {
+        name = line.toString();
+        value = "";
+      } else {
+        name = line.substring(0, colon);
+        int start = colon + 1;
+        if (start < line.length() && line.charAt(start) == ' ') {
+          start++;
+        }
+        value = line.substring(start);
+      }
+      if (name.equals("event")) {
+        eventName = value;
+      } else if (name.equals("data")) {
+        data.append(value).append('\n');
+        hasData = true;
+      }
+    }
     line.setLength(0);
-    if (text.isEmpty()) {
-      if (hasData) {
-        events.add(new Event(name.isEmpty() ? "message" : name, data.toString()));
-      }
-      name = "";
-      data.setLength(0);
-      hasData = false;
-      return;
-    }
-    if (text.charAt(0) == ':') {
-      return;
-    }
-    int colon = text.indexOf(':');
-    String field = colon < 0 ? text : text.substring(0, colon);
-    String value = colon < 0 ? "" : text.substring(colon + 1);
-    if (value.startsWith(" ")) {
-      value = value.substring(1);
-    }
-    if (field.equals("event")) {
-      name = value;
-    } else if (field.equals("data")) {
-      if (hasData) {
-        data.append('\n');
-      }
-      data.append(value);
-      hasData = true;
+  }
+
+  private void dispatch() {
+    line.setLength(0);
+    String name = eventName.isEmpty() ? "message" : eventName;
+    boolean had = hasData;
+    String payload = had ? data.substring(0, data.length() - 1) : "";
+    eventName = "";
+    data.setLength(0);
+    hasData = false;
+    if (had && !sink.event(name, payload)) {
+      stopped = true;
     }
   }
 }

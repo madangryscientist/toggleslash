@@ -1,56 +1,51 @@
 package com.github.madangryscientist.toggleslash.sdks.java.evaluation;
 
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Model.AttributeClause;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Model.Clause;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Model.ClauseValue;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Model.ContextList;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Model.Flag;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Model.Header;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Model.Op;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Model.Prerequisite;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Model.Rollout;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Model.Rule;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Model.Segment;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Model.SegmentClause;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Model.SegmentRule;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Model.Serve;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Model.Target;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.function.Predicate;
 
 /**
- * The shape of a ruleset, checked at run time because rulesets arrive as JSON. {@code
- * docs/evaluation.md} is normative for what counts as malformed. Null and absent are the same for
- * an optional field. A value here is a JSON tree: {@code Map}, {@code List}, {@code String}, {@code
- * Double}, {@code Boolean} or null.
+ * The shape of a ruleset, checked at runtime because rulesets arrive as JSON. Each method returns
+ * the model for a valid value and {@code null} for an invalid one. Null and absent are the same for
+ * an optional field.
  */
 final class Validate {
-  static final int BUCKET_COUNT = 100_000;
-
-  private static final Set<String> ATTRIBUTE_OPS =
-      Set.of(
-          "in",
-          "contains",
-          "startsWith",
-          "endsWith",
-          "lt",
-          "lte",
-          "gt",
-          "gte",
-          "semverEq",
-          "semverLt",
-          "semverLte",
-          "semverGt",
-          "semverGte",
-          "before",
-          "after",
-          "matches");
-
   private Validate() {}
 
   static boolean isRecord(Object value) {
     return value instanceof Map;
   }
 
-  /** The record's field, or null. The caller has checked {@link #isRecord}. */
-  static Object field(Object record, String name) {
-    return ((Map<?, ?>) record).get(name);
+  static boolean isKey(Object value) {
+    return value instanceof String && !((String) value).isEmpty();
   }
 
-  /** ASCII only: {@code [A-Za-z0-9._-]+}, and neither {@code kind} nor {@code multi}. */
+  /** {@code ^[A-Za-z0-9._-]+$}, and neither {@code kind} nor {@code multi}. */
   static boolean isKind(Object value) {
-    if (!(value instanceof String text) || text.isEmpty()) {
+    if (!(value instanceof String)) {
       return false;
     }
-    for (int i = 0; i < text.length(); i++) {
-      char c = text.charAt(i);
+    String s = (String) value;
+    if (s.isEmpty() || s.equals("kind") || s.equals("multi")) {
+      return false;
+    }
+    for (int i = 0; i < s.length(); i++) {
+      char c = s.charAt(i);
       boolean ok =
           (c >= 'A' && c <= 'Z')
               || (c >= 'a' && c <= 'z')
@@ -62,35 +57,42 @@ final class Validate {
         return false;
       }
     }
-    return !text.equals("kind") && !text.equals("multi");
+    return true;
   }
 
   private static boolean isOptionalKind(Object value) {
     return value == null || isKind(value);
   }
 
-  private static boolean isKey(Object value) {
-    return value instanceof String text && !text.isEmpty();
-  }
-
-  /** An integer of at least 0. */
+  /** A finite whole number at least 0. */
   static boolean isCount(Object value) {
-    return value instanceof Double d && Double.isFinite(d) && d == Math.floor(d) && d >= 0;
+    if (!(value instanceof Number)) {
+      return false;
+    }
+    double d = ((Number) value).doubleValue();
+    return Double.isFinite(d) && d == Math.floor(d) && d >= 0;
   }
 
   private static boolean isVariationIndex(Object value, int variationCount) {
-    return isCount(value) && (Double) value < variationCount;
+    return isCount(value) && ((Number) value).doubleValue() < variationCount;
   }
 
-  private static boolean isStringArray(Object value) {
-    return value instanceof List<?> list && list.stream().allMatch(item -> item instanceof String);
+  private static Object get(Object record, String name) {
+    return ((Map<?, ?>) record).get(name);
   }
 
-  private static boolean isClauseValue(Object value) {
-    if (value instanceof Double d) {
-      return Double.isFinite(d);
+  private static List<String> stringList(Object value) {
+    if (!(value instanceof List)) {
+      return null;
     }
-    return value instanceof String || value instanceof Boolean;
+    List<String> out = new ArrayList<>();
+    for (Object item : (List<?>) value) {
+      if (!(item instanceof String)) {
+        return null;
+      }
+      out.add((String) item);
+    }
+    return out;
   }
 
   private static boolean isNegate(Object value) {
@@ -101,147 +103,351 @@ final class Validate {
     if (!isKey(value)) {
       return false;
     }
-    String name = (String) value;
-    return !name.startsWith("/") || Reference.parse(name) != null;
+    String s = (String) value;
+    return !s.startsWith("/") || Reference.parse(s) != null;
   }
 
-  static boolean isAttributeClause(Object value) {
-    if (!isRecord(value)
-        || !(field(value, "op") instanceof String op)
-        || !ATTRIBUTE_OPS.contains(op)) {
-      return false;
-    }
-    return isAttributeName(field(value, "attribute"))
-        && isNegate(field(value, "negate"))
-        && isOptionalKind(field(value, "contextKind"))
-        && field(value, "values") instanceof List<?> values
-        && values.stream().allMatch(Validate::isClauseValue);
-  }
-
-  private static boolean isSegmentClause(Object value) {
-    if (!isRecord(value) || !"segmentMatch".equals(field(value, "op"))) {
-      return false;
-    }
-    return isNegate(field(value, "negate")) && isStringArray(field(value, "values"));
-  }
-
-  private static boolean isWeightedVariation(Object value, int variationCount) {
-    return isRecord(value)
-        && isVariationIndex(field(value, "variation"), variationCount)
-        && isCount(field(value, "weight"))
-        && (Double) field(value, "weight") <= BUCKET_COUNT;
-  }
-
-  private static boolean isRollout(Object value, int variationCount) {
-    if (!isRecord(value) || !isOptionalKind(field(value, "contextKind"))) {
-      return false;
-    }
-    if (!(field(value, "variations") instanceof List<?> variations) || variations.isEmpty()) {
-      return false;
-    }
-    double total = 0;
-    for (Object item : variations) {
-      if (!isWeightedVariation(item, variationCount)) {
-        return false;
+  private static ClauseValue clauseValue(Object value, Op op) {
+    if (value instanceof Number) {
+      double d = ((Number) value).doubleValue();
+      if (!Double.isFinite(d)) {
+        return null;
       }
-      total += (Double) field(item, "weight");
+      ClauseValue cv = new ClauseValue(d);
+      if (op == Op.BEFORE || op == Op.AFTER) {
+        cv.instant = d;
+      }
+      return cv;
     }
-    return total == BUCKET_COUNT;
+    if (value instanceof Boolean) {
+      return new ClauseValue(value);
+    }
+    if (!(value instanceof String)) {
+      return null;
+    }
+    String s = (String) value;
+    ClauseValue cv = new ClauseValue(s);
+    switch (op) {
+      case SEMVER_EQ:
+      case SEMVER_LT:
+      case SEMVER_LTE:
+      case SEMVER_GT:
+      case SEMVER_GTE:
+        cv.version = Semver.parse(s);
+        break;
+      case BEFORE:
+      case AFTER:
+        cv.instant = Dates.parseInstant(s);
+        break;
+      case MATCHES:
+        cv.program = Regex.compile(s);
+        break;
+      default:
+        break;
+    }
+    return cv;
   }
 
-  /** {@code variation} (an index) or {@code rollout}, not both. */
-  static boolean isServe(Object value, int variationCount) {
+  static AttributeClause attributeClause(Object value) {
     if (!isRecord(value)) {
-      return false;
+      return null;
     }
-    Object variation = field(value, "variation");
-    Object rollout = field(value, "rollout");
+    Op op = Op.of(get(value, "op"));
+    Object values = get(value, "values");
+    Object attribute = get(value, "attribute");
+    if (op == null
+        || !isAttributeName(attribute)
+        || !isNegate(get(value, "negate"))
+        || !isOptionalKind(get(value, "contextKind"))
+        || !(values instanceof List)) {
+      return null;
+    }
+    List<ClauseValue> parsed = new ArrayList<>();
+    for (Object item : (List<?>) values) {
+      ClauseValue cv = clauseValue(item, op);
+      if (cv == null) {
+        return null;
+      }
+      parsed.add(cv);
+    }
+    String name = (String) attribute;
+    List<String> path = name.startsWith("/") ? Reference.parse(name) : List.of(name);
+    return new AttributeClause(
+        op,
+        path,
+        parsed,
+        Boolean.TRUE.equals(get(value, "negate")),
+        (String) get(value, "contextKind"));
+  }
+
+  private static SegmentClause segmentClause(Object value) {
+    if (!isRecord(value) || !"segmentMatch".equals(get(value, "op"))) {
+      return null;
+    }
+    List<String> values = stringList(get(value, "values"));
+    if (!isNegate(get(value, "negate")) || values == null) {
+      return null;
+    }
+    return new SegmentClause(values, Boolean.TRUE.equals(get(value, "negate")));
+  }
+
+  private static Rollout rollout(Object value, int variationCount) {
+    if (!isRecord(value) || !isOptionalKind(get(value, "contextKind"))) {
+      return null;
+    }
+    Object variations = get(value, "variations");
+    if (!(variations instanceof List) || ((List<?>) variations).isEmpty()) {
+      return null;
+    }
+    List<?> list = (List<?>) variations;
+    int[] indexes = new int[list.size()];
+    int[] weights = new int[list.size()];
+    long total = 0;
+    for (int i = 0; i < list.size(); i++) {
+      Object item = list.get(i);
+      if (!isRecord(item)) {
+        return null;
+      }
+      Object variation = get(item, "variation");
+      Object weight = get(item, "weight");
+      if (!isVariationIndex(variation, variationCount)
+          || !isCount(weight)
+          || ((Number) weight).doubleValue() > Bucket.COUNT) {
+        return null;
+      }
+      indexes[i] = ((Number) variation).intValue();
+      weights[i] = ((Number) weight).intValue();
+      total += weights[i];
+    }
+    if (total != Bucket.COUNT) {
+      return null;
+    }
+    return new Rollout(indexes, weights, (String) get(value, "contextKind"));
+  }
+
+  private static Serve serve(Object value, int variationCount) {
+    if (!isRecord(value)) {
+      return null;
+    }
+    Object variation = get(value, "variation");
+    Object rollout = get(value, "rollout");
     if (rollout == null) {
-      return isVariationIndex(variation, variationCount);
+      return isVariationIndex(variation, variationCount)
+          ? new Serve(((Number) variation).intValue(), null)
+          : null;
     }
-    return variation == null && isRollout(rollout, variationCount);
-  }
-
-  private static boolean isRule(Object value, int variationCount) {
-    if (!isRecord(value) || !(field(value, "clauses") instanceof List<?> clauses)) {
-      return false;
+    if (variation != null) {
+      return null;
     }
-    return clauses.stream().allMatch(c -> isAttributeClause(c) || isSegmentClause(c))
-        && isServe(value, variationCount);
+    Rollout parsed = rollout(rollout, variationCount);
+    return parsed == null ? null : new Serve(-1, parsed);
   }
 
-  private static boolean isTarget(Object value, int variationCount) {
-    return isRecord(value)
-        && isVariationIndex(field(value, "variation"), variationCount)
-        && isStringArray(field(value, "contextKeys"))
-        && isOptionalKind(field(value, "contextKind"));
-  }
-
-  private static boolean isPrerequisite(Object value) {
-    return isRecord(value) && isKey(field(value, "flagKey")) && isCount(field(value, "variation"));
-  }
-
-  /** What serving the off variation needs. It is checked apart so {@code on: false} survives. */
-  static boolean isFlagHeader(Object value) {
-    if (!isRecord(value) || !(field(value, "on") instanceof Boolean)) {
-      return false;
-    }
-    if (!isKey(field(value, "key"))
-        || !(field(value, "variations") instanceof List<?> variations)
-        || variations.isEmpty()) {
-      return false;
-    }
-    Object offVariation = field(value, "offVariation");
-    return offVariation == null || isVariationIndex(offVariation, variations.size());
-  }
-
-  private static boolean everyItem(Object value, Predicate<Object> check) {
-    return value instanceof List<?> list && list.stream().allMatch(check);
-  }
-
-  static boolean isFlagBody(Object value, int variationCount) {
+  private static Rule rule(Object value, int variationCount) {
     if (!isRecord(value)) {
-      return false;
+      return null;
     }
-    return field(value, "salt") instanceof String
-        && isCount(field(value, "version"))
-        && everyItem(field(value, "targets"), item -> isTarget(item, variationCount))
-        && everyItem(field(value, "prerequisites"), Validate::isPrerequisite)
-        && everyItem(field(value, "rules"), item -> isRule(item, variationCount))
-        && isServe(field(value, "fallthrough"), variationCount);
+    Object clauses = get(value, "clauses");
+    if (!(clauses instanceof List)) {
+      return null;
+    }
+    List<Clause> parsed = new ArrayList<>();
+    for (Object item : (List<?>) clauses) {
+      Clause clause = attributeClause(item);
+      if (clause == null) {
+        clause = segmentClause(item);
+      }
+      if (clause == null) {
+        return null;
+      }
+      parsed.add(clause);
+    }
+    Serve serve = serve(value, variationCount);
+    return serve == null ? null : new Rule(parsed, serve);
   }
 
-  private static boolean isSegmentRule(Object value) {
+  private static Target target(Object value, int variationCount) {
     if (!isRecord(value)) {
-      return false;
+      return null;
     }
-    Object weight = field(value, "weight");
-    boolean weightIsValid = weight == null || (isCount(weight) && (Double) weight <= BUCKET_COUNT);
-    return weightIsValid
-        && isOptionalKind(field(value, "rolloutContextKind"))
-        && everyItem(field(value, "clauses"), Validate::isAttributeClause);
+    Object variation = get(value, "variation");
+    List<String> keys = stringList(get(value, "contextKeys"));
+    if (!isVariationIndex(variation, variationCount)
+        || keys == null
+        || !isOptionalKind(get(value, "contextKind"))) {
+      return null;
+    }
+    return new Target(((Number) variation).intValue(), keys, (String) get(value, "contextKind"));
   }
 
-  private static boolean isContextList(Object value) {
-    return isRecord(value)
-        && isKind(field(value, "contextKind"))
-        && isStringArray(field(value, "values"));
+  private static Prerequisite prerequisite(Object value) {
+    if (!isRecord(value) || !isKey(get(value, "flagKey")) || !isCount(get(value, "variation"))) {
+      return null;
+    }
+    double variation = ((Number) get(value, "variation")).doubleValue();
+    // A variation index past the int range matches no index; keep it out of range.
+    int index = variation > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) variation;
+    return new Prerequisite((String) get(value, "flagKey"), index);
   }
 
-  private static boolean isOptionalContextLists(Object value) {
-    return value == null || everyItem(value, Validate::isContextList);
+  /** What serving the off variation needs; checked apart so on false survives a bad rule. */
+  static Header header(Object value) {
+    if (!isRecord(value) || !(get(value, "on") instanceof Boolean)) {
+      return null;
+    }
+    Object variations = get(value, "variations");
+    if (!isKey(get(value, "key")) || !(variations instanceof List)) {
+      return null;
+    }
+    List<?> list = (List<?>) variations;
+    if (list.isEmpty()) {
+      return null;
+    }
+    Object off = get(value, "offVariation");
+    int offIndex = -1;
+    if (off != null) {
+      if (!isVariationIndex(off, list.size())) {
+        return null;
+      }
+      offIndex = ((Number) off).intValue();
+    }
+    return new Header((String) get(value, "key"), (Boolean) get(value, "on"), list, offIndex);
   }
 
-  static boolean isSegment(Object value) {
+  /** The body of a flag whose header is valid, or null. */
+  static Flag body(Object value, Header header) {
+    int count = header.variations.size();
+    Object salt = get(value, "salt");
+    Object version = get(value, "version");
+    if (!(salt instanceof String) || !isCount(version)) {
+      return null;
+    }
+    Object targets = get(value, "targets");
+    Object prerequisites = get(value, "prerequisites");
+    Object rules = get(value, "rules");
+    if (!(targets instanceof List)
+        || !(prerequisites instanceof List)
+        || !(rules instanceof List)) {
+      return null;
+    }
+    List<Target> parsedTargets = new ArrayList<>();
+    for (Object item : (List<?>) targets) {
+      Target t = target(item, count);
+      if (t == null) {
+        return null;
+      }
+      parsedTargets.add(t);
+    }
+    List<Prerequisite> parsedPrerequisites = new ArrayList<>();
+    for (Object item : (List<?>) prerequisites) {
+      Prerequisite p = prerequisite(item);
+      if (p == null) {
+        return null;
+      }
+      parsedPrerequisites.add(p);
+    }
+    List<Rule> parsedRules = new ArrayList<>();
+    for (Object item : (List<?>) rules) {
+      Rule r = rule(item, count);
+      if (r == null) {
+        return null;
+      }
+      parsedRules.add(r);
+    }
+    Serve fallthrough = serve(get(value, "fallthrough"), count);
+    if (fallthrough == null) {
+      return null;
+    }
+    return new Flag(
+        header,
+        (String) salt,
+        ((Number) version).doubleValue(),
+        parsedTargets,
+        parsedPrerequisites,
+        parsedRules,
+        fallthrough);
+  }
+
+  private static SegmentRule segmentRule(Object value) {
     if (!isRecord(value)) {
-      return false;
+      return null;
     }
-    return isKey(field(value, "key"))
-        && field(value, "salt") instanceof String
-        && isStringArray(field(value, "included"))
-        && isStringArray(field(value, "excluded"))
-        && isOptionalContextLists(field(value, "includedContexts"))
-        && isOptionalContextLists(field(value, "excludedContexts"))
-        && everyItem(field(value, "rules"), Validate::isSegmentRule);
+    Object weight = get(value, "weight");
+    int parsedWeight = -1;
+    if (weight != null) {
+      if (!isCount(weight) || ((Number) weight).doubleValue() > Bucket.COUNT) {
+        return null;
+      }
+      parsedWeight = ((Number) weight).intValue();
+    }
+    Object clauses = get(value, "clauses");
+    if (!isOptionalKind(get(value, "rolloutContextKind")) || !(clauses instanceof List)) {
+      return null;
+    }
+    List<AttributeClause> parsed = new ArrayList<>();
+    for (Object item : (List<?>) clauses) {
+      AttributeClause clause = attributeClause(item);
+      if (clause == null) {
+        return null;
+      }
+      parsed.add(clause);
+    }
+    return new SegmentRule(parsed, parsedWeight, (String) get(value, "rolloutContextKind"));
+  }
+
+  /** Optional context lists: absent gives an empty list, an invalid one gives null. */
+  private static List<ContextList> contextLists(Object value) {
+    List<ContextList> out = new ArrayList<>();
+    if (value == null) {
+      return out;
+    }
+    if (!(value instanceof List)) {
+      return null;
+    }
+    for (Object item : (List<?>) value) {
+      if (!isRecord(item) || !isKind(get(item, "contextKind"))) {
+        return null;
+      }
+      List<String> values = stringList(get(item, "values"));
+      if (values == null) {
+        return null;
+      }
+      out.add(new ContextList((String) get(item, "contextKind"), values));
+    }
+    return out;
+  }
+
+  static Segment segment(Object value) {
+    if (!isRecord(value) || !isKey(get(value, "key")) || !(get(value, "salt") instanceof String)) {
+      return null;
+    }
+    List<String> included = stringList(get(value, "included"));
+    List<String> excluded = stringList(get(value, "excluded"));
+    List<ContextList> includedContexts = contextLists(get(value, "includedContexts"));
+    List<ContextList> excludedContexts = contextLists(get(value, "excludedContexts"));
+    Object rules = get(value, "rules");
+    if (included == null
+        || excluded == null
+        || includedContexts == null
+        || excludedContexts == null
+        || !(rules instanceof List)) {
+      return null;
+    }
+    List<SegmentRule> parsedRules = new ArrayList<>();
+    for (Object item : (List<?>) rules) {
+      SegmentRule rule = segmentRule(item);
+      if (rule == null) {
+        return null;
+      }
+      parsedRules.add(rule);
+    }
+    return new Segment(
+        (String) get(value, "key"),
+        (String) get(value, "salt"),
+        included,
+        excluded,
+        includedContexts,
+        excludedContexts,
+        parsedRules);
   }
 }

@@ -1,103 +1,130 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
-import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Json;
-import java.time.Clock;
-import java.time.Duration;
+import com.github.madangryscientist.toggleslash.sdks.java.json.Json;
+import com.github.madangryscientist.toggleslash.sdks.java.json.Utf8;
+import java.net.URI;
+import java.net.http.HttpRequest;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.Consumer;
 
-/**
- * Usage counts: how many times each variation of each flag was served on each UTC day. The counts
- * go out as numbers only, never a context. Recording takes a short lock that no I/O ever holds;
- * flushes run one at a time.
- */
+/** The usage counts: kept in memory, summed per flag, variation and UTC day, and flushed. */
 final class Usage {
-  private static final int BATCH = 500;
+  static final int MAX_ENTRIES = 500;
 
-  private record Key(String flag, int variationIndex, String day) {}
+  private record Key(String flag, int index, String day) {}
 
+  private record Entry(Key key, long count) {}
+
+  private final Object lock = new Object();
+  private Map<Key, Long> counts = new LinkedHashMap<>();
+  private final ReentrantLock flushLock = new ReentrantLock();
   private final Http http;
   private final String url;
   private final String sdkKey;
-  private final Duration timeout;
+  private final java.time.Duration timeout;
   private final Clock clock;
-  private final Hold hold;
-  private final Consumer<Throwable> report;
-  private final Object lock = new Object();
-  private final ReentrantLock flushLock = new ReentrantLock();
-  private Map<Key, Long> pending = new LinkedHashMap<>();
-  private volatile boolean recording = true;
+  private final Reporter reporter;
+  private volatile long holdUntil = Long.MIN_VALUE;
 
   Usage(
       Http http,
-      String baseUrl,
+      String url,
       String sdkKey,
-      Duration timeout,
+      java.time.Duration timeout,
       Clock clock,
-      Hold hold,
-      Consumer<Throwable> report) {
+      Reporter reporter) {
     this.http = http;
-    this.url = baseUrl + "/sdk/v1/events";
+    this.url = url;
     this.sdkKey = sdkKey;
     this.timeout = timeout;
     this.clock = clock;
-    this.hold = hold;
-    this.report = report;
+    this.reporter = reporter;
   }
 
-  /** Counts one served variation, unless the client is closing. */
-  void record(String flag, int variationIndex) {
-    if (!recording) {
-      return;
-    }
-    String day = LocalDate.now(clock.withZone(ZoneOffset.UTC)).toString();
-    Key key = new Key(flag, variationIndex, day);
+  static String day(long wallMillis) {
+    return LocalDate.ofEpochDay(Math.floorDiv(wallMillis, 86_400_000L)).toString();
+  }
+
+  void record(String flag, int index) {
+    Key key = new Key(flag, index, day(clock.wallMillis()));
     synchronized (lock) {
-      pending.merge(key, 1L, Long::sum);
+      counts.merge(key, 1L, Long::sum);
     }
   }
 
-  void stopRecording() {
-    recording = false;
-  }
-
-  /** How many (flag, variation, day) entries wait to be sent. */
-  int pendingEntries() {
+  private List<Entry> take() {
+    Map<Key, Long> taken;
     synchronized (lock) {
-      return pending.size();
+      taken = counts;
+      counts = new LinkedHashMap<>();
+    }
+    List<Entry> entries = new ArrayList<>(taken.size());
+    for (Map.Entry<Key, Long> entry : taken.entrySet()) {
+      entries.add(new Entry(entry.getKey(), entry.getValue()));
+    }
+    return entries;
+  }
+
+  private void keep(List<Entry> entries) {
+    synchronized (lock) {
+      for (Entry entry : entries) {
+        counts.merge(entry.key(), entry.count(), Long::sum);
+      }
     }
   }
 
-  /** Sends what is pending, 500 entries a request; returns at once while the server says wait. */
-  void flush() {
+  private boolean held() {
+    return holdUntil != Long.MIN_VALUE && clock.monoMillis() < holdUntil;
+  }
+
+  private static String body(List<Entry> entries) {
+    StringBuilder out = new StringBuilder("{\"events\":[");
+    boolean first = true;
+    for (Entry entry : entries) {
+      if (!first) {
+        out.append(',');
+      }
+      first = false;
+      out.append("{\"flag\":");
+      Json.writeString(out, entry.key().flag());
+      out.append(",\"variationIndex\":")
+          .append(entry.key().index())
+          .append(",\"count\":")
+          .append(entry.count())
+          .append(",\"day\":\"")
+          .append(entry.key().day())
+          .append("\"}");
+    }
+    return out.append("]}").toString();
+  }
+
+  /** Sends what is pending. The final flush does not wait out a hold. */
+  void flush(boolean last) {
     flushLock.lock();
     try {
-      if (hold.remainingNanos() > 0) {
+      if (!last && held()) {
         return;
       }
-      Map<Key, Long> taken;
-      synchronized (lock) {
-        taken = pending;
-        pending = new LinkedHashMap<>();
+      List<Entry> pending = take();
+      if (pending.isEmpty()) {
+        return;
       }
-      List<Map.Entry<Key, Long>> entries = new ArrayList<>(taken.entrySet());
+      if (last && held()) {
+        reporter.report(
+            "closed with " + pending.size() + " usage counts unsent: the server asked to wait");
+        return;
+      }
       int sent = 0;
-      while (sent < entries.size()) {
-        int end = Math.min(sent + BATCH, entries.size());
-        boolean done = post(entries.subList(sent, end));
-        if (!done) {
-          // Keep this batch and the ones not tried, and stop: the next flush tries again.
-          synchronized (lock) {
-            for (Map.Entry<Key, Long> entry : entries.subList(sent, entries.size())) {
-              pending.merge(entry.getKey(), entry.getValue(), Long::sum);
-            }
-          }
+      while (sent < pending.size()) {
+        int end = Math.min(sent + MAX_ENTRIES, pending.size());
+        List<Entry> chunk = pending.subList(sent, end);
+        Outcome outcome = post(chunk);
+        if (outcome == Outcome.KEEP) {
+          keep(pending.subList(sent, pending.size()));
           return;
         }
         sent = end;
@@ -107,52 +134,45 @@ final class Usage {
     }
   }
 
-  /** The last flush: it does not wait out a hold; counts it could not send are reported. */
-  void finish() {
-    flush();
-    int left = pendingEntries();
-    if (left > 0 && hold.remainingNanos() > 0) {
-      report.accept(
-          new ToggleSlashException(
-              "usage", "closed with " + left + " usage counts unsent: the server asked to wait"));
-    }
+  private enum Outcome {
+    SENT,
+    KEEP,
+    DROP
   }
 
-  /**
-   * True when the batch is done with (sent, or dropped for good); false when it is worth keeping.
-   */
-  private boolean post(List<Map.Entry<Key, Long>> batch) {
-    List<Object> events = new ArrayList<>();
-    for (Map.Entry<Key, Long> entry : batch) {
-      Map<String, Object> event = new LinkedHashMap<>();
-      event.put("flag", entry.getKey().flag());
-      event.put("variationIndex", entry.getKey().variationIndex());
-      event.put("count", entry.getValue());
-      event.put("day", entry.getKey().day());
-      events.add(event);
-    }
-    Map<String, Object> body = new LinkedHashMap<>();
-    body.put("events", events);
-    Map<String, String> headers = new LinkedHashMap<>();
-    headers.put("Authorization", "Bearer " + sdkKey);
-    headers.put("Content-Type", "application/json");
-    Http.Reply reply;
+  private Outcome post(List<Entry> chunk) {
+    byte[] bytes = Utf8.encode(body(chunk));
+    HttpRequest.Builder request;
     try {
-      reply = http.post(url, Json.write(body), headers, timeout);
+      request =
+          HttpRequest.newBuilder(URI.create(url + "/sdk/v1/events"))
+              .header("Authorization", "Bearer " + sdkKey)
+              .header("Content-Type", "application/json")
+              .header("Accept", "application/json")
+              .POST(HttpRequest.BodyPublishers.ofByteArray(bytes));
+    } catch (RuntimeException e) {
+      reporter.report("usage request failed: " + Status.NETWORK);
+      return Outcome.KEEP;
+    }
+    Http.Response response;
+    try {
+      response = http.send(request, timeout);
     } catch (Http.Failure failure) {
-      String code = failure.kind() == Http.Kind.TIMEOUT ? "timeout" : "network";
-      report.accept(new ToggleSlashException(code, "POST /sdk/v1/events failed: " + code));
-      return false;
+      reporter.report("usage request failed: " + failure.code);
+      return Outcome.KEEP;
     }
-    int status = reply.status();
+    int status = response.status;
     if (status >= 200 && status < 300) {
-      return true;
+      return Outcome.SENT;
     }
+    reporter.report("usage request failed: http_" + status);
     if (status == 429) {
-      Sync.retryAfterSeconds(reply.retryAfter()).ifPresent(hold::extend);
+      long seconds = RetryAfter.seconds(response.retryAfter);
+      if (seconds >= 0) {
+        holdUntil = Math.max(holdUntil, clock.monoMillis() + seconds * 1000L);
+      }
     }
-    report.accept(new ToggleSlashException("usage", "POST /sdk/v1/events answered " + status));
-    boolean retryable = status >= 500 || status == 408 || status == 429;
-    return !retryable;
+    boolean retry = status >= 500 || status == 408 || status == 429;
+    return retry ? Outcome.KEEP : Outcome.DROP;
   }
 }

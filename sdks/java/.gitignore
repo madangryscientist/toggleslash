@@ -1,9 +1,2 @@
-# Maven output
+# Maven build output (bin/test builds into target/).
 target/
-# Editors and tools
-.idea/
-*.iml
-.vscode/
-.classpath
-.project
-.settings/

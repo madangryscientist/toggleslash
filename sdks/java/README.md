@@ -1,75 +1,68 @@
 # ToggleSlash server SDK for Java
 
-Feature flags evaluated locally, in your process, from a ruleset the ToggleSlash server keeps current. It
-meets [`docs/sdk-contract.md`](../../docs/sdk-contract.md), has no runtime dependency outside the JDK
-(Java 17 or later) and is **not published**: there is no version to install from a registry.
+The Java server SDK of [ToggleSlash](../../README.md). It follows the language-neutral
+[`docs/sdk-contract.md`](../../docs/sdk-contract.md) and evaluates flags locally, to
+[`docs/evaluation.md`](../../docs/evaluation.md), against a ruleset it keeps current from the server. It has no
+runtime dependency (the JDK's own HTTP client and nothing else), needs Java 17 or newer, and is not published
+anywhere: use it from a checkout of this repository.
 
 ## Quickstart
 
-Install from a checkout of this repository: build it and put the jar on your class path.
-
-```sh
-cd sdks/java
-mise install            # the pinned Java and Maven, once
-mise exec -- mvn -B -q -DskipTests package   # writes target/toggleslash-sdk-java-0.1.0-SNAPSHOT.jar
-```
-
-Then:
-
 ```java
 import com.github.madangryscientist.toggleslash.sdks.java.Client;
-import com.github.madangryscientist.toggleslash.sdks.java.Context;
+import com.github.madangryscientist.toggleslash.sdks.java.Detail;
 import com.github.madangryscientist.toggleslash.sdks.java.Options;
+import java.util.Map;
 
-public final class Main {
-  public static void main(String[] args) {
-    // Read the key from the environment, never from source.
-    Options options =
-        Options.builder("https://flags.example.com", System.getenv("TOGGLESLASH_SDK_KEY")).build();
-    try (Client client = Client.create(options)) { // close() sends the last usage counts
-      client.ready(); // optional: waits for the first load, never longer than the request timeout
-      Context user = Context.user("user-42").with("plan", "pro");
-      if (client.boolVariation("new-checkout", user, false)) {
-        // ...
-      }
-    }
+try (Client client =
+    Client.create(
+        Options.builder(
+                "https://toggleslash.example.invalid", // the server's base URL
+                "sdk-key-from-the-dashboard") // a server SDK key
+            .build())) {
+  if (client.ready()) { // waits for the first load attempt, bounded by requestTimeout
+    System.out.println("ruleset loaded");
   }
-}
+  Map<String, Object> context = Map.of("key", "user-42", "plan", "pro");
+  if (client.booleanVariation("new-checkout", context, false)) {
+    System.out.println("new checkout");
+  }
+  Detail<String> detail = client.stringVariationDetail("banner-text", context, "welcome");
+  System.out.println(detail.value() + " " + detail.variationIndex() + " " + detail.reason());
+} // close flushes usage counts and stops the background threads
 ```
 
-`Client.create` returns at once and never throws. `...Variation` and its `...VariationDetail` twins never wait
-for the network: before the first load they answer your fallback with the reason `ERROR` / `NOT_READY`. A
-client is safe to use from many threads. Options are `stream`, `pollInterval`, `flushInterval`,
-`requestTimeout`, `afterEvaluation` and `onError`.
+## Mapping from the contract
 
-## The API
-
-Every name in the contract and its Java spelling is in the table in
-[`DESIGN.md`](DESIGN.md#the-mapping-table), along with the design choices behind it.
+The full table (every name, option and default, and what is a `Detail`, a `Status` and a `StreamState`) is
+section 1 of [`DESIGN.md`](DESIGN.md). In short: `Client.create(Options)`, `client.ready()`,
+`client.booleanVariation(...)`, `stringVariation`, `longVariation` (the integer accessor), `doubleVariation`,
+`jsonVariation` and the generic `client.variation(flagKey, context, fallback)`, each with a `...Detail` twin,
+`client.status()` and `client.close()`; options `stream`, `pollInterval`, `flushInterval`, `requestTimeout`,
+`afterEvaluation` and `onError` on `Options.builder(url, sdkKey)`.
 
 ## Guarantees
 
-The contract's section 5, as this SDK keeps it:
+- Nothing is thrown at a caller: a failure becomes your fallback with an `ERROR` reason, goes to `onError`, or both.
+- `variation`, `variationDetail` and `status` read memory only: they never wait on the network, a load or a flush.
+- `ready()` settles after the first attempt, is bounded by `requestTimeout`, and gives the same answer each time.
+- The SDK keeps evaluating from the last good ruleset while the server is unreachable; only a valid ruleset replaces one.
+- No evaluation context, attribute or SDK key appears in a request body or URL (the key is the `Authorization`
+  header only), a log line, a status or an error the SDK builds. The SDK writes no log line at all.
+- `close()` is safe to call twice and from many threads, and returns within about twice `requestTimeout`.
+- The SDK's threads are daemon threads: a client nobody closed does not keep the process alive.
 
-1. It never throws at a caller, whatever the server, the network, a context, a hook or `onError` does.
-2. `variation`, `variationDetail` and `status` never do I/O and never wait.
-3. `ready` settles after the first attempt and gives the same answer every time.
-4. While the server is unreachable it keeps evaluating from the last good ruleset.
-5. Only something with the shape of a ruleset replaces a ruleset.
+## Check it
 
-It also sends no context, context key or attribute anywhere: usage counts carry a flag, a variation index and
-a day.
-
-## Running the checks
-
-The toolchain is pinned in [`mise.toml`](mise.toml) (`mise install` from this directory). The `bin` scripts
-find it themselves.
+From the root of the repository:
 
 ```sh
-sdks/java/bin/lint      # google-java-format --dry-run, Checkstyle, javac -Xlint:all -Werror
-sdks/java/bin/test      # mvn clean test: every evaluation vector, the native tests, and the test service's build
-bun run conformance -- --service sdks/java/bin/test-service   # from the repository root: the conformance harness
+sdks/java/bin/lint                                            # google-java-format --set-exit-if-changed and Checkstyle
+sdks/java/bin/test                                            # JUnit, and every evaluation vector
+bun run conformance -- --service sdks/java/bin/test-service   # the shared conformance harness
 ```
 
-The test service is described in [`test-service/README.md`](test-service/README.md). A report of the run that
-built this SDK is in [`RUN.md`](RUN.md).
+`mise.toml` pins Temurin, Maven, Checkstyle and google-java-format; with `mise` installed the scripts use those
+versions. See [`test-service/README.md`](test-service/README.md) for the conformance service,
+[`DESIGN.md`](DESIGN.md) for the design decisions and [`RUN.md`](RUN.md) for the report of the run that wrote
+this SDK.
