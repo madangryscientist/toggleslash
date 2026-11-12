@@ -81,7 +81,7 @@ answers `variationDetail`'s three fields. No scenario sends a typed accessor (`b
 `int`) a fallback that is null or of another kind, so a service MAY answer 400 to one; `any` and `json` take
 any fallback, null included; this changes nothing in contract section 4. A service maps these onto its SDK's
 methods and says how in a README next to it. The `json` accessor applies contract 4's mismatch rule like the others: it compares
-kinds (array and object are distinct, a null fallback accepts any kind), never the fallback's contents. A number
+kinds (array and object are distinct, a null fallback accepts any kind), never the fallback's contents. It maps to the SDK's JSON accessor (or its generic method), with the fallback it is sent, and contract 4 holds that method to the same rule. A number
 that is not finite (a `1e999` read as Infinity) is written back as JSON `null`, as `JSON.stringify` does. The `int` accessor's answer MAY be written back through a double, as `sdks/go/test-service/main.go` does in its `int` case: no scenario or vector serves the `int` accessor an integer within signed 64 bits that a double cannot hold exactly.
 
 **Hook events** are `{ flagKey, context, value, variationIndex, reason, etag, flagVersion }`, in the
