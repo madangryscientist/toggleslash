@@ -1,16 +1,16 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
-/** How the stream is doing, spelled as in the contract by {@link #value()}. */
+/** How the stream is doing, to section 8 of the SDK contract. */
 public enum StreamState {
-  /** {@code stream(false)}: polling only. */
+  /** The {@code stream} option is off. It stays off until {@code close}. */
   OFF("off"),
-  /** Opening the stream, or the first load. */
+  /** The first load, and each stream attempt while it is opening. */
   CONNECTING("connecting"),
-  /** The server's {@code connected} event arrived. */
+  /** The stream's {@code connected} event arrived and the stream is still open. */
   CONNECTED("connected"),
-  /** Down, waiting to retry (polling meanwhile). */
+  /** The last stream attempt ended and the SDK is waiting to retry. */
   DISCONNECTED("disconnected"),
-  /** After {@code close()}. */
+  /** {@code close} has been called. */
   CLOSED("closed");
 
   private final String value;
@@ -19,13 +19,12 @@ public enum StreamState {
     this.value = value;
   }
 
-  /** The canonical spelling, as it appears in the contract and on the wire. */
+  /**
+   * The canonical lower-case spelling.
+   *
+   * @return the spelling the contract uses
+   */
   public String value() {
-    return value;
-  }
-
-  @Override
-  public String toString() {
     return value;
   }
 }

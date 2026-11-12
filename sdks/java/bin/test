@@ -1,16 +1,17 @@
 #!/bin/sh
-# Runs every native test (the evaluation vectors included), then builds the test service.
+# Builds the SDK, its tests and the test service from clean, then runs every test, the evaluation
+# vectors included, and prints `vectors: <n> pins: <n>`. Needs only what mise.toml pins.
 set -eu
 cd "$(dirname "$0")/.."
 
-run() {
-  if command -v mise >/dev/null 2>&1; then
-    mise exec -- "$@"
-  else
-    "$@"
-  fi
-}
+if command -v mise >/dev/null 2>&1; then
+  run() { mise exec -- "$@"; }
+else
+  run() { "$@"; }
+fi
 
-# `clean test` compiles main, the tests and the test service every time, so a stale build never hides a
-# failure. The test service's classes are in target/test-classes.
-run mvn -B -q clean test
+# `clean` so no result is ever cached. The test service's sources are a test source root of the
+# pom, so this compiles them with the tests.
+run mvn -B -ntp clean test
+# The test service's classes are what bin/test-service runs; make sure they are there, last.
+run mvn -B -ntp -q test-compile

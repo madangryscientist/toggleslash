@@ -1,40 +1,85 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
-import java.util.function.LongSupplier;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * A server's "wait this long" (a {@code 429} with {@code Retry-After}): a deadline on a monotonic
- * clock that only moves later, never longer than {@link #MAX_SECONDS} from the moment it is asked
- * for.
+ * A Retry-After hold: an absolute monotonic time before which nothing is sent. It only ever moves
+ * later.
  */
 final class Hold {
-  /** However long a server asks, a client is back within this. */
-  static final long MAX_SECONDS = 300;
+  /** The longest a Retry-After is honoured. */
+  static final long CAP_SECONDS = 300;
 
-  private final LongSupplier nanoTime;
-  private long until;
-  private boolean set;
+  private static final long NONE = Long.MIN_VALUE;
 
-  Hold(LongSupplier nanoTime) {
-    this.nanoTime = nanoTime;
+  private final Pacer pacer;
+  private final AtomicLong until = new AtomicLong(NONE);
+
+  Hold(Pacer pacer) {
+    this.pacer = pacer;
   }
 
-  /** Holds for {@code seconds} from now (capped); a shorter ask never shortens a longer hold. */
-  synchronized void extend(long seconds) {
-    long capped = Math.min(Math.max(seconds, 0), MAX_SECONDS);
-    long deadline = nanoTime.getAsLong() + capped * 1_000_000_000L;
-    if (!set || deadline - until > 0) {
-      until = deadline;
-      set = true;
+  /**
+   * Reads a Retry-After value. It counts only as whole decimal seconds; surrounding spaces are
+   * ignored.
+   *
+   * @param header the header value, or null
+   * @return the seconds, capped at 300, or -1 when the value does not count
+   */
+  static long parseSeconds(String header) {
+    if (header == null) {
+      return -1;
     }
+    int start = 0;
+    int end = header.length();
+    while (start < end && isSpace(header.charAt(start))) {
+      start++;
+    }
+    while (end > start && isSpace(header.charAt(end - 1))) {
+      end--;
+    }
+    if (start == end) {
+      return -1;
+    }
+    long seconds = 0;
+    for (int i = start; i < end; i++) {
+      char c = header.charAt(i);
+      if (c < '0' || c > '9') {
+        return -1;
+      }
+      if (seconds <= CAP_SECONDS) {
+        seconds = seconds * 10 + (c - '0');
+      }
+    }
+    return Math.min(seconds, CAP_SECONDS);
   }
 
-  /** Nanoseconds left, 0 when there is no hold or it has passed. */
-  synchronized long remainingNanos() {
-    if (!set) {
+  private static boolean isSpace(char c) {
+    return c == ' ' || c == '\t';
+  }
+
+  /**
+   * Holds for a number of seconds from now; a shorter hold than the one in force changes nothing.
+   *
+   * @param seconds seconds already capped
+   */
+  void extend(long seconds) {
+    long target = pacer.nanoTime() + seconds * 1_000_000_000L;
+    until.accumulateAndGet(
+        target, (current, next) -> current == NONE || next - current > 0 ? next : current);
+  }
+
+  /**
+   * How long the hold still lasts.
+   *
+   * @return nanoseconds, 0 when there is none
+   */
+  long remainingNanos() {
+    long current = until.get();
+    if (current == NONE) {
       return 0;
     }
-    long left = until - nanoTime.getAsLong();
+    long left = current - pacer.nanoTime();
     return Math.max(left, 0);
   }
 }

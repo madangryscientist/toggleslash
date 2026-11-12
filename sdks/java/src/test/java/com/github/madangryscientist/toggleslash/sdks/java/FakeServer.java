@@ -1,139 +1,250 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpServer;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.InetAddress;
-import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
+import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.CopyOnWriteArrayList;
 
-/** A ToggleSlash server on a real loopback socket, answering what each test tells it to. */
+/**
+ * A server written on raw sockets so a test sees every byte of every request and decides every byte
+ * of the answer: HTTP/1.1 with keep-alive, a streaming answer that ends when the connection does,
+ * an answer that never comes, and a connection that goes quiet.
+ */
 final class FakeServer implements AutoCloseable {
-  /** What one route does with one request. */
-  @FunctionalInterface
+  /** One header as received. */
+  record Header(String name, String value) {}
+
+  /** One request as received. */
+  record Request(String method, String path, List<Header> headers, byte[] body) {
+    String header(String name) {
+      for (Header h : headers) {
+        if (h.name().equalsIgnoreCase(name)) {
+          return h.value();
+        }
+      }
+      return null;
+    }
+
+    String text() {
+      return new String(body, StandardCharsets.UTF_8);
+    }
+  }
+
+  /** What to do with a request. */
   interface Handler {
-    void handle(HttpExchange exchange) throws Exception;
+    void handle(Request request, Conn conn) throws Exception;
   }
 
-  /** A request the server saw. */
-  record Seen(String method, String path, Map<String, List<String>> headers, String body) {}
+  /** The connection a request came in on. */
+  final class Conn {
+    private final Socket socket;
+    private final OutputStream out;
+    private boolean streaming;
 
-  static final String FLAG_TEMPLATE =
-      "{\"key\":\"%s\",\"variations\":[%s,%s],\"on\":true,\"offVariation\":0,\"targets\":[],"
-          + "\"prerequisites\":[],\"rules\":[],\"fallthrough\":{\"variation\":0},\"salt\":\"s\","
-          + "\"version\":%d}";
+    private Conn(Socket socket) throws IOException {
+      this.socket = socket;
+      this.out = socket.getOutputStream();
+    }
 
-  /** A flag that serves {@code value} (JSON text) to everyone, as variation 0. */
-  static String flag(String key, String value, int version) {
-    return String.format(FLAG_TEMPLATE, key, value, "null", version);
+    /** Answers with a body and keeps the connection. */
+    void respond(int status, String body, String... headers) throws IOException {
+      byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+      StringBuilder head = new StringBuilder("HTTP/1.1 " + status + " " + reason(status) + "\r\n");
+      for (int i = 0; i + 1 < headers.length; i += 2) {
+        head.append(headers[i]).append(": ").append(headers[i + 1]).append("\r\n");
+      }
+      head.append("Content-Length: ").append(bytes.length).append("\r\n\r\n");
+      write(head.toString().getBytes(StandardCharsets.ISO_8859_1));
+      write(bytes);
+    }
+
+    /** Starts an answer with no length: the body is whatever {@link #write} sends until the end. */
+    void begin(int status, String... headers) throws IOException {
+      streaming = true;
+      StringBuilder head = new StringBuilder("HTTP/1.1 " + status + " " + reason(status) + "\r\n");
+      for (int i = 0; i + 1 < headers.length; i += 2) {
+        head.append(headers[i]).append(": ").append(headers[i + 1]).append("\r\n");
+      }
+      head.append("Connection: close\r\n\r\n");
+      write(head.toString().getBytes(StandardCharsets.ISO_8859_1));
+    }
+
+    void write(String text) throws IOException {
+      write(text.getBytes(StandardCharsets.UTF_8));
+    }
+
+    synchronized void write(byte[] bytes) throws IOException {
+      out.write(bytes);
+      out.flush();
+    }
+
+    /** Waits until the client closes the connection (or the server does). */
+    void awaitClientGone() {
+      try {
+        InputStream in = socket.getInputStream();
+        while (in.read() >= 0) {
+          // A client that has sent its request sends nothing more; it only closes.
+        }
+      } catch (IOException e) {
+        // The connection is gone, which is what this waits for.
+      }
+    }
+
+    /** Closes the connection. */
+    void drop() {
+      try {
+        socket.close();
+      } catch (IOException ignored) {
+        // Already gone.
+      }
+    }
   }
 
-  static String ruleset(String... flags) {
-    return "{\"flags\":[" + String.join(",", flags) + "],\"segments\":[]}";
-  }
-
-  private final HttpServer server;
-  private final ExecutorService executor = Executors.newCachedThreadPool();
-  private final Map<String, Handler> routes = new ConcurrentHashMap<>();
-  private final List<Seen> seen = Collections.synchronizedList(new ArrayList<>());
-
-  /** Released at close, so a handler that hangs on purpose lets go. */
-  final CountDownLatch released = new CountDownLatch(1);
+  private final ServerSocket server;
+  private final List<Request> requests = new CopyOnWriteArrayList<>();
+  private final Set<Socket> sockets = ConcurrentHashMap.newKeySet();
+  private final String scheme;
+  private volatile Handler handler = (request, conn) -> conn.respond(404, "");
+  private volatile boolean closed;
 
   FakeServer() throws IOException {
-    server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
-    server.setExecutor(executor);
-    server.createContext(
-        "/",
-        exchange -> {
-          byte[] body = exchange.getRequestBody().readAllBytes();
-          seen.add(
-              new Seen(
-                  exchange.getRequestMethod(),
-                  exchange.getRequestURI().getPath(),
-                  Map.copyOf(exchange.getRequestHeaders()),
-                  new String(body, StandardCharsets.UTF_8)));
-          Handler handler = routes.get(exchange.getRequestURI().getPath());
-          try {
-            if (handler == null) {
-              send(exchange, 404, "");
-            } else {
-              handler.handle(exchange);
-            }
-          } catch (IOException e) {
-            // the client went away
-          } catch (Exception e) {
-            exchange.close();
-          }
-        });
-    server.start();
+    this(new ServerSocket(0, 50, InetAddress.getLoopbackAddress()), "http");
+  }
+
+  FakeServer(ServerSocket server, String scheme) {
+    this.server = server;
+    this.scheme = scheme;
+    Thread accept = new Thread(this::acceptLoop, "fake-server-accept");
+    accept.setDaemon(true);
+    accept.start();
   }
 
   String url() {
-    return "http://127.0.0.1:" + server.getAddress().getPort();
+    return scheme + "://127.0.0.1:" + server.getLocalPort();
   }
 
-  FakeServer on(String path, Handler handler) {
-    routes.put(path, handler);
-    return this;
+  void handler(Handler next) {
+    this.handler = next;
   }
 
-  /** The ruleset route answers {@code body} with the ETag {@code etag}, whatever is asked. */
-  FakeServer ruleset(String body, String etag) {
-    return on(
-        "/sdk/v1/ruleset",
-        x -> {
-          x.getResponseHeaders().set("ETag", etag);
-          send(x, 200, body);
-        });
+  List<Request> requests() {
+    return new ArrayList<>(requests);
   }
 
-  FakeServer events(int status) {
-    return on("/sdk/v1/events", x -> send(x, status, "{}"));
+  List<Request> requests(String path) {
+    List<Request> matching = new ArrayList<>();
+    for (Request r : requests) {
+      if (r.path().equals(path)) {
+        matching.add(r);
+      }
+    }
+    return matching;
   }
 
-  List<Seen> requests(String path) {
-    synchronized (seen) {
-      return seen.stream().filter(s -> s.path().equals(path)).toList();
+  private void acceptLoop() {
+    while (!closed) {
+      try {
+        Socket socket = server.accept();
+        sockets.add(socket);
+        Thread thread = new Thread(() -> serve(socket), "fake-server-conn");
+        thread.setDaemon(true);
+        thread.start();
+      } catch (IOException e) {
+        return;
+      }
     }
   }
 
-  List<Seen> all() {
-    synchronized (seen) {
-      return new ArrayList<>(seen);
+  private void serve(Socket socket) {
+    try (socket) {
+      InputStream in = socket.getInputStream();
+      Conn conn = new Conn(socket);
+      while (!closed) {
+        Request request = read(in);
+        if (request == null) {
+          return;
+        }
+        requests.add(request);
+        handler.handle(request, conn);
+        if (conn.streaming) {
+          return;
+        }
+      }
+    } catch (Exception e) {
+      // A closed socket ends the connection; the test sees what it needs in the requests.
+    } finally {
+      sockets.remove(socket);
     }
   }
 
-  static void send(HttpExchange exchange, int status, String body) throws IOException {
-    byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-    if (!exchange.getResponseHeaders().containsKey("Content-Type")) {
-      exchange.getResponseHeaders().set("Content-Type", "application/json");
+  private static Request read(InputStream in) throws IOException {
+    ByteArrayOutputStream head = new ByteArrayOutputStream();
+    int matched = 0;
+    while (matched < 4) {
+      int b = in.read();
+      if (b < 0) {
+        return null;
+      }
+      head.write(b);
+      boolean expected = b == (matched % 2 == 0 ? '\r' : '\n');
+      matched = expected ? matched + 1 : (b == '\r' ? 1 : 0);
     }
-    exchange.sendResponseHeaders(status, bytes.length == 0 ? -1 : bytes.length);
-    if (bytes.length > 0) {
-      exchange.getResponseBody().write(bytes);
+    String[] lines = head.toString(StandardCharsets.ISO_8859_1).split("\r\n");
+    String[] start = lines[0].split(" ");
+    List<Header> headers = new ArrayList<>();
+    int length = 0;
+    for (int i = 1; i < lines.length; i++) {
+      int colon = lines[i].indexOf(':');
+      if (colon <= 0) {
+        continue;
+      }
+      String name = lines[i].substring(0, colon);
+      String value = lines[i].substring(colon + 1).trim();
+      headers.add(new Header(name, value));
+      if (name.toLowerCase(Locale.ROOT).equals("content-length")) {
+        length = Integer.parseInt(value);
+      }
     }
-    exchange.close();
+    byte[] body = in.readNBytes(length);
+    return new Request(start[0], start[1], headers, body);
   }
 
-  /** Holds the request until the server closes. */
-  void hang(HttpExchange exchange) throws InterruptedException, IOException {
-    released.await();
-    exchange.close();
+  private static String reason(int status) {
+    return switch (status) {
+      case 200 -> "OK";
+      case 304 -> "Not Modified";
+      case 400 -> "Bad Request";
+      case 429 -> "Too Many Requests";
+      case 500 -> "Internal Server Error";
+      case 503 -> "Service Unavailable";
+      default -> "Status";
+    };
   }
 
   @Override
   public void close() {
-    released.countDown();
-    server.stop(0);
-    executor.shutdownNow();
+    closed = true;
+    try {
+      server.close();
+    } catch (IOException ignored) {
+      // Closing.
+    }
+    for (Socket socket : sockets) {
+      try {
+        socket.close();
+      } catch (IOException ignored) {
+        // Closing.
+      }
+    }
   }
 }

@@ -1,70 +1,51 @@
 package com.github.madangryscientist.toggleslash.sdks.java;
 
-import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.charset.CharsetDecoder;
-import java.nio.charset.CodingErrorAction;
-import java.nio.charset.StandardCharsets;
+import com.github.madangryscientist.toggleslash.sdks.java.evaluation.Utf8;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A server-sent events parser, to the WHATWG rules: lines end in LF, CRLF or a lone CR; a line that
- * starts with a colon is a comment; the event name defaults to {@code message}; several {@code
- * data} lines are joined with LF; an event with no {@code data} line is dropped; an event still
- * open when the input ends is discarded (it is never flushed). Bytes are decoded as UTF-8 across
- * chunk boundaries, with U+FFFD for bad bytes.
+ * Server-Sent Events as the WHATWG standard reads them, fed bytes. It decodes UTF-8 incrementally
+ * (a character split across reads is kept), ends a line on LF, CRLF or a lone CR (an LF that
+ * follows a CR, even in the next read, belongs to it), skips comments and a leading byte order
+ * mark, and reads only {@code event} and {@code data}. Several {@code data} lines of one event are
+ * joined with LF, an event with no {@code data} line is dropped, an event with no name is {@code
+ * message}, and an event still incomplete when the stream ends is never dispatched.
  */
 final class SseParser {
   /** One dispatched event. */
   record Event(String name, String data) {}
 
-  private final CharsetDecoder decoder =
-      StandardCharsets.UTF_8
-          .newDecoder()
-          .onMalformedInput(CodingErrorAction.REPLACE)
-          .onUnmappableCharacter(CodingErrorAction.REPLACE);
-  private ByteBuffer pending = ByteBuffer.allocate(0);
+  private final Utf8.Decoder decoder = new Utf8.Decoder(true);
+  private final StringBuilder decoded = new StringBuilder();
   private final StringBuilder line = new StringBuilder();
   private final StringBuilder data = new StringBuilder();
-  private String name = "";
-  private boolean hasData;
+  private String eventName = "";
   private boolean skipLf;
-  private boolean atStart = true;
 
-  /** Feeds the next bytes and returns the events they completed. */
-  List<Event> feed(byte[] chunk, int length) {
-    ByteBuffer input = ByteBuffer.allocate(pending.remaining() + length);
-    input.put(pending);
-    input.put(chunk, 0, length);
-    input.flip();
-    CharBuffer out = CharBuffer.allocate(input.remaining() + 1);
-    decoder.decode(input, out, false);
-    pending = ByteBuffer.allocate(input.remaining());
-    pending.put(input);
-    pending.flip();
-    out.flip();
+  /**
+   * Feeds bytes.
+   *
+   * @param bytes the bytes read
+   * @return the events they completed, in order
+   */
+  List<Event> feed(byte[] bytes) {
+    decoded.setLength(0);
+    decoder.feed(bytes, 0, bytes.length, decoded);
     List<Event> events = new ArrayList<>();
-    while (out.hasRemaining()) {
-      char c = out.get();
-      if (atStart) {
-        atStart = false;
-        if (c == '﻿') {
-          continue;
+    for (int i = 0; i < decoded.length(); i++) {
+      char c = decoded.charAt(i);
+      if (c == '\n') {
+        if (skipLf) {
+          skipLf = false;
+        } else {
+          endLine(events);
         }
-      }
-      if (skipLf) {
-        skipLf = false;
-        if (c == '\n') {
-          continue;
-        }
-      }
-      if (c == '\r') {
+      } else if (c == '\r') {
         skipLf = true;
         endLine(events);
-      } else if (c == '\n') {
-        endLine(events);
       } else {
+        skipLf = false;
         line.append(c);
       }
     }
@@ -75,12 +56,7 @@ final class SseParser {
     String text = line.toString();
     line.setLength(0);
     if (text.isEmpty()) {
-      if (hasData) {
-        events.add(new Event(name.isEmpty() ? "message" : name, data.toString()));
-      }
-      name = "";
-      data.setLength(0);
-      hasData = false;
+      dispatch(events);
       return;
     }
     if (text.charAt(0) == ':') {
@@ -93,13 +69,18 @@ final class SseParser {
       value = value.substring(1);
     }
     if (field.equals("event")) {
-      name = value;
+      eventName = value;
     } else if (field.equals("data")) {
-      if (hasData) {
-        data.append('\n');
-      }
-      data.append(value);
-      hasData = true;
+      data.append(value).append('\n');
     }
+  }
+
+  private void dispatch(List<Event> events) {
+    if (data.length() > 0) {
+      data.setLength(data.length() - 1);
+      events.add(new Event(eventName.isEmpty() ? "message" : eventName, data.toString()));
+    }
+    data.setLength(0);
+    eventName = "";
   }
 }

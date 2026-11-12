@@ -1,5 +1,4 @@
 [tools]
 java = "temurin-25.0.5+8.0.LTS"
 maven = "3.10.0"
-google-java-format = "1.37.0"
 checkstyle = "14.4.0"

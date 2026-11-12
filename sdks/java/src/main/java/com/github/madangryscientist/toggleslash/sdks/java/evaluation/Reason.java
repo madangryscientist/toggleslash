@@ -1,47 +1,52 @@
 package com.github.madangryscientist.toggleslash.sdks.java.evaluation;
 
-import java.util.Objects;
-import java.util.Optional;
-import java.util.OptionalInt;
-
 /**
- * Why a flag answered as it did. {@code ruleIndex} is present for {@code RULE_MATCH}, {@code
- * flagKey} for {@code PREREQUISITE_FAILED} (the prerequisite that was not met) and {@code code} for
- * {@code ERROR}.
+ * The reason of a result.
+ *
+ * @param kind the kind
+ * @param errorCode the code of an {@code ERROR}, otherwise null
+ * @param ruleIndex the index in {@code rules} of a {@code RULE_MATCH}, otherwise null
+ * @param flagKey the failed direct prerequisite of a {@code PREREQUISITE_FAILED}, otherwise null
  */
-public record Reason(
-    ReasonKind kind, OptionalInt ruleIndex, Optional<String> flagKey, Optional<ErrorCode> code) {
+public record Reason(ReasonKind kind, ErrorCode errorCode, Integer ruleIndex, String flagKey) {
 
-  /** Checks that nothing is null. */
-  public Reason {
-    Objects.requireNonNull(kind);
-    Objects.requireNonNull(ruleIndex);
-    Objects.requireNonNull(flagKey);
-    Objects.requireNonNull(code);
-  }
-
-  /** A reason that carries nothing but its kind. */
+  /**
+   * A reason that carries nothing beyond its kind.
+   *
+   * @param kind the kind
+   * @return the reason
+   */
   public static Reason of(ReasonKind kind) {
-    return new Reason(kind, OptionalInt.empty(), Optional.empty(), Optional.empty());
+    return new Reason(kind, null, null, null);
   }
 
-  /** {@code RULE_MATCH} for the rule at {@code ruleIndex}. */
-  public static Reason ruleMatch(int ruleIndex) {
-    return new Reason(
-        ReasonKind.RULE_MATCH, OptionalInt.of(ruleIndex), Optional.empty(), Optional.empty());
+  /**
+   * A {@code RULE_MATCH}.
+   *
+   * @param index the index in {@code rules}
+   * @return the reason
+   */
+  public static Reason rule(int index) {
+    return new Reason(ReasonKind.RULE_MATCH, null, index, null);
   }
 
-  /** {@code PREREQUISITE_FAILED} for the prerequisite {@code flagKey}. */
+  /**
+   * A {@code PREREQUISITE_FAILED}.
+   *
+   * @param flagKey the direct prerequisite that was not met
+   * @return the reason
+   */
   public static Reason prerequisiteFailed(String flagKey) {
-    return new Reason(
-        ReasonKind.PREREQUISITE_FAILED,
-        OptionalInt.empty(),
-        Optional.of(flagKey),
-        Optional.empty());
+    return new Reason(ReasonKind.PREREQUISITE_FAILED, null, null, flagKey);
   }
 
-  /** {@code ERROR} with {@code code}. */
+  /**
+   * An {@code ERROR}.
+   *
+   * @param code the code
+   * @return the reason
+   */
   public static Reason error(ErrorCode code) {
-    return new Reason(ReasonKind.ERROR, OptionalInt.empty(), Optional.empty(), Optional.of(code));
+    return new Reason(ReasonKind.ERROR, code, null, null);
   }
 }

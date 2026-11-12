@@ -1,20 +1,26 @@
 #!/bin/sh
-# Starts the conformance test service and prints "listening http://127.0.0.1:<port>" once it does.
-# It runs the built classes; it builds them only when there are none (bin/test rebuilds every time).
+# Starts the Java SDK's conformance test service and prints `listening http://127.0.0.1:<port>`.
+# It builds only if the classes are missing (`bin/test` leaves them built), then ends with `exec`
+# so the harness's kill reaches the JVM itself.
 set -eu
 cd "$(dirname "$0")/.."
 
-run() {
-  if command -v mise >/dev/null 2>&1; then
-    mise exec -- "$@"
-  else
-    "$@"
-  fi
-}
-
-SERVICE=target/test-classes/com/github/madangryscientist/toggleslash/sdks/java/testservice/TestService.class
-if [ ! -f "$SERVICE" ]; then
-  run mvn -B -q -DskipTests test-compile >&2
+if command -v mise >/dev/null 2>&1; then
+  run() { mise exec -- "$@"; }
+else
+  run() { "$@"; }
 fi
-exec mise exec -- java -cp target/classes:target/test-classes \
-  com.github.madangryscientist.toggleslash.sdks.java.testservice.TestService
+
+main=target/test-classes/com/github/madangryscientist/toggleslash/sdks/java/service/Main.class
+if [ ! -f "$main" ] || [ ! -d target/classes ]; then
+  # Quiet, and to stderr: the harness reads stdout for the `listening` line.
+  run mvn -B -ntp -q test-compile >&2
+fi
+
+exec_java() { exec "$@"; }
+if command -v mise >/dev/null 2>&1; then
+  exec mise exec -- java -cp target/classes:target/test-classes \
+    com.github.madangryscientist.toggleslash.sdks.java.service.Main
+fi
+exec java -cp target/classes:target/test-classes \
+  com.github.madangryscientist.toggleslash.sdks.java.service.Main

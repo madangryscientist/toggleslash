@@ -1,141 +1,105 @@
 package com.github.madangryscientist.toggleslash.sdks.java.evaluation;
 
-import java.io.ByteArrayOutputStream;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * Context normalisation and bucketing, to "Contexts" and "Buckets" in {@code docs/evaluation.md}.
- */
-final class Contexts {
-  static final String DEFAULT_KIND = "user";
+/** A valid context as a map from kind to that kind's key and attributes. */
+public final class Contexts {
+  /** What a kind that is read and absent means, everywhere. */
+  public static final String DEFAULT_KIND = "user";
 
-  /** The key and attributes of one kind, after normalising. Attributes is null when absent. */
-  record KindContext(String key, Map<?, ?> attributes) {}
+  /**
+   * The key and attributes of one kind.
+   *
+   * @param key the key
+   * @param attributes the attributes, or null
+   */
+  public record KindContext(String key, Map<?, ?> attributes) {}
 
   private Contexts() {}
 
-  private static KindContext readEntry(Map<?, ?> value) {
-    Object key = value.get("key");
-    Object attributes = value.get("attributes");
-    if (!(key instanceof String text) || text.isEmpty()) {
+  private static KindContext readEntry(Object value) {
+    Object key = Shape.get(value, "key");
+    Object attributes = Shape.get(value, "attributes");
+    if (!(key instanceof String k) || k.isEmpty()) {
       return null;
     }
-    if (attributes == null) {
-      return new KindContext(text, null);
+    if (Shape.isAbsent(attributes)) {
+      return new KindContext(k, null);
     }
-    return attributes instanceof Map<?, ?> map ? new KindContext(text, map) : null;
+    return Shape.isRecord(attributes) ? new KindContext(k, (Map<?, ?>) attributes) : null;
   }
 
-  private static Map<String, KindContext> readMulti(Map<?, ?> value) {
-    Object contexts = value.get("contexts");
-    if (value.get("key") != null
-        || value.get("attributes") != null
-        || !(contexts instanceof Map<?, ?> entries)) {
+  private static Map<String, KindContext> readMulti(Object value) {
+    Object contexts = Shape.get(value, "contexts");
+    if (!Shape.isAbsent(Shape.get(value, "key"))
+        || !Shape.isAbsent(Shape.get(value, "attributes"))
+        || !Shape.isRecord(contexts)) {
       return null;
     }
     Map<String, KindContext> normalised = new LinkedHashMap<>();
-    for (Map.Entry<?, ?> entry : entries.entrySet()) {
+    for (Map.Entry<?, ?> entry : ((Map<?, ?>) contexts).entrySet()) {
       Object kind = entry.getKey();
-      if (!Validate.isKind(kind)
-          || !(entry.getValue() instanceof Map<?, ?> raw)
-          || raw.get("kind") != null) {
+      Object raw = entry.getValue();
+      if (!Shape.isKind(kind) || !Shape.isRecord(raw) || !Shape.isAbsent(Shape.get(raw, "kind"))) {
         return null;
       }
-      KindContext context = readEntry(raw);
-      if (context == null) {
+      KindContext one = readEntry(raw);
+      if (one == null) {
         return null;
       }
-      normalised.put((String) kind, context);
+      normalised.put((String) kind, one);
     }
     return normalised.isEmpty() ? null : normalised;
   }
 
-  /** The context as a map from kind to key and attributes, or null when it is not valid. */
-  static Map<String, KindContext> normalise(Object value) {
-    if (!(value instanceof Map<?, ?> record)) {
+  /**
+   * Normalises a context.
+   *
+   * @param value the context as the application gave it
+   * @return the kinds it holds, or null when it is not a valid context
+   */
+  public static Map<String, KindContext> normalise(Object value) {
+    if (!Shape.isRecord(value)) {
       return null;
     }
-    Object kind = record.get("kind");
+    Object kind = Shape.get(value, "kind");
     if (kind == null) {
       kind = DEFAULT_KIND;
     }
     if ("multi".equals(kind)) {
-      return readMulti(record);
+      return readMulti(value);
     }
-    if (!Validate.isKind(kind)) {
+    if (!Shape.isKind(kind)) {
       return null;
     }
-    KindContext entry = readEntry(record);
-    return entry == null ? null : Map.of((String) kind, entry);
+    KindContext one = readEntry(value);
+    if (one == null) {
+      return null;
+    }
+    Map<String, KindContext> map = new LinkedHashMap<>();
+    map.put((String) kind, one);
+    return map;
   }
 
   /**
-   * The bucket for the key of {@code kind} (null is {@code user}): the key as it is for {@code
-   * user}, {@code <kind>:<key>} for any other kind, and 0 when the context does not have that kind.
+   * The bucket for the key of a kind: the key as it is for {@code user}, {@code <kind>:<key>} for
+   * any other kind, and 0 when the context does not have that kind.
+   *
+   * @param key the flag or segment key
+   * @param salt the salt
+   * @param kind the kind, or null for {@code user}
+   * @param contexts the context
+   * @return the bucket
    */
-  static int kindBucket(String key, String salt, String kind, Map<String, KindContext> contexts) {
+  public static int kindBucket(
+      String key, String salt, String kind, Map<String, KindContext> contexts) {
     String chosen = kind == null ? DEFAULT_KIND : kind;
     KindContext context = contexts.get(chosen);
     if (context == null) {
       return 0;
     }
-    String contextKey = chosen.equals(DEFAULT_KIND) ? context.key() : chosen + ":" + context.key();
-    return bucket(key, salt, contextKey);
-  }
-
-  /**
-   * SHA-256 of the UTF-8 bytes of {@code <key>.<salt>.<contextKey>}, the first 4 bytes as a
-   * big-endian uint32, modulo 100000.
-   */
-  static int bucket(String key, String salt, String contextKey) {
-    long value = uint32(key, salt, contextKey);
-    return (int) (value % Validate.BUCKET_COUNT);
-  }
-
-  /** The first four bytes of the digest as an unsigned big-endian integer. */
-  static long uint32(String key, String salt, String contextKey) {
-    byte[] digest = sha256(utf8(key + "." + salt + "." + contextKey));
-    return ((digest[0] & 0xffL) << 24)
-        | ((digest[1] & 0xffL) << 16)
-        | ((digest[2] & 0xffL) << 8)
-        | (digest[3] & 0xffL);
-  }
-
-  private static byte[] sha256(byte[] input) {
-    try {
-      return MessageDigest.getInstance("SHA-256").digest(input);
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException("SHA-256 is required of every Java platform", e);
-    }
-  }
-
-  /** UTF-8, with a lone surrogate as U+FFFD (Java's own encoder would write a question mark). */
-  static byte[] utf8(String text) {
-    ByteArrayOutputStream out = new ByteArrayOutputStream(text.length() + 8);
-    byte[] replacement = "�".getBytes(StandardCharsets.UTF_8);
-    int i = 0;
-    while (i < text.length()) {
-      char c = text.charAt(i);
-      if (Character.isHighSurrogate(c)
-          && i + 1 < text.length()
-          && Character.isLowSurrogate(text.charAt(i + 1))) {
-        out.writeBytes(text.substring(i, i + 2).getBytes(StandardCharsets.UTF_8));
-        i += 2;
-      } else if (Character.isSurrogate(c)) {
-        out.writeBytes(replacement);
-        i++;
-      } else {
-        int start = i;
-        while (i < text.length() && !Character.isSurrogate(text.charAt(i))) {
-          i++;
-        }
-        out.writeBytes(text.substring(start, i).getBytes(StandardCharsets.UTF_8));
-      }
-    }
-    return out.toByteArray();
+    return Bucket.of(
+        key, salt, chosen.equals(DEFAULT_KIND) ? context.key() : chosen + ":" + context.key());
   }
 }
