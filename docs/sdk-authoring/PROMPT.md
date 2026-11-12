@@ -82,7 +82,7 @@ is not assumed to have a C compiler: if a race detector needs one, `$L/mise.toml
 syntax check of every source, test and test-service file, so a syntax error in a file no test imports still fails), never reports a cached result, runs under the
 language's race detector where it has one, and prints `vectors: <n> pins: <n>` even when all pass. `bin/lint`
 runs native tools only. `bin/test-service` ends with `exec` so the harness's kill reaches the service itself. In a
-compiled language `bin/test` builds the test service's binary as its last step, and `bin/test-service` runs that binary and builds
+compiled language `bin/test` builds the test service's binary as its last step (a build tool that compiles the test service in the same step as the test sources meets this, as long as the SDK's own sources are built before that step), and `bin/test-service` runs that binary and builds
 it only when it is missing (the harness waits 30 s for `listening`, which a cold compile can exceed). `chmod +x`
 all three and commit them with the executable bit.
 
