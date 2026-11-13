@@ -5,6 +5,8 @@ What the first C# run learned. Each fact cites that run: prompt `e3b07b5`, FS-98
 - **Toolchain.** Pin the newest LTS SDK (10.0.403, .NET 10, in that run) in `mise.toml`. The repository
   root's `global.json` pins a different SDK (10.0.402), so `sdks/csharp` carries its own `global.json` with
   the same number as `mise.toml` and `rollForward: disable`; without it `dotnet` here picks the root's.
+  `global-json-file: sdks/csharp/global.json` on `actions/setup-dotnet` reads that tree-local pin, a valid way
+  to keep the workflow's SDK at the pinned version (run 28, FS-172).
 - **Support dates.** .NET 8 and 9 both left support on 2026-11-10, the run date, so net10.0 was the minimum.
   Check Microsoft's support-policy page for the run date.
 - **`close` from a continuation deadlocks.** `onError` and hooks run on the SDK's own threads, and a
@@ -23,7 +25,9 @@ What the first C# run learned. Each fact cites that run: prompt `e3b07b5`, FS-98
   another pool thread, hold every pool thread on a 2-core runner, and the shutdown they wait for needs pool
   threads to finish. The pool then grows one thread per injection step: the first round took 40 to 55 s on
   two cores and failed a 60 s wait on GitHub's runner (the SDK was not stuck). Start spinners and the
-  synchronous closers with `TaskCreationOptions.LongRunning`.
+  synchronous closers with `TaskCreationOptions.LongRunning`. Put the stress test class in its own xunit
+  collection with `DisableParallelization = true`: it starves the pool for the test classes beside it, and a
+  real 2 s request timeout was seen at 4 s (run 28, FS-172).
 - **No race detector.** A stress test of every operation from many threads with `Close` racing stands in.
 - **Test service and layout.** `Microsoft.NET.Sdk.Web` (Kestrel from the shared framework, no package) as one
   more project in the solution, built by `bin/test` last. `UseArtifactsOutput` keeps build output under an
