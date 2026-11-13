@@ -98,8 +98,9 @@ scripts run three tasks at a time (`--concurrency 3`): moon's default of one per
 starved the timing-sensitive suites. There is no remote cache. moon has no `^default`: without a
 toolchain it does not hash the files of a project a task depends on, so every TS project's tasks
 (tag `ts`, `.moon/tasks/ts.yml`) take all of `packages/**` as inputs, and a change to the engine
-re-runs them all. Every `test` also takes `fixtures/**` and `apps/server/openapi/*`. A generated file a
-task rewrites (`routeTree.gen.ts`) must stay out of the inputs or the hash changes under the task.
+re-runs them all. Every `test` also takes `fixtures/**` and `apps/server/openapi/*`. The generated
+`routeTree.gen.ts` stays an input: `tsr generate` rewrites it to the same bytes, and web's
+`route-tree.test.ts` reads it.
 Task ids cannot hold a colon, so the Playwright and end-to-end tasks are `test-e2e` and `test-stack`
 (the root script names stay `test:e2e` and `test:stack`). Lint rules are all errors; fix the code, do not disable a
 rule. A TODO carries an issue: `TODO(#123)`. Tests live in `packages/*/test/` and

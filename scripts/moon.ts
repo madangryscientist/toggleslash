@@ -23,6 +23,10 @@ const disabled = env.TOGGLESLASH_DOTNET_DISABLE !== undefined;
 const dotnet = disabled ? null : findDotnet();
 let banner: string | null = null;
 
+// `bun run <script>` puts the root's node_modules/.bin on PATH; running this file directly does not,
+// and moon does not add it either, so the tasks that call `tsc` or `oxlint` would not find them.
+env.PATH = `${join(REPO_ROOT, "node_modules/.bin")}${delimiter}${env.PATH ?? ""}`;
+
 if (dotnet !== null) {
   env.PATH = `${dirname(dotnet)}${delimiter}${env.PATH ?? ""}`;
 } else if (!disabled) {

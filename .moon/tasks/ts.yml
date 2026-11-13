@@ -23,10 +23,8 @@ implicitInputs:
   - "!/**/.tanstack/**"
   - "!/**/test-results/**"
   - "!/**/playwright-report/**"
-  # Generated from the route files (already inputs) by `tsr generate`, which the typecheck of web and
-  # site runs and which rewrites it, so a task hashed while it was being rewritten missed the cache.
-  - "!/apps/web/src/routeTree.gen.ts"
-  - "!/apps/site/src/routeTree.gen.ts"
+  # routeTree.gen.ts is left in: `tsr generate` rewrites it to the same bytes, so the hash holds, and
+  # apps/web's route-tree.test.ts reads it.
 
 tasks:
   # Most projects run their Vitest suite from their own root. A project with another test command
