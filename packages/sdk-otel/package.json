@@ -10,12 +10,12 @@
   },
   "dependencies": {
     "@hackcove/toggleslash-sdk": "workspace:*",
-    "@opentelemetry/api": "1.9.1"
+    "@opentelemetry/api": "1.10.0"
   },
   "devDependencies": {
     "@opentelemetry/context-async-hooks": "2.12.0",
     "@opentelemetry/sdk-trace-base": "2.12.0",
     "@types/bun": "1.4.4",
-    "vitest": "5.0.5"
+    "vitest": "5.1.0"
   }
 }
