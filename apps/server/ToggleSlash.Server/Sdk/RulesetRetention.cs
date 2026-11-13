@@ -30,12 +30,16 @@ public sealed record RulesetRetentionSettings(int Days)
 /// goes when its successor (the next one by <c>first_served_at</c>, ties broken by hash) was first served before the
 /// retention window, so age counts from when it stopped being the newest, and its hash is not the environment's current
 /// ruleset (a rollback makes an old body current again without moving <c>first_served_at</c>). The newest snapshot has
-/// no successor and is never deleted. Housekeeping, not an admin write: no audit event.
+/// no successor and is never deleted. A rollback that lands between reading the current ruleset and the delete is repaired
+/// by recording the current snapshot again when the delete had removed it. Housekeeping, not an admin write: no audit event.
 /// </summary>
 public sealed class RulesetRetention(
     IServiceScopeFactory scopes, TimeProvider time, RulesetRetentionSettings settings, ILogger<RulesetRetention> logger) : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(1);
+
+    /// <summary>For tests, null in production: awaited with the environment id once the doomed list is known, before the delete begins.</summary>
+    public Func<long, CancellationToken, Task>? BeforeDelete { get; init; }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -122,11 +126,25 @@ public sealed class RulesetRetention(
             return 0;
         }
 
-        await using var transaction = await database.Database.BeginTransactionAsync(cancellation);
-        var removed = await database.RulesetSnapshots
-            .Where(s => s.EnvironmentId == environmentId && doomed.Contains(s.Hash))
-            .ExecuteDeleteAsync(cancellation);
-        await transaction.CommitAsync(cancellation);
+        await (BeforeDelete?.Invoke(environmentId, cancellation) ?? Task.CompletedTask);
+
+        int removed;
+        await using (var transaction = await database.Database.BeginTransactionAsync(cancellation))
+        {
+            removed = await database.RulesetSnapshots
+                .Where(s => s.EnvironmentId == environmentId && doomed.Contains(s.Hash))
+                .ExecuteDeleteAsync(cancellation);
+            await transaction.CommitAsync(cancellation);
+        }
+
+        // A rollback between the read above and the delete can make a doomed hash current: SDKs were answered 200 for
+        // it while its row still existed, so nothing recorded it again. Put the current snapshot back if it was deleted.
+        var reader = scope.ServiceProvider.GetRequiredService<RulesetReader>();
+        var after = await reader.Read(environmentId, cancellation);
+        if (doomed.Contains(after.Hash))
+        {
+            await reader.RecordServed(environmentId, after, cancellation);
+        }
         return removed;
     }
 }
