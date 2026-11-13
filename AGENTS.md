@@ -81,8 +81,9 @@ since dotnet's incremental build is its own. Two paths:
   yourself skips the check and the banner and leaves the server out.
 
 Why the wrapper does more than check: moon puts nothing of its own runtime ahead of PATH. It prepends
-its own and proto's bin directories and every `node_modules/.bin` from the workspace upward, and
-leaves the rest of the caller's PATH in order, so a task runs the first `dotnet` on the caller's PATH.
+only its own and proto's bin directories (no `node_modules/.bin`, so `bun run` or `bunx` supplies the
+root's) and leaves the rest of the caller's PATH in order, so a task runs the first `dotnet` on the
+caller's PATH.
 Here that is `/usr/bin/dotnet`, a host with no SDK, ahead of the mise one (`dotnet restore` fails with
 "No .NET SDKs were found"). The wrapper puts the directory of the `dotnet` it found first on PATH. **A
 bare `bunx moon ...` skips that**, so on a machine like this one use the root scripts, or

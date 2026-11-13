@@ -8,8 +8,8 @@
  * added to `moon run`); with one, the gate runs the server's tests too. `TOGGLESLASH_DOTNET_DISABLE`
  * set to any value skips the search and the banner and leaves the server out, quietly.
  *
- * Which `dotnet` a task runs is decided here, not left to PATH. moon puts only its own bin dirs and
- * `node_modules/.bin` directories ahead of the caller's PATH, so the first `dotnet` on the caller's
+ * Which `dotnet` a task runs is decided here, not left to PATH. moon puts only its own and proto's
+ * bin dirs ahead of the caller's PATH, so the first `dotnet` on the caller's
  * PATH wins, and on this machine that is `/usr/bin/dotnet`, a host with no SDK, ahead of the mise
  * SDK. The directory of the first `dotnet` that works goes first on PATH.
  */
