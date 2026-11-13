@@ -36,6 +36,7 @@ What the Go runs learned. Each fact cites its run: prompt `8a59987`, FS-96, 2026
   marked, since it is doing nothing more until the callback returns; a goroutine the callback starts is the application's, and a `Ready` or `Close` there waits like any other caller's (FS-135, FS-137).
 - **A recovered panic is a raised error.** A panic recovered from a hook or the evaluator is passed to `onError` as an error that carries
   the panic's value: contract section 12's "An error a hook or the evaluator raised is passed to `onError` as raised" covers it (FS-135).
+  The SDK starts three goroutines (`api.go`: `syncLoop`, which also runs the stream, `flushLoop` and `notifyLoop`), and a panic on any of them ends the host process (contract section 5 guarantee 1), so the sync and flush loops recover a panic, report it and carry on, and the notify loop's only foreign call, `onError`, is already recovered in `callOnError` (FS-178).
 - **The test fake's stream.** It sends a `changed` event only when the test pushes one, so a test that expects a swap with the stream on pushes the event, or turns the stream off and polls (FS-137).
 - **A test never writes to a client's config after `New`.** The SDK's goroutines read it, so the write is a data race that only shows under load; give a second client the other value through its own constructor (FS-139).
 - **Name a finite check for what it checks.** A `Value.IsFinite` that was true only for a number made every string and boolean answer `null` until the harness caught it (FS-139).

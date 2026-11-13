@@ -69,4 +69,6 @@ type Options struct {
 	jitter     func() float64
 	watchdog   time.Duration
 	evaluate   func(*eval.Ruleset, string, jsonval.Value) eval.Result
+	// flushProbe runs first in every flush, so a test can make one panic.
+	flushProbe func()
 }
