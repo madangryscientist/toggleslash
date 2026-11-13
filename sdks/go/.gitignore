@@ -1,1 +1,7 @@
-.build/
+# Build output: bin/test writes the test service binary here.
+build/
+
+# Test binaries and coverage a developer may write by hand.
+*.test
+coverage.out
+coverage.html

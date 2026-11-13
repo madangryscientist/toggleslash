@@ -1,19 +1,31 @@
 #!/bin/sh
-# The native lint and format check: go vet, golangci-lint and gofmt in list mode. Nothing is rewritten.
+# The native lint and format check, read only. gofmt reads the module root and
+# recurses over ./eval, ./jsonval and ./test-service with it; golangci-lint's
+# ./... covers the same tree. A package added later comes with both.
 set -eu
+
 cd "$(dirname "$0")/.."
 
-if command -v mise >/dev/null 2>&1; then
-  run() { mise exec -- "$@"; }
-else
-  run() { "$@"; }
+run() {
+	if command -v mise >/dev/null 2>&1; then
+		mise exec -- "$@"
+	else
+		"$@"
+	fi
+}
+
+# gofmt -l reads the module root and recurses: the SDK's sources and their
+# tests, ./eval, ./jsonval and ./test-service all come with it.
+unformatted=$(run gofmt -l .)
+if [ -n "$unformatted" ]; then
+	echo "gofmt: these files are not formatted:" >&2
+	echo "$unformatted" >&2
+	exit 1
 fi
 
-run go vet ./...
+# golangci-lint runs the linters .golangci.yml enables (errcheck, govet, ineffassign, staticcheck,
+# unused) over ./..., which covers the same roots. It exits non zero on any finding: no warning is
+# allowed to pass.
 run golangci-lint run ./...
-unformatted="$(run gofmt -l .)"
-if [ -n "$unformatted" ]; then
-  echo "gofmt would change:" >&2
-  echo "$unformatted" >&2
-  exit 1
-fi
+
+echo "lint: gofmt and golangci-lint clean"

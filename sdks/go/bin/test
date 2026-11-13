@@ -1,38 +1,34 @@
 #!/bin/sh
+# Builds the module and runs its tests under the race detector, which needs a C
+# compiler: mise pins zig and CC points at it. The vectors test prints the
+# `vectors: <n> pins: <n>` line, and this script prints it last even when the
+# test output above it ends with go's own summary.
 set -eu
 cd "$(dirname "$0")/.."
 
-# Every tool runs through `mise exec --` when mise is on PATH (a mise shim fails in a directory where its tool
-# is not active); in CI the mise action puts the pinned tools on PATH.
-tool() {
-  if command -v mise >/dev/null 2>&1; then
-    mise exec -- "$@"
-  else
-    "$@"
-  fi
-}
+if command -v mise >/dev/null 2>&1; then
+	CC="$(mise where zig)/zig cc"
+	export CC
+	run() { mise exec -- "$@"; }
+else
+	run() { "$@"; }
+fi
 
-# The race detector needs cgo, hence a C compiler. The pinned Zig is one, named by path: a `zig` elsewhere on
-# PATH could shadow it.
-zig_dir="$(tool mise where zig 2>/dev/null || mise where zig)"
-CC="$zig_dir/zig cc"
-export CC
-export CGO_ENABLED=1
-
-# Build: every package, test files included (`go vet` compiles them), with nothing cached.
-tool go build ./...
-tool go vet ./...
-
-# Run: the race detector on, and `-count=1` so no result is ever reported from the cache.
-tool go test -race -count=1 ./...
-
-# The counts: the vectors and the pins are two tests, and `go test` hides a pass's log lines, so they run alone
-# with -v and only the totals are kept.
-counts="$(tool go test -count=1 -v -run '^(TestVectors|TestBucketPins)$' ./internal/evaluator)"
-vectors="$(printf '%s\n' "$counts" | sed -n 's/.*vectors: \([0-9][0-9]*\).*/\1/p')"
-pins="$(printf '%s\n' "$counts" | sed -n 's/.*pins: \([0-9][0-9]*\).*/\1/p')"
-echo "vectors: ${vectors:-0} pins: ${pins:-0}"
-
-# Last: the test service's binary, which bin/test-service runs.
-mkdir -p .build
-tool go build -o .build/test-service ./test-service
+run go build ./...
+if ! output=$(run go test -race -count=1 -v ./...); then
+	printf '%s\n' "$output"
+	printf '%s\n' "bin/test: the tests failed"
+	exit 1
+fi
+printf '%s\n' "$output"
+# The test service's binary is the last build step, so bin/test-service finds it
+# and the harness never waits for a cold compile.
+run go build -o build/testservice ./test-service
+counts=$(printf '%s\n' "$output" | grep -E '^vectors: [0-9]+ pins: [0-9]+$' | tail -n 1)
+if [ -z "$counts" ]; then
+	# A missing count line is a failure, not an empty success: "Entry points"
+	# requires bin/test to print it.
+	printf '%s\n' "bin/test: the vectors count line is missing from the test output" >&2
+	exit 1
+fi
+printf '%s\n' "$counts"

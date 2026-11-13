@@ -1,16 +1,18 @@
 #!/bin/sh
+# Starts the conformance test service in the foreground, on a port the OS picks.
+# It runs the binary bin/test built, and builds it only when it is missing: the
+# harness waits 30 s for the `listening` line, which a cold compile can exceed.
 set -eu
 cd "$(dirname "$0")/.."
 
 if command -v mise >/dev/null 2>&1; then
-  run() { mise exec -- "$@"; }
+	run() { mise exec -- "$@"; }
 else
-  run() { "$@"; }
+	run() { "$@"; }
 fi
 
-# The binary bin/test builds; built here only when it is missing (the harness waits 30 s for `listening`).
-if [ ! -x .build/test-service ]; then
-  mkdir -p .build
-  run go build -o .build/test-service ./test-service
+if [ ! -x build/testservice ]; then
+	run go build -o build/testservice ./test-service
 fi
-exec .build/test-service
+
+exec ./build/testservice
