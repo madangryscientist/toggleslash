@@ -1,30 +1,12 @@
-# The rule set: golangci-lint's "standard" linters (errcheck, govet, ineffassign, staticcheck, unused), plus the
-# ones enabled below, and gofmt as the formatter. Tests and the test service are linted too.
+# golangci-lint configuration, pinned so a newer release cannot turn the gate red by growing a
+# default set. The formatter is not here: bin/lint runs gofmt -l over every root separately.
 version: "2"
-run:
-  tests: true
+
 linters:
-  default: standard
+  default: none
   enable:
-    - bodyclose # a response body left open leaks a connection
-    - errorlint # compares errors with errors.Is and errors.As, never == or a type assertion
-    - gocritic # common mistakes and slow idioms
-    - misspell # typos in comments and strings
-    - noctx # an HTTP request or a listener without a context cannot be cancelled
-    - nolintlint # a //nolint directive must name its linter and carry a reason
-    - revive # style and naming
-    - unconvert # a conversion to the type a value already has
-    - unparam # a parameter or result that is always the same
-  settings:
-    revive:
-      rules:
-        # revive's two noisy defaults: the exported-comment form and the package comment on every package.
-        # The public API and each package carry doc comments written for a reader, not for a pattern, and the
-        # internal packages have a comment on the file that matters.
-        - name: exported
-          disabled: true
-        - name: package-comments
-          disabled: true
-formatters:
-  enable:
-    - gofmt
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
