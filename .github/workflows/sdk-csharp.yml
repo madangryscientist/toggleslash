@@ -37,7 +37,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
       # The toolchain step: the .NET SDK at the version sdks/csharp/global.json pins (10.0.404, the newest LTS),
       # which is also what sdks/csharp/mise.toml names. setup-dotnet reads the one file, so the two cannot drift here.
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: sdks/csharp/global.json
       - run: bun install --frozen-lockfile
