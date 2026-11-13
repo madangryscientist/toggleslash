@@ -43,7 +43,11 @@ if (dotnet !== null) {
   ].join("\n");
 }
 
-if (dotnet === null && args[0] === "run") args.push("--query", "tag!=dotnet");
+if (dotnet === null && args[0] === "run") {
+  // Before any `--`, which hands the rest to the task itself.
+  const passthrough = args.indexOf("--");
+  args.splice(passthrough === -1 ? args.length : passthrough, 0, "--query", "tag!=dotnet");
+}
 
 // Printed before moon starts and again after it ends, so the last line on screen is not moon's success.
 if (banner !== null) process.stderr.write(banner);

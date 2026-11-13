@@ -20,8 +20,5 @@ tasks:
       runFromWorkspaceRoot: true
   test:
     command: "bun test scripts/check-workflows.test.ts"
-    inputs:
-      - "**/*"
-      - "/.github/workflows/*.yml"
     options:
       runFromWorkspaceRoot: true

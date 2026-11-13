@@ -12,6 +12,8 @@ implicitInputs:
   - "/packages/**/*"
   # Vitest's and Playwright's globalSetup, which every test run loads.
   - "/scripts/test-tmp-scope.ts"
+  # packages/e2e imports it to find a working dotnet (packages/e2e/src/dotnet.ts).
+  - "/scripts/dotnet.ts"
   # node_modules is gitignored, but a workspace package's node_modules holds symlinks that the glob
   # still walks, and moon warns on each one it cannot hash as a file. dist, .wrangler and the
   # Playwright output are what a build or a test run leaves behind.
