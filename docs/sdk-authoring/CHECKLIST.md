@@ -16,7 +16,9 @@ what it cannot see.
   repository at test time, and every pin in `buckets.json` (`uint32` and `bucket`), and all pass; its count
   equals the phase 2 count command's (evaluation.md, "The vectors").
 - [ ] `$L/bin/test` passes 10 times in a row, and once more with the CPU loaded (an eleventh run, which does not replace one of the ten: one busy shell loop per logical CPU, so `nproc` of them, at normal priority, started before `bin/test` and kept running until it ends, its build included; a warm build cache is fine: the load must cover the test run, not a cold compile),
-  with the counts in `RUN.md`: a timer test that races the SDK's loops fails only under load. Such a failure is a
+  with the counts in `RUN.md`: a timer test that races the SDK's loops fails only under load. A test whose bound is
+  real time also fails when another test class is the load, so run the suite several times before the ten that
+  count (run 28, FS-172). Such a failure is a
   bug in the test (it asserts something it did not control): fix the test, and record it in `RUN.md` as a decision,
   not a guess. The ten runs then start again from the first. Any change to the tree after a run (a fix, a new test, a comment) also starts them again: the ten are of the tree that is committed. Writing `RUN.md`, which holds their counts, does not. A test that races a fixed number of rounds against background workers waits until each worker has
   made progress, not only until the rounds are done.
