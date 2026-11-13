@@ -29,11 +29,14 @@ public sealed class RulesetRetentionTests : IDisposable
 
     public void Dispose() => server.Dispose();
 
-    private RulesetRetention Retention(int days) => new(
+    private RulesetRetention Retention(int days, Func<long, CancellationToken, Task>? beforeDelete = null) => new(
         server.Server.Services.GetRequiredService<IServiceScopeFactory>(),
         new FixedClock(now),
         new RulesetRetentionSettings(days),
-        NullLogger<RulesetRetention>.Instance);
+        NullLogger<RulesetRetention>.Instance)
+    {
+        BeforeDelete = beforeDelete,
+    };
 
     private async Task Seed()
     {
@@ -181,6 +184,35 @@ public sealed class RulesetRetentionTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, await Lookup("prod", current));
         Assert.Equal(HttpStatusCode.NotFound, await Lookup("prod", Hash('m')));
         Assert.Equal(HttpStatusCode.OK, await Lookup("prod", Hash('n')));
+    }
+
+    [Fact]
+    public async Task A_rollback_between_the_read_and_the_delete_leaves_the_snapshot_it_made_current_in_place()
+    {
+        await Seed();
+        // Ruleset A, then a change to B, then a newer row, so A has an old successor and B is current.
+        var a = await Serve("prod");
+        Age("prod", a, 300);
+        Sql("UPDATE flag_environment_configs SET \"on\" = 1 - \"on\", version = version + 1");
+        var b = await Serve("prod");
+        Assert.NotEqual(a, b);
+        Age("prod", b, 200);
+        Insert("prod", Hash('z'), 100);
+        var interleaved = false;
+
+        // doomed is [a]. Before the delete, the flag goes back to what it was when a was served: a is current again,
+        // SDKs are answered 200 for it, and a's row is still there, so nothing records it.
+        var removed = await Retention(90, async (_, _) =>
+        {
+            Sql("UPDATE flag_environment_configs SET \"on\" = 1 - \"on\", version = version - 1");
+            Assert.Equal(a, await Serve("prod"));
+            interleaved = true;
+        }).Sweep(CancellationToken.None);
+
+        Assert.True(interleaved);
+        Assert.Equal(1, removed); // the delete removed a; the repair is not subtracted
+        Assert.Equal(HttpStatusCode.OK, await Lookup("prod", a));
+        Assert.Equal(Sorted(a, b, Hash('z')), Kept("prod"));
     }
 
     [Fact]
