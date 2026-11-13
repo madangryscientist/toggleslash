@@ -126,8 +126,8 @@ describe.skipIf(skip)("server, CLI and SDK end to end", () => {
     );
     serverKey = text(serverCreated["key"]);
     clientKey = text(clientCreated["key"]);
-    expect(serverKey).toMatch(/^fs_server_/);
-    expect(clientKey).toMatch(/^fs_client_/);
+    expect(serverKey).toMatch(/^tgl_server_/);
+    expect(clientKey).toMatch(/^tgl_client_/);
 
     const flag = record(
       await cli.json(["flags", "show", "new-checkout", "--project", PROJECT, "--env", ENV]),

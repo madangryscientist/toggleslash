@@ -21,7 +21,7 @@ The wire facts (routes, headers, event shapes) come from [`api.md`](api.md) and
 
 A server SDK:
 
-1. holds one **server** key (`fs_server_...`), which is bound to one environment of one project;
+1. holds one **server** key (`tgl_server_...`), which is bound to one environment of one project;
 2. keeps that environment's ruleset in memory, current with the server;
 3. evaluates flags **locally** to `evaluation.md`, for a context the caller passes;
 4. counts which variations it served and reports the counts.

@@ -166,7 +166,7 @@ export async function runScenario(
   const missing = scenario.requires.filter((name) => !capabilities.includes(name));
   if (missing.length > 0)
     return { scenario, result: "skip", detail: `needs ${missing.join(", ")}` };
-  const server = new FakeServer(`fs_server_conformance_${index}`);
+  const server = new FakeServer(`tgl_server_conformance_${index}`);
   server.setRuleset([boolFlag("checkout", true), boolFlag("legacy", false)], []);
   server.start();
   const state: RunState = {

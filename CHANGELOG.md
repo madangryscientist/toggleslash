@@ -44,3 +44,7 @@ Renamed from FeatureSlash to ToggleSlash.
 - Usage counts: `POST /sdk/v1/events` (server or client key, with CORS, size-limited) adds daily per-flag,
   per-variation counts to the key's environment, evaluate counts what it serves, `GET /api/v1/projects/{project}/flags/{flag}/usage`
   reads them per environment, and flags carry `lastEvaluated`. Counts only: no context or end-user data is stored.
+
+### Changed
+
+- New SDK keys and scoped API tokens start `tgl_` (`tgl_server_`, `tgl_client_`, `tgl_admin_`), and keys and tokens made before still work.

@@ -31,12 +31,12 @@ function createKey({ body }: Call, keys: KeyRow[]): Reply {
     return failure(400, "invalid_request", "name is required.");
   }
   counter += 1;
-  const secret = `fs_${kind === "server" ? "srv" : "cli"}_${String(counter).padStart(8, "0")}SECRETPART`;
+  const secret = `tgl_${kind === "server" ? "srv" : "cli"}_${String(counter).padStart(8, "0")}SECRETPART`;
   const row: KeyRow = {
     id: Math.max(0, ...keys.map((k) => k.id)) + 1,
     kind,
     name: body["name"],
-    prefix: secret.slice(0, 15),
+    prefix: secret.slice(0, 16),
     createdAt: NOW,
     revokedAt: null,
   };

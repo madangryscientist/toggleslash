@@ -4,7 +4,7 @@ import { createApp, type FlagClient } from "../src/app.ts";
 import { FLAGS } from "../src/flags.ts";
 import { USERS } from "../src/users.ts";
 
-const CLIENT_KEY = "fs_client_this-may-reach-a-browser";
+const CLIENT_KEY = "tgl_client_this-may-reach-a-browser";
 const SERVER_URL = "http://127.0.0.1:9";
 const BROWSER_JS = "export const bundle = 1;";
 

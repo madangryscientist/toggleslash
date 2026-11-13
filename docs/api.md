@@ -14,8 +14,8 @@ There are two kinds of credential, and each is accepted only where its routes sa
 | Credential | Set by | Accepted on |
 | --- | --- | --- |
 | Admin token | the server's `TOGGLESLASH_ADMIN_TOKEN` | `/api/v1` (the admin API) |
-| Server SDK key (`fs_server_…`) | `toggleslash keys create --kind server`, or the admin API | `/sdk/v1/ruleset`, `/sdk/v1/stream`, `/sdk/v1/evaluate`, `/sdk/v1/events` |
-| Client SDK key (`fs_client_…`) | `toggleslash keys create --kind client`, or the admin API | `/sdk/v1/changes`, `/sdk/v1/evaluate`, `/sdk/v1/events` |
+| Server SDK key (`tgl_server_…`) | `toggleslash keys create --kind server`, or the admin API | `/sdk/v1/ruleset`, `/sdk/v1/stream`, `/sdk/v1/evaluate`, `/sdk/v1/events` |
+| Client SDK key (`tgl_client_…`) | `toggleslash keys create --kind client`, or the admin API | `/sdk/v1/changes`, `/sdk/v1/evaluate`, `/sdk/v1/events` |
 
 A key is bound to one environment of one project. The server stores only a hash and a prefix of each key,
 so a lost key cannot be shown again; create a new one and revoke the old one. The server never generates, stores or logs the admin token. `GET /health` takes no credential.

@@ -105,14 +105,14 @@ bun run toggleslash keys create --project shop --env production --kind server --
 id:    1
 kind:  server
 name:  quickstart
-key:   fs_server_…
+key:   tgl_server_…
 toggleslash: store the key now; the server keeps only a hash and will not show it again.
 ```
 
 Copy the `key:` value into your shell (the `…` above stands for the rest of it):
 
 ```bash
-export TOGGLESLASH_SDK_KEY="fs_server_…"
+export TOGGLESLASH_SDK_KEY="tgl_server_…"
 ```
 
 Keep it out of the repo: a server key reads the whole ruleset of its environment.

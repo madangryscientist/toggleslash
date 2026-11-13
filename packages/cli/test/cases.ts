@@ -195,14 +195,14 @@ export const cases: Case[] = [
     routes: {
       [`POST ${P}/shop/environments/production/keys`]: json(201, {
         ...keySummary,
-        key: "fs_server_PLAINKEY",
+        key: "tgl_server_PLAINKEY",
       }),
     },
     method: "POST",
     path: `${P}/shop/environments/production/keys`,
     body: { kind: "server", name: "ci" },
-    shows: ["fs_server_PLAINKEY", "ci"],
-    reply: { ...keySummary, key: "fs_server_PLAINKEY" },
+    shows: ["tgl_server_PLAINKEY", "ci"],
+    reply: { ...keySummary, key: "tgl_server_PLAINKEY" },
   },
   {
     command: "keys list",
@@ -210,7 +210,7 @@ export const cases: Case[] = [
     routes: { [`GET ${P}/shop/environments/production/keys`]: json(200, [keySummary]) },
     method: "GET",
     path: `${P}/shop/environments/production/keys`,
-    shows: ["fs_server_ab12", "ci", "server"],
+    shows: ["tgl_server_ab12", "ci", "server"],
     reply: [keySummary],
   },
   {

@@ -33,7 +33,7 @@ const encoder = new TextEncoder();
  * and `events` (a sink). It checks the key as the real one does.
  */
 export class FakeServer {
-  readonly key = "fs_client_test";
+  readonly key = "tgl_client_test";
   /** What `evaluate` answers, per context key. */
   answers = new Map<string, Answer>();
   /** Answered when a context key has no entry in `answers`. Loosely typed so a test can send a bad answer. */

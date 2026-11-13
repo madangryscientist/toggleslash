@@ -33,7 +33,7 @@ export const keySummary = {
   id: 7,
   kind: "server",
   name: "ci",
-  prefix: "fs_server_ab12",
+  prefix: "tgl_server_ab12",
   createdAt: "2026-11-02T08:00:00Z",
   revokedAt: null,
 };

@@ -51,7 +51,7 @@ or environments; that is the API's check to make, and the targeting routes make 
   returned once, by the `POST`. A key is 32 bytes from a CSPRNG, so a plain hash is enough.
 - **Scoped API tokens:** for Terraform and CI, which should not hold the root token. A token belongs to one
   project, is `read` or `write`, and always expires (1 to 365 days from creation; there is no other choice). It looks like
-  `fs_admin_<64 hex>` and is stored like an SDK key: the SHA-256 hash and a display prefix, the plain token returned
+  `tgl_admin_<64 hex>` and is stored like an SDK key: the SHA-256 hash and a display prefix, the plain token returned
   once. The root token manages them at `/api/v1/projects/{project}/tokens` (`POST` creates, `GET` lists all of them,
   expired and revoked too, `DELETE .../{id}` revokes). An expired or revoked token is the same 401 as an unknown one
   and counts as an auth failure.
@@ -61,8 +61,8 @@ The two kinds of SDK key:
 
 | Kind | Looks like | Policy | Who holds it | What it may do |
 | --- | --- | --- | --- | --- |
-| server | `fs_server_<64 hex>` | `server-key` | a backend you run | read the ruleset, follow its stream, evaluate locally and report usage counts |
-| client | `fs_client_<64 hex>` | `client-key` | a browser or a mobile app, so assume it is public | ask the server to evaluate, report usage counts and hear that something changed (`GET /sdk/v1/changes`, no data); **never** read the ruleset or its stream |
+| server | `tgl_server_<64 hex>` | `server-key` | a backend you run | read the ruleset, follow its stream, evaluate locally and report usage counts |
+| client | `tgl_client_<64 hex>` | `client-key` | a browser or a mobile app, so assume it is public | ask the server to evaluate, report usage counts and hear that something changed (`GET /sdk/v1/changes`, no data); **never** read the ruleset or its stream |
 
 The kind that counts is the one stored with the key; the text in front is for people and secret
 scanners. The ruleset and stream routes are gated on `server-key`, the changes route on `client-key`; the evaluate and events routes on `sdk-key`, which is either kind.

@@ -149,7 +149,7 @@ describe.skipIf(skip)("the example app, the seed and the real server", () => {
 
   it("answers a client-key evaluate from the browser, and serves the bundle that makes it", async () => {
     const html = await (await fetch(`${appUrl()}/?user=pro-user`)).text();
-    const key = /fs_client_[A-Za-z0-9_-]+/.exec(html)?.[0];
+    const key = /tgl_client_[A-Za-z0-9_-]+/.exec(html)?.[0];
     expect(key).toBeDefined();
     const response = await fetch(`${server?.url}/sdk/v1/evaluate`, {
       method: "POST",
@@ -164,7 +164,7 @@ describe.skipIf(skip)("the example app, the seed and the real server", () => {
     expect(response.headers.get("Access-Control-Allow-Origin")).not.toBeNull();
     const flags = record(record(await response.json())["flags"]);
     expect(record(flags["new-checkout"])["value"]).toBe(true);
-    expect(html).not.toContain("fs_server_");
+    expect(html).not.toContain("tgl_server_");
 
     const bundle = await fetch(`${appUrl()}/browser.js`);
     expect(bundle.status).toBe(200);

@@ -200,7 +200,7 @@ public sealed class StorageTests : IDisposable
         var environment = new ProjectEnvironment { ProjectId = shop, Key = "prod", Name = "Prod", CreatedAt = Now };
         Save(server, environment);
 
-        Save(server, new ApiKey { EnvironmentId = environment.Id, Kind = ApiKeyKind.Client, Name = "web", Hash = "ab", Prefix = "fs_", CreatedAt = Now });
+        Save(server, new ApiKey { EnvironmentId = environment.Id, Kind = ApiKeyKind.Client, Name = "web", Hash = "ab", Prefix = "tgl_", CreatedAt = Now });
 
         Assert.Equal("client", Scalar("SELECT kind FROM api_keys"));
         Assert.Throws<SqliteException>(() => Execute("UPDATE api_keys SET kind = 'admin'"));
