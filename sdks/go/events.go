@@ -80,13 +80,36 @@ func (c *Client) mergeUsage(entries []usageEntry) {
 }
 
 // flushLoop sends the counts every flushInterval, the first one interval after
-// New, and does the final flush on the way out.
+// New, and does the final flush on the way out. A panic in a flush is reported
+// and the loop goes on; so is one that reaches the loop itself, which then
+// starts again with its sleep unless the client is closed (FS-178).
 func (c *Client) flushLoop() {
 	defer c.wg.Done()
-	for c.sleep(c.opts.FlushInterval) {
-		c.flush(false)
+	for {
+		raised, panicked := catch(func() {
+			for c.sleep(c.opts.FlushInterval) {
+				c.flushGuarded()
+			}
+		})
+		if !panicked {
+			break
+		}
+		c.reportPanic("flush", raised)
+		if c.closed.Load() {
+			break
+		}
 	}
-	c.flushFinal()
+	if raised, panicked := catch(c.flushFinal); panicked {
+		c.reportPanic("flush", raised)
+	}
+}
+
+// flushGuarded is flush with a panic reported instead of raised. The counts
+// the flush had taken are lost.
+func (c *Client) flushGuarded() {
+	if raised, panicked := catch(func() { c.flush(false) }); panicked {
+		c.reportPanic("flush", raised)
+	}
 }
 
 // flushFinal is contract 11's step 4: a flush bounded by requestTimeout per
@@ -121,6 +144,9 @@ func (e unsentError) Error() string {
 // after another (contract 9). With final set, the flush cannot keep anything
 // for a later one, so a kept batch is lost and reported.
 func (c *Client) flush(final bool) {
+	if c.opts.flushProbe != nil {
+		c.opts.flushProbe()
+	}
 	if !final && c.eventsHold.remaining(c.opts.clock.Now()) > 0 {
 		// A flush during a hold returns at once, keeping its counts.
 		return

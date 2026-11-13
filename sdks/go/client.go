@@ -3,6 +3,7 @@ package toggleslash
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"math/rand/v2"
 	"net"
@@ -208,22 +209,59 @@ func (c *Client) callOnError(err error) {
 	c.opts.OnError(err)
 }
 
-// syncLoop owns the sync state machine: the first load, the polls, the stream
-// and the ruleset fetch a stream event asks for. One goroutine owns it, so a
-// fetch and a stream attempt cannot overtake each other.
+// syncLoop runs syncRun and keeps it running: a panic that reaches it is
+// reported and the loop, unless the client is closed, waits a backoff that
+// grows with the panics so far and goes on, because a panic on an SDK goroutine
+// would end the host process (contract 5, guarantee 1; FS-178). The wait is
+// inside the guard, so a panic in it is caught too.
 func (c *Client) syncLoop() {
 	defer c.wg.Done()
-	// The first load sets lastError and settles Ready before its failure is
-	// reported, so no callback on an SDK goroutine ever runs while Ready is
-	// unsettled (contract 5.3, 6.4).
-	ok, code, err := c.load()
-	if code != "" {
-		c.loadFailed(code)
+	firstLoadDone := false
+	for panics := 0; ; panics++ {
+		stop := false
+		raised, panicked := catch(func() {
+			if panics > 0 && (!c.waitFor(c.delay(panics)) || c.closed.Load()) {
+				stop = true
+				return
+			}
+			c.syncRun(&firstLoadDone)
+		})
+		if !panicked || stop {
+			return
+		}
+		// lastError is set and Ready settles before the report, as for a failed
+		// first load; a panic after the first load also ends the stream attempt.
+		if c.stream && firstLoadDone {
+			c.streamFailed(LastErrorNetwork)
+		} else {
+			c.loadFailed(LastErrorNetwork)
+		}
+		c.settleReady(c.loaded.Load() != nil)
+		c.reportPanic("sync", raised)
+		if c.closed.Load() {
+			return
+		}
 	}
-	c.settleReady(ok)
-	c.report(err)
-	if c.closed.Load() {
-		return
+}
+
+// syncRun owns the sync state machine: the first load, the polls, the stream
+// and the ruleset fetch a stream event asks for. One goroutine owns it, so a
+// fetch and a stream attempt cannot overtake each other.
+func (c *Client) syncRun(firstLoadDone *bool) {
+	if !*firstLoadDone {
+		// The first load sets lastError and settles Ready before its failure is
+		// reported, so no callback on an SDK goroutine ever runs while Ready is
+		// unsettled (contract 5.3, 6.4).
+		ok, code, err := c.load()
+		if code != "" {
+			c.loadFailed(code)
+		}
+		c.settleReady(ok)
+		*firstLoadDone = true
+		c.report(err)
+		if c.closed.Load() {
+			return
+		}
 	}
 
 	failures := 0
@@ -266,6 +304,35 @@ func (c *Client) syncLoop() {
 			return
 		}
 	}
+}
+
+// catch runs fn and answers the value it panicked with. It tells a panic from a
+// normal return by a flag, so a panic(nil) is one even under GODEBUG=panicnil=1.
+func catch(fn func()) (raised any, panicked bool) {
+	returned := false
+	defer func() {
+		if !returned {
+			raised, panicked = recover(), true
+		}
+	}()
+	fn()
+	returned = true
+	return nil, false
+}
+
+// loopPanicError is a panic an SDK goroutine recovered, which goes to onError
+// and changes nothing else.
+type loopPanicError struct {
+	loop  string
+	cause any
+}
+
+func (e loopPanicError) Error() string {
+	return fmt.Sprintf("toggleslash: the %s loop panicked: %v", e.loop, e.cause)
+}
+
+func (c *Client) reportPanic(loop string, raised any) {
+	c.report(loopPanicError{loop: loop, cause: raised})
 }
 
 // delay is contract 7.3's backoff: pollInterval with the stream off, and
