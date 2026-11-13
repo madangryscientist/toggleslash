@@ -49,7 +49,12 @@ public class StressTests
                 o.OnError = _ => { };
             });
             var stop = new CancellationTokenSource();
-            var workers = Enumerable.Range(0, 16).Select(t => Task.Run(() =>
+
+            // The spinning workers and the two synchronous closers (Close and Dispose block until the shutdown is done) run on
+            // dedicated threads, not pool tasks. On the two cores of a CI runner, sixteen spinning pool tasks and two blocked
+            // closers hold every pool thread, and the shutdown (which needs pool threads to finish) waited past 60 s for the
+            // pool to grow by one thread at a time.
+            var workers = Enumerable.Range(0, 16).Select(t => Task.Factory.StartNew(() =>
             {
                 try
                 {
@@ -78,10 +83,15 @@ public class StressTests
                         failures.Add(e);
                     }
                 }
-            })).ToArray();
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default)).ToArray();
 
             await Task.Delay(300);
-            var closers = new[] { Task.Run(client.Close), Task.Run(() => client.CloseAsync()), Task.Run(client.Dispose) };
+            var closers = new[]
+            {
+                Task.Factory.StartNew(client.Close, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default),
+                Task.Run(() => client.CloseAsync()),
+                Task.Factory.StartNew(client.Dispose, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default),
+            };
             await Wait.WithinAsync(Task.WhenAll(closers), "two or three closes racing", 60_000);
             await Task.Delay(100);
             stop.Cancel();
