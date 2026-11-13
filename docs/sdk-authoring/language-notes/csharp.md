@@ -18,6 +18,12 @@ What the first C# run learned. Each fact cites that run: prompt `e3b07b5`, FS-98
   are armed. Subclass it to count them, and advance only once the poll or hold loop and the flush loop have
   armed again. A fixed real pause between steps flaked under load (one failure in four `bin/test` runs).
   xunit runs test classes in parallel, so the suite loads itself.
+- **A stress test starves the thread pool unless its spinners and blocking closers have their own threads.**
+  Sixteen workers looping as `Task.Run` tasks, with `Close()` and `Dispose()` (sync over async) each blocking
+  another pool thread, hold every pool thread on a 2-core runner, and the shutdown they wait for needs pool
+  threads to finish. The pool then grows one thread per injection step: the first round took 40 to 55 s on
+  two cores and failed a 60 s wait on GitHub's runner (the SDK was not stuck). Start spinners and the
+  synchronous closers with `TaskCreationOptions.LongRunning`.
 - **No race detector.** A stress test of every operation from many threads with `Close` racing stands in.
 - **Test service and layout.** `Microsoft.NET.Sdk.Web` (Kestrel from the shared framework, no package) as one
   more project in the solution, built by `bin/test` last. `UseArtifactsOutput` keeps build output under an
