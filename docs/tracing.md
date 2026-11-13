@@ -107,9 +107,14 @@ The same with the CLI: `toggleslash rulesets show <hash> --project shop --env pr
 - **A hash can be a 404 even though it is on a real trace.** The server keeps a ruleset the first time it answers
   `GET /sdk/v1/ruleset` with a `200`. An SDK that only ever received `304`s for a tag (it held it from before
   snapshots existed) never caused one to be kept, and a tag the stream announced but nobody fetched is not kept
-  either. A new process starts with a `200`, which is the usual case. The server also deletes a snapshot once a newer ruleset has replaced it for longer than
-  `TOGGLESLASH_RULESET_RETENTION_DAYS` (90 by default; `0` keeps every one), unless it is the environment's current
-  ruleset again after a rollback. So a hash that was in use within the last 90 days still answers, and one replaced longer ago can be a 404. A rolled-back old body is kept only while it is current.
+  either. A new process starts with a `200`, which is the usual case. The server also deletes snapshots, so an old
+  hash can be a 404. A sweep runs at startup and then hourly; per environment it orders the snapshots by
+  `first_served_at` (ties by hash), and a snapshot goes when its successor, the next one in that order, was first
+  served more than `TOGGLESLASH_RULESET_RETENTION_DAYS` ago (90 by default; `0` keeps every one) and the snapshot is
+  not the environment's current ruleset. So a snapshot is kept while it is the newest, while it is current, and while
+  its successor was first served within the window. Age counts from when a snapshot stopped being the newest, not from
+  when it last answered, and a rollback does not reset it: an old hash can stop answering at the first sweep after it
+  stops being current, sooner than the window after its last use.
 
 ## Jaeger: a link from the event
 
