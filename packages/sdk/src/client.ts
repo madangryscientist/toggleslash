@@ -43,7 +43,7 @@ export interface Hooks {
 export interface ClientOptions {
   /** The server's base URL, e.g. `https://flags.example.com`. */
   url: string;
-  /** A server SDK key (`fs_server_...`). A client key cannot read the ruleset. */
+  /** A server SDK key (`tgl_server_...`). A client key cannot read the ruleset. */
   sdkKey: string;
   /** For tests, or a runtime whose global `fetch` is not the one to use. */
   fetch?: Fetch;

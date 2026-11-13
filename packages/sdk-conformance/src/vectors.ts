@@ -111,9 +111,9 @@ export async function runVectors(service: Service, only?: string): Promise<Vecto
   const all = loadVectors().filter((vector) => only === undefined || vector.name.includes(only));
   const run = all.filter((vector) => !SKIPPED.has(vector.name));
   const groups = grouped(run);
-  const server = new FakeServer("fs_server_vectors_0");
+  const server = new FakeServer("tgl_server_vectors_0");
   groups.forEach((group, index) =>
-    server.setRuleset(group[0]?.flags, group[0]?.segments, `fs_server_vectors_${index}`),
+    server.setRuleset(group[0]?.flags, group[0]?.segments, `tgl_server_vectors_${index}`),
   );
   server.start();
   const failures: string[] = [];
@@ -122,7 +122,7 @@ export async function runVectors(service: Service, only?: string): Promise<Vecto
     while (next < groups.length) {
       const index = next++;
       failures.push(
-        ...(await runGroup(service, server, `fs_server_vectors_${index}`, groups[index] ?? [])),
+        ...(await runGroup(service, server, `tgl_server_vectors_${index}`, groups[index] ?? [])),
       );
     }
   };

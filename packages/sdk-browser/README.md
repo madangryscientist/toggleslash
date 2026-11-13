@@ -7,7 +7,7 @@ imports no engine. Private and unpublished; the full description is in [`docs/sd
 ```ts
 import { createBrowserClient } from "@hackcove/toggleslash-sdk-browser";
 
-const client = createBrowserClient({ url: "https://flags.example.com", clientKey: "fs_client_...", context: { key: "user-42" } });
+const client = createBrowserClient({ url: "https://flags.example.com", clientKey: "tgl_client_...", context: { key: "user-42" } });
 await client.ready();
 client.variation("new-checkout", false);
 client.on("change", (flags) => console.log("changed:", flags));

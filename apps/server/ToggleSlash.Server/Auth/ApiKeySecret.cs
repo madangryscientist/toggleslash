@@ -17,9 +17,9 @@ public sealed class ApiKeySecret(string plaintext, string hash, string prefix)
     public string Hash { get; } = hash;
     public string Prefix { get; } = prefix;
 
-    public static ApiKeySecret Generate(ApiKeyKind kind) => Generate(kind == ApiKeyKind.Server ? "fs_server_" : "fs_client_");
+    public static ApiKeySecret Generate(ApiKeyKind kind) => Generate(kind == ApiKeyKind.Server ? "tgl_server_" : "tgl_client_");
 
-    public static ApiKeySecret GenerateAdminToken() => Generate("fs_admin_");
+    public static ApiKeySecret GenerateAdminToken() => Generate("tgl_admin_");
 
     private static ApiKeySecret Generate(string start)
     {

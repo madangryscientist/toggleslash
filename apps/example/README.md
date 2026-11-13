@@ -31,8 +31,8 @@ The page is plain semantic HTML with no stylesheet and no component library, so 
 | Variable | |
 | --- | --- |
 | `TOGGLESLASH_URL` | the server, for example `http://127.0.0.1:5080` |
-| `TOGGLESLASH_SDK_KEY` | a server key (`fs_server_...`) |
-| `TOGGLESLASH_CLIENT_KEY` | a client key (`fs_client_...`), sent to the browser |
+| `TOGGLESLASH_SDK_KEY` | a server key (`tgl_server_...`) |
+| `TOGGLESLASH_CLIENT_KEY` | a client key (`tgl_client_...`), sent to the browser |
 | `PORT` | default `4441`, bound to `127.0.0.1` |
 | `TOGGLESLASH_FLUSH_INTERVAL_MS` | how often usage counts are sent (optional) |
 

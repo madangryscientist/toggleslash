@@ -95,7 +95,7 @@ describe("status()", () => {
   });
 
   it("reports the HTTP status of a refused ruleset", async () => {
-    const client = h.start({ sdkKey: "fs_server_wrong", stream: false });
+    const client = h.start({ sdkKey: "tgl_server_wrong", stream: false });
     expect(await client.ready()).toBe(false);
     await settle();
     expect(client.status()).toMatchObject({ etag: null, lastError: "http_401" });

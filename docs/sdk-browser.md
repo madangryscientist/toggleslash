@@ -12,7 +12,7 @@ import { createBrowserClient } from "@hackcove/toggleslash-sdk-browser";
 
 const client = createBrowserClient({
   url: "https://flags.example.com",
-  clientKey: "fs_client_...",
+  clientKey: "tgl_client_...",
   context: { key: user.id, attributes: { plan: "pro" } },
 });
 await client.ready(); // optional: settles after the first answer or failure

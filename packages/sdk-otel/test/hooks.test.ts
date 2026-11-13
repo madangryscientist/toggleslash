@@ -67,7 +67,7 @@ async function start(options: Partial<TracingOptions>, flags: unknown[] = [flag(
   const errors: unknown[] = [];
   const client = createClient({
     url: "https://flags.example.test",
-    sdkKey: "fs_server_test",
+    sdkKey: "tgl_server_test",
     fetch: fakeFetch(flags),
     stream: false,
     pollIntervalMs: 600_000,
@@ -229,7 +229,7 @@ describe("the feature_flag.evaluation event", () => {
     const { client, errors } = await start({});
     const plain = createClient({
       url: "https://flags.example.test",
-      sdkKey: "fs_server_test",
+      sdkKey: "tgl_server_test",
       fetch: fakeFetch([flag("checkout")]),
       stream: false,
     });

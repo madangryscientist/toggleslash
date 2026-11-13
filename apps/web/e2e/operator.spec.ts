@@ -66,7 +66,7 @@ test.describe("environments", () => {
 test.describe("SDK keys", () => {
   test("lists keys with their prefix, active and revoked", async ({ page }) => {
     await page.goto("/keys?project=shop&env=production");
-    await expect(page.getByTestId("key-1")).toContainText("fs_srv_a1b2c3d4");
+    await expect(page.getByTestId("key-1")).toContainText("tgl_srv_a1b2c3d4");
     await expect(page.getByTestId("key-1")).toContainText("Backend");
     await expect(page.getByTestId("revoke-1")).toBeVisible();
     await expect(page.getByTestId("key-2")).toContainText("revoked");
@@ -82,7 +82,7 @@ test.describe("SDK keys", () => {
     const plaintext = page.getByTestId("new-key-plaintext");
     await expect(plaintext).toContainText("SECRETPART");
     // The table has the prefix and the callout names it; the plaintext is only in the callout.
-    await expect(page.getByTestId("key-3")).toContainText("fs_srv_00000001");
+    await expect(page.getByTestId("key-3")).toContainText("tgl_srv_00000001");
     await expect(page.getByTestId("key-3")).not.toContainText("SECRETPART");
 
     // Leave and come back: the prefix stays, the secret does not.
@@ -90,7 +90,7 @@ test.describe("SDK keys", () => {
     await expect(page).toHaveURL(/\/segments/);
     await expect(page.getByTestId("segments")).toBeVisible();
     await page.getByTestId("nav-keys").click();
-    await expect(page.getByTestId("key-3")).toContainText("fs_srv_00000001");
+    await expect(page.getByTestId("key-3")).toContainText("tgl_srv_00000001");
     await expect(page.getByTestId("new-key")).toHaveCount(0);
     await expect(page.locator("body")).not.toContainText("SECRETPART");
 
@@ -106,7 +106,7 @@ test.describe("SDK keys", () => {
     await page.locator("#key-name").fill("Browser");
     await page.locator("#key-kind").selectOption("client");
     await page.getByRole("button", { name: "Create key" }).click();
-    await expect(page.getByTestId("new-key-plaintext")).toContainText("fs_cli_");
+    await expect(page.getByTestId("new-key-plaintext")).toContainText("tgl_cli_");
     await page.getByTestId("dismiss-key").click();
     await expect(page.getByTestId("new-key")).toHaveCount(0);
     await expect(page.locator("body")).not.toContainText("SECRETPART");

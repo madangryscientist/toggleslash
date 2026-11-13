@@ -342,7 +342,7 @@ public sealed class RateLimitTests : IDisposable
     }
 
     private static Task<HttpResponseMessage> Wrong(ApiServer server, string? peer = null, string? forwardedFor = null) =>
-        Send(server, HttpMethod.Get, Ruleset, "fs_wrong_credential", peer: peer, forwardedFor: forwardedFor);
+        Send(server, HttpMethod.Get, Ruleset, "tgl_wrong_credential", peer: peer, forwardedFor: forwardedFor);
 
     private static async Task FailTimes(ApiServer server, int times, string? peer = null, string? forwardedFor = null)
     {
@@ -861,7 +861,7 @@ public sealed class RateLimitTests : IDisposable
         var logs = new CapturedLogs();
         using var database = new TempDatabase();
         string key;
-        const string WrongKey = "fs_wrong_credential_that_must_not_be_logged";
+        const string WrongKey = "tgl_wrong_credential_that_must_not_be_logged";
         using (var server = ApiServerOn(database, logs, clock, ends))
         {
             key = await Seed(server, "server");

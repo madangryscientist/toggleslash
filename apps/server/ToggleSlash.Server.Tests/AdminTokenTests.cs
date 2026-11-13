@@ -216,7 +216,7 @@ public sealed class AdminTokenTests : IDisposable
         Expire(server, expired.Id);
         await ApiServer.Expect(HttpStatusCode.NoContent, await server.Delete($"{Tokens}/{revoked.Id}"));
 
-        var unknown = await server.Send(HttpMethod.Get, Shop, Bearer("fs_admin_0000000000000000000000000000000000000000000000000000000000000000"));
+        var unknown = await server.Send(HttpMethod.Get, Shop, Bearer("tgl_admin_0000000000000000000000000000000000000000000000000000000000000000"));
         await ApiServer.ExpectError(HttpStatusCode.Unauthorized, "unauthorized", unknown);
         var same = await unknown.Content.ReadAsStringAsync();
         foreach (var dead in new[] { expired.Token, revoked.Token })
@@ -332,7 +332,7 @@ public sealed class AdminTokenTests : IDisposable
             new[] { "createdAt", "expiresAt", "id", "name", "permission", "prefix", "revokedAt", "token" },
             created.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
         var token = created.GetProperty("token").GetString()!;
-        Assert.Matches("^fs_admin_[0-9a-f]{64}$", token);
+        Assert.Matches("^tgl_admin_[0-9a-f]{64}$", token);
         var hash = ApiKeySecret.HashOf(token);
         Assert.StartsWith(created.GetProperty("prefix").GetString()!, token);
 

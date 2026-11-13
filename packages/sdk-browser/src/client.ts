@@ -13,7 +13,7 @@ import type { Context, Evaluation, VariationDetail } from "./types.ts";
 export interface BrowserClientOptions {
   /** The server, as the server SDK's `url` option. */
   url: string;
-  /** A client SDK key (`fs_client_...`). It goes in an `Authorization` header, never in a URL. */
+  /** A client SDK key (`tgl_client_...`). It goes in an `Authorization` header, never in a URL. */
   clientKey: string;
   /** Who the flags are evaluated for: a single or a multi context, as `POST /sdk/v1/evaluate` takes it. */
   context: Context;

@@ -110,10 +110,10 @@ public sealed class AuthTests : IDisposable
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var created = await Json(response);
         var plaintext = created.GetProperty("key").GetString()!;
-        Assert.Matches($"^fs_{kind}_[0-9a-f]{{64}}$", plaintext);
+        Assert.Matches($"^tgl_{kind}_[0-9a-f]{{64}}$", plaintext);
         Assert.Equal(kind, created.GetProperty("kind").GetString());
         Assert.Equal("api", created.GetProperty("name").GetString());
-        Assert.Equal(plaintext[..18], created.GetProperty("prefix").GetString());
+        Assert.Equal(plaintext[..($"tgl_{kind}_".Length + 8)], created.GetProperty("prefix").GetString());
 
         var listResponse = await server.AsAdmin(HttpMethod.Get, AuthServer.KeysPath);
         var raw = await listResponse.Content.ReadAsStringAsync();
@@ -168,7 +168,7 @@ public sealed class AuthTests : IDisposable
         Assert.Contains("AuthenticationScheme: bearer was challenged", logs);
         Assert.Contains("api_keys", logs);
         Assert.DoesNotContain(plaintext, logs);
-        Assert.DoesNotContain(plaintext[18..], logs);
+        Assert.DoesNotContain(plaintext[("tgl_server_".Length + 8)..], logs);
         Assert.DoesNotContain(ApiKeySecret.HashOf(plaintext), logs);
         Assert.DoesNotContain(AuthServer.AdminToken, logs);
         Assert.DoesNotContain(WrongToken, logs);

@@ -4,8 +4,8 @@ import { afterEach, describe, expect, it } from "vitest";
  * The real entry point (`src/server.ts`) as a subprocess, against a fake ToggleSlash server on
  * loopback: the wiring is where a server key could leak, and where SIGTERM has to close the client.
  */
-const SERVER_KEY = "fs_server_a-key-that-must-stay-on-the-server";
-const CLIENT_KEY = "fs_client_a-key-for-browsers";
+const SERVER_KEY = "tgl_server_a-key-that-must-stay-on-the-server";
+const CLIENT_KEY = "tgl_client_a-key-for-browsers";
 
 const ruleset = {
   flags: [
@@ -105,7 +105,7 @@ describe("src/server.ts", () => {
     const json = JSON.stringify(state);
     for (const body of [page, json]) {
       expect(body).not.toContain(SERVER_KEY);
-      expect(body).not.toContain("fs_server_");
+      expect(body).not.toContain("tgl_server_");
     }
     expect(page).toContain(CLIENT_KEY);
     // The page loads the bundle from this server, and the bundle holds no key.
@@ -114,7 +114,7 @@ describe("src/server.ts", () => {
     expect(bundle.status).toBe(200);
     const bundleText = await bundle.text();
     expect(bundleText).not.toContain(SERVER_KEY);
-    expect(bundleText).not.toContain("fs_server_");
+    expect(bundleText).not.toContain("tgl_server_");
 
     // A day's counts are held for the next flush (ten minutes away) until the client closes.
     expect(fake.seen.filter((s) => s.path === "/sdk/v1/events")).toHaveLength(0);

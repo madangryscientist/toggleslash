@@ -30,7 +30,7 @@ const encoder = new TextEncoder();
  * answers like the real one (`docs/architecture.md`), and checks the key.
  */
 export class FakeServer {
-  readonly key = "fs_server_test";
+  readonly key = "tgl_server_test";
   flags: unknown[];
   version = 1;
   down = false;
