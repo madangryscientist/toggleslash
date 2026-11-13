@@ -1,6 +1,6 @@
 # Run report template
 
-Copy this to `sdks/<lang>/RUN.md` and fill every section. Keep the headings as they are: the phase 6
+Copy this to `sdks/<lang>/RUN.md` and fill every section. Keep the headings as they are: the phase 6b
 check and the planner read them. A section with nothing in it says "None." rather than disappearing.
 
 ```markdown
@@ -59,7 +59,7 @@ or a file and line. A line that does not apply says why.
 
 ## Phase log
 
-One entry per phase, 0 to 6, written by the session that ran it (`PROMPT.md`, "How a run is split").
+One entry per phase (0, 1, 2, 3a, 3b, 4, 5, 6a and 6b), written by the session that ran it (`PROMPT.md`, "How a run is split").
 Each entry is all the next session gets, so write it to be read cold.
 
 ### Phase <n>: <name>
