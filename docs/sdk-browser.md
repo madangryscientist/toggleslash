@@ -1,6 +1,6 @@
 # Browser SDK (TypeScript)
 
-`packages/sdk-browser` (`@hackcove/toggleslash-sdk-browser`, Nx project `sdk-browser`) is the SDK for code that runs
+`packages/sdk-browser` (`@hackcove/toggleslash-sdk-browser`, moon project `sdk-browser`) is the SDK for code that runs
 in a browser. **The server evaluates.** The browser never receives a ruleset and never evaluates: it sends its context to
 `POST /sdk/v1/evaluate`, keeps the whole answer in memory, serves it synchronously, and asks again when
 `GET /sdk/v1/changes` says something changed (see [`api.md`](api.md), and section 13 of

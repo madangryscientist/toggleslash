@@ -1,0 +1,17 @@
+$schema: "../../.moon/cache/schemas/project.json"
+
+tags: ["ts"]
+
+dependsOn:
+  - "sdk"
+  - "sdk-browser"
+
+tasks:
+  typecheck:
+    command: "tsc -p apps/example/tsconfig.json"
+    options:
+      runFromWorkspaceRoot: true
+  lint:
+    script: "oxlint --type-aware --deny-warnings apps/example && bun scripts/check-slop.ts apps/example"
+    options:
+      runFromWorkspaceRoot: true

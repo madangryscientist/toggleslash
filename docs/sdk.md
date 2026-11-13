@@ -1,6 +1,6 @@
 # Server-side SDK (TypeScript)
 
-`packages/sdk` (`@hackcove/toggleslash-sdk`, Nx project `sdk`) is the server-side SDK for TypeScript: it keeps
+`packages/sdk` (`@hackcove/toggleslash-sdk`, moon project `sdk`) is the server-side SDK for TypeScript: it keeps
 a copy of one environment's ruleset current and evaluates flags **locally** with `@hackcove/toggleslash-engine`,
 to [`evaluation.md`](evaluation.md). It needs a **server** key (`ruleset` and `stream` refuse a client key). The
 package is private and unpublished; publishing waits for the maintainer. Code that runs in a browser uses the
@@ -156,4 +156,4 @@ the flush on close, and a check after every test that no promise rejected unhand
 `packages/sdk/test-service/main.ts` is the SDK's conformance test service: it wraps `createClient` in the
 protocol of [`sdk-test-service.md`](sdk-test-service.md), and `bun run conformance -- --service "bun
 packages/sdk/test-service/main.ts"` runs every scenario in `fixtures/sdk` and every evaluation vector
-through it, against a real HTTP server on real time. `bunx nx test sdk-conformance` does the same in the gate.
+through it, against a real HTTP server on real time. `bunx moon run sdk-conformance:test` does the same in the gate.

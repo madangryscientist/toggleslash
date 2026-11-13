@@ -2,7 +2,7 @@ import { findDotnet, REPO_ROOT } from "../../../scripts/dotnet.ts";
 
 export { REPO_ROOT };
 
-/** The first `dotnet` on PATH that runs, or null: the same search `scripts/nx.ts` makes. */
+/** The first `dotnet` on PATH that runs, or null: the same search `scripts/moon.ts` makes. */
 export const dotnetPath = (): string | null => findDotnet();
 
 /** Whether a working `dotnet` runs here. */

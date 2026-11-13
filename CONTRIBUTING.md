@@ -24,10 +24,10 @@ bun run format:check    # oxfmt; `bun run format` fixes it
 bun run test            # Vitest under Bun
 ```
 
-A change to `apps/web` or `apps/site` also runs `bunx nx build <app>` and `bunx nx test:e2e <app>`
+A change to `apps/web` or `apps/site` also runs `bunx moon run <app>:build` and `bunx moon run <app>:test-e2e`
 (Playwright; `bunx playwright install chromium-headless-shell` once per machine).
 
-A change to the server, the CLI, the SDK or the engine also runs `bun run test:e2e` (or `bunx nx test:e2e e2e` with the SDK): the cross-language
+A change to the server, the CLI, the SDK or the engine also runs `bun run test:e2e` (or `bunx moon run e2e:test-e2e` with the SDK): the cross-language
 end-to-end test (the real server, CLI and SDK on localhost; it needs the .NET SDK and skips with a printed line without one).
 
 A change to `apps/server` needs the .NET SDK (10.0.402, see `global.json`; `mise install` gets it).

@@ -8,7 +8,7 @@ export const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 /**
  * The first `dotnet` on PATH that runs here (from the repository root, so `global.json` applies), or
  * null. Every one is tried, because one that exists can still fail (a host with no SDK, a mise shim
- * where none is active) and must not hide a working one behind it. `scripts/nx.ts` and the e2e
+ * where none is active) and must not hide a working one behind it. `scripts/moon.ts` and the e2e
  * project both ask this, so they cannot disagree about whether an SDK exists.
  */
 export function findDotnet(): string | null {

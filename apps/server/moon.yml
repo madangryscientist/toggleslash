@@ -1,0 +1,16 @@
+$schema: "../../.moon/cache/schemas/project.json"
+
+tags: ["dotnet"]
+
+# The four csproj files are built and tested here as one. dotnet restores and
+# builds on its own, and its incremental build is its own cache, so `build` is never cached by moon.
+tasks:
+  build:
+    script: "dotnet build ToggleSlash.Evaluation.Tests/ToggleSlash.Evaluation.Tests.csproj && dotnet build ToggleSlash.Server.Tests/ToggleSlash.Server.Tests.csproj"
+    options:
+      cache: false
+  test:
+    script: "dotnet test ToggleSlash.Evaluation.Tests/ToggleSlash.Evaluation.Tests.csproj && dotnet test ToggleSlash.Server.Tests/ToggleSlash.Server.Tests.csproj"
+    inputs:
+      - "**/*"
+      - "/fixtures/**/*"

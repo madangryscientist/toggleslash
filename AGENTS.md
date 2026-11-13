@@ -15,7 +15,7 @@ rule and the invariants. Keep it accurate.
 
 ## The gate
 
-A small Nx workspace on Bun workspaces:
+A small moon workspace (moon 2.6.5) on Bun workspaces. `.moon/workspace.yml` lists the projects, `.moon/tasks/*.yml` holds what they inherit (shared inputs, the Vitest `test` task) and each project has a `moon.yml`. There is no toolchain file: every task runs on the system toolchain, and moon never downloads Bun or runs `bun install`:
 
 | Project | Path | What it is |
 | --- | --- | --- |
@@ -29,10 +29,10 @@ A small Nx workspace on Bun workspaces:
 | `web` | `apps/web` | the dashboard: TanStack Start on Cloudflare Workers; `/sign-in` and a stateless session (`src/api/auth.server.ts`; fails closed without `TOGGLESLASH_OPERATOR_PASSWORD` and `TOGGLESLASH_SESSION_SECRET`), with `requireSession` as global function middleware in `src/start.ts`, so every server function is protected by default and a test holds that; a server-only client for the C# admin API (`src/api`), a project and environment switcher and the flag list (search, toggle, create, archive, and an archived view with restore and delete) with each flag's lifecycle stage, and the flag detail page (`/flags/$flag`: metadata, targeting editor with context kinds on targets, clauses and rollouts, history, usage; the editor's pure logic is `src/targeting`), and the operator pages `/environments` (list, create, rename, delete), `/keys` (create shows the plaintext once, in component state only; revoke asks first), `/segments` (list, create, edit with members of other context kinds, delete), `/audit` (flag, environment and date filters, cursor paging) and `/rulesets/$hash` (the flags as they were under a ruleset hash a trace carries: read only, no salt, needs `?project=&env=`, a not-found state for a hash never served, sign-in returns to the same URL). D1 via Drizzle stays a placeholder table, unused. Its e2e run against a fake API (`e2e/fake-api.ts`), so its gate needs no .NET SDK, and sign in through the real form with throwaway values from `playwright.config.ts`: there is no test mode that skips sign-in |
 | `example` | `apps/example` | a fictional shop checkout on `Bun.serve` that uses the TS SDK against a server (`TOGGLESLASH_URL`, `TOGGLESLASH_SDK_KEY`, `TOGGLESLASH_CLIENT_KEY`): a page with a user picker, `/state` for its values, and a section that runs the browser SDK (`@hackcove/toggleslash-sdk-browser`) with the client key: `src/server.ts` bundles `src/browser.ts` with `Bun.build` at startup and serves it, in memory, at `GET /browser.js`, so the page loads one module from the example server. Plain HTML with no stylesheet and no component, so invariant 3 has nothing to compose here. The server key never reaches the page, and a test holds that. Private; see its `README.md` |
 | `site` | `apps/site` | the marketing site: TanStack Start on a Worker, every page prerendered; no D1, no secrets |
-| `server` | `apps/server` | the C# server: ASP.NET Core minimal API on .NET 10 (`ToggleSlash.Server`, xunit in `ToggleSlash.Server.Tests`); owns all flag data and the API. `apps/server/openapi/v1.json` is its generated OpenAPI document; `apps/server/Dockerfile` and the root `compose.yaml` containerise it (below) |
-| `evaluation` | `apps/server/ToggleSlash.Evaluation` | the C# implementation of `docs/evaluation.md`: a class library with no ASP.NET or database dependency (xunit in `ToggleSlash.Evaluation.Tests`, which runs every vector); the server references it for `POST /sdk/v1/evaluate` |
+| `server` | `apps/server` | the C# server (one moon project, tagged `dotnet`, over the four .NET projects below): ASP.NET Core minimal API on .NET 10 (`ToggleSlash.Server`, xunit in `ToggleSlash.Server.Tests`); owns all flag data and the API. `apps/server/openapi/v1.json` is its generated OpenAPI document; `apps/server/Dockerfile` and the root `compose.yaml` containerise it (below) |
+| `evaluation` | `apps/server/ToggleSlash.Evaluation` | part of the `server` moon project, not one of its own: the C# implementation of `docs/evaluation.md`: a class library with no ASP.NET or database dependency (xunit in `ToggleSlash.Evaluation.Tests`, which runs every vector); the server references it for `POST /sdk/v1/evaluate` |
 | `e2e` | `packages/e2e` | the cross-language end-to-end test (`test:e2e`, not `test`): builds and starts the real C# server on a port the OS picks with a SQLite file under `$TMPDIR`, drives it with the real CLI (a subprocess) and the real TS SDK, and checks a CLI flip arrives through the stream and that `POST /sdk/v1/evaluate` and the SDK's local evaluation agree over a set of contexts. It also holds the seed (`src/seed.ts`: a shop with five flags and a segment) and `bun run stack` (`src/stack.ts`, `src/stack-cli.ts`): the server, the seed, the dashboard on 4440 and the example app on 4441, with secrets made per run; `test/example.test.ts` proves the example against the real server. `bun run test:stack` (`test:stack`, not `test:e2e`; `playwright.config.ts`, `stack/journey.spec.ts`) starts that stack and walks one journey in a browser: sign in to the dashboard, two shoppers on the example, a flag created through the UI, a toggle that reaches both shoppers through the stream and, in the browser SDK's table, through the change signal, `runtime` and `diagnose` from the CLI, the usage count, the audit log, and a read-scoped token refused a write; on a failure it prints the stack's logs. Loopback only; skips with a printed line when no `dotnet` runs (in CI, where `CI` is set, a missing SDK fails instead). Private |
-| `scripts` | `scripts` | `check-slop.ts`, `check-dashes.ts`, `check-workflows.ts`, `test-tmp-scope.ts`, `nx.ts` and `dotnet.ts` (typecheck + lint; `check-workflows.ts` also has a `bun test` test) |
+| `scripts` | `scripts` | `check-slop.ts`, `check-dashes.ts`, `check-workflows.ts`, `test-tmp-scope.ts`, `moon.ts` and `dotnet.ts` (typecheck + lint; `check-workflows.ts` also has a `bun test` test) |
 
 `bunfig.toml` sets `[install] linker = "isolated"` and `globalStore = true` (the shared package store that
 makes a warm worktree install fast): a package sees its own declared dependencies and the root's, not
@@ -44,11 +44,11 @@ A change is green when all of these pass **from the worktree**:
 
 ```bash
 bun install                       # FIRST: a fresh worktree has no node_modules
-bun run typecheck                 # nx run-many -t typecheck  (tsc, strict)
-bun run lint                      # nx run-many -t lint  (oxlint --type-aware --deny-warnings + check-slop), then check-dashes over every tracked file
+bun run typecheck                 # moon run :typecheck  (tsc, strict)
+bun run lint                      # moon run :lint  (oxlint --type-aware --deny-warnings + check-slop), then check-dashes over every tracked file
 bun run format:check              # oxfmt --check  (`bun run format` fixes)
 bun run parity:check              # the feature parity matrix matches this tree
-bun run test                      # nx run-many -t test  (Vitest under the Bun runtime)
+bun run test                      # moon run :test  (Vitest under the Bun runtime, and xunit for the server)
 ```
 
 `bun run parity:check` validates [`docs/feature-parity.json`](docs/feature-parity.json) against the
@@ -60,37 +60,50 @@ reading of public pages, not a claim of vendor parity; refresh them when a relea
 matters.
 
 **The .NET SDK is needed for `apps/server`.** A change to it needs the SDK to be checked. The root
-scripts (`typecheck`, `lint`, `build`, `test`, `test:e2e`, `test:stack`) go through `scripts/nx.ts`,
+scripts (`typecheck`, `lint`, `build`, `test`, `test:e2e`, `test:stack`) go through `scripts/moon.ts`,
 which asks `scripts/dotnet.ts` (`findDotnet`) for a `dotnet` that *runs*, from the repo root so
 `global.json` applies. It tries every `dotnet` on PATH in order, because a `dotnet` that exists can
 still fail: here `/usr/bin/dotnet` is a host with no SDK, and a mise shim fails where no SDK is
-active. `packages/e2e/src/dotnet.ts` uses the same function, so the two cannot disagree. Two paths:
+active. `packages/e2e/src/dotnet.ts` uses the same function, so the two cannot disagree. The four .NET
+projects are one moon project, `server`, tagged `dotnet`: `server:test` runs `dotnet test` on both test
+projects (dotnet restores and builds on its own) and `server:build` builds them without moon's cache,
+since dotnet's incremental build is its own. Two paths:
 
 - **With a working `dotnet`** (anywhere on PATH, `/usr/bin/dotnet` first or not): `bun run test`
-  restores, builds and tests `ToggleSlash.Server.Tests` with xunit, and `bun run test:e2e` runs the
-  `e2e` project. The version (10.0.402) is pinned in `.tool-versions` (mise activates it here;
+  runs `server:test` with the TS projects, `bun run build` builds the server, and `bun run test:e2e`
+  runs the `e2e` project. The version (10.0.402) is pinned in `.tool-versions` (mise activates it here;
   `mise install` installs it) and in `global.json` (what `dotnet` itself reads). The first restore
   fetches NuGet packages, so it needs the network once.
-- **Without one**: the wrapper sets `NX_DOTNET_DISABLE=true` and prints a `!!` banner to stderr
-  saying `apps/server` is NOT in the run, so a green there does not cover the server; the TS projects
-  run as before and the dotnet projects are not in the graph. In CI (`CI` set) a missing SDK fails
-  instead. Setting `NX_DOTNET_DISABLE` yourself skips the check and the banner.
+- **Without one**: the wrapper prints a `!!` banner to stderr before and after the run, saying
+  `apps/server` is NOT in the run, so a green there does not cover the server, and adds
+  `--query "tag!=dotnet"` to `moon run`, which leaves the `dotnet`-tagged project out; the TS projects
+  run as before. In CI (`CI` set) a missing SDK fails instead. Setting `TOGGLESLASH_DOTNET_DISABLE`
+  yourself skips the check and the banner and leaves the server out.
 
-Why the wrapper does more than check: Nx puts the directory of its own runtime ahead of PATH for
-every task (npm-run-path), and `nx` run through its `#!/usr/bin/env node` shebang is `/usr/bin/node`
-here, so `/usr/bin` went first and the host-only `/usr/bin/dotnet` hid the SDK even with the mise one
-first on the caller's PATH (`dotnet restore` failed with "No .NET SDKs were found"). The wrapper runs
-nx under Bun (`~/.bun/bin` has no `dotnet`) and puts the directory of the `dotnet` it found first on
-PATH. **A bare `bunx nx ...` skips all of that**, so on a machine like this one use the root scripts,
-or `bun scripts/nx.ts <nx args>` for one project, and on a machine without an SDK set
-`NX_DOTNET_DISABLE=true` yourself. The `@nx/dotnet` plugin in `nx.json` reads the .NET projects when
-Nx builds its graph, so without an SDK **every** `nx` command fails unless it is disabled. Both
+Why the wrapper does more than check: moon puts nothing of its own runtime ahead of PATH. It prepends
+only its own and proto's bin directories (no `node_modules/.bin`, so `bun run` or `bunx` supplies the
+root's) and leaves the rest of the caller's PATH in order, so a task runs the first `dotnet` on the
+caller's PATH.
+Here that is `/usr/bin/dotnet`, a host with no SDK, ahead of the mise one (`dotnet restore` fails with
+"No .NET SDKs were found"). The wrapper puts the directory of the `dotnet` it found first on PATH. **A
+bare `bunx moon ...` skips that**, so on a machine like this one use the root scripts, or
+`bun scripts/moon.ts run <target>` for one project. Moon's project graph needs no SDK, so a bare `bunx moon`
+command works without one for the TS projects. Both
 `.csproj` files set `Nullable`, `TreatWarningsAsErrors` and `InvariantGlobalization`;
 `apps/server/Directory.Build.props` and `.rsp` leave no compiler server or MSBuild node running after a
-build. `bin/` and `obj/` are ignored.
+build. `bin/` and `obj/` are ignored, and so are they in the `server` project's inputs.
 
-One project: `bunx nx test engine`, `bunx nx lint cli`, `bunx nx test ToggleSlash.Server.Tests`. Nx caches in `.nx/`; add `--skip-nx-cache` to
-force a rerun. There is no Nx Cloud here. Lint rules are all errors; fix the code, do not disable a
+One project: `bunx moon run engine:test`, `bunx moon run cli:lint`, `bunx moon run server:test`. moon
+caches in `.moon/cache` (gitignored; it cannot be moved); add `--force` to rerun a cached task. The root
+scripts run three tasks at a time (`--concurrency 3`): moon's default of one per core
+starved the timing-sensitive suites. There is no remote cache. moon has no `^default`: without a
+toolchain it does not hash the files of a project a task depends on, so every TS project's tasks
+(tag `ts`, `.moon/tasks/ts.yml`) take all of `packages/**` as inputs, and a change to the engine
+re-runs them all. Every `test` also takes `fixtures/**` and `apps/server/openapi/*`. The generated
+`routeTree.gen.ts` stays an input: `tsr generate` rewrites it to the same bytes, and web's
+`route-tree.test.ts` reads it.
+Task ids cannot hold a colon, so the Playwright and end-to-end tasks are `test-e2e` and `test-stack`
+(the root script names stay `test:e2e` and `test:stack`). Lint rules are all errors; fix the code, do not disable a
 rule. A TODO carries an issue: `TODO(#123)`. Tests live in `packages/*/test/` and
 `apps/*/src/**/*.test.ts` and run with `bun --bun vitest`; the server's tests are xunit, in
 `apps/server/ToggleSlash.Server.Tests`.
@@ -99,13 +112,13 @@ A change to `apps/web` or `apps/site` also runs their builds, Playwright and Wor
 worktree root). `test:e2e` runs before `build`: web's e2e run leaves its own build behind, and `build` replaces it.
 
 ```bash
-bun run test:e2e                  # nx run-many -t test:e2e  (Playwright: web and site; web builds with the e2e env on a fresh local D1; and the `e2e` project, which needs the .NET SDK)
-bun run build                     # nx run-many -t build  (every project's build target: web, site, cli, and the C# projects)
+bun run test:e2e                  # moon run :test-e2e  (Playwright: web and site; web builds with the e2e env on a fresh local D1; and the `e2e` project, which needs the .NET SDK)
+bun run build                     # moon run :build  (every project's build task: web, site, cli, and the C# projects)
 (cd apps/web && bunx wrangler deploy --dry-run --outdir "$TMPDIR/fs-web-dry")
 (cd apps/site && bunx wrangler deploy --dry-run --outdir "$TMPDIR/fs-site-dry")
 ```
 
-One app: `bunx nx test:e2e web`, `bunx nx build site`. The cross-language test alone: `bunx nx test:e2e e2e` (with the SDK on the machine; `bun run test:e2e` runs it too and skips it without one; a `dotnet build` of the server, then about five seconds). Any change to the server, the CLI, the SDK or the engine can break it, so run it then; CI has its own `e2e` job. `bun run test:stack` (about fifteen seconds after a build; it needs the SDK and `bunx playwright install chromium-headless-shell`, and it holds ports 4440 and 4441) is the whole product in a browser: run it after a change to `apps/web`, `apps/example`, the SDK's stream, or anything the dashboard and the server must agree on. It is not part of `bun run test:e2e`; CI has its own `stack` job, which uploads nothing because a report could hold the run's secrets.
+One app: `bunx moon run web:test-e2e`, `bunx moon run site:build`. The cross-language test alone: `bunx moon run e2e:test-e2e` (with the SDK on the machine; `bun run test:e2e` runs it too and skips it without one; a `dotnet build` of the server, then about five seconds). Any change to the server, the CLI, the SDK or the engine can break it, so run it then; CI has its own `e2e` job. `bun run test:stack` (about fifteen seconds after a build; it needs the SDK and `bunx playwright install chromium-headless-shell`, and it holds ports 4440 and 4441) is the whole product in a browser: run it after a change to `apps/web`, `apps/example`, the SDK's stream, or anything the dashboard and the server must agree on. It is not part of `bun run test:e2e`; CI has its own `stack` job, which uploads nothing because a report could hold the run's secrets.
 
 First time on a machine: `bunx playwright install chromium-headless-shell`.
 
@@ -126,16 +139,16 @@ the drizzle migrations and the `dotnet-tools.json` manifest. Add a pattern when 
 - Every TypeScript project's test run goes through `scripts/test-tmp-scope.ts` (a Vitest and Playwright
   `globalSetup`): `TMPDIR` is a fresh dir for the run and is removed after it. A new project's
   `vitest.config.ts` must list the same `globalSetup`.
-- `nx.json` sets `"useDaemonProcess": false`; the daemon installs `nx@latest` into `/tmp` and does
-  not clean it. Do not turn it on and do not run `nx daemon`.
+- moon has no daemon and installs nothing into `/tmp`: no toolchain is declared, so it downloads
+  nothing and runs no install. Keep it that way (no `.moon/toolchains.yml`, `pipeline.installDependencies: false`).
 - Scratch goes under `$TMPDIR`, never a hardcoded `/tmp`.
 
 ## SDKs in `sdks/`
 
 `sdks/<lang>` is where a server SDK per language goes (Python, Go, Java, C#, Ruby to start), each built from
 [`docs/sdk-authoring/PROMPT.md`](docs/sdk-authoring/PROMPT.md); see [`sdks/README.md`](sdks/README.md).
-They are **not** in the gate above: `.nxignore` keeps `sdks/` out of Nx (the `@nx/dotnet` plugin would
-otherwise take a C# SDK's `.csproj` as a project). Each has its own workflow, `.github/workflows/sdk-<lang>.yml`,
+They are **not** in the gate above: `.moon/workspace.yml` lists the projects explicitly, so nothing under
+`sdks/` is a moon project. Each has its own workflow, `.github/workflows/sdk-<lang>.yml`,
 which runs on a change to the fixtures, the contract, the test-service protocol or the harness too. So such a
 change must keep every `sdks/*` green, and a pull request with one red is not merged.
 

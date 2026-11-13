@@ -1,0 +1,12 @@
+# Inherited by the projects tagged `dotnet`: the C# server and its evaluator, which are four .NET
+# projects built and tested as the one moon project `server`.
+$schema: "../cache/schemas/tasks.json"
+
+inheritedBy:
+  tags: ["dotnet"]
+
+implicitInputs:
+  # dotnet's own output. Left in, a build would change the hash it is hashed under.
+  - "!/**/bin/**"
+  - "!/**/obj/**"
+  - "!/**/TestResults/**"

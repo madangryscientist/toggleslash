@@ -40,8 +40,8 @@ then a summary:
 scenarios: 79 passed, 0 failed, 2 skipped; vectors: 1369 passed, 0 failed, 2 skipped
 ```
 
-It exits 0 when nothing failed, 1 when something did, and 2 on a usage error. `bunx nx test
-sdk-conformance` runs the same thing against the TypeScript service, in about 12 s.
+It exits 0 when nothing failed, 1 when something did, and 2 on a usage error. `bunx moon run
+sdk-conformance:test` runs the same thing against the TypeScript service, in about 12 s.
 
 ## The protocol
 

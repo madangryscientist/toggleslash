@@ -29,6 +29,12 @@ jobs:
     name: Gate (typecheck, lint, format, parity, test)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # moon 2.6.5 diffs the head against the base branch before any task runs, even for a plain
+      # `moon run`, and the checkout has no local `main`, so it names the remote ref. That needs the
+      # full history (fetch-depth: 0 below). No switch skips the diff short of --force, which would
+      # also bypass the cache.
+      MOON_BASE: origin/main
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -37,7 +43,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      # global.json pins the SDK; apps/server is part of the gate. The @nx/dotnet plugin needs it for every nx command.
+      # global.json pins the SDK; apps/server is part of the gate (the `server` moon project runs dotnet).
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
@@ -75,7 +81,7 @@ jobs:
           fi
           # The apps and packages (what they import), plus what decides how they install and run.
           if git diff --name-only "origin/$BASE_REF...HEAD" \
-            | grep -qE '^(apps/(web|site)/|packages/|bun\.lock$|bunfig\.toml$|\.github/workflows/ci\.yml$)'; then
+            | grep -qE '^(apps/(web|site)/|packages/|\.moon/|bun\.lock$|bunfig\.toml$|\.github/workflows/ci\.yml$)'; then
             echo "apps=true" >> "$GITHUB_OUTPUT"
           else
             echo "apps=false" >> "$GITHUB_OUTPUT"
@@ -88,11 +94,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      # The web and site checks do not touch apps/server (the gate job covers it), so no SDK here.
-      NX_DOTNET_DISABLE: "true"
+      # The web and site tasks do not touch apps/server (the gate job covers it), and moon's graph
+      # needs no SDK, so none is installed here. MOON_BASE and the full history: see the gate job.
+      MOON_BASE: origin/main
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -105,13 +113,13 @@ jobs:
       - name: Install the Playwright browser
         working-directory: apps/web
         run: bunx playwright install chromium-headless-shell
-      - run: bunx nx test:e2e web
-      - run: bunx nx build web
+      - run: bunx moon run web:test-e2e
+      - run: bunx moon run web:build
       - name: Web deploy dry run
         working-directory: apps/web
         run: bunx wrangler deploy --dry-run --outdir "$RUNNER_TEMP/fs-web-dry"
-      - run: bunx nx build site
-      - run: bunx nx test:e2e site
+      - run: bunx moon run site:build
+      - run: bunx moon run site:test-e2e
       - name: Site deploy dry run
         working-directory: apps/site
         run: bunx wrangler deploy --dry-run --outdir "$RUNNER_TEMP/fs-site-dry"
@@ -122,9 +130,12 @@ jobs:
     name: End to end (server, CLI, SDK)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      MOON_BASE: origin/main
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -133,7 +144,7 @@ jobs:
         with:
           global-json-file: global.json
       - run: bun install --frozen-lockfile
-      - run: bunx nx run e2e:test:e2e
+      - run: bunx moon run e2e:test-e2e
 
   # Browser journey (FS-46): the dashboard in a browser, two shoppers on the example app and the
   # CLI, against the real server. It runs on every PR, and CI is set, so a missing .NET SDK fails
@@ -143,9 +154,12 @@ jobs:
     name: Browser journey (dashboard, server, CLI, example)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      MOON_BASE: origin/main
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -161,7 +175,7 @@ jobs:
       - name: Install the Playwright browser
         working-directory: packages/e2e
         run: bunx playwright install chromium-headless-shell
-      - run: bunx nx run e2e:test:stack
+      - run: bunx moon run e2e:test-stack
 
   # Self-hosting proof (FS-22): the server's image builds and the compose stack answers /health.
   # Nothing is pushed and there is no registry login; the token is a throwaway for this job's

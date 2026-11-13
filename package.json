@@ -9,28 +9,30 @@
   "type": "module",
   "scripts": {
     "toggleslash": "bun packages/cli/src/index.ts",
-    "typecheck": "bun scripts/nx.ts run-many -t typecheck",
-    "lint": "bun scripts/nx.ts run-many -t lint && bun scripts/check-dashes.ts",
+    "typecheck": "bun scripts/moon.ts run --concurrency 3 :typecheck",
+    "lint": "bun scripts/moon.ts run --concurrency 3 :lint && bun scripts/check-dashes.ts",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "parity": "bun scripts/parity.ts --write",
     "parity:check": "bun scripts/parity.ts --check",
     "parity:check:commits": "bun scripts/parity-commits.ts",
-    "build": "bun scripts/nx.ts run-many -t build",
-    "test": "bun scripts/nx.ts run-many -t test",
-    "test:e2e": "bun scripts/nx.ts run-many -t test:e2e",
-    "test:stack": "bun scripts/nx.ts run e2e:test:stack",
+    "build": "bun scripts/moon.ts run --concurrency 3 :build",
+    "test": "bun scripts/moon.ts run --concurrency 3 :test",
+    "test:e2e": "bun scripts/moon.ts run --concurrency 3 :test-e2e",
+    "test:stack": "bun scripts/moon.ts run e2e:test-stack",
     "stack": "bun packages/e2e/src/stack-cli.ts",
     "conformance": "bun packages/sdk-conformance/src/cli.ts"
   },
   "devDependencies": {
-    "@nx/dotnet": "24.0.3",
+    "@moonrepo/cli": "2.6.5",
     "@types/bun": "1.4.4",
-    "nx": "24.0.3",
     "oxfmt": "0.75.0",
     "oxlint": "1.90.0",
     "oxlint-tsgolint": "7.0.2005",
     "typescript": "7.0.2",
     "vitest": "5.0.5"
-  }
+  },
+  "trustedDependencies": [
+    "@moonrepo/cli"
+  ]
 }
