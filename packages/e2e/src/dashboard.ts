@@ -63,7 +63,13 @@ export async function startDashboard(options: DashboardOptions): Promise<Managed
   try {
     await waitReady(proc, "it answered", async () => {
       try {
-        return (await fetch(`http://127.0.0.1:${options.port}/sign-in`)).ok;
+        // A preview that accepts the connection and never answers must not hold the loop forever:
+        // the abort rejects into the catch below, which reads as "not ready yet", so the loop keeps
+        // polling and fails with the log once `waitReady` passes its deadline (up to 5 s after it).
+        const response = await fetch(`http://127.0.0.1:${options.port}/sign-in`, {
+          signal: AbortSignal.timeout(5_000),
+        });
+        return response.ok;
       } catch {
         return false;
       }
