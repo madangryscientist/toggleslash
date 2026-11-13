@@ -24,6 +24,9 @@ jobs:
     name: Gate (typecheck, lint, format, parity, test)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # moon diffs the head against the base branch before any task runs; see ci.yml's gate job.
+      MOON_BASE: origin/main
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -32,7 +35,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: "1.4.2"
-      # global.json pins the SDK; apps/server is part of the gate. The @nx/dotnet plugin needs it for every nx command.
+      # global.json pins the SDK; apps/server is part of the gate (the `server` moon project runs dotnet).
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
@@ -56,9 +59,13 @@ jobs:
       contents: read
       # The OIDC token npm trusted publishing and the provenance statement are signed with.
       id-token: write
+    env:
+      # moon diffs the head against the base branch before any task runs; see ci.yml's gate job.
+      MOON_BASE: origin/main
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -78,10 +85,8 @@ jobs:
             exit 1
           fi
       - run: bun install --frozen-lockfile
-      # The package is TypeScript only: take apps/server out of the graph rather than install an SDK.
-      - run: bunx nx build cli
-        env:
-          NX_DOTNET_DISABLE: "true"
+      # The package is TypeScript only: moon's graph needs no SDK, and `cli:build` does not touch apps/server.
+      - run: bunx moon run cli:build
       - name: Ship the licence files
         run: cp LICENSE NOTICE packages/cli/
       - name: Publish

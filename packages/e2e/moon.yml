@@ -1,0 +1,31 @@
+$schema: "../../.moon/cache/schemas/project.json"
+
+tags: ["ts"]
+
+dependsOn:
+  - "sdk"
+  - "sdk-otel"
+
+# e2e has no `test`: its suites are the two tasks below, which need the C# server and are not cached.
+workspace:
+  inheritedTasks:
+    exclude:
+      - "test"
+
+tasks:
+  typecheck:
+    command: "tsc -p packages/e2e/tsconfig.json"
+    options:
+      runFromWorkspaceRoot: true
+  lint:
+    script: "oxlint --type-aware --deny-warnings packages/e2e && bun scripts/check-slop.ts packages/e2e"
+    options:
+      runFromWorkspaceRoot: true
+  test-e2e:
+    command: "bun --bun vitest run"
+    options:
+      cache: false
+  test-stack:
+    command: "bun --bun playwright test"
+    options:
+      cache: false

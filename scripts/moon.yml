@@ -1,0 +1,27 @@
+$schema: "../.moon/cache/schemas/project.json"
+
+tags: ["ts"]
+
+# `test` is not the Vitest task the other projects inherit: moon appends a project's args to an
+# inherited task's, so overriding the command would run `vitest run` with this one's args after it.
+workspace:
+  inheritedTasks:
+    exclude:
+      - "test"
+
+tasks:
+  typecheck:
+    command: "tsc -p scripts/tsconfig.json"
+    options:
+      runFromWorkspaceRoot: true
+  lint:
+    script: "oxlint --type-aware --deny-warnings scripts && bun scripts/check-slop.ts scripts"
+    options:
+      runFromWorkspaceRoot: true
+  test:
+    command: "bun test scripts/check-workflows.test.ts"
+    inputs:
+      - "**/*"
+      - "/.github/workflows/*.yml"
+    options:
+      runFromWorkspaceRoot: true

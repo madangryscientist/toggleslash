@@ -1,0 +1,16 @@
+$schema: "../../.moon/cache/schemas/project.json"
+
+tags: ["ts"]
+
+dependsOn:
+  - "sdk"
+
+tasks:
+  typecheck:
+    command: "tsc -p packages/sdk-openfeature/tsconfig.json"
+    options:
+      runFromWorkspaceRoot: true
+  lint:
+    script: "oxlint --type-aware --deny-warnings packages/sdk-openfeature && bun scripts/check-slop.ts packages/sdk-openfeature"
+    options:
+      runFromWorkspaceRoot: true

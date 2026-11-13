@@ -1,8 +1,8 @@
 /**
  * The no-dash rule: no em dash (U+2014) or en dash (U+2013) in anything we write. It reads
  * every tracked file from the repo root (`bun scripts/check-dashes.ts`), so docs and data are
- * covered as well as code. The root `lint` script runs it after the Nx lint target; any hit
- * fails the gate. It stays outside Nx on purpose: the check reads the whole tree, and a cached
+ * covered as well as code. The root `lint` script runs it after the moon lint tasks; any hit
+ * fails the gate. It stays outside moon on purpose: the check reads the whole tree, and a cached
  * project-scoped target would replay a pass after a dash was added in `docs/`.
  */
 import { execFileSync } from "node:child_process";

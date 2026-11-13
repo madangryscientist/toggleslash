@@ -1,0 +1,37 @@
+# Inherited by the projects tagged `ts`: every TypeScript project. moon has no `^default`: without
+# the javascript toolchain it does not hash the files of a project this one depends on. The packages
+# import each other (the apps and the SDKs import the engine and the server SDK), so each of their
+# tasks hashes every package, and a change to the engine re-runs them all. Cache correctness over
+# granularity.
+$schema: "../cache/schemas/tasks.json"
+
+inheritedBy:
+  tags: ["ts"]
+
+implicitInputs:
+  - "/packages/**/*"
+  # Vitest's and Playwright's globalSetup, which every test run loads.
+  - "/scripts/test-tmp-scope.ts"
+  # node_modules is gitignored, but a workspace package's node_modules holds symlinks that the glob
+  # still walks, and moon warns on each one it cannot hash as a file. dist, .wrangler and the
+  # Playwright output are what a build or a test run leaves behind.
+  - "!/**/node_modules/**"
+  - "!/**/dist/**"
+  - "!/**/.wrangler/**"
+  - "!/**/.tanstack/**"
+  - "!/**/test-results/**"
+  - "!/**/playwright-report/**"
+  # Generated from the route files (already inputs) by `tsr generate`, which the typecheck of web and
+  # site runs and which rewrites it, so a task hashed while it was being rewritten missed the cache.
+  - "!/apps/web/src/routeTree.gen.ts"
+  - "!/apps/site/src/routeTree.gen.ts"
+
+tasks:
+  # Most projects run their Vitest suite from their own root. A project with another test command
+  # overrides `command` (and `options`); one with no `test` excludes this task.
+  test:
+    command: "bun --bun vitest run"
+    inputs:
+      - "**/*"
+      - "/fixtures/**/*"
+      - "/apps/server/openapi/*"

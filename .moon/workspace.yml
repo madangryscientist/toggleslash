@@ -1,0 +1,31 @@
+# moon workspace. A project id is its directory name, so `bunx moon run engine:test` runs the engine's
+# tests. The four .NET projects (the .csproj files) are one moon project, `server`. Projects are listed, not globbed: nothing under `sdks/` is a project.
+#
+# No toolchain is declared (no .moon/toolchains.yml): every task runs on the `system` toolchain, so
+# moon runs our bun commands as they are and never downloads Bun or runs `bun install`.
+# The cache lives in .moon/cache (gitignored); moon has no setting to move it.
+$schema: "./cache/schemas/workspace.json"
+
+projects:
+  example: "apps/example"
+  site: "apps/site"
+  web: "apps/web"
+  server: "apps/server"
+  cli: "packages/cli"
+  e2e: "packages/e2e"
+  engine: "packages/engine"
+  sdk: "packages/sdk"
+  sdk-browser: "packages/sdk-browser"
+  sdk-conformance: "packages/sdk-conformance"
+  sdk-openfeature: "packages/sdk-openfeature"
+  sdk-otel: "packages/sdk-otel"
+  scripts: "scripts"
+
+vcs:
+  client: "git"
+  defaultBranch: "main"
+
+pipeline:
+  installDependencies: false
+
+telemetry: false

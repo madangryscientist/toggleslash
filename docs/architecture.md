@@ -475,9 +475,9 @@ steps in `AGENTS.md` (domain, routes, D1, publishing) still apply.
 
 ## Build and gate
 
-`apps/server` is four projects: `ToggleSlash.Server` and `ToggleSlash.Server.Tests` (xunit,
+`apps/server` is four .NET projects: `ToggleSlash.Server` and `ToggleSlash.Server.Tests` (xunit,
 `WebApplicationFactory`), and `ToggleSlash.Evaluation` with `ToggleSlash.Evaluation.Tests`. The evaluator is a
-class library with no ASP.NET or database dependency; the server references it to evaluate for `POST /sdk/v1/evaluate`. They are wired into Nx with the `@nx/dotnet` plugin. The SDK is pinned to .NET
-10.0.402 in `global.json` and `.tool-versions`. `scripts/nx.ts` skips the server, and says so, when
+class library with no ASP.NET or database dependency; the server references it to evaluate for `POST /sdk/v1/evaluate`. moon runs them as one project, `server`, tagged `dotnet`. The SDK is pinned to .NET
+10.0.402 in `global.json` and `.tool-versions`. `scripts/moon.ts` skips the server, and says so, when
 no SDK runs, so a TypeScript-only contributor can still run the gate. A change to `apps/server` needs
 the SDK. See `AGENTS.md`.

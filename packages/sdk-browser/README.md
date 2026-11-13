@@ -14,4 +14,4 @@ client.on("change", (flags) => console.log("changed:", flags));
 await client.close();
 ```
 
-Tests (`bun run test` from the repository root, or `bunx nx test sdk-browser`) use a fake `fetch` and a fake clock; no network.
+Tests (`bun run test` from the repository root, or `bunx moon run sdk-browser:test`) use a fake `fetch` and a fake clock; no network.
