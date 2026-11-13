@@ -109,7 +109,7 @@ Each line is a native test in `$L`, named in `RUN.md`.
 
 ## Code and documents
 
-- [ ] `RUN.md` has a phase log entry for each of phases 0 to 6.
+- [ ] `RUN.md` has a phase log entry for each of the nine phases: 0, 1, 2, 3a, 3b, 4, 5, 6a and 6b.
 - [ ] `DESIGN.md` passes the phase 1 row check, and `README.md` has the mapping table or links to it
   (contract 2: the mapping is documented in a table).
 - [ ] The names in the mapping table keep the canonical meaning and defaults, and the reason kinds, error
@@ -131,7 +131,7 @@ Each line is a native test in `$L`, named in `RUN.md`.
   anything new (contract 13).
 - [ ] Test seams are options on `create` (which may be internal to the package: a field of the SDK's own config that the package's tests set, as `sdks/go`'s tests set `cfg.idle`, is one, and so is a package-private setter on a public options type) or the language's
   standard fake-time test facility, never a global or an environment variable the SDK reads (contract 13,
-  PROMPT.md phase 3).
+  PROMPT.md phase 3a).
 - [ ] `bin/lint`, `bin/test` and `bin/test-service` exist, are executable, `cd` to the SDK, and run with only
   the toolchain `$L/mise.toml` pins (PROMPT.md, "Entry points").
 - [ ] `test-service/README.md` maps every accessor of the protocol to an SDK method
@@ -144,7 +144,7 @@ Each line is a native test in `$L`, named in `RUN.md`.
 
 - [ ] No em dash or en dash in any file you wrote: `bun scripts/check-dashes.ts` (PROMPT.md, rule 1).
 - [ ] `bun run format:check` passes (PROMPT.md, phase 5).
-- [ ] Only `$L/` and the one workflow file changed: the phase 6 scope check prints `scope ok` (PROMPT.md,
+- [ ] Only `$L/` and the one workflow file changed: the phase 6b scope check prints `scope ok` (PROMPT.md,
   rule 2).
 - [ ] No package was published and no name reserved (PROMPT.md, rule 3).
 - [ ] Commit subjects are Conventional Commits, none `feat`, with no `Co-Authored-By` or AI attribution
@@ -152,4 +152,4 @@ Each line is a native test in `$L`, named in `RUN.md`.
 - [ ] The workflow's job is `runs-on: ubuntu-latest` with no `if:` guard, triggers only `pull_request` and
   `push`, installs its own toolchain, and `bun scripts/check-workflows.ts .github/workflows/*.yml` passes
   (PROMPT.md, phase 5).
-- [ ] `RUN.md` follows `RUN-TEMPLATE.md`, with evidence for every line of this list (PROMPT.md, phase 6).
+- [ ] `RUN.md` follows `RUN-TEMPLATE.md`, with evidence for every line of this list (PROMPT.md, phase 6b).

@@ -3,7 +3,7 @@
 You are building a **server SDK** for ToggleSlash, a source-available feature flag service, in one language,
 inside this repository. Nobody answers questions while you work. Where this prompt leaves something open on
 purpose, decide and write the reason down; where it is unclear, assume, record it as a guess, and go on.
-Both go in your run report (phase 6), which the next version of this prompt is written from.
+Both go in your run report (phase 6b), which the next version of this prompt is written from.
 
 ## Your input
 
@@ -34,7 +34,7 @@ The SDK meets [`docs/sdk-contract.md`](../sdk-contract.md) (the contract) and ev
 vector in `fixtures/evaluation/`, run by your own tests, and the conformance harness, run against your test
 service. **A passing harness is necessary and not sufficient.** It cannot see threads, long timers, the day
 boundary or a failure inside your own process; [`CHECKLIST.md`](CHECKLIST.md) lists what it cannot see, and
-you walk it in phase 6.
+you walk it in phase 6a.
 
 ## Repository rules
 
@@ -61,7 +61,7 @@ These hold for every file you write, code, comments, docs, commit messages and t
    makes up its own keys.
 8. **Branch from `origin/main`** and land as the "Landing" section of [`AGENTS.md`](../../AGENTS.md) says;
    where your brief adds landing steps (a ticket line, a handoff), follow those too. Your gate is the checks
-   of phases 0 to 6, not the `AGENTS.md` gate.
+   of the nine phases (0, 1, 2, 3a, 3b, 4, 5, 6a, 6b), not the `AGENTS.md` gate.
 9. **Read narrowly.** Find what you need with a search first (`grep -n` for the symbol, the heading or the
    field), then read only the lines you need (`sed -n '<from>,<to>p'`, or a read with an offset and a limit), a
    section or a function at a time. Never `cat` a whole file, never print a whole file a page at a time, and
@@ -94,10 +94,10 @@ all three and commit them with the executable bit.
 
 ## How a run is split
 
-A run is seven phases, 0 to 6, and each is one session.
+A run is nine phases, 0, 1, 2, 3a, 3b, 4, 5, 6a and 6b, and each is one session.
 
-- **The brief names the phase** a session runs (0 to 6). The session runs that phase only and stops. A brief
-  that names no phase means all seven, in order, in one session, with the same phase log.
+- **The brief names the phase** a session runs (one of the nine). The session runs that phase only and stops. A brief
+  that names no phase means all nine, in order, in one session, with the same phase log.
 - **A session reads, in this order:** the sections of this prompt before "Phase 0" (they are short and hold
   for every phase), the phase log in `$L/RUN.md` (absent in phase 0), its own phase's section, and only the
   sources that section names in its "Reads" list. No phase reads a whole document: it reads the sections it
@@ -107,7 +107,14 @@ A run is seven phases, 0 to 6, and each is one session.
   the decisions it made (which also go under Decisions); open items; and what the next phase must read first.
   The entry is all that passes between sessions: a fresh session must be able to start the next phase from the
   entry plus that phase's own section, without reading earlier phases' sources again. Uncommitted work stays
-  in the worktree between sessions; the one commit is still made in phase 6.
+  in the worktree between sessions; the one commit is still made in phase 6b.
+- **Long commands run quietly.** A long command (`bin/test`, `bin/lint`, the conformance harness, a loaded or
+  repeated run) writes its full output to a log file under `$TMPDIR`, and the session reads only the last few
+  lines when it passes, and more of the log only when it fails. For example:
+  `"$L/bin/test" > "$TMPDIR/test.log" 2>&1; s=$?; tail -n 5 "$TMPDIR/test.log"; [ $s = 0 ] || { tail -n 80 "$TMPDIR/test.log"; false; }`
+  (the last part makes the line end non-zero when the command failed, so a loop or a `&&` chain sees it).
+  Repeated runs (the ten in a row) print one line per run. The reason: command output, not file reads, is what
+  filled the sessions of the first split run. Each phase's **Check** block stays as it is; this says how to run it.
 - **A question** works as now (the brief's Questions section); it pauses that phase's session.
 
 ## Phase 0: read and set up
@@ -257,31 +264,62 @@ client after this check passes.
 bun -e 'const d="fixtures/evaluation/",f=require("fs"),r=n=>JSON.parse(f.readFileSync(d+n,"utf8"));let v=0;for(const n of f.readdirSync(d))if(n!=="buckets.json")v+=r(n).vectors.length;console.log(v,r("buckets.json").buckets.length)'
 ```
 
-## Phase 3: client
+## Phase 3a: client, sync
 
 **Reads.**
 
-- [`docs/sdk-contract.md`](../sdk-contract.md), sections 2 to 12, one section at a time as you build it.
-  Sections 4 to 12 are the work.
+- [`docs/sdk-contract.md`](../sdk-contract.md), sections 2 to 8, one section at a time as you build it.
+  Sections 4 to 8 are the work.
 - [`docs/api.md`](../api.md), "SDK read API (`/sdk/v1`)" only: the wire, where the contract leaves a detail open.
-- [`CHECKLIST.md`](CHECKLIST.md), "Native tests" only.
+- [`CHECKLIST.md`](CHECKLIST.md), "Native tests", and under "Code and documents" the header audit and the test
+  seams lines (`grep -ni 'header\|test seams'`).
 - `$L/DESIGN.md`: the concurrency, HTTP and SSE, and layout items.
 
 
 Build the client on the evaluator, to the contract, section by section: options and naming (2), contexts
 (3), results and the mismatch rule (4), the guarantees (5), concurrency (6), the sync protocol with the
-stream, the loop, the backoff and `Retry-After` (7), status (8), usage counts (9), hooks and `onError`
-(10), close (11) and privacy (12). Contract section 13 says what you may add. Test seams (an HTTP client,
-a clock, a jitter source, a shorter watchdog, an evaluator that raises) are options on `create`, which may
-be internal to the package, or the language's standard test facility for fake time. Never a global or an
-environment variable the SDK reads.
+stream, the loop, the backoff and `Retry-After` (7) and status (8). Phase 3b builds sections 9 to 12 on
+this. Test seams (an HTTP client, a clock, a jitter source, a shorter watchdog) are
+options on `create`, which may be internal to the package, or the language's standard test facility for fake
+time. Never a global or an environment variable the SDK reads.
 
-Write native unit tests for what the harness cannot reach: the "Native tests" lines of
-[`CHECKLIST.md`](CHECKLIST.md). Write first one loopback fake server for them, which records each request's
-headers: it serves the header audit, the `Retry-After` cap and the watchdog tests. Test long timers through the
-seams, never by waiting real minutes. Step a fake clock only when the SDK is
+Write native unit tests for what the harness cannot reach in sections 2 to 8: the "Native tests" lines of
+[`CHECKLIST.md`](CHECKLIST.md) that belong to them. A test that needs hooks, `onError`, `close` or the events
+route (the `Retry-After` cap on the events route, an evaluator that raises, `close` racing `variation`) is
+written in phase 3b; the cap test here covers the ruleset and stream routes. Write first one loopback fake server for them, which
+records each request's headers: it serves the header audit, the `Retry-After` cap and the watchdog tests. A
+"Native tests" line that spans both halves (the header audit, the seams) is this phase's, and phase 3b adds
+to it. Test long timers through the seams, never by waiting real minutes. Step a fake clock only when the SDK is
 waiting on it (for example count the clock's armed timers), never after a fixed real pause: a pause passes on a quiet
 machine and fails on a loaded one.
+
+Your phase log entry names the seams and the fake server (where it lives and what it records) that phase 3b
+builds on, and the `$L/DESIGN.md` items phase 3b must read again (none, unless it needs one).
+
+**Check.** All native tests pass, the phase 2 vectors included:
+
+```sh
+"$L/bin/test"
+```
+
+## Phase 3b: client, usage, hooks and close
+
+**Reads.**
+
+- [`docs/sdk-contract.md`](../sdk-contract.md), sections 9 to 12 and the note on additions in section 13, one
+  section at a time as you build it.
+- [`docs/api.md`](../api.md), "SDK read API (`/sdk/v1`)" only, for the events route.
+- [`CHECKLIST.md`](CHECKLIST.md), "Native tests", and under "Code and documents" the header audit and the test
+  seams lines (`grep -ni 'header\|test seams'`).
+- `$L/DESIGN.md`: only the items the phase 3a log entry names (for example the concurrency item); otherwise none.
+
+
+Continue the client from phase 3a's entry, using its seams and its fake server: usage counts (9), hooks and
+`onError` (10), close (11) and privacy (12). Contract section 13 says what you may add. Any new test seam (an
+evaluator that raises, for `onError`) is an option on `create`, as in phase 3a.
+
+Write native unit tests for what the harness cannot reach in sections 9 to 13: the "Native tests" lines of
+[`CHECKLIST.md`](CHECKLIST.md) that belong to them, and add to the header audit and the seams phase 3a began.
 
 **Check.** All native tests pass, the phase 2 vectors included:
 
@@ -348,7 +386,7 @@ server recorded; read those before you change code.
 - A sibling `.github/workflows/sdk-<lang>.yml`, only if the toolchain step needs `jdx/mise-action` inputs.
 
 
-1. `$L/.gitignore`: the language's build and cache output (phase 6's scope check stages with `git add -A`).
+1. `$L/.gitignore`: the language's build and cache output (phase 6b's scope check stages with `git add -A`).
 2. `$L/README.md`: a quickstart (install from a checkout of this repository, with no tag, create, `variation`, `close`), the
    mapping table or a link to it in `DESIGN.md`, the guarantees as a short list (contract section 5), and
    how to run `bin/lint`, `bin/test` and the harness (the toolchain install is `(cd sdks/<lang> && mise trust && mise install)`, as `sdks/README.md` gives it, and no more). It names no registry and no published package.
@@ -423,33 +461,62 @@ files git tracks, hence the `git add`):
   && bun scripts/check-workflows.ts .github/workflows/*.yml
 ```
 
-## Phase 6: review and report
+## Phase 6a: checklist
 
 **Reads.**
 
 - [`CHECKLIST.md`](CHECKLIST.md): a section at a time, walked line by line.
-- [`RUN-TEMPLATE.md`](RUN-TEMPLATE.md): the headings `RUN.md` must keep.
 - [`docs/sdk-contract.md`](../sdk-contract.md), the "Bounds" bullets (`grep -n 'Bounds'`).
+
+
+Walk [`CHECKLIST.md`](CHECKLIST.md) line by line: check it, fix what fails, note the evidence (a test
+name, a command, a file and line). That includes any repeated or loaded test runs the checklist asks for: the
+ten runs in a row and the loaded run belong to this phase. The lines that can only hold once the report and
+the commit exist (the phase log for all nine phases, the commit subjects, the scope check, "`RUN.md` follows
+the template") are phase 6b's: leave them, and say so in your entry. Read the contract's "Bounds" bullets again against
+your parser and your client: a limit the contract does not name, added in phase 3a or 3b to be safe, is a
+deviation to remove. A line that does not apply says why; one you cannot meet is a stuck point.
+
+Your phase log entry records each checklist line's evidence (a test name, a command, a file and line, and the
+counts of the ten runs and the loaded run) and anything left open, so phase 6b can write `RUN.md` from it.
+
+**Check.** Your phase log entry exists:
+
+```sh
+grep -q '^### Phase 6a' "$L/RUN.md" || echo "RUN.md lacks the phase 6a entry"
+"$L/bin/lint" && "$L/bin/test" && git add -A && bun run format:check && bun scripts/check-dashes.ts \
+  && bun scripts/check-workflows.ts .github/workflows/*.yml
+```
+
+It must print no `lacks` line, and the rest must pass: the tree you leave is one that CI would pass.
+
+## Phase 6b: report
+
+**Reads.**
+
+- The phase log in `$L/RUN.md`, above all phase 6a's entry.
+- [`CHECKLIST.md`](CHECKLIST.md): the lines phase 6a left to this phase, and the rule that restarts the ten
+  runs.
+- [`RUN-TEMPLATE.md`](RUN-TEMPLATE.md): the headings `RUN.md` must keep.
 - For the guesses: the contract, the protocol page, the checklist and the language notes, and then
   `packages/sdk/src` and the `RUN.md` files under `sdks/`, each searched by `grep -n`, never read whole.
 
 
-1. Walk [`CHECKLIST.md`](CHECKLIST.md) line by line: check it, fix what fails, note the evidence (a test
-   name, a command, a file and line). Read the contract's "Bounds" bullets again against your parser and your
-   client: a limit the contract does not name, added in phase 3 to be safe, is a deviation to remove. A line
-   that does not apply says why; one you cannot meet is a stuck point.
-2. Complete `$L/RUN.md`, started from [`RUN-TEMPLATE.md`](RUN-TEMPLATE.md) in phase 0. Be candid: a guess you leave out is a gap
-   the next run falls into again. A decision is a choice this prompt left open on purpose; a guess is a
-   point where the prompt or a document should have told you and did not. Before listing one, search the
-   contract, the protocol page, the checklist and the language notes for it. Where those are silent, search the
-   TypeScript SDK (`packages/sdk/src`) and the committed SDKs under `sdks/` with their `RUN.md` files (subject to
-   the sentence in "Repository rules", rule 2, about a brief that forbids reading its own language's removed SDK). A point any of them
-   answers is not a guess (cite it in `DESIGN.md` if it mattered, or in Decisions with its file and line), even
-   when you found the sentence only after assuming. A behaviour a scenario in `fixtures/sdk/` or a vector in `fixtures/evaluation/` pins is answered too: cite the scenario's name and file in Decisions, and do not list it as a guess. Each guess quotes or names the sentence closest to it in the section its
-   "Where" names and says why that sentence does not settle the point. A tool the prompt does not name (a test framework, a linter,
-   a type checker), and its configuration (a rule set, an ignore list), is a decision, not a guess. So is a fact you learn by running that tool (an option's name, a check it does not have, a file it wants): fix the configuration, name the fact in Decisions, and put it in Proposed prompt changes for the language notes. Something
-   the prompt asks for that is slow or costly is not a guess either. Before you hand off, re-read each
-   guess's "Where" section once more.
+Complete `$L/RUN.md`, started from [`RUN-TEMPLATE.md`](RUN-TEMPLATE.md) in phase 0. Be candid: a guess you leave out is a gap
+the next run falls into again. A decision is a choice this prompt left open on purpose; a guess is a
+point where the prompt or a document should have told you and did not. Before listing one, search the
+contract, the protocol page, the checklist and the language notes for it. Where those are silent, search the
+TypeScript SDK (`packages/sdk/src`) and the committed SDKs under `sdks/` with their `RUN.md` files (subject to
+the sentence in "Repository rules", rule 2, about a brief that forbids reading its own language's removed SDK). A point any of them
+answers is not a guess (cite it in `DESIGN.md` if it mattered, or in Decisions with its file and line), even
+when you found the sentence only after assuming. A behaviour a scenario in `fixtures/sdk/` or a vector in `fixtures/evaluation/` pins is answered too: cite the scenario's name and file in Decisions, and do not list it as a guess. Each guess quotes or names the sentence closest to it in the section its
+"Where" names and says why that sentence does not settle the point. A tool the prompt does not name (a test framework, a linter,
+a type checker), and its configuration (a rule set, an ignore list), is a decision, not a guess. So is a fact you learn by running that tool (an option's name, a check it does not have, a file it wants): fix the configuration, name the fact in Decisions, and put it in Proposed prompt changes for the language notes. Something
+the prompt asks for that is slow or costly is not a guess either. Before you hand off, re-read each
+guess's "Where" section once more.
+
+Walk the checklist lines phase 6a left to this phase and note their evidence in `RUN.md`. If this phase finds something to fix in the tree, fix it and run the ten runs and the loaded run again yourself:
+[`CHECKLIST.md`](CHECKLIST.md) restarts them on any change to the code or tests (writing `RUN.md` does not).
 
 **Check.** The report has every section, and nothing outside your two paths changed:
 
@@ -462,7 +529,7 @@ git add -A && git diff --cached --name-only "$(git merge-base HEAD origin/main)"
   | grep -v -e "^$L/" -e "^$W\$" || echo "scope ok"
 ```
 
-It must print only `scope ok`.
+It must print only `scope ok`. Then make the one commit.
 
 ## When you are stuck
 
