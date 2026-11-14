@@ -96,7 +96,23 @@ build. `bin/` and `obj/` are ignored, and so are they in the `server` project's 
 One project: `bunx moon run engine:test`, `bunx moon run cli:lint`, `bunx moon run server:test`. moon
 caches in `.moon/cache` (gitignored; it cannot be moved); add `--force` to rerun a cached task. The root
 scripts run three tasks at a time (`--concurrency 3`): moon's default of one per core
-starved the timing-sensitive suites. There is no remote cache. moon has no `^default`: without a
+starved the timing-sensitive suites.
+
+**A remote cache sits on top of `.moon/cache`** (`.moon/workspace.yml` `remote:`, at
+`https://moon-cache.madangryscientist.com`, over HTTP). Every request needs a bearer token, read from
+`MOON_REMOTE_TOKEN`. Only `ci.yml`'s `gate` job on a push to `main` writes: the write token lives only
+in the `moon-cache-write` GitHub environment, which only `main` may use. Every other CI job, and the gate
+on a pull request, reads with the repository secret `MOON_CACHE_READ_TOKEN`; their uploads are refused,
+and moon logs a WARN per task and goes on. The one exception is `release.yml`'s `publish` job, which
+reads no cache, so what it ships is always built from the tag. A pull request from a fork or from Dependabot gets no
+Actions secret and runs cold. moon passes the token on to the tasks it runs, so on a push to `main` the
+write token is in the environment of merged code and its locked dependencies, and nowhere else.
+Outside CI moon never uploads (`localReadOnly`). A local run has no token by default: moon prints one
+`WARN ... Failed to connect to storage backend, disabling it ... (401 Unauthorized)` line at the start
+and runs on the local cache alone, at no measurable cost. A maintainer who holds the read token can
+`export MOON_REMOTE_TOKEN=<read token>` to get main's results as `cached from remote` hits.
+
+moon has no `^default`: without a
 toolchain it does not hash the files of a project a task depends on, so every TS project's tasks
 (tag `ts`, `.moon/tasks/ts.yml`) take all of `packages/**` as inputs, and a change to the engine
 re-runs them all. Every `test` also takes `fixtures/**` and `apps/server/openapi/*`. The generated

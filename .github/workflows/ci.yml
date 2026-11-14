@@ -1,7 +1,18 @@
 name: CI
 
-# The gate from AGENTS.md. No secrets are read, and the trigger is `pull_request` (never
-# `pull_request_target`). Actions are pinned to a commit; the tag is in the comment.
+# The gate from AGENTS.md. The trigger is `pull_request` (never `pull_request_target`). Actions are
+# pinned to a commit; the tag is in the comment.
+#
+# The only secrets read are the moon remote cache's tokens (.moon/workspace.yml `remote:`), and only
+# on the steps that run moon, so `bun install` and the third-party actions never see one. moon passes
+# its environment on, so the tasks it runs (our code and its dependencies, pinned by bun.lock) do:
+# - MOON_CACHE_READ_TOKEN, a repository secret: may read the cache, and its uploads are refused.
+# - MOON_CACHE_WRITE_TOKEN: lives only in the `moon-cache-write` environment, which GitHub lets only
+#   `main` use. Only the `gate` job on a push to main enters it, so only main writes the cache, and a
+#   pull request cannot poison it. Never make it a plain repository secret: a same-repo pull request
+#   can read those.
+# A pull request from a fork, or from Dependabot, gets no Actions secrets: the token is empty, the
+# cache refuses it, and the run is cold and green.
 #
 # Runs on GitHub-hosted `ubuntu-latest`. A pull request from a fork runs with a read-only token.
 # Never add `pull_request_target`, `workflow_run` or a comment trigger here; scripts/check-workflows.ts,
@@ -29,6 +40,9 @@ jobs:
     name: Gate (typecheck, lint, format, parity, test)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # A push to main enters the environment that holds the cache's write token; anything else enters
+    # none. See the header.
+    environment: ${{ github.event_name == 'push' && 'moon-cache-write' || '' }}
     env:
       # moon 2.6.5 diffs the head against the base branch before any task runs, even for a plain
       # `moon run`, and the checkout has no local `main`, so it names the remote ref. That needs the
@@ -51,13 +65,19 @@ jobs:
       - run: bun scripts/check-workflows.ts .github/workflows/*.yml
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
+        env:
+          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
       - run: bun run lint
+        env:
+          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
       - run: bun run format:check
       - run: bun run parity:check
       - run: bun run parity:check:commits
         env:
           PARITY_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
       - run: bun run test
+        env:
+          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
 
   changes:
     name: Did an app change?
@@ -114,12 +134,20 @@ jobs:
         working-directory: apps/web
         run: bunx playwright install chromium-headless-shell
       - run: bunx moon run web:test-e2e
+        env:
+          MOON_REMOTE_TOKEN: ${{ secrets.MOON_CACHE_READ_TOKEN }}
       - run: bunx moon run web:build
+        env:
+          MOON_REMOTE_TOKEN: ${{ secrets.MOON_CACHE_READ_TOKEN }}
       - name: Web deploy dry run
         working-directory: apps/web
         run: bunx wrangler deploy --dry-run --outdir "$RUNNER_TEMP/fs-web-dry"
       - run: bunx moon run site:build
+        env:
+          MOON_REMOTE_TOKEN: ${{ secrets.MOON_CACHE_READ_TOKEN }}
       - run: bunx moon run site:test-e2e
+        env:
+          MOON_REMOTE_TOKEN: ${{ secrets.MOON_CACHE_READ_TOKEN }}
       - name: Site deploy dry run
         working-directory: apps/site
         run: bunx wrangler deploy --dry-run --outdir "$RUNNER_TEMP/fs-site-dry"
@@ -145,6 +173,8 @@ jobs:
           global-json-file: global.json
       - run: bun install --frozen-lockfile
       - run: bunx moon run e2e:test-e2e
+        env:
+          MOON_REMOTE_TOKEN: ${{ secrets.MOON_CACHE_READ_TOKEN }}
 
   # Browser journey (FS-46): the dashboard in a browser, two shoppers on the example app and the
   # CLI, against the real server. It runs on every PR, and CI is set, so a missing .NET SDK fails
@@ -176,6 +206,8 @@ jobs:
         working-directory: packages/e2e
         run: bunx playwright install chromium-headless-shell
       - run: bunx moon run e2e:test-stack
+        env:
+          MOON_REMOTE_TOKEN: ${{ secrets.MOON_CACHE_READ_TOKEN }}
 
   # Self-hosting proof (FS-22): the server's image builds and the compose stack answers /health.
   # Nothing is pushed and there is no registry login; the token is a throwaway for this job's
