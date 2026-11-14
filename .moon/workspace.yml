@@ -8,7 +8,6 @@ $schema: "./cache/schemas/workspace.json"
 
 projects:
   example: "apps/example"
-  site: "apps/site"
   web: "apps/web"
   server: "apps/server"
   cli: "packages/cli"

@@ -21,5 +21,3 @@ Sign-in needs two more in the same file: `TOGGLESLASH_OPERATOR_PASSWORD` (at lea
 type at sign-in) and `TOGGLESLASH_SESSION_SECRET` (at least 32). Without them nobody can sign in, and the
 sign-in page names what is missing. There is one operator and no accounts; see
 [`self-hosting.md`](self-hosting.md#dashboard-sign-in).
-
-The site (`apps/site`) also has a `dev` script (port 3100). It has no configuration.

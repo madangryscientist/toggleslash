@@ -7,7 +7,7 @@ of what exists: today `apps/server` migrates its database, answers `GET /health`
 ## Who owns what
 
 **The C# server (`apps/server`) owns all flag data and the API.** It is an ASP.NET Core minimal API
-on .NET 10. TypeScript stays for the engine, the SDKs, the CLI, the dashboard and the site.
+on .NET 10. TypeScript stays for the engine, the SDKs, the CLI, and the dashboard.
 
 | Piece | Language | Role |
 | --- | --- | --- |
@@ -17,7 +17,6 @@ on .NET 10. TypeScript stays for the engine, the SDKs, the CLI, the dashboard an
 | `packages/sdk-otel` | TypeScript | an SDK hook that puts each evaluation and the ruleset hash on the active OpenTelemetry span (see [`tracing.md`](tracing.md)) |
 | `packages/cli` | TypeScript | the `toggleslash` command; calls the admin API (`config`, `projects`, `envs`, `flags`, `keys`, `tokens`) |
 | `apps/web` | TypeScript | the dashboard; calls the server |
-| `apps/site` | TypeScript | the marketing site, prerendered |
 
 ## Storage
 
@@ -470,7 +469,7 @@ has no bulk read of per-environment state. The D1 placeholder table in `apps/web
 **Hosting is undecided.** C# does not run on Cloudflare Workers, so the server ships as a container
 for self-hosting: `apps/server/Dockerfile` (multi-stage, base images pinned by digest, a non-root user, a
 `/data` volume for the SQLite file, a healthcheck on `/health`) and the root `compose.yaml`, described in
-[`self-hosting.md`](self-hosting.md). No image is published. The dashboard and the site stay on Workers; the human
+[`self-hosting.md`](self-hosting.md). No image is published. The dashboard stays on Workers; the human
 steps in `AGENTS.md` (domain, routes, D1, publishing) still apply.
 
 ## Build and gate

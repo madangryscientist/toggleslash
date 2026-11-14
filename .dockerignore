@@ -30,6 +30,5 @@ fixtures
 packages
 scripts
 apps/web
-apps/site
 apps/server/ToggleSlash.Server.Tests
 apps/server/ToggleSlash.Evaluation.Tests
