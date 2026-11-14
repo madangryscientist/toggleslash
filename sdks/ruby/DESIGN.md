@@ -75,7 +75,7 @@ duration (`true` and `false` included) falls back to the default (contract 2, SH
   (`Thread.current` is the sync or flush thread) returns at once with the state held. `close` from an SDK
   thread does not wait for that thread's work (contract 6.4): it sets the closing flag and the `closed` state and
   aborts the requests in flight, hands the joins and the final flush to a thread named `toggleslash-close`, which
-  ends when shutdown ends, and returns at once. A second `close` on an SDK thread returns at once too.
+  ends when shutdown ends, and returns at once. A second `close` on an SDK thread returns at once too, and so does one from `on_error` on the thread running shutdown (a final flush that failed reports there), which counts as an SDK thread while shutdown runs.
 - **Close.** `close` sets the closing flag and the stream state to `closed` under `@state_lock`, sets an
   `Event` (a mutex and a condition variable) both loops wait on, so no timer outlives it, closes the sockets of
   the in-flight ruleset and stream requests (below), joins the sync and flush threads with a bound of

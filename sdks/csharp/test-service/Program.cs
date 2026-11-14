@@ -319,7 +319,6 @@ static JsonValue EventJson(EvaluationEvent e) => Obj(
 
 internal sealed class Entry
 {
-    private ToggleSlashClient? stored;
     private bool closing;
 
     public ToggleSlashClient Client { get; set; } = null!;
@@ -343,7 +342,6 @@ internal sealed class Entry
         lock (Lock)
         {
             Client = client;
-            stored = client;
         }
     }
 
@@ -353,7 +351,7 @@ internal sealed class Entry
         ToggleSlashClient? client;
         lock (Lock)
         {
-            client = stored;
+            client = Client;
             if (client is null || closing)
             {
                 return;

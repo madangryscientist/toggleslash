@@ -548,11 +548,39 @@ class ClientTest {
 
   @Test
   void callbacksMayCallBackIntoTheClient() throws Exception {
+    Fake fake = new Fake();
+    fake.ruleset = x -> Fake.reply(x, 500, "{}");
+    java.util.concurrent.CountDownLatch seen = new java.util.concurrent.CountDownLatch(1);
+    List<Object> inside = new CopyOnWriteArrayList<>();
+    Client[] holder = new Client[1];
+    Consumer<Throwable> onError =
+        t -> {
+          Client c = holder[0];
+          if (c == null) {
+            return;
+          }
+          inside.add(c.ready());
+          inside.add(c.status().lastError());
+          inside.add(c.boolVariation("any", Context.of("u"), true));
+          c.close();
+          seen.countDown();
+        };
+    try (fake) {
+      holder[0] = open(fake, b -> b.onError(onError).requestTimeout(Duration.ofSeconds(30)));
+      assertTrue(seen.await(10, java.util.concurrent.TimeUnit.SECONDS));
+      assertEquals(Boolean.FALSE, inside.get(0));
+      assertEquals(Boolean.TRUE, inside.get(2));
+      holder[0].close();
+      assertEquals(StreamState.closed, holder[0].status().stream());
+    }
+  }
+
+  @Test
+  void closeFromOnErrorDoesNotWaitForTheFinalFlush() throws Exception {
     java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
     java.util.concurrent.CountDownLatch seen = new java.util.concurrent.CountDownLatch(1);
     java.util.concurrent.atomic.AtomicBoolean fired =
         new java.util.concurrent.atomic.AtomicBoolean();
-    List<Object> inside = new CopyOnWriteArrayList<>();
     long[] closeNanos = new long[1];
     Client[] holder = new Client[1];
     Consumer<Throwable> onError =
@@ -561,9 +589,6 @@ class ClientTest {
             return;
           }
           Client c = holder[0];
-          inside.add(c.ready());
-          inside.add(c.status().lastError());
-          inside.add(c.boolVariation("any", Context.of("u"), true));
           long started = System.nanoTime();
           c.close();
           closeNanos[0] = System.nanoTime() - started;
@@ -593,8 +618,6 @@ class ClientTest {
             };
         fake.ruleset = x -> Fake.reply(x, 500, "{}");
         assertTrue(seen.await(10, java.util.concurrent.TimeUnit.SECONDS));
-        assertEquals(Boolean.TRUE, inside.get(0));
-        assertEquals(Boolean.TRUE, inside.get(2));
         // Contract 6.4: it returns without waiting for the final flush, which hangs.
         assertTrue(
             closeNanos[0] < 1_000_000_000L, "close took " + closeNanos[0] / 1_000_000 + " ms");

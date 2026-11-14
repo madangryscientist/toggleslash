@@ -72,7 +72,7 @@ value `False` turns the stream off; `None` means the default (on).
   (`threading.current_thread()` is the sync or flush thread, as an `on_error` callback is) returns at once with
   the state held. `close()` from an SDK thread does not wait for that thread's work (contract 6.4): it stops
   the rest, hands the joins and the final flush to a daemon thread named `toggleslash-close`, which ends when
-  shutdown ends, and returns at once. A second `close` on an SDK thread returns at once too.
+  shutdown ends, and returns at once. A second `close` on an SDK thread returns at once too, and so does one from `on_error` on the thread running shutdown (a final flush that failed reports there), which counts as an SDK thread while shutdown runs.
 - **Close.** `close` sets the closing flag and the stream state to `closed` under `_state_lock`, sets a
   `threading.Event` that both loops wait on (so no timer outlives it), writes to the client's wake socket (below)
   so a ruleset, stream or usage request in flight is abandoned at once, joins the sync and flush threads with a

@@ -209,11 +209,9 @@ class ClientTest < Minitest::Test
     release = Queue.new
     results = Queue.new
     client_box = []
-    fired = false
+    # Every error closes, as an application might: the final flush's failure reaches on_error on the thread
+    # running shutdown, and that close must not wait for the shutdown it is inside.
     on_error = lambda do |_error|
-      next if fired
-
-      fired = true
       ready = client_box[0].ready
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       closed = client_box[0].close
@@ -234,6 +232,11 @@ class ClientTest < Minitest::Test
     assert_operator took, :<, 1.0
     eventually(5, "the client to read closed") { client.status.stream == Toggleslash::StreamState::CLOSED }
     eventually(5, "the final flush") { server.requests_to("/sdk/v1/events").any? }
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    client.close # waits for the shutdown: the final flush gives up after request_timeout
+    assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, :<, 8.0
+    _ready, _closed, later = Timeout.timeout(1) { results.pop }
+    assert_operator later, :<, 1.0
   ensure
     release&.push(true)
   end

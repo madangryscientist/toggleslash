@@ -187,6 +187,8 @@ module Toggleslash
       @ready_value = false
       @close_lock = Mutex.new
       @close_started = false
+      # The thread running shutdown while it runs: an on_error it calls (a final flush that failed) is on it.
+      @shutdown_thread = nil
       @closed = Event.new
     end
 
@@ -204,7 +206,7 @@ module Toggleslash
 
     def own_thread?
       me = Thread.current
-      [@sync_thread, @flush_thread].include?(me)
+      [@sync_thread, @flush_thread].include?(me) || me.equal?(@shutdown_thread)
     end
 
     # ---------------------------------------------------------------- callbacks
@@ -547,9 +549,11 @@ module Toggleslash
     end
 
     def finish_close
+      @shutdown_thread = Thread.current
       shut_down
     ensure
       @aborts.dispose
+      @shutdown_thread = nil
       @closed.set
     end
 

@@ -262,8 +262,8 @@ class ReentrancyTests(ConcurrencyTestCase):
         took: list[float] = []
 
         def on_error(_error: Exception) -> None:
-            if took:
-                return
+            # Every error closes, as an application might: the final flush's failure reaches on_error on the
+            # thread running shutdown, and that close must not wait for the shutdown it is inside.
             started = time.monotonic()
             client.close()
             took.append(time.monotonic() - started)
@@ -278,6 +278,10 @@ class ReentrancyTests(ConcurrencyTestCase):
         self.assertLess(took[0], 1.0)
         self.assertTrue(wait_for(lambda: client.status().stream == StreamState.CLOSED))
         self.assertTrue(wait_for(lambda: self.server.seen("POST", EVENTS)))
+        started = time.monotonic()
+        client.close()  # waits for the shutdown: the final flush gives up after request_timeout
+        self.assertLess(time.monotonic() - started, 8.0)
+        self.assertTrue(all(each < 1.0 for each in took))
 
     def test_a_close_from_an_sdk_thread_while_the_caller_closes(self) -> None:
         self.server.on("GET", RULESET, reply(503))

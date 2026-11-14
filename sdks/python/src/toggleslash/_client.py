@@ -148,6 +148,8 @@ class Client:
         self._closed = threading.Event()
         self._close_lock = threading.Lock()
         self._close_started = False
+        # The thread running shutdown while it runs: an on_error it calls (a final flush that failed) is on it.
+        self._shutdown_thread: threading.Thread | None = None
         self._hold = Hold(config.monotonic)
         self._sync_wake = Wake()
         self._flush_wake = Wake()
@@ -327,7 +329,8 @@ class Client:
             return
 
     def _on_sdk_thread(self) -> bool:
-        return threading.current_thread() in {self._sync_thread, self._flush_thread}
+        me = threading.current_thread()
+        return me in {self._sync_thread, self._flush_thread} or me is self._shutdown_thread
 
     def _settle_ready(self, value: bool) -> None:
         with self._state_lock:
@@ -596,6 +599,7 @@ class Client:
 
     def _shut_down(self) -> None:
         timeout = self._config.request_timeout
+        self._shutdown_thread = threading.current_thread()
         try:
             deadline = time.monotonic() + timeout
             me = threading.current_thread()
@@ -607,6 +611,7 @@ class Client:
         finally:
             self._sync_wake.close()
             self._flush_wake.close()
+            self._shutdown_thread = None
             self._closed.set()
 
 
