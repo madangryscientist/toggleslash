@@ -20,5 +20,14 @@ tasks:
     command: "bun run playwright test"
     deps:
       - "~:build"
-    options:
-      cache: false
+    # Cached: its own project (the negations restated: a task's inputs replace the default glob) and
+    # CI, which sets forbidOnly.
+    inputs:
+      - "**/*"
+      - "!/**/node_modules/**"
+      - "!/**/dist/**"
+      - "!/**/.wrangler/**"
+      - "!/**/.tanstack/**"
+      - "!/**/test-results/**"
+      - "!/**/playwright-report/**"
+      - "$CI"

@@ -126,16 +126,18 @@ rule. A TODO carries an issue: `TODO(#123)`. Tests live in `packages/*/test/` an
 `apps/server/ToggleSlash.Server.Tests`.
 
 A change to `apps/web` or `apps/site` also runs their builds, Playwright and Worker dry-runs (from the
-worktree root). `test:e2e` runs before `build`: web's e2e run leaves its own build behind, and `build` replaces it.
+worktree root). `build` and the dry runs go before `test:e2e`: web's e2e run (and `test:stack`) leaves its own build in `apps/web/dist` and `.wrangler/deploy`, and a `web:build` cache hit leaves outputs that are there as they are, so a dry run after it would check the e2e build.
 
 ```bash
-bun run test:e2e                  # moon run :test-e2e  (Playwright: web and site; web builds with the e2e env on a fresh local D1; and the `e2e` project, which needs the .NET SDK)
 bun run build                     # moon run :build  (every project's build task: web, site, cli, and the C# projects)
 (cd apps/web && bunx wrangler deploy --dry-run --outdir "$TMPDIR/fs-web-dry")
 (cd apps/site && bunx wrangler deploy --dry-run --outdir "$TMPDIR/fs-site-dry")
+bun run test:e2e                  # moon run :test-e2e  (Playwright: web and site; web builds with the e2e env on a fresh local D1; and the `e2e` project, which needs the .NET SDK)
 ```
 
-One app: `bunx moon run web:test-e2e`, `bunx moon run site:build`. The cross-language test alone: `bunx moon run e2e:test-e2e` (with the SDK on the machine; `bun run test:e2e` runs it too and skips it without one; a `dotnet build` of the server, then about five seconds). Any change to the server, the CLI, the SDK or the engine can break it, so run it then; CI has its own `e2e` job. `bun run test:stack` (about fifteen seconds after a build; it needs the SDK and `bunx playwright install chromium-headless-shell`, and it holds ports 4440 and 4441) is the whole product in a browser: run it after a change to `apps/web`, `apps/example`, the SDK's stream, or anything the dashboard and the server must agree on. It is not part of `bun run test:e2e`; CI has its own `stack` job, which uploads nothing because a report could hold the run's secrets.
+**The four e2e tasks are cached** (`web:test-e2e`, `site:test-e2e`, `e2e:test-e2e`, `e2e:test-stack`): a repeat run on unchanged inputs is a hit, and a failed run is never cached. Each lists its inputs in its `moon.yml`: its own project as `**/*` (a task's `inputs` replace the default project glob, so a task that listed only an env var would stop hashing its files), what it builds and starts (`e2e`'s list `apps/server`, `apps/example`, and for `test-stack` `apps/web`), the negations for what a run writes, and the environment that changes what runs (`$CI`; for `e2e`, the server's `TOGGLESLASH_*` settings the harness does not set itself). The `e2e` tasks also take `$TOGGLESLASH_DOTNET`, which `scripts/moon.ts` sets to the version `dotnet --version` prints, or `none`, so a run that skipped for want of an SDK never answers for one that had it. Run them through the root scripts or `bun scripts/moon.ts run e2e:<task>`: a bare `bunx moon run e2e:...` has no `TOGGLESLASH_DOTNET` and hashes apart from both.
+
+One app: `bunx moon run web:test-e2e`, `bunx moon run site:build`. The cross-language test alone: `bun scripts/moon.ts run e2e:test-e2e` (with the SDK on the machine; `bun run test:e2e` runs it too and skips it without one; a `dotnet build` of the server, then about five seconds). Any change to the server, the CLI, the SDK or the engine can break it, so run it then; CI has its own `e2e` job. `bun run test:stack` (about fifteen seconds after a build; it needs the SDK and `bunx playwright install chromium-headless-shell`, and it holds ports 4440 and 4441) is the whole product in a browser: run it after a change to `apps/web`, `apps/example`, the SDK's stream, or anything the dashboard and the server must agree on. It is not part of `bun run test:e2e`; CI has its own `stack` job, which uploads nothing because a report could hold the run's secrets.
 
 First time on a machine: `bunx playwright install chromium-headless-shell`.
 
