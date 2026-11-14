@@ -879,7 +879,7 @@ public sealed class RateLimitTests : IDisposable
             await ExpectLimited(60, refused);
         }
 
-        var stored = string.Concat(Directory.GetFiles(Path.GetDirectoryName(database.Path)!).Select(File.ReadAllBytes).Select(Convert.ToHexString));
+        var stored = string.Concat((await database.ReadEveryFile()).Select(Convert.ToHexString));
         foreach (var secret in new[] { key, WrongKey, Client, Proxy, Unlisted, Prefix })
         {
             Assert.DoesNotContain(secret, logs.All);

@@ -133,16 +133,12 @@ public sealed class AuthTests : IDisposable
         var plaintext = created.GetProperty("key").GetString()!;
 
         // Every file SQLite keeps, the write-ahead log included, because the row may not be checkpointed yet.
-        var directory = Path.GetDirectoryName(server.Database.Path)!;
-        var files = Directory.GetFiles(directory);
+        var files = await server.Database.ReadEveryFile();
         Assert.NotEmpty(files);
         var hashSeen = false;
-        foreach (var file in files)
+        foreach (var bytes in files)
         {
-            using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            using var buffer = new MemoryStream();
-            await stream.CopyToAsync(buffer);
-            var contents = Encoding.Latin1.GetString(buffer.ToArray());
+            var contents = Encoding.Latin1.GetString(bytes);
             Assert.DoesNotContain(plaintext, contents);
             hashSeen |= contents.Contains(ApiKeySecret.HashOf(plaintext));
         }
