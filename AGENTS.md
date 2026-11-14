@@ -100,9 +100,9 @@ starved the timing-sensitive suites.
 
 **A remote cache sits on top of `.moon/cache`** (`.moon/workspace.yml` `remote:`, at
 `https://moon-cache.madangryscientist.com`, over HTTP). Every request needs a bearer token, read from
-`MOON_REMOTE_TOKEN`. Only `ci.yml`'s `gate` job on a push to `main` writes: the write token lives only
-in the `moon-cache-write` GitHub environment, which only `main` may use. Every other CI job, and the gate
-on a pull request, reads with the repository secret `MOON_CACHE_READ_TOKEN`; their uploads are refused,
+`MOON_REMOTE_TOKEN`. Only `ci.yml`'s `gate`, `apps`, `e2e` and `stack` jobs on a push to `main` write: the
+write token lives only in the `moon-cache-write` GitHub environment, which only `main` may use. Every other
+CI job that runs moon, and those four on a pull request, read with the repository secret `MOON_CACHE_READ_TOKEN`; their uploads are refused,
 and moon logs a WARN per task and goes on. The one exception is `release.yml`'s `publish` job: it reads
 no cache and builds with `--force`, so what it ships is always built from the tag, even if the cache
 was poisoned. A pull request from a fork or from Dependabot gets no
@@ -137,7 +137,7 @@ bun run test:e2e                  # moon run :test-e2e  (Playwright: web and sit
 
 **The four e2e tasks are cached** (`web:test-e2e`, `site:test-e2e`, `e2e:test-e2e`, `e2e:test-stack`): a repeat run on unchanged inputs is a hit, and a failed run is never cached. Each lists its inputs in its `moon.yml`: its own project as `**/*` (a task's `inputs` replace the default project glob, so a task that listed only an env var would stop hashing its files), what it builds and starts (`e2e`'s list `apps/server`, `apps/example`, and for `test-stack` `apps/web`), the negations for what a run writes, and the environment that changes what runs (`$CI`; for `e2e`, the server's `TOGGLESLASH_*` settings the harness does not set itself). The `e2e` tasks also take `$TOGGLESLASH_DOTNET`, which `scripts/moon.ts` sets to the version `dotnet --version` prints, or `none`, so a run that skipped for want of an SDK never answers for one that had it. Run them through the root scripts or `bun scripts/moon.ts run e2e:<task>`: a bare `bunx moon run e2e:...` has no `TOGGLESLASH_DOTNET`, so it hashes apart from both, and with no SDK it fails instead of skipping.
 
-One app: `bunx moon run web:test-e2e`, `bunx moon run site:build`. The cross-language test alone: `bun scripts/moon.ts run e2e:test-e2e` (with the SDK on the machine; `bun run test:e2e` runs it too and skips it without one; a `dotnet build` of the server, then about five seconds). Any change to the server, the CLI, the SDK or the engine can break it, so run it then; CI has its own `e2e` job. `bun run test:stack` (about fifteen seconds after a build; it needs the SDK and `bunx playwright install chromium-headless-shell`, and it holds ports 4440 and 4441) is the whole product in a browser: run it after a change to `apps/web`, `apps/example`, the SDK's stream, or anything the dashboard and the server must agree on. It is not part of `bun run test:e2e`; CI has its own `stack` job, which uploads nothing because a report could hold the run's secrets.
+One app: `bunx moon run web:test-e2e`, `bunx moon run site:build`. The cross-language test alone: `bun scripts/moon.ts run e2e:test-e2e` (with the SDK on the machine; `bun run test:e2e` runs it too and skips it without one; a `dotnet build` of the server, then about five seconds). Any change to the server, the CLI, the SDK or the engine can break it, so run it then; CI has its own `e2e` job. `bun run test:stack` (about fifteen seconds after a build; it needs the SDK and `bunx playwright install chromium-headless-shell`, and it holds ports 4440 and 4441) is the whole product in a browser: run it after a change to `apps/web`, `apps/example`, the SDK's stream, or anything the dashboard and the server must agree on. It is not part of `bun run test:e2e`; CI has its own `stack` job, which uploads no report because a report could hold the run's secrets.
 
 First time on a machine: `bunx playwright install chromium-headless-shell`.
 

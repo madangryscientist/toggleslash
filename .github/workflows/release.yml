@@ -20,7 +20,7 @@ jobs:
   # trigger and runs on push and pull_request only. Both run on GitHub-hosted runners. It leaves out
   # ci.yml's `apps`, `e2e`, `stack` and `container` jobs on purpose: a tag is cut from `main`, where
   # ci.yml already ran them. Its moon steps read the remote cache with the read token only (main's
-  # ci.yml gate is the only writer), so a tag's run is mostly cache hits. `publish` does not read it.
+  # ci.yml jobs are the only writers), so a tag's run is mostly cache hits. `publish` does not read it.
   gate:
     name: Gate (typecheck, lint, format, parity, test)
     runs-on: ubuntu-latest
