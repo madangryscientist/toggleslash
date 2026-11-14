@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import datetime
+import itertools
 import time
 import unittest
 from typing import Any
@@ -172,7 +174,15 @@ class StreamTests(SyncTestCase):
         self.server.on("GET", STREAM, stream(event("connected", '"v1"')))
         client = self.client(stream=True, poll_interval=0.05)
         self.assertFalse(client.ready())
-        self.assertTrue(wait_for(lambda: client.status().stream == StreamState.CONNECTED))
+        # The connected event fetches the tag it names: wait for that sync to land before reading the etag.
+        self.assertTrue(
+            wait_for(
+                lambda: (
+                    client.status().stream == StreamState.CONNECTED
+                    and client.status().etag == '"v1"'
+                )
+            )
+        )
         status = client.status()
         self.assertIsNone(status.last_error)
         self.assertEqual(status.etag, '"v1"')
@@ -207,9 +217,20 @@ class StreamTests(SyncTestCase):
         self.serve_ruleset(reply(200, ruleset_json(flag_json()), ETag='"v1"'))
         pieces = [event("connected", '"v1"')]
         self.server.on("GET", STREAM, self.paced(pieces))
-        client = self.client(stream=True, poll_interval=3600)
+        # A counter clock: every sync reads the next integer, so ready()'s fetch reads 1 and each later sync reads more.
+        # The connected event's sync can land before ready() returns on this thread, so the baseline is not read
+        # from status() after ready(); it waits for any reading above 1 (the connected event's sync) instead.
+        after_first_fetch = datetime.datetime.fromtimestamp(1, datetime.UTC)
+        client = self.client(stream=True, poll_interval=3600, now=itertools.count(1).__next__)
         client.ready()
-        self.assertTrue(wait_for(lambda: client.status().stream == StreamState.CONNECTED))
+        self.assertTrue(
+            wait_for(
+                lambda: (
+                    client.status().stream == StreamState.CONNECTED
+                    and client.status().last_sync_at > after_first_fetch
+                )
+            )
+        )
         first = client.status().last_sync_at
         self.connection.send(chunk(": keep-alive\n\n"))
         time.sleep(0.3)
