@@ -9,4 +9,6 @@ export interface SectionProps {
   onDraft: (draft: Draft) => void;
   problems: FieldProblem[];
   flag: FlagDetail;
+  /** True until React has hydrated the page: the controls are not wired yet, so they stay uneditable. */
+  disabled: boolean;
 }

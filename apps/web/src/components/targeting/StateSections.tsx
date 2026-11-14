@@ -16,13 +16,14 @@ import type { TargetDraft } from "#/targeting/draft";
 import { removeAt, replaceAt } from "#/targeting/list";
 import { VARIATION_LABEL, type SectionProps } from "./shared";
 
-export function StateSection({ draft, onDraft, problems, flag }: SectionProps) {
+export function StateSection({ draft, onDraft, problems, flag, disabled }: SectionProps) {
   return (
     <Section title="State">
       <Checkbox
         label="Targeting is on"
         description="When off, the flag serves its off variation to everyone."
         data-testid="targeting-on"
+        disabled={disabled}
         checked={draft.on}
         onChange={(e) => onDraft({ ...draft, on: e.currentTarget.checked })}
       />
@@ -34,6 +35,7 @@ export function StateSection({ draft, onDraft, problems, flag }: SectionProps) {
         <Select
           id="off-variation"
           data-testid="off-variation"
+          disabled={disabled}
           width="auto"
           value={draft.offVariation === null ? "" : String(draft.offVariation)}
           onChange={(e) =>
@@ -55,7 +57,7 @@ export function StateSection({ draft, onDraft, problems, flag }: SectionProps) {
   );
 }
 
-export function TargetsSection({ draft, onDraft, problems, flag }: SectionProps) {
+export function TargetsSection({ draft, onDraft, problems, flag, disabled }: SectionProps) {
   return (
     <Section title="Individual targets">
       <Text tone="muted">
@@ -76,6 +78,7 @@ export function TargetsSection({ draft, onDraft, problems, flag }: SectionProps)
             <Textarea
               id={`targets-${variation}`}
               data-testid={`targets-${variation}`}
+              disabled={disabled}
               rows={3}
               value={index < 0 ? "" : (draft.targets[index]?.keys ?? "")}
               onChange={(e) => {
@@ -96,17 +99,33 @@ export function TargetsSection({ draft, onDraft, problems, flag }: SectionProps)
           </Field>
         );
       })}
-      <OtherKindTargets draft={draft} onDraft={onDraft} problems={problems} flag={flag} />
+      <OtherKindTargets
+        draft={draft}
+        onDraft={onDraft}
+        problems={problems}
+        flag={flag}
+        disabled={disabled}
+      />
     </Section>
   );
 }
 
-function AddOtherTarget({ draft, onDraft }: Pick<SectionProps, "draft" | "onDraft">) {
+function AddOtherTarget({
+  draft,
+  onDraft,
+  disabled,
+}: Pick<SectionProps, "draft" | "onDraft" | "disabled">) {
   const add = () =>
     onDraft({ ...draft, targets: [...draft.targets, { variation: 0, contextKind: "", keys: "" }] });
   return (
     <div>
-      <Button variant="outline" size="sm" data-testid="add-other-target" onClick={add}>
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid="add-other-target"
+        disabled={disabled}
+        onClick={add}
+      >
         Add a target for another kind
       </Button>
     </div>
@@ -114,7 +133,7 @@ function AddOtherTarget({ draft, onDraft }: Pick<SectionProps, "draft" | "onDraf
 }
 
 /** Targets for a context kind other than user: one row each, in the draft's order (the first match wins). */
-function OtherKindTargets({ draft, onDraft, problems, flag }: SectionProps) {
+function OtherKindTargets({ draft, onDraft, problems, flag, disabled }: SectionProps) {
   return (
     <Stack gap="sm">
       <SubsectionHeading>Other context kinds</SubsectionHeading>
@@ -130,6 +149,7 @@ function OtherKindTargets({ draft, onDraft, problems, flag }: SectionProps) {
                 <Select
                   id={`${id}-variation`}
                   data-testid={`${id}-variation`}
+                  disabled={disabled}
                   width="auto"
                   value={String(target.variation)}
                   onChange={(e) => change({ variation: Number(e.currentTarget.value) })}
@@ -145,6 +165,7 @@ function OtherKindTargets({ draft, onDraft, problems, flag }: SectionProps) {
                 <Input
                   id={`${id}-kind`}
                   data-testid={`${id}-kind`}
+                  disabled={disabled}
                   width="auto"
                   value={target.contextKind}
                   onChange={(e) => change({ contextKind: e.currentTarget.value })}
@@ -154,6 +175,7 @@ function OtherKindTargets({ draft, onDraft, problems, flag }: SectionProps) {
                 <Textarea
                   id={`${id}-keys`}
                   data-testid={`${id}-keys`}
+                  disabled={disabled}
                   rows={3}
                   value={target.keys}
                   onChange={(e) => change({ keys: e.currentTarget.value })}
@@ -164,6 +186,7 @@ function OtherKindTargets({ draft, onDraft, problems, flag }: SectionProps) {
                 size="sm"
                 tone="danger"
                 data-testid={`${id}-remove`}
+                disabled={disabled}
                 onClick={() => onDraft({ ...draft, targets: removeAt(draft.targets, index) })}
               >
                 Remove
@@ -177,7 +200,7 @@ function OtherKindTargets({ draft, onDraft, problems, flag }: SectionProps) {
           </Stack>
         );
       })}
-      <AddOtherTarget draft={draft} onDraft={onDraft} />
+      <AddOtherTarget draft={draft} onDraft={onDraft} disabled={disabled} />
     </Stack>
   );
 }

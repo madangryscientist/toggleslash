@@ -10,11 +10,20 @@ interface RowProps {
   prerequisite: Prerequisite;
   siblings: Sibling[];
   error: string | undefined;
+  disabled: boolean;
   onChange: (next: Prerequisite) => void;
   onRemove: () => void;
 }
 
-function PrerequisiteRow({ index, prerequisite, siblings, error, onChange, onRemove }: RowProps) {
+function PrerequisiteRow({
+  index,
+  prerequisite,
+  siblings,
+  error,
+  disabled,
+  onChange,
+  onRemove,
+}: RowProps) {
   const sibling = siblings.find((s) => s.key === prerequisite.flagKey);
   return (
     <Field label={`Prerequisite ${index + 1}`} htmlFor={`prerequisite-${index}`} error={error}>
@@ -22,6 +31,7 @@ function PrerequisiteRow({ index, prerequisite, siblings, error, onChange, onRem
         <Select
           id={`prerequisite-${index}`}
           data-testid={`prerequisite-${index}-flag`}
+          disabled={disabled}
           width="auto"
           value={prerequisite.flagKey}
           onChange={(e) => onChange({ flagKey: e.currentTarget.value, variation: 0 })}
@@ -38,6 +48,7 @@ function PrerequisiteRow({ index, prerequisite, siblings, error, onChange, onRem
         <Select
           aria-label={`Prerequisite ${index + 1} variation`}
           data-testid={`prerequisite-${index}-variation`}
+          disabled={disabled}
           width="auto"
           value={String(prerequisite.variation)}
           onChange={(e) => onChange({ ...prerequisite, variation: Number(e.currentTarget.value) })}
@@ -53,6 +64,7 @@ function PrerequisiteRow({ index, prerequisite, siblings, error, onChange, onRem
           size="sm"
           tone="danger"
           aria-label={`Remove prerequisite ${index + 1}`}
+          disabled={disabled}
           onClick={onRemove}
         >
           Remove
@@ -67,6 +79,7 @@ export function PrerequisitesSection({
   onDraft,
   problems,
   siblings,
+  disabled,
 }: SectionProps & { siblings: Sibling[] }) {
   return (
     <Section
@@ -76,7 +89,7 @@ export function PrerequisitesSection({
           variant="outline"
           size="sm"
           data-testid="add-prerequisite"
-          disabled={siblings.length === 0}
+          disabled={disabled || siblings.length === 0}
           onClick={() =>
             onDraft({
               ...draft,
@@ -101,6 +114,7 @@ export function PrerequisitesSection({
           prerequisite={p}
           siblings={siblings}
           error={under(problems, `prerequisites[${i}]`)[0]?.message}
+          disabled={disabled}
           onChange={(next) =>
             onDraft({ ...draft, prerequisites: replaceAt(draft.prerequisites, i, next) })
           }
