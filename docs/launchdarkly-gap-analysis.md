@@ -24,7 +24,7 @@ product surface a buyer compares, we are much closer to the beginning.
 
 | | LaunchDarkly (2026) | ToggleSlash (today) |
 | --- | --- | --- |
-| What it is | A hosted runtime-control platform: flags, release automation (Release Autopilot), experimentation, observability, AgentControl for LLM apps, and enterprise governance | A self-hosted, source-available (Elastic License 2.0) feature-flag service: one C# server, a TypeScript engine, a TypeScript server SDK, a CLI, a dashboard and a site |
+| What it is | A hosted runtime-control platform: flags, release automation (Release Autopilot), experimentation, observability, AgentControl for LLM apps, and enterprise governance | A self-hosted, source-available (Elastic License 2.0) feature-flag service: one C# server, a TypeScript engine, a TypeScript server SDK, a CLI, and a dashboard |
 | Delivery | SaaS, global edge, 70T+ evaluations/day, <200 ms config propagation, 99.99% claimed | One process with SQLite behind it; Docker/compose for self-hosting; no published image |
 | SDKs | 25+ native SDKs across server, client, mobile, edge and AI, plus OpenFeature providers | One server-side TypeScript SDK; the C# evaluator is used only inside the server |
 | Integrations | 80+ (GitHub, GitLab, Slack, Teams, Datadog, Sentry, Segment, Terraform, warehouses, CDNs, MCP, and more) | OpenAPI document, a partial CLI, and the dashboard. No Terraform, MCP, GitHub app or chat integration |

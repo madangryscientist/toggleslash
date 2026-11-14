@@ -101,7 +101,7 @@ jobs:
           fi
           # The apps and packages (what they import), plus what decides how they install and run.
           if git diff --name-only "origin/$BASE_REF...HEAD" \
-            | grep -qE '^(apps/(web|site)/|packages/|\.moon/|bun\.lock$|bunfig\.toml$|\.github/workflows/ci\.yml$)'; then
+            | grep -qE '^(apps/web/|packages/|\.moon/|bun\.lock$|bunfig\.toml$|\.github/workflows/ci\.yml$)'; then
             echo "apps=true" >> "$GITHUB_OUTPUT"
           else
             echo "apps=false" >> "$GITHUB_OUTPUT"
@@ -116,7 +116,7 @@ jobs:
     # Writes the cache on a push to main, like the gate job; see the header.
     environment: ${{ github.event_name == 'push' && 'moon-cache-write' || '' }}
     env:
-      # The web and site tasks do not touch apps/server (the gate job covers it), and moon's graph
+      # The web tasks do not touch apps/server (the gate job covers it), and moon's graph
       # needs no SDK, so none is installed here. MOON_BASE and the full history: see the gate job.
       MOON_BASE: origin/main
     steps:
@@ -127,7 +127,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      # wrangler (the web server of the e2e run, and the dry runs) needs Node 22.
+      # wrangler (the web server of the e2e run, and the dry run) needs Node 22.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
@@ -147,15 +147,6 @@ jobs:
       - run: bunx moon run web:test-e2e
         env:
           MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
-      - run: bunx moon run site:build
-        env:
-          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
-      - run: bunx moon run site:test-e2e
-        env:
-          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
-      - name: Site deploy dry run
-        working-directory: apps/site
-        run: bunx wrangler deploy --dry-run --outdir "$RUNNER_TEMP/fs-site-dry"
 
   # Cross-language proof (FS-23): the real server, CLI and SDK on loopback. CI is set, so a missing
   # .NET SDK fails the job instead of skipping it.

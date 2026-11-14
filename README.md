@@ -3,13 +3,15 @@
 Feature flags you can run yourself. Source available under the Elastic License 2.0. The product has no domain
 yet.
 
-> **Status: early, and nothing is published.** You can run ToggleSlash on your own machine or server:
+> **Status: alpha.** Changing fast. Expect breaking changes between versions. You can run ToggleSlash on your own machine or server:
 > a C# server keeps flags in SQLite and serves an admin API and the SDK routes, a `toggleslash` command
-> manages flags over that admin API, and a TypeScript server SDK evaluates flags in your process. Every
-> admin API write is recorded in an audit trail, and the server counts how often each flag variation is served per day
+> manages flags over that admin API, a dashboard manages them in a browser, a TypeScript server SDK evaluates flags in your process,
+> and a browser SDK evaluates them in a web page through the server. Server SDKs for Python, Go, Java, C# and Ruby live under
+> [`sdks/`](sdks/README.md). Every admin API write is recorded in an audit trail, and the server counts how often each flag variation is served per day
 > (counts only, never an end user's context). Evaluation follows the spec in
-> [`docs/evaluation.md`](docs/evaluation.md). There is no hosted service, no browser SDK and no published
-> package yet.
+> [`docs/evaluation.md`](docs/evaluation.md). There is no hosted service and no published package yet.
+>
+> The product page is [slashslash.build/toggleslash](https://slashslash.build/toggleslash).
 
 - [Quickstart](docs/quickstart.md): start the server, create a flag with the CLI, read it from the SDK. About five minutes.
 - [Feature parity](docs/feature-parity.md): what ToggleSlash and the main competing products offer, capability by capability.
@@ -26,7 +28,6 @@ yet.
 | `packages/cli` | the `toggleslash` command: manage projects, environments, flags and SDK keys over the admin API |
 | `packages/sdk` | the TypeScript server SDK (private, not published) |
 | `apps/web` | the dashboard: TanStack Start on Cloudflare Workers; flag list, toggle, create and archive, a flag detail page (metadata, targeting editor, history, usage), and pages for environments, SDK keys, segments and the audit log, over the server's admin API |
-| `apps/site` | the marketing site, prerendered |
 | `apps/server` | the C# server (ASP.NET Core, .NET 10): owns flag data and the API |
 | `apps/server/ToggleSlash.Evaluation` | flag evaluation in C#, to the same spec and vectors as the engine; the server's `POST /sdk/v1/evaluate` uses it |
 | `packages/e2e` | the cross-language end-to-end test: the real server, CLI and SDK on localhost (`bun scripts/moon.ts run e2e:test-e2e`; needs the .NET SDK) |
