@@ -8,8 +8,8 @@ name: CI
 # its environment on, so the tasks it runs (our code and its dependencies, pinned by bun.lock) do:
 # - MOON_CACHE_READ_TOKEN, a repository secret: may read the cache, and its uploads are refused.
 # - MOON_CACHE_WRITE_TOKEN: lives only in the `moon-cache-write` environment, which GitHub lets only
-#   `main` use. Only the `gate` job on a push to main enters it, so only main writes the cache, and a
-#   pull request cannot poison it. Never make it a plain repository secret: a same-repo pull request
+#   `main` use. Only the `gate`, `apps`, `e2e` and `stack` jobs on a push to main enter it, so only
+#   main writes the cache, and a pull request cannot poison it. Never make it a plain repository secret: a same-repo pull request
 #   can read those.
 # A pull request from a fork, or from Dependabot, gets no Actions secrets: the token is empty, the
 # cache refuses it, and the run is cold and green.
@@ -113,6 +113,8 @@ jobs:
     if: needs.changes.outputs.apps == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Writes the cache on a push to main, like the gate job; see the header.
+    environment: ${{ github.event_name == 'push' && 'moon-cache-write' || '' }}
     env:
       # The web and site tasks do not touch apps/server (the gate job covers it), and moon's graph
       # needs no SDK, so none is installed here. MOON_BASE and the full history: see the gate job.
@@ -138,19 +140,19 @@ jobs:
       # the e2e run the dry run would check the e2e build.
       - run: bunx moon run web:build
         env:
-          MOON_REMOTE_TOKEN: ${{ secrets.MOON_CACHE_READ_TOKEN }}
+          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
       - name: Web deploy dry run
         working-directory: apps/web
         run: bunx wrangler deploy --dry-run --outdir "$RUNNER_TEMP/fs-web-dry"
       - run: bunx moon run web:test-e2e
         env:
-          MOON_REMOTE_TOKEN: ${{ secrets.MOON_CACHE_READ_TOKEN }}
+          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
       - run: bunx moon run site:build
         env:
-          MOON_REMOTE_TOKEN: ${{ secrets.MOON_CACHE_READ_TOKEN }}
+          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
       - run: bunx moon run site:test-e2e
         env:
-          MOON_REMOTE_TOKEN: ${{ secrets.MOON_CACHE_READ_TOKEN }}
+          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
       - name: Site deploy dry run
         working-directory: apps/site
         run: bunx wrangler deploy --dry-run --outdir "$RUNNER_TEMP/fs-site-dry"
@@ -161,6 +163,8 @@ jobs:
     name: End to end (server, CLI, SDK)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Writes the cache on a push to main, like the gate job; see the header.
+    environment: ${{ github.event_name == 'push' && 'moon-cache-write' || '' }}
     env:
       MOON_BASE: origin/main
     steps:
@@ -178,7 +182,7 @@ jobs:
       # Through scripts/moon.ts, which sets TOGGLESLASH_DOTNET, an input of the task.
       - run: bun scripts/moon.ts run e2e:test-e2e
         env:
-          MOON_REMOTE_TOKEN: ${{ secrets.MOON_CACHE_READ_TOKEN }}
+          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
 
   # Browser journey (FS-46): the dashboard in a browser, two shoppers on the example app and the
   # CLI, against the real server. It runs on every PR, and CI is set, so a missing .NET SDK fails
@@ -188,6 +192,8 @@ jobs:
     name: Browser journey (dashboard, server, CLI, example)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Writes the cache on a push to main, like the gate job; see the header.
+    environment: ${{ github.event_name == 'push' && 'moon-cache-write' || '' }}
     env:
       MOON_BASE: origin/main
     steps:
@@ -212,7 +218,7 @@ jobs:
       # Through scripts/moon.ts, which sets TOGGLESLASH_DOTNET, an input of the task.
       - run: bun scripts/moon.ts run e2e:test-stack
         env:
-          MOON_REMOTE_TOKEN: ${{ secrets.MOON_CACHE_READ_TOKEN }}
+          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
 
   # Self-hosting proof (FS-22): the server's image builds and the compose stack answers /health.
   # Nothing is pushed and there is no registry login; the token is a throwaway for this job's
