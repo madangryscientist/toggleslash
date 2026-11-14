@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { settle } from "./fake-clock.ts";
-import { served } from "./fake-server.ts";
+import { matched, served } from "./fake-server.ts";
 import { start, started, URL_BASE } from "./harness.ts";
 
 const EVALUATE = "/sdk/v1/evaluate";
@@ -58,6 +58,45 @@ describe("the change signal", () => {
     await settle();
     expect(server.requestsTo(EVALUATE)).toHaveLength(baseline + 2);
     expect(seen).toHaveLength(1);
+    await client.close();
+  });
+
+  test("a reason that changes with the same value and index fires change", async () => {
+    const { client, server } = await started({ a: served(true, 0) });
+    const seen: string[][] = [];
+    client.on("change", (flags) => seen.push(flags));
+
+    server.fallback = { a: matched(true, 0) };
+    server.publish();
+    await settle();
+    expect(seen).toEqual([["a"]]);
+    expect(client.detail("a", false).reason).toStrictEqual({ kind: "RULE_MATCH", ruleIndex: 0 });
+    await client.close();
+  });
+
+  test("a rule moving under the same variation fires change", async () => {
+    const { client, server } = await started({ a: matched(true, 0) });
+    const seen: string[][] = [];
+    client.on("change", (flags) => seen.push(flags));
+
+    server.fallback = { a: matched(true, 1) };
+    server.publish();
+    await settle();
+    expect(seen).toEqual([["a"]]);
+    expect(client.detail("a", false).reason).toStrictEqual({ kind: "RULE_MATCH", ruleIndex: 1 });
+    await client.close();
+  });
+
+  test("an identical answer fires nothing", async () => {
+    const { client, server } = await started({ a: matched(true, 2, 1), b: served("x", 0) });
+    const baseline = server.requestsTo(EVALUATE).length;
+    const seen: string[][] = [];
+    client.on("change", (flags) => seen.push(flags));
+
+    server.publish();
+    await settle();
+    expect(server.requestsTo(EVALUATE)).toHaveLength(baseline + 1);
+    expect(seen).toEqual([]);
     await client.close();
   });
 

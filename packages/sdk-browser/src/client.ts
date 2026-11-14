@@ -44,7 +44,7 @@ export interface BrowserClient {
   allFlags(): Record<string, unknown>;
   /** Evaluates for a new context. Until its answer arrives the previous context's values keep serving. Never rejects. */
   identify(context: Context): Promise<void>;
-  /** Called with the sorted keys whose value or variation index changed. Returns the unsubscribe function. */
+  /** Called with the sorted keys whose value, variation index or reason changed. Returns the unsubscribe function. */
   on(event: "change", listener: (flags: string[]) => void): () => void;
   /** Stops the signal and the timers and sends the pending usage counts. Never rejects; safe to call twice. */
   close(): Promise<void>;

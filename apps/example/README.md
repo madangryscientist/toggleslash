@@ -17,8 +17,8 @@ not published.
   dependency) and serves it at `GET /browser.js`. The module reads the page's config, creates a browser client with
   the **client key** and the shopper's context, and repaints a table of `new-checkout` and the `?flag=` flag on
   `ready` and on every `change`. A flag changed anywhere reaches it through `GET /sdk/v1/changes` and a fresh
-  evaluate, with no reload (the SDK's `change` event fires when a value or variation index changes, so a reason that changes
-  alone shows after the next such change or a reload). The server key stays in this process: it is never in the page, the bundle or
+  evaluate, with no reload (the SDK's `change` event fires when a value, a variation index or a reason changes). The
+  server key stays in this process: it is never in the page, the bundle or
   `/state`, and `test/` holds that.
 - SIGTERM and SIGINT close the client, which sends the last usage counts.
 

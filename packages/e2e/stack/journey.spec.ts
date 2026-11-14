@@ -106,12 +106,12 @@ async function createFlagWithRule({ dashboard, free, pro }: Journey) {
   await expect(cell(pro, FLAG, "value")).toHaveText("true");
   await expect(cell(free, FLAG, "value")).toHaveText("false");
   await expect(cell(free, FLAG, "reason")).toHaveText("FALLTHROUGH");
-  // The browser SDK follows too, with no reload: the change signal tells it to evaluate again. Its
-  // `change` event fires when a value or a variation index changes, not a reason alone, so only the
-  // pro shopper's cells are asserted (the free shopper's value and index do not change: false).
+  // The browser SDK follows too, with no reload: the change signal tells it to evaluate again, and the
+  // flag appears in its answer, so `change` repaints both tables.
   await expect(browserCell(pro, FLAG, "reason")).toHaveText("RULE_MATCH");
   await expect(browserCell(pro, FLAG, "value")).toHaveText("true");
   await expect(browserCell(free, FLAG, "value")).toHaveText("false");
+  await expect(browserCell(free, FLAG, "reason")).toHaveText("FALLTHROUGH");
 }
 
 async function toggleNewCheckout({ dashboard, free, pro }: Journey) {
@@ -124,11 +124,12 @@ async function toggleNewCheckout({ dashboard, free, pro }: Journey) {
   await expect(cell(pro, "new-checkout", "reason")).toHaveText("OFF");
   await expect(cell(free, "new-checkout", "value")).toHaveText("false");
   await expect(cell(free, "new-checkout", "reason")).toHaveText("OFF");
-  // And the browser SDK's cells, from the change signal and a fresh evaluate (the free shopper's
-  // value and index do not change, so no `change` event repaints their reason; see above).
+  // And the browser SDK's cells, from the change signal and a fresh evaluate: the free shopper's
+  // value and index do not move, but their reason does, so `change` repaints it too.
   await expect(browserCell(pro, "new-checkout", "value")).toHaveText("false");
   await expect(browserCell(pro, "new-checkout", "reason")).toHaveText("OFF");
   await expect(browserCell(free, "new-checkout", "value")).toHaveText("false");
+  await expect(browserCell(free, "new-checkout", "reason")).toHaveText("OFF");
 }
 
 async function streamAndEtag({ cli, scope, free, pro }: Journey) {

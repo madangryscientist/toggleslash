@@ -24,6 +24,15 @@ export function served(value: unknown, index = 0): WireResult {
   return { value, variationIndex: index, reason: { kind: "FALLTHROUGH", ...NO_FIELDS } };
 }
 
+/** A flag served by the rule at `ruleIndex`: variation `index` with `value`. */
+export function matched(value: unknown, ruleIndex: number, index = 0): WireResult {
+  return {
+    value,
+    variationIndex: index,
+    reason: { kind: "RULE_MATCH", ruleIndex, flagKey: null, code: null },
+  };
+}
+
 export type Answer = Record<string, WireResult>;
 
 const encoder = new TextEncoder();

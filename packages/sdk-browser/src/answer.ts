@@ -65,7 +65,7 @@ function sameJson(a: unknown, b: unknown): boolean {
   );
 }
 
-/** The sorted keys whose value or variation index changed, appeared or disappeared. */
+/** The sorted keys whose value, variation index or reason changed, appeared or disappeared. */
 export function changedKeys(
   before: ReadonlyMap<string, Evaluation>,
   after: ReadonlyMap<string, Evaluation>,
@@ -76,7 +76,8 @@ export function changedKeys(
     if (
       !previous ||
       previous.variationIndex !== next.variationIndex ||
-      !sameJson(previous.value, next.value)
+      !sameJson(previous.value, next.value) ||
+      !sameJson(previous.reason, next.reason)
     )
       changed.push(key);
   }
