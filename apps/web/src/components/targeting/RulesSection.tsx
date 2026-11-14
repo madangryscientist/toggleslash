@@ -1,135 +1,12 @@
-import {
-  Button,
-  Card,
-  Checkbox,
-  Cluster,
-  ClusterGrow,
-  Field,
-  Input,
-  Section,
-  Select,
-  Stack,
-  Text,
-} from "@hackcove/ui-react";
+import { Button, Card, Cluster, Section, Stack, Text } from "@hackcove/ui-react";
 import { at, under } from "#/targeting/problems";
 import { removeAt, replaceAt, moveBy } from "#/targeting/list";
 import { emptyClause } from "#/targeting/draft";
-import { ATTRIBUTE_OPS, SEGMENT_OP } from "#/targeting/model";
-import type { ClauseDraft, RuleDraft } from "#/targeting/draft";
+import type { RuleDraft } from "#/targeting/draft";
 import type { FieldProblem } from "#/targeting/problems";
 import type { SectionProps } from "./shared";
 import { ServeEditor } from "../ServeEditor";
-
-interface ClauseProps {
-  id: string;
-  clause: ClauseDraft;
-  problems: FieldProblem[];
-  path: string;
-  onChange: (clause: ClauseDraft) => void;
-  onRemove: () => void;
-}
-
-function ClauseKind({
-  id,
-  clause,
-  error,
-  onChange,
-}: {
-  id: string;
-  clause: ClauseDraft;
-  error: string | undefined;
-  onChange: (clause: ClauseDraft) => void;
-}) {
-  return (
-    <Field label="Context kind" htmlFor={`${id}-kind`} error={error} hint="Blank is user.">
-      <Input
-        id={`${id}-kind`}
-        data-testid={`${id}-kind`}
-        width="auto"
-        placeholder="user"
-        value={clause.contextKind}
-        onChange={(e) => onChange({ ...clause, contextKind: e.currentTarget.value })}
-      />
-    </Field>
-  );
-}
-
-function ClauseRow({ id, clause, problems, path, onChange, onRemove }: ClauseProps) {
-  const segment = clause.op === SEGMENT_OP;
-  const own = under(problems, path);
-  const opProblem = at(problems, `${path}.op`);
-  const attributeProblem = at(problems, `${path}.attribute`);
-  const kindProblem = at(problems, `${path}.contextKind`);
-  const valuesProblem = own.find(
-    (p) => p !== opProblem && p !== attributeProblem && p !== kindProblem,
-  );
-  return (
-    <Stack gap="xs" data-testid={id}>
-      <Cluster wrap align="start">
-        <Field label="Operator" htmlFor={`${id}-op`} error={opProblem?.message}>
-          <Select
-            id={`${id}-op`}
-            data-testid={`${id}-op`}
-            width="auto"
-            value={clause.op}
-            onChange={(e) => onChange({ ...clause, op: e.currentTarget.value })}
-          >
-            {ATTRIBUTE_OPS.map((op) => (
-              <option key={op} value={op}>
-                {op}
-              </option>
-            ))}
-            <option value={SEGMENT_OP}>in segment</option>
-          </Select>
-        </Field>
-        {!segment && (
-          <Field
-            label="Attribute"
-            htmlFor={`${id}-attribute`}
-            error={attributeProblem?.message}
-            hint="A name, or a path such as /address/city."
-          >
-            <Input
-              id={`${id}-attribute`}
-              data-testid={`${id}-attribute`}
-              width="auto"
-              value={clause.attribute}
-              onChange={(e) => onChange({ ...clause, attribute: e.currentTarget.value })}
-            />
-          </Field>
-        )}
-        {!segment && (
-          <ClauseKind id={id} clause={clause} error={kindProblem?.message} onChange={onChange} />
-        )}
-        <ClusterGrow>
-          <Field
-            label={segment ? "Segment keys" : "Values"}
-            htmlFor={`${id}-values`}
-            hint='Separated by commas. Quote a value ("42") to keep it text.'
-            error={valuesProblem?.message}
-          >
-            <Input
-              id={`${id}-values`}
-              data-testid={`${id}-values`}
-              value={clause.values}
-              onChange={(e) => onChange({ ...clause, values: e.currentTarget.value })}
-            />
-          </Field>
-        </ClusterGrow>
-      </Cluster>
-      <Cluster>
-        <Checkbox
-          label="Negate"
-          checked={clause.negate}
-          onChange={(e) => onChange({ ...clause, negate: e.currentTarget.checked })}
-        />
-        <Button variant="ghost" size="sm" tone="danger" onClick={onRemove}>
-          Remove clause
-        </Button>
-      </Cluster>
-    </Stack>
-  );
-}
+import { ClauseRow } from "./ClauseRow";
 
 interface RuleProps {
   index: number;
@@ -137,9 +14,47 @@ interface RuleProps {
   rule: RuleDraft;
   variations: string[];
   problems: FieldProblem[];
+  disabled: boolean;
   onChange: (rule: RuleDraft) => void;
   onMove: (by: -1 | 1) => void;
   onRemove: () => void;
+}
+
+function RuleActions({
+  id,
+  first,
+  last,
+  disabled,
+  onMove,
+  onRemove,
+}: {
+  id: string;
+  first: boolean;
+  last: boolean;
+  disabled: boolean;
+  onMove: (by: -1 | 1) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <Cluster>
+      <Button variant="ghost" size="sm" disabled={disabled || first} onClick={() => onMove(-1)}>
+        Move up
+      </Button>
+      <Button variant="ghost" size="sm" disabled={disabled || last} onClick={() => onMove(1)}>
+        Move down
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        tone="danger"
+        data-testid={`${id}-remove`}
+        disabled={disabled}
+        onClick={onRemove}
+      >
+        Remove rule
+      </Button>
+    </Cluster>
+  );
 }
 
 function RuleCard({
@@ -148,6 +63,7 @@ function RuleCard({
   rule,
   variations,
   problems,
+  disabled,
   onChange,
   onMove,
   onRemove,
@@ -161,28 +77,14 @@ function RuleCard({
       title={`Rule ${index + 1}`}
       data-testid={id}
       actions={
-        <Cluster>
-          <Button variant="ghost" size="sm" disabled={index === 0} onClick={() => onMove(-1)}>
-            Move up
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={index === count - 1}
-            onClick={() => onMove(1)}
-          >
-            Move down
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            tone="danger"
-            data-testid={`${id}-remove`}
-            onClick={onRemove}
-          >
-            Remove rule
-          </Button>
-        </Cluster>
+        <RuleActions
+          id={id}
+          first={index === 0}
+          last={index === count - 1}
+          disabled={disabled}
+          onMove={onMove}
+          onRemove={onRemove}
+        />
       }
     >
       <Stack gap="md">
@@ -195,6 +97,7 @@ function RuleCard({
             clause={clause}
             problems={problems}
             path={`${path}.clauses[${j}]`}
+            disabled={disabled}
             onChange={(c) => onChange({ ...rule, clauses: replaceAt(rule.clauses, j, c) })}
             onRemove={() => onChange({ ...rule, clauses: removeAt(rule.clauses, j) })}
           />
@@ -204,6 +107,7 @@ function RuleCard({
             variant="outline"
             size="sm"
             data-testid={`${id}-add-clause`}
+            disabled={disabled}
             onClick={() => onChange({ ...rule, clauses: [...rule.clauses, emptyClause()] })}
           >
             Add clause
@@ -216,6 +120,7 @@ function RuleCard({
           variations={variations}
           problems={serveProblems}
           path={path}
+          disabled={disabled}
           onChange={(serve) => onChange({ ...rule, serve })}
         />
       </Stack>
@@ -223,7 +128,7 @@ function RuleCard({
   );
 }
 
-export function RulesSection({ draft, onDraft, problems, flag }: SectionProps) {
+export function RulesSection({ draft, onDraft, problems, flag, disabled }: SectionProps) {
   return (
     <Section
       title="Rules"
@@ -232,6 +137,7 @@ export function RulesSection({ draft, onDraft, problems, flag }: SectionProps) {
           variant="outline"
           size="sm"
           data-testid="add-rule"
+          disabled={disabled}
           onClick={() =>
             onDraft({
               ...draft,
@@ -260,6 +166,7 @@ export function RulesSection({ draft, onDraft, problems, flag }: SectionProps) {
           rule={rule}
           variations={flag.variations}
           problems={problems}
+          disabled={disabled}
           onChange={(r) => onDraft({ ...draft, rules: replaceAt(draft.rules, i, r) })}
           onMove={(by) => onDraft({ ...draft, rules: moveBy(draft.rules, i, by) })}
           onRemove={() => onDraft({ ...draft, rules: removeAt(draft.rules, i) })}
@@ -269,7 +176,7 @@ export function RulesSection({ draft, onDraft, problems, flag }: SectionProps) {
   );
 }
 
-export function FallthroughSection({ draft, onDraft, problems, flag }: SectionProps) {
+export function FallthroughSection({ draft, onDraft, problems, flag, disabled }: SectionProps) {
   return (
     <Section title="Fallthrough">
       <ServeEditor
@@ -279,6 +186,7 @@ export function FallthroughSection({ draft, onDraft, problems, flag }: SectionPr
         variations={flag.variations}
         problems={under(problems, "fallthrough")}
         path="fallthrough"
+        disabled={disabled}
         onChange={(fallthrough) => onDraft({ ...draft, fallthrough })}
       />
     </Section>

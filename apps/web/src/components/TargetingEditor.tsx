@@ -1,4 +1,5 @@
 import { Button, Callout, Cluster, Stack, Text } from "@hackcove/ui-react";
+import { useHydrated } from "@tanstack/react-router";
 import { useState } from "react";
 import { saveConfig } from "#/api/dashboard";
 import type { Environment, FlagDetail, Project, Sibling } from "#/api/types";
@@ -69,6 +70,8 @@ export function TargetingEditor(props: Props) {
   const [conflict, setConflict] = useState(false);
   const [saving, setSaving] = useState(false);
   const dirty = isDirty(draft, initial);
+  const hydrated = useHydrated();
+  const editable = hydrated && dirty;
 
   function edit(next: Draft) {
     setDraft(next);
@@ -98,7 +101,7 @@ export function TargetingEditor(props: Props) {
     }
   }
 
-  const shared = { draft, onDraft: edit, problems, flag };
+  const shared = { draft, onDraft: edit, problems, flag, disabled: !hydrated };
   return (
     <Stack gap="lg">
       <StateSection {...shared} />
@@ -125,14 +128,14 @@ export function TargetingEditor(props: Props) {
       <Cluster>
         <Button
           data-testid="save-targeting"
-          disabled={!dirty}
+          disabled={!editable}
           busy={saving}
           busyLabel="Saving"
           onClick={() => void save()}
         >
           Save targeting
         </Button>
-        <Button variant="ghost" disabled={!dirty || saving} onClick={() => edit(initial)}>
+        <Button variant="ghost" disabled={!editable || saving} onClick={() => edit(initial)}>
           Discard changes
         </Button>
         <Text tone="muted">Version {config.version}</Text>

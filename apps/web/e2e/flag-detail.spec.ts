@@ -1,6 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
 import { API_PORT, E2E_ADMIN_TOKEN } from "./constants.ts";
-import { waitForHydrated } from "./hydrated.ts";
 
 const API = `http://127.0.0.1:${API_PORT}`;
 const CONFIG = `${API}/api/v1/projects/shop/flags/checkout-v2/environments/production`;
@@ -13,9 +12,8 @@ test.beforeEach(async ({ request }) => {
 async function openCheckout(page: Page) {
   await page.goto("/flags/checkout-v2?project=shop&env=production");
   await expect(page.getByRole("heading", { name: "Checkout v2" })).toBeVisible();
-  // The heading and the server-rendered fields show before React hydrates; a fill that lands first
-  // merges with the value React then restores, so wait for the editor to be live and loaded.
-  await waitForHydrated(page, '[data-testid="targets-0"]');
+  // The editor is disabled until React has hydrated it, so an enabled field is a live one.
+  await expect(page.getByTestId("targets-0")).toBeEnabled();
   await expect(page.getByTestId("targets-0")).toHaveValue("alice\nbob");
 }
 
