@@ -28,6 +28,7 @@ It advertises one capability, `integer-accessor`: Java has an integer type disti
 | `hook-events` | the `EvaluationEvent`s `afterEvaluation` received, as the SDK built them |
 | `errors` | what `onError` received, each as its message |
 | `close` | `client.close()`; the client stays answerable afterwards |
+| `callback-close` | `closeInHook` and `closeInOnError`: the first callback that finds the client stored calls `client.close()`, times it and catches anything it throws |
 
 The `reason` in an answer is `{kind, ruleIndex?, flagKey?, code?}`: `code` is the Java `errorCode`, spelled as its
 enum constant. The context is passed through as the JSON it arrived as (a `Map`), so the SDK, not the service,

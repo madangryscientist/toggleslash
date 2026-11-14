@@ -206,20 +206,36 @@ class ClientTest < Minitest::Test
   def test_ready_and_close_from_the_sdks_own_thread_return_at_once
     server = build_server
     server.serve_ruleset
+    release = Queue.new
     results = Queue.new
     client_box = []
+    fired = false
     on_error = lambda do |_error|
-      results << [client_box[0].ready, client_box[0].close]
+      next if fired
+
+      fired = true
+      ready = client_box[0].ready
+      started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      closed = client_box[0].close
+      results << [ready, closed, Process.clock_gettime(Process::CLOCK_MONOTONIC) - started]
     end
-    client = build_client(server, on_error: on_error)
+    client = build_client(server, poll_interval: 0.05, flush_interval: 3600, request_timeout: 5, on_error: on_error)
     client_box << client
     assert client.ready
+    client.variation("on", { "key" => "u" }, false) # a count is pending, so the final flush goes out
+    server.route("POST", "/sdk/v1/events") do |_request, _socket|
+      release.pop
+      { status: 202 }
+    end
     server.route("GET", "/sdk/v1/ruleset") { { status: 500 } }
-    client.close
-    other = build_client(server, poll_interval: 0.05, on_error: on_error)
-    client_box[0] = other
-    result = Timeout.timeout(5) { results.pop }
-    assert_equal [false, nil], result
+    ready, closed, took = Timeout.timeout(5) { results.pop }
+    assert_equal [true, nil], [ready, closed]
+    # Contract 6.4: close returns without waiting for the final flush, which hangs for request_timeout.
+    assert_operator took, :<, 1.0
+    eventually(5, "the client to read closed") { client.status.stream == Toggleslash::StreamState::CLOSED }
+    eventually(5, "the final flush") { server.requests_to("/sdk/v1/events").any? }
+  ensure
+    release&.push(true)
   end
 
   def test_inspect_hides_the_key

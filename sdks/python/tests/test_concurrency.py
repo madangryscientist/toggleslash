@@ -259,16 +259,25 @@ class ReentrancyTests(ConcurrencyTestCase):
         self.assertEqual(calls[0], (False, "http_503", 9))
 
     def test_on_error_on_an_sdk_thread_may_close_without_joining_itself(self) -> None:
-        self.server.on("GET", RULESET, reply(503))
-        finished = threading.Event()
+        took: list[float] = []
 
         def on_error(_error: Exception) -> None:
+            if took:
+                return
+            started = time.monotonic()
             client.close()
-            finished.set()
+            took.append(time.monotonic() - started)
 
-        client = self.client(on_error=on_error)
-        self.assertTrue(finished.wait(5))
+        client = self.client(on_error=on_error, request_timeout=5.0, flush_interval=3600.0)
+        self.assertTrue(client.ready())
+        client.variation("f", CTX, False)  # a count is pending, so the final flush goes out
+        self.server.on("POST", EVENTS, stalled(30))
+        self.server.on("GET", RULESET, reply(500))
+        self.assertTrue(wait_for(lambda: took))
+        # Contract 6.4: it returns without waiting for the final flush, which hangs for request_timeout.
+        self.assertLess(took[0], 1.0)
         self.assertTrue(wait_for(lambda: client.status().stream == StreamState.CLOSED))
+        self.assertTrue(wait_for(lambda: self.server.seen("POST", EVENTS)))
 
     def test_a_close_from_an_sdk_thread_while_the_caller_closes(self) -> None:
         self.server.on("GET", RULESET, reply(503))

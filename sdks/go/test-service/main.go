@@ -37,6 +37,42 @@ type entry struct {
 	mu         sync.Mutex
 	hookEvents []jsonval.Object
 	errors     []string
+
+	// closeInHook / closeInOnError: stored is the client as a callback sees
+	// it (nil until New returns), closing is set when the callback's Close
+	// starts, and closeCalls, closeThrew and closeMs once it has returned.
+	stored     *toggleslash.Client
+	closing    bool
+	closeCalls int
+	closeThrew int
+	closeMs    int64
+}
+
+// closeFromCallback is the first callback that finds the client stored: it
+// calls Close, times how long the call took to return, and recovers a panic.
+func (e *entry) closeFromCallback() {
+	e.mu.Lock()
+	client := e.stored
+	if client == nil || e.closing {
+		e.mu.Unlock()
+		return
+	}
+	e.closing = true
+	e.mu.Unlock()
+	started := time.Now()
+	threw := 0
+	func() {
+		defer func() {
+			if recover() != nil {
+				threw = 1
+			}
+		}()
+		client.Close()
+	}()
+	elapsed := time.Since(started).Milliseconds()
+	e.mu.Lock()
+	e.closeCalls, e.closeThrew, e.closeMs = 1, threw, elapsed
+	e.mu.Unlock()
 }
 
 func (e *entry) recordEvent(event jsonval.Object) {
@@ -99,6 +135,7 @@ func main() {
 	mux.HandleFunc("GET /clients/{id}/hook-events", hookEvents)
 	mux.HandleFunc("GET /clients/{id}/errors", errorList)
 	mux.HandleFunc("POST /clients/{id}/close", closeClient)
+	mux.HandleFunc("GET /clients/{id}/callback-close", callbackClose)
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -172,6 +209,9 @@ func newEntry(body jsonval.Object) (*entry, error) {
 				return
 			}
 			e.recordError(err)
+			if on(body["closeInOnError"]) {
+				e.closeFromCallback()
+			}
 			if on(body["onErrorThrows"]) {
 				panic("onError threw, as the test asked")
 			}
@@ -190,10 +230,14 @@ func newEntry(body jsonval.Object) (*entry, error) {
 	if interval, ok := milliseconds(body["requestTimeoutMs"]); ok {
 		opts.RequestTimeout = interval
 	}
-	if on(body["hook"]) || on(body["hookThrows"]) {
+	if on(body["hook"]) || on(body["hookThrows"]) || on(body["closeInHook"]) {
 		throws := on(body["hookThrows"])
+		closes := on(body["closeInHook"])
 		opts.Hooks = toggleslash.Hooks{AfterEvaluation: func(event toggleslash.Event) {
 			e.recordEvent(eventJSON(event))
+			if closes {
+				e.closeFromCallback()
+			}
 			if throws {
 				panic("the hook threw, as the test asked")
 			}
@@ -204,6 +248,9 @@ func newEntry(body jsonval.Object) (*entry, error) {
 		return nil, err
 	}
 	e.sdk = sdk
+	e.mu.Lock()
+	e.stored = sdk
+	e.mu.Unlock()
 	return e, nil
 }
 
@@ -321,6 +368,21 @@ func status(w http.ResponseWriter, r *http.Request) {
 		"stream":     jsonval.String(string(snapshot.Stream)),
 		"lastError":  lastError,
 	})
+}
+
+func callbackClose(w http.ResponseWriter, r *http.Request) {
+	e, ok := entryFor(w, r)
+	if !ok {
+		return
+	}
+	e.mu.Lock()
+	answer := jsonval.Object{
+		"calls": jsonval.Number(float64(e.closeCalls)),
+		"threw": jsonval.Number(float64(e.closeThrew)),
+		"maxMs": jsonval.Number(float64(e.closeMs)),
+	}
+	e.mu.Unlock()
+	writeJSON(w, http.StatusOK, answer)
 }
 
 func hookEvents(w http.ResponseWriter, r *http.Request) {

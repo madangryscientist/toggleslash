@@ -31,7 +31,7 @@ Durations are `int` or `float` seconds. `create` is a module function, `togglesl
 | `hooks.afterEvaluation` | `hooks=toggleslash.Hooks(after_evaluation=callable)`; default `None` | `callable(event)` with an `EvaluationEvent`, on the caller's thread. The return value is ignored, but a future it returns (anything with `add_done_callback`, such as a `concurrent.futures.Future` or an `asyncio.Future`) that later fails sends its exception to `on_error`, and changes neither the answer nor the count; a coroutine it returns is closed unawaited (the SDK runs no event loop); an object that is not callable is ignored. A `dict` with an `"after_evaluation"` key is accepted too. |
 | `onError` | `on_error=callable`; default `None` (ignore) | `callable(error)` with a `toggleslash.ToggleSlashError` (an `Exception` with a `code`) or the exception a hook or the evaluator raised. |
 | `accessor shape` | Both: the generic `variation` and `variation_detail` (the kind comes from the type of the fallback), and `int_variation` and `int_variation_detail` for the integer accessor. | There is no `bool_variation`, `string_variation` or `float_variation`: the generic method already compares the fallback's kind. An `int` or `float` fallback to the generic method is the `number` kind with no integer rule (the harness `number` accessor), while `int_variation` applies contract 4's fractional and signed 64-bit rules and returns an `int`. The `json` accessor is the generic method with a `list` or `dict` fallback. A `None` fallback accepts any kind. A fallback of any other type (a `bytes`, a `datetime`, an arbitrary object) never matches a served value and answers `ERROR TYPE_MISMATCH`; it is still returned unchanged. |
-| `onError thread` | The SDK's own thread for what that thread did (a failed ruleset or stream attempt on `toggleslash-sync`, a failed usage request on `toggleslash-flush`); the caller's thread for a hook that raised and for `EVALUATION_FAILED`; the thread that called `close` for a usage request in the final flush and for counts lost at close. | No SDK lock is held while it runs. |
+| `onError thread` | The SDK's own thread for what that thread did (a failed ruleset or stream attempt on `toggleslash-sync`, a failed usage request on `toggleslash-flush`); the caller's thread for a hook that raised and for `EVALUATION_FAILED`; the thread that called `close` for a usage request in the final flush and for counts lost at close, except a `close` made on the SDK's own thread (from `on_error`), whose final flush runs on a `toggleslash-close` thread, which reports those there. | No SDK lock is held while it runs. |
 
 **The closed sets keep their spelling.** `toggleslash.ReasonKind`, `toggleslash.ErrorCode`,
 `toggleslash.StreamState` and `toggleslash.LastError` are `enum.StrEnum` classes whose member names and values
@@ -70,7 +70,9 @@ value `False` turns the stream off; `None` means the default (on).
   evaluation down.
 - **Callbacks.** The hook and `on_error` run with no SDK lock held. `ready()` called from the SDK's own thread
   (`threading.current_thread()` is the sync or flush thread, as an `on_error` callback is) returns at once with
-  the state held, and `close()` from an SDK thread skips joining itself.
+  the state held. `close()` from an SDK thread does not wait for that thread's work (contract 6.4): it stops
+  the rest, hands the joins and the final flush to a daemon thread named `toggleslash-close`, which ends when
+  shutdown ends, and returns at once. A second `close` on an SDK thread returns at once too.
 - **Close.** `close` sets the closing flag and the stream state to `closed` under `_state_lock`, sets a
   `threading.Event` that both loops wait on (so no timer outlives it), writes to the client's wake socket (below)
   so a ruleset, stream or usage request in flight is abandoned at once, joins the sync and flush threads with a

@@ -31,7 +31,50 @@ public final class Main {
   private static final class Entry {
     final List<Object> hookEvents = new ArrayList<>();
     final List<Object> errors = new ArrayList<>();
-    Client client;
+    volatile Client client;
+    // closeInHook / closeInOnError: closing is set when the callback's close starts; calls, threw
+    // and
+    // maxMs once it has returned. Guarded by this entry.
+    boolean closing;
+    long closeCalls;
+    long closeThrew;
+    long closeMs;
+
+    /**
+     * The first callback that finds the client stored closes it, timed; anything close throws is
+     * caught.
+     */
+    void closeFromCallback() {
+      Client stored;
+      synchronized (this) {
+        stored = client;
+        if (stored == null || closing) {
+          return;
+        }
+        closing = true;
+      }
+      long started = System.nanoTime();
+      long threw = 0;
+      try {
+        stored.close();
+      } catch (RuntimeException e) {
+        threw = 1;
+      }
+      long took = (System.nanoTime() - started) / 1_000_000;
+      synchronized (this) {
+        closeCalls = 1;
+        closeThrew = threw;
+        closeMs = took;
+      }
+    }
+
+    synchronized Map<String, Object> callbackClose() {
+      Map<String, Object> out = new LinkedHashMap<>();
+      out.put("calls", closeCalls);
+      out.put("threw", closeThrew);
+      out.put("maxMs", closeMs);
+      return out;
+    }
   }
 
   private static final Pattern CLIENT_ROUTE = Pattern.compile("^/clients/([^/]+)/([a-z-]+)$");
@@ -113,6 +156,8 @@ public final class Main {
         synchronized (entry.hookEvents) {
           return ok(Map.of("events", new ArrayList<>(entry.hookEvents)));
         }
+      case "GET callback-close":
+        return ok(entry.callbackClose());
       case "GET errors":
         synchronized (entry.errors) {
           Map<String, Object> errors = new LinkedHashMap<>();
@@ -167,10 +212,14 @@ public final class Main {
       options.requestTimeout(timeout);
     }
     boolean hookThrows = Boolean.TRUE.equals(body.get("hookThrows"));
-    if (Boolean.TRUE.equals(body.get("hook")) || hookThrows) {
+    boolean closeInHook = Boolean.TRUE.equals(body.get("closeInHook"));
+    if (Boolean.TRUE.equals(body.get("hook")) || hookThrows || closeInHook) {
       options.afterEvaluation(event -> {
         synchronized (entry.hookEvents) {
           entry.hookEvents.add(hookEvent(event));
+        }
+        if (closeInHook) {
+          entry.closeFromCallback();
         }
         if (hookThrows) {
           throw new IllegalStateException("the hook threw, as the test asked");
@@ -179,15 +228,22 @@ public final class Main {
       });
     }
     boolean onErrorThrows = Boolean.TRUE.equals(body.get("onErrorThrows"));
+    boolean closeInOnError = Boolean.TRUE.equals(body.get("closeInOnError"));
     options.onError(error -> {
       synchronized (entry.errors) {
         entry.errors.add(String.valueOf(error.getMessage()));
+      }
+      if (closeInOnError) {
+        entry.closeFromCallback();
       }
       if (onErrorThrows) {
         throw new IllegalStateException("onError threw, as the test asked");
       }
     });
-    entry.client = Client.create(options.build());
+    Client client = Client.create(options.build());
+    synchronized (entry) {
+      entry.client = client;
+    }
     String id = String.valueOf(CREATED.incrementAndGet());
     CLIENTS.put(id, entry);
     return new Object[] {201, Json.stringify(Map.of("id", id))};

@@ -167,8 +167,12 @@ New, and a MUST for every language it names.
 4. The SDK's callbacks (`afterEvaluation`, `onError`) SHOULD NOT be called while the SDK holds a lock of
    its own, so a callback that calls back into the client cannot deadlock it. A `ready` called from such a
    callback on the SDK's own thread SHOULD NOT wait for the load that thread runs: it returns at once with the
-   state held. A `close` called on the SDK's own thread (from such a callback or otherwise) SHOULD NOT wait for the work that thread is doing: it stops
-   the rest and returns.
+   state held. A `close` called on the SDK's own thread (from such a callback or otherwise) MUST NOT wait for the work that thread is doing: it stops
+   the rest, lets shutdown finish elsewhere, and returns. A `close` from a hook, or from an `onError` the SDK
+   runs on the caller's thread, MAY wait like an ordinary `close` ([section 11](#11-close)) or MAY return at
+   once with shutdown finishing elsewhere; either is compliant. Any `close` from a callback MUST NOT throw,
+   and the client still ends closed: `status` reads `closed` for `stream`, no stream stays open, and the
+   final flush still runs (off the SDK's thread when the close came from it).
 5. `status` SHOULD be one consistent snapshot, not four reads at four moments. In particular a stream attempt's end sets `lastError` (on a failure) and `stream` together, so a read from another thread never shows a stream failure's `lastError` beside `connected`. When `onError` runs relative to that change is not specified: the TypeScript SDK calls it first.
 6. A client that is never closed SHOULD NOT keep a process alive by itself where the runtime has the idea
    (a daemon thread, a background task).
@@ -451,7 +455,10 @@ thread calls it is the SDK's choice, and the language's mapping documents it.
    day, not the sum of the counts).
 
 `close` never fails, and it is **safe to call twice** (or concurrently): every call waits for the same
-shutdown and returns when it is done. A `ready` that had not settled settles false.
+shutdown and returns when it is done, except a `close` made from inside a callback (and, in an SDK whose
+language cannot tell its threads apart, a `close` from another thread while such a callback runs, which that
+SDK documents): that one MAY return before shutdown ends, and on the SDK's own thread it MUST
+([section 6](#6-concurrency), item 4). A `ready` that had not settled settles false.
 
 `close` SHOULD return within about twice `requestTimeout` even when a request it waits for hangs (an
 in-flight request, then the final flush), and the mapping states the bound it keeps.

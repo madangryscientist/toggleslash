@@ -296,37 +296,63 @@ func TestCallbacksCallBackIntoTheClient(t *testing.T) {
 }
 
 // TestCloseFromInsideOnError is contract 6.4's close case: a close called from
-// inside onError does not wait for the goroutine that is running it.
+// inside onError, on the notify goroutine, does not wait for the work the SDK
+// is doing. Here that is the final flush, which hangs until the test ends.
 func TestCloseFromInsideOnError(t *testing.T) {
 	fake := newFakeServer(t)
 	fake.ruleset = func(w http.ResponseWriter, r *http.Request, body []byte) {
 		_, _ = w.Write([]byte(rulesetOf(boolFlag("feature", 1, 1))))
 	}
-	fake.events = func(w http.ResponseWriter, r *http.Request, body []byte) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}
-	done := make(chan struct{}, 1)
+	release := make(chan struct{})
+	took := make(chan time.Duration, 1)
 	var client *Client
+	var fired atomic.Bool
 	off := false
 	opts := clockOptions(fake, newFakeClock())
-	opts.clock = nil // a real flush timer, so the failing flush runs
+	opts.clock = nil // a real poll timer, so the failing poll runs
 	opts.Stream = &off
-	opts.FlushInterval = 10 * time.Millisecond
+	opts.PollInterval = 50 * time.Millisecond
+	opts.FlushInterval = time.Hour
+	opts.RequestTimeout = 5 * time.Second
 	opts.OnError = func(error) {
+		if fired.Swap(true) {
+			return
+		}
+		started := time.Now()
 		client.Close()
-		done <- struct{}{}
+		took <- time.Since(started)
 	}
 	client = newClient(t, opts)
+	// After newClient, so it runs first: the hanging flush ends before Close
+	// in cleanup waits for it, and before the server closes.
+	t.Cleanup(func() { close(release) })
 	if !client.Ready(context.Background()) {
 		t.Fatalf("Ready = false, want true")
 	}
-	client.BoolVariation("feature", userContext("u1"), false)
+	client.BoolVariation("feature", userContext("u1"), false) // a pending count
+
+	fake.mu.Lock()
+	fake.events = func(w http.ResponseWriter, r *http.Request, body []byte) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}
+	fake.ruleset = func(w http.ResponseWriter, r *http.Request, body []byte) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+	fake.mu.Unlock()
 
 	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-		t.Fatalf("Close from inside onError deadlocked")
+	case elapsed := <-took:
+		if elapsed > time.Second {
+			t.Fatalf("Close from inside onError took %v, want under 1s", elapsed)
+		}
+	case <-time.After(8 * time.Second):
+		t.Fatalf("Close from inside onError did not return")
 	}
+	eventually(t, 5*time.Second, func() bool { return client.Status().Stream == StreamClosed }, "status closed")
+	eventually(t, 5*time.Second, func() bool { return len(fake.recorded("/sdk/v1/events")) > 0 }, "the final flush")
 }
 
 // TestCloseBeforeReadySettles answers false, without waiting.

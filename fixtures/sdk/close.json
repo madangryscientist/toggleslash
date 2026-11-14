@@ -181,6 +181,147 @@
           }
         }
       ]
+    },
+    {
+      "name": "a close from onError on the SDK's own thread returns without waiting",
+      "contract": "6.4",
+      "steps": [
+        {
+          "do": "create",
+          "options": {
+            "stream": false,
+            "pollIntervalMs": 200,
+            "requestTimeoutMs": 2000,
+            "closeInOnError": true
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "variationIndex": 1,
+            "reason": {
+              "kind": "FALLTHROUGH"
+            }
+          }
+        },
+        {
+          "do": "script",
+          "route": "events",
+          "answers": [
+            {
+              "hang": true,
+              "times": "always"
+            }
+          ]
+        },
+        {
+          "do": "script",
+          "route": "ruleset",
+          "answers": [
+            {
+              "status": 500
+            }
+          ]
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "callbackClose": {
+            "calls": 1
+          }
+        },
+        {
+          "do": "expect",
+          "callbackClose": {
+            "threw": 0,
+            "maxMs": {
+              "max": 500
+            }
+          }
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 6000,
+          "status": {
+            "stream": "closed"
+          },
+          "openStreams": 0
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 6000,
+          "requests": {
+            "route": "events",
+            "count": {
+              "min": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "a close from a hook returns and the client ends closed",
+      "contract": "6.4",
+      "steps": [
+        {
+          "do": "create",
+          "options": {
+            "closeInHook": true
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "variationIndex": 1,
+            "reason": {
+              "kind": "FALLTHROUGH"
+            }
+          }
+        },
+        {
+          "do": "expect",
+          "callbackClose": {
+            "calls": 1,
+            "threw": 0,
+            "maxMs": {
+              "max": 5000
+            }
+          }
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 6000,
+          "status": {
+            "stream": "closed"
+          },
+          "openStreams": 0,
+          "requests": {
+            "route": "events",
+            "events": [
+              {
+                "flag": "checkout",
+                "variationIndex": 1,
+                "count": 1,
+                "day": "{{today}}"
+              }
+            ]
+          }
+        }
+      ]
     }
   ]
 }

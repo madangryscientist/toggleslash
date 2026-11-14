@@ -587,6 +587,15 @@ class Client:
             if not self._on_sdk_thread():
                 self._closed.wait(4 * timeout)
             return
+        if self._on_sdk_thread():
+            # Contract 6.4: a close on the SDK's own thread does not wait for that thread's work. The rest of
+            # shutdown, the final flush included, runs on a thread of its own, which ends when it is done.
+            threading.Thread(target=self._shut_down, name="toggleslash-close", daemon=True).start()
+            return
+        self._shut_down()
+
+    def _shut_down(self) -> None:
+        timeout = self._config.request_timeout
         try:
             deadline = time.monotonic() + timeout
             me = threading.current_thread()

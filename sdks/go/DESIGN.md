@@ -97,10 +97,19 @@ context, and then waits (`wg.Wait`) for the sync goroutine and the flush gorouti
 returns on cancellation, closing the stream body; the flush goroutine does one last send with the counts
 it holds, without the canceled context as its bound, and returns. Both publish `StreamClosed` before they
 go, and a request aborted by close sets no `lastError` and calls no `onError` (contract 8). The notify
-goroutine is told the queue is finished and is **not** joined: it is the only goroutine a user callback
-runs on, so a `close` called from inside `onError` cannot wait for the goroutine that is running it
-(6.4). A `close` called from inside `afterEvaluation` waits for sync and flush, which are not the caller's
-goroutine, so that is safe too.
+goroutine is told the queue is finished and is **not** joined.
+
+**`Close` from inside `onError` returns at once (6.4).** Go has no goroutine identity, so the notify
+goroutine raises a counter (`inOnError`) around each `onError` call it makes in `notifyLoop`, and only
+there: after close, `report` calls `onError` on the caller's goroutine, and a `Close` there is an ordinary
+one. A `Close` that sees the counter raised stops following the server (sets `closed`, publishes
+`StreamClosed`, settles `Ready` and cancels), starts the usual `closeOnce` shutdown on a new goroutine and
+returns, so the final flush still runs, off the notify goroutine. A later `Close` from the caller blocks in
+`closeOnce` until that shutdown ends, as any second `Close` does. **The accepted gap:** a `Close` from
+another goroutine while an `onError` call is running also returns before shutdown ends, because nothing
+tells the two apart; contract 11 allows it for an SDK that documents it, and this is that note. A `close`
+called from inside `afterEvaluation` waits for sync and flush, which are not the caller's goroutine, so
+that is safe too.
 
 Callbacks hold no SDK lock: `afterEvaluation` runs after the counts lock is released, and `onError` runs
 on the notify goroutine with nothing held. A `ready` called from inside a callback returns the state held

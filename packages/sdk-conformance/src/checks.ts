@@ -15,7 +15,8 @@ import { errorCount, fill, mark, type RunState } from "./state.ts";
 
 const STREAM_STATES = ["off", "connecting", "connected", "disconnected", "closed"];
 const ERROR_CODE = /^(http_\d{3}|timeout|bad_ruleset|network)$/;
-const CHECKS = ["requests", "status", "errors", "hookEvents", "openStreams"];
+const CHECKS = ["requests", "status", "errors", "hookEvents", "openStreams", "callbackClose"];
+const CALLBACK_CLOSE_FIELDS = ["calls", "threw", "maxMs"];
 
 function checkNames(step: Rec): string[] {
   return Object.keys(step).filter((name) => CHECKS.includes(name));
@@ -99,6 +100,22 @@ async function checkHookEvents(state: RunState, raw: unknown): Promise<string | 
   return null;
 }
 
+/** The `close` the service made from inside a callback (`closeInHook`, `closeInOnError`). */
+async function checkCallbackClose(state: RunState, raw: unknown): Promise<string | null> {
+  const answer = await state.service.client(client(state), "callback-close", "GET");
+  const want = record(raw, "callbackClose");
+  for (const name of Object.keys(want)) {
+    if (!CALLBACK_CLOSE_FIELDS.includes(name))
+      throw new Error(`callbackClose has no field "${name}"`);
+    const actual = answer[name];
+    if (typeof actual !== "number")
+      return `callback-close ${name} was ${show(actual)}, not a number`;
+    const problem = inRange(actual, want[name], `callback close ${name}`);
+    if (problem !== null) return `${problem} (callback-close: ${show(answer)})`;
+  }
+  return null;
+}
+
 /** Runs every check the step names. */
 export async function runChecks(state: RunState, step: Rec): Promise<string | null> {
   for (const name of checkNames(step)) {
@@ -116,6 +133,7 @@ function runCheck(
   if (name === "status") return checkStatus(state, raw);
   if (name === "errors") return checkErrors(state, raw);
   if (name === "hookEvents") return checkHookEvents(state, raw);
+  if (name === "callbackClose") return checkCallbackClose(state, raw);
   if (name === "openStreams") return inRange(state.server.openStreams, raw, "open streams");
   const checks = Array.isArray(raw) ? raw : [raw];
   for (const check of checks) {

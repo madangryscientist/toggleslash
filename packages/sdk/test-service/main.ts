@@ -13,11 +13,21 @@ import {
   type EvaluationEvent,
 } from "../src/index.ts";
 
+interface CallbackClose {
+  calls: number;
+  threw: number;
+  maxMs: number;
+}
+
 interface Entry {
   client: Client;
   hookEvents: EvaluationEvent[];
   errors: string[];
+  callbackClose: CallbackClose;
 }
+
+/** `closing` is set when the callback starts its close; `callbackClose.calls` once that close returned. */
+type Recorded = Omit<Entry, "client"> & { client: Client | null; closing: boolean };
 
 const clients = new Map<string, Entry>();
 let created = 0;
@@ -46,12 +56,32 @@ function numberOption(body: Record<string, unknown>, name: string): number | und
   return typeof value === "number" ? value : undefined;
 }
 
-function clientOptions(body: Record<string, unknown>, entry: Omit<Entry, "client">): ClientOptions {
+/**
+ * `closeInHook` and `closeInOnError`: the first callback that finds the client calls `close` and times how
+ * long the call took to return. The promise is not awaited: an async close returns at once by design.
+ */
+function closeFromCallback(entry: Recorded): void {
+  if (entry.client === null || entry.closing) return;
+  entry.closing = true;
+  const started = performance.now();
+  let threw = 0;
+  try {
+    void entry.client.close();
+  } catch {
+    threw = 1;
+  }
+  entry.callbackClose.maxMs = Math.round(performance.now() - started);
+  entry.callbackClose.threw = threw;
+  entry.callbackClose.calls = 1;
+}
+
+function clientOptions(body: Record<string, unknown>, entry: Recorded): ClientOptions {
   const options: ClientOptions = {
     url: String(body["url"]),
     sdkKey: String(body["sdkKey"]),
     onError: (error) => {
       entry.errors.push(error instanceof Error ? error.message : String(error));
+      if (body["closeInOnError"] === true) closeFromCallback(entry);
       if (body["onErrorThrows"] === true) throw new Error("onError threw, as the test asked");
     },
   };
@@ -62,10 +92,11 @@ function clientOptions(body: Record<string, unknown>, entry: Omit<Entry, "client
   if (flush !== undefined) options.flushIntervalMs = flush;
   const timeout = numberOption(body, "requestTimeoutMs");
   if (timeout !== undefined) options.requestTimeoutMs = timeout;
-  if (body["hook"] === true || body["hookThrows"] === true) {
+  if (body["hook"] === true || body["hookThrows"] === true || body["closeInHook"] === true) {
     options.hooks = {
       afterEvaluation: (event) => {
         entry.hookEvents.push(event);
+        if (body["closeInHook"] === true) closeFromCallback(entry);
         if (body["hookThrows"] === true) throw new Error("the hook threw, as the test asked");
       },
     };
@@ -75,9 +106,17 @@ function clientOptions(body: Record<string, unknown>, entry: Omit<Entry, "client
 
 async function create(request: Request): Promise<Response> {
   const body = await readBody(request);
-  const recorded = { hookEvents: [], errors: [] };
+  const recorded: Recorded = {
+    client: null,
+    closing: false,
+    hookEvents: [],
+    errors: [],
+    callbackClose: { calls: 0, threw: 0, maxMs: 0 },
+  };
   const id = String(++created);
-  clients.set(id, { ...recorded, client: createClient(clientOptions(body, recorded)) });
+  const client = createClient(clientOptions(body, recorded));
+  recorded.client = client;
+  clients.set(id, { ...recorded, client });
   return Response.json({ id }, { status: 201 });
 }
 
@@ -100,6 +139,7 @@ async function clientRoute(entry: Entry, action: string, request: Request): Prom
   if (key === "POST evaluate") return evaluate(entry, request);
   if (key === "GET status") return Response.json(entry.client.status());
   if (key === "GET hook-events") return Response.json({ events: entry.hookEvents });
+  if (key === "GET callback-close") return Response.json(entry.callbackClose);
   if (key === "GET errors")
     return Response.json({ count: entry.errors.length, messages: entry.errors });
   if (key === "POST close") {
