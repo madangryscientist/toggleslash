@@ -31,7 +31,8 @@ describe("the scenarios in fixtures/sdk", () => {
   it("cover every area", () => {
     const files = new Set(scenarios.map((scenario) => scenario.file.replace(/\.json$/, "")));
     const areas = ["load", "evaluation", "stream", "backoff", "rate-limit", "status", "usage"];
-    for (const area of [...areas, "hooks", "close", "privacy"]) expect(files).toContain(area);
+    for (const area of [...areas, "hooks", "close", "privacy", "redirects"])
+      expect(files).toContain(area);
   });
 });
 

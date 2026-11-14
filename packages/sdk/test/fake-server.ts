@@ -5,6 +5,8 @@ export interface Seen {
   path: string;
   headers: Headers;
   body: unknown;
+  /** The `redirect` mode the request asked for, if it named one. */
+  redirect: RequestInit["redirect"];
 }
 
 /** A boolean flag, on, that serves `serves` to everyone. Variation 0 is false, 1 is true. */
@@ -40,6 +42,8 @@ export class FakeServer {
   eventsHang = false;
   /** Paths answering 429, with the `Retry-After` to send; null sends none. */
   readonly limited = new Map<string, string | null>();
+  /** Paths answering this 3xx status, with a `Location` of `/elsewhere`. */
+  readonly redirected = new Map<string, number>();
   readonly seen: Seen[] = [];
   private streams = new Set<ReadableStreamDefaultController<Uint8Array>>();
 
@@ -99,11 +103,24 @@ export class FakeServer {
     if (this.down) throw new TypeError("fetch failed");
     const path = new URL(input).pathname;
     const headers = new Headers(init?.headers);
-    this.seen.push({ method: init?.method ?? "GET", path, headers, body: parsedBody(init?.body) });
+    this.record(path, headers, init);
     if (headers.get("Authorization") !== `Bearer ${this.key}`)
       return new Response("", { status: 401 });
-    return this.tooMany(path) ?? this.route(path, headers, init?.signal ?? undefined);
+    return this.refused(path) ?? this.route(path, headers, init?.signal ?? undefined);
   };
+
+  private record(path: string, headers: Headers, init: RequestInit | undefined): void {
+    const { method = "GET", body, redirect } = init ?? {};
+    this.seen.push({ method, path, headers, body: parsedBody(body), redirect });
+  }
+
+  /** A scripted redirect or 429 for this path, or null. */
+  private refused(path: string): Response | null {
+    const redirect = this.redirected.get(path);
+    if (redirect !== undefined)
+      return new Response("", { status: redirect, headers: { Location: "/elsewhere" } });
+    return this.tooMany(path);
+  }
 
   private tooMany(path: string): Response | null {
     const retryAfter = this.limited.get(path);

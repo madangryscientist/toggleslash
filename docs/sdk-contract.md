@@ -195,7 +195,7 @@ MAY send `Accept: application/json`; the TypeScript SDK sends none.
 | `200` | read the body as JSON. If it has the shape of [section 5](#5-guarantees) item 5, build the ruleset, keep the `ETag` response header (or none if it has none or it is empty), and it is a **sync**. Else `bad_ruleset`. |
 | `304` | with a ruleset held, it is current: a **sync**, and the body is not read. With none held (the SDK sent no `If-None-Match`, so the server should not have said it), the `http_304` error. |
 | `429` | read `Retry-After` ([7.4](#74-429-and-retry-after)), then the `http_429` error. |
-| anything else | the `http_<status>` error. |
+| anything else, a `3xx` included ([7.5](#75-redirects)) | the `http_<status>` error. |
 | a network failure | `network`. |
 | no answer within `requestTimeout` | `timeout`. The limit covers the whole request, **reading the body included**. |
 
@@ -204,9 +204,8 @@ skipped, and there is no size cap (`requestTimeout` bounds the read). Bytes that
 replaced with U+FFFD as the WHATWG Encoding standard's UTF-8 decoder does (one U+FFFD per maximal invalid
 subpart, not one per byte), and the body is kept and parsed, as the TypeScript SDK's `response.json()` does; a
 lone surrogate written as a JSON escape is a different case ([`evaluation.md`](evaluation.md)). An SDK MAY refuse a body
-nested deeper than its parser allows, as `bad_ruleset`; that limit MUST be at least 512 levels. Redirects are not specified: an SDK may
-follow them (the TypeScript SDK's `fetch` does) or not, and a `3xx` it does not follow is an `http_<status>`
-error like any other status.
+nested deeper than its parser allows, as `bad_ruleset`; that limit MUST be at least 512 levels. A `3xx` is
+not followed ([7.5](#75-redirects)).
 
 A **sync** sets `lastSyncAt` to now and clears `lastError`. An error sets `lastError` and calls `onError`,
 and leaves the ruleset and ETag as they were.
@@ -249,7 +248,8 @@ ends is discarded. The SDK acts on `connected` and `changed` and ignores any oth
 - Once open, a **watchdog of 60 s**: the SDK drops the stream if no bytes at all arrive for 60 s. Every
   read, a keep-alive comment included, restarts the 60 s. Dropped for it: `timeout`.
 - A status other than `200`, or an answer with no body object at all, is `http_<status>` (and a `429` is read
-  as in [7.4](#74-429-and-retry-after)). A `200` whose body ends with zero bytes read is not that case: it is a
+  as in [7.4](#74-429-and-retry-after)). A `3xx` is such a status and is not followed
+  ([7.5](#75-redirects)). A `200` whose body ends with zero bytes read is not that case: it is a
   stream the server ends cleanly, and a stream the server ends cleanly is not an error and leaves `lastError`
   alone.
 - Content types are not checked.
@@ -304,6 +304,20 @@ it. The first load is not held (nothing could have told the SDK yet). The `429` 
 [7.1](#71-the-ruleset): `http_429` in `lastError`, and `onError` is called. Evaluation keeps answering
 from the ruleset held. A `429` on the events route holds only the usage reports
 ([section 9](#9-usage-counts)).
+
+### 7.5 Redirects
+
+An SDK MUST NOT follow a redirect.
+
+- A redirect, which is any `3xx` but the `304` of [7.1](#71-the-ruleset), is not followed on any route. On the ruleset route and the stream route it is the
+  `http_<status>` error (`http_302`, `http_307`), reported as any other status is. On the events route it
+  is an answer that is not `2xx`, and is handled by the table in [section 9](#9-usage-counts): the counts are
+  dropped and `onError` is called once.
+- The SDK sends no second request to the `Location`, and so never sends the key (the `Authorization`
+  header) anywhere but the server it was configured with.
+- A redirect is never a sync and never a success.
+- The rule covers the SDK's own default HTTP client and the request options the SDK passes. An HTTP client
+  the caller supplies is the caller's choice.
 
 ## 8. Status
 
@@ -379,7 +393,7 @@ waits for it.
 | --- | --- |
 | `2xx` | sent. The next request goes out. |
 | `5xx`, `408`, `429`, a network failure, a timeout | **kept** for the next flush, together with the entries after it that were not tried. The flush stops there. |
-| any other answer (a `400`, a `401`, a `413`, a `404`) | **dropped**: the server would refuse them again. The flush goes on with the next request. |
+| any other answer (a `400`, a `401`, a `413`, a `404`, a `3xx` as [7.5](#75-redirects) says) | **dropped**: the server would refuse them again. The flush goes on with the next request. |
 
 The status alone decides. An SDK may read or discard the body of an answer, and a failure reading it changes
 nothing about the outcome.

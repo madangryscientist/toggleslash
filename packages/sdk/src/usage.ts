@@ -105,6 +105,7 @@ export class UsageReporter {
           method: "POST",
           headers: { Authorization: `Bearer ${sdkKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({ events: batch }),
+          redirect: "manual",
           signal,
         });
         await answer.body?.cancel();

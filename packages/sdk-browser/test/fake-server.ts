@@ -6,6 +6,8 @@ export interface Seen {
   url: string;
   headers: Headers;
   body: unknown;
+  /** The `redirect` mode the request asked for, if it named one. */
+  redirect: RequestInit["redirect"];
   /** The fake clock's time when the request arrived. */
   at: number;
 }
@@ -103,20 +105,30 @@ export class FakeServer {
     const url = new URL(input);
     const headers = new Headers(init?.headers);
     const body = parseBody(init?.body);
-    this.seen.push({
-      method: init?.method ?? "GET",
-      path: url.pathname,
-      url: input,
-      headers,
-      body,
-      at: this.now(),
-    });
+    this.record(input, headers, body, init);
     if (headers.get("Authorization") !== `Bearer ${this.key}`)
       return new Response("", { status: 401 });
     const override = this.statuses.get(url.pathname);
     if (override) return overridden(override);
     return this.route(url.pathname, body, init?.signal ?? undefined);
   };
+
+  private record(
+    input: string,
+    headers: Headers,
+    body: unknown,
+    init: RequestInit | undefined,
+  ): void {
+    this.seen.push({
+      method: init?.method ?? "GET",
+      path: new URL(input).pathname,
+      url: input,
+      headers,
+      body,
+      redirect: init?.redirect,
+      at: this.now(),
+    });
+  }
 
   private route(
     path: string,
