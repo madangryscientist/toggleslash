@@ -9,40 +9,45 @@ name: CI
 # - MOON_CACHE_READ_TOKEN, a repository secret: may read the cache, and its uploads are refused.
 # - MOON_CACHE_WRITE_TOKEN: lives only in the `moon-cache-write` environment, which GitHub lets only
 #   `main` use. Only the `gate`, `apps`, `e2e` and `stack` jobs on a push to main enter it, so only
-#   main writes the cache, and a pull request cannot poison it. Never make it a plain repository secret: a same-repo pull request
-#   can read those.
+#   main writes the cache, and a pull request cannot poison it. A tag push (release.yml calling this
+#   workflow) is a push too, so each guard also names `refs/heads/main`. Never make it a plain
+#   repository secret: a same-repo pull request can read those.
 # A pull request from a fork, or from Dependabot, gets no Actions secrets: the token is empty, the
 # cache refuses it, and the run is cold and green.
 #
 # Runs on GitHub-hosted `ubuntu-latest`. A pull request from a fork runs with a read-only token.
 # Never add `pull_request_target`, `workflow_run` or a comment trigger here; scripts/check-workflows.ts,
-# run by `gate`, refuses them, and any runner of our own. release.yml keeps its own copy of the
-# `gate` job.
+# run by `gate`, refuses them, and any runner of our own.
+#
+# release.yml reuses this workflow through `workflow_call`, so the release gate is this `gate` job and
+# never a copy of it. In a called workflow `github.event_name` and `github.ref` are the caller's (a
+# `push` of `refs/tags/v*`), so every job but `gate` carries `if: github.ref_type != 'tag'`: a tag is
+# cut from main, where they already ran.
+#
+# Check names are the job ids (no `name:` on a job): branch protection requires `gate`.
 
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-env:
-  # The Bun the repo is built and pinned against (.tool-versions).
-  BUN_VERSION: "1.4.2"
+  # A newer push to a pull request replaces its run; a push to main never cancels the run before
+  # it, which may be writing the cache.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   gate:
-    name: Gate (typecheck, lint, format, parity, test)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # A push to main enters the environment that holds the cache's write token; anything else enters
     # none. See the header.
-    environment: ${{ github.event_name == 'push' && 'moon-cache-write' || '' }}
+    environment: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'moon-cache-write' || '' }}
     env:
       # moon 2.6.5 diffs the head against the base branch before any task runs, even for a plain
       # `moon run`, and the checkout has no local `main`, so it names the remote ref. That needs the
@@ -56,7 +61,7 @@ jobs:
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: ${{ env.BUN_VERSION }}
+          bun-version-file: .tool-versions
       # global.json pins the SDK; apps/server is part of the gate (the `server` moon project runs dotnet).
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
@@ -66,10 +71,10 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
         env:
-          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
+          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
       - run: bun run lint
         env:
-          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
+          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
       - run: bun run format:check
       - run: bun run parity:check
       - run: bun run parity:check:commits
@@ -77,10 +82,10 @@ jobs:
           PARITY_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
       - run: bun run test
         env:
-          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
+          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
 
   changes:
-    name: Did an app change?
+    if: github.ref_type != 'tag'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -108,13 +113,12 @@ jobs:
           fi
 
   apps:
-    name: Apps gate (build, e2e, deploy dry run)
     needs: changes
-    if: needs.changes.outputs.apps == 'true'
+    if: github.ref_type != 'tag' && needs.changes.outputs.apps == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Writes the cache on a push to main, like the gate job; see the header.
-    environment: ${{ github.event_name == 'push' && 'moon-cache-write' || '' }}
+    environment: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'moon-cache-write' || '' }}
     env:
       # The web tasks do not touch apps/server (the gate job covers it), and moon's graph
       # needs no SDK, so none is installed here. MOON_BASE and the full history: see the gate job.
@@ -126,7 +130,7 @@ jobs:
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: ${{ env.BUN_VERSION }}
+          bun-version-file: .tool-versions
       # wrangler (the web server of the e2e run, and the dry run) needs Node 22.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -140,22 +144,22 @@ jobs:
       # the e2e run the dry run would check the e2e build.
       - run: bunx moon run web:build
         env:
-          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
+          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
       - name: Web deploy dry run
         working-directory: apps/web
         run: bunx wrangler deploy --dry-run --outdir "$RUNNER_TEMP/fs-web-dry"
       - run: bunx moon run web:test-e2e
         env:
-          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
+          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
 
   # Cross-language proof (FS-23): the real server, CLI and SDK on loopback. CI is set, so a missing
   # .NET SDK fails the job instead of skipping it.
   e2e:
-    name: End to end (server, CLI, SDK)
+    if: github.ref_type != 'tag'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # Writes the cache on a push to main, like the gate job; see the header.
-    environment: ${{ github.event_name == 'push' && 'moon-cache-write' || '' }}
+    environment: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'moon-cache-write' || '' }}
     env:
       MOON_BASE: origin/main
     steps:
@@ -165,7 +169,7 @@ jobs:
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: ${{ env.BUN_VERSION }}
+          bun-version-file: .tool-versions
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: global.json
@@ -173,18 +177,18 @@ jobs:
       # Through scripts/moon.ts, which sets TOGGLESLASH_DOTNET, an input of the task.
       - run: bun scripts/moon.ts run e2e:test-e2e
         env:
-          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
+          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
 
   # Browser journey (FS-46): the dashboard in a browser, two shoppers on the example app and the
   # CLI, against the real server. It runs on every PR, and CI is set, so a missing .NET SDK fails
   # the job. Its secrets are made per run and live in memory; no report or trace is uploaded,
   # because one could hold the sign-in password, the admin token or a scoped token.
   stack:
-    name: Browser journey (dashboard, server, CLI, example)
+    if: github.ref_type != 'tag'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # Writes the cache on a push to main, like the gate job; see the header.
-    environment: ${{ github.event_name == 'push' && 'moon-cache-write' || '' }}
+    environment: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'moon-cache-write' || '' }}
     env:
       MOON_BASE: origin/main
     steps:
@@ -194,7 +198,7 @@ jobs:
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: ${{ env.BUN_VERSION }}
+          bun-version-file: .tool-versions
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: global.json
@@ -209,13 +213,13 @@ jobs:
       # Through scripts/moon.ts, which sets TOGGLESLASH_DOTNET, an input of the task.
       - run: bun scripts/moon.ts run e2e:test-stack
         env:
-          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
+          MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
 
   # Self-hosting proof (FS-22): the server's image builds and the compose stack answers /health.
   # Nothing is pushed and there is no registry login; the token is a throwaway for this job's
   # container, not a repository secret.
   container:
-    name: Container (docker build, compose up, /health)
+    if: github.ref_type != 'tag'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:

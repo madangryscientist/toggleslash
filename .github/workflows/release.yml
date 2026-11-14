@@ -1,7 +1,7 @@
 name: Release
 
-# Publishes the `@hackcove/toggleslash` npm package (packages/cli) when a `v*` tag is pushed: the
-# gate first, then `npm publish --provenance`. There is no NPM_TOKEN
+# Publishes the `@hackcove/toggleslash` npm package (packages/cli) when a `v*` tag is pushed: ci.yml's
+# gate first (a reusable workflow call, not a copy), then `npm publish --provenance`. There is no NPM_TOKEN
 # anywhere: npm trusted publishing (OIDC) lets this workflow publish with a short-lived token that
 # npm checks against the trusted publisher set on the package's npm settings page (repository,
 # workflow file `release.yml`, environment `npm`). That page, the `npm` environment and the tag are
@@ -16,45 +16,14 @@ permissions:
   contents: read
 
 jobs:
-  # A copy of ci.yml's `gate` job (keep the two in step), not a call to it: ci.yml has no `workflow_call`
-  # trigger and runs on push and pull_request only. Both run on GitHub-hosted runners. It leaves out
-  # ci.yml's `apps`, `e2e`, `stack` and `container` jobs on purpose: a tag is cut from `main`, where
-  # ci.yml already ran them. Its moon steps read the remote cache with the read token only (main's
-  # ci.yml jobs are the only writers), so a tag's run is mostly cache hits. `publish` does not read it.
+  # ci.yml's own `gate` job, called rather than copied, so the release gate cannot drift from it.
+  # In the called workflow the event is this tag push: ci.yml's guards keep its cache-write
+  # environment and token to `refs/heads/main` and skip its other jobs on a tag (a tag is cut from
+  # `main`, where they already ran). Its moon steps read the remote cache with the read token, a
+  # repository secret passed on by `secrets: inherit`. The check shows as `gate / gate`.
   gate:
-    name: Gate (typecheck, lint, format, parity, test)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      # moon diffs the head against the base branch before any task runs; see ci.yml's gate job.
-      MOON_BASE: origin/main
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: "1.4.2"
-      # global.json pins the SDK; apps/server is part of the gate (the `server` moon project runs dotnet).
-      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
-        with:
-          global-json-file: global.json
-      - run: bun install --frozen-lockfile
-      - run: bun run typecheck
-        env:
-          MOON_REMOTE_TOKEN: ${{ secrets.MOON_CACHE_READ_TOKEN }}
-      - run: bun run lint
-        env:
-          MOON_REMOTE_TOKEN: ${{ secrets.MOON_CACHE_READ_TOKEN }}
-      - run: bun run format:check
-      - run: bun run parity:check
-      - run: bun run parity:check:commits
-        env:
-          PARITY_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-      - run: bun run test
-        env:
-          MOON_REMOTE_TOKEN: ${{ secrets.MOON_CACHE_READ_TOKEN }}
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
 
   publish:
     name: Publish to npm
@@ -76,7 +45,7 @@ jobs:
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: "1.4.2"
+          bun-version-file: .tool-versions
       # Trusted publishing needs npm 11.5.1 or newer, which Node 24 ships.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
