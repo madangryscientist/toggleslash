@@ -93,9 +93,10 @@ jobs:
           fi
       - run: bun install --frozen-lockfile
       # The package is TypeScript only: moon's graph needs no SDK, and `cli:build` does not touch apps/server.
-      # No cache token here on purpose: what npm publishes with provenance is built from this tag on this
-      # runner, never restored from the remote cache.
-      - run: bunx moon run cli:build
+      # Always a fresh build, never a cache hit, in case the cache was poisoned: what npm publishes with
+      # provenance is built from this tag on this runner. `--force` skips every cache, and there is no
+      # cache token here either.
+      - run: bunx moon run cli:build --force
       - name: Ship the licence files
         run: cp LICENSE NOTICE packages/cli/
       - name: Publish

@@ -103,8 +103,9 @@ starved the timing-sensitive suites.
 `MOON_REMOTE_TOKEN`. Only `ci.yml`'s `gate` job on a push to `main` writes: the write token lives only
 in the `moon-cache-write` GitHub environment, which only `main` may use. Every other CI job, and the gate
 on a pull request, reads with the repository secret `MOON_CACHE_READ_TOKEN`; their uploads are refused,
-and moon logs a WARN per task and goes on. The one exception is `release.yml`'s `publish` job, which
-reads no cache, so what it ships is always built from the tag. A pull request from a fork or from Dependabot gets no
+and moon logs a WARN per task and goes on. The one exception is `release.yml`'s `publish` job: it reads
+no cache and builds with `--force`, so what it ships is always built from the tag, even if the cache
+was poisoned. A pull request from a fork or from Dependabot gets no
 Actions secret and runs cold. moon passes the token on to the tasks it runs, so on a push to `main` the
 write token is in the environment of merged code and its locked dependencies, and nowhere else.
 Outside CI moon never uploads (`localReadOnly`). A local run has no token by default: moon prints one
