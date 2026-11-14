@@ -186,8 +186,8 @@ jobs:
 
   # Browser journey (FS-46): the dashboard in a browser, two shoppers on the example app and the
   # CLI, against the real server. It runs on every PR, and CI is set, so a missing .NET SDK fails
-  # the job. Its secrets are made per run and live in memory; nothing is uploaded, because a
-  # report or a trace could hold the sign-in password, the admin token or a scoped token.
+  # the job. Its secrets are made per run and live in memory; no report or trace is uploaded,
+  # because one could hold the sign-in password, the admin token or a scoped token.
   stack:
     name: Browser journey (dashboard, server, CLI, example)
     runs-on: ubuntu-latest

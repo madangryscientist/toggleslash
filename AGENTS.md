@@ -102,7 +102,7 @@ starved the timing-sensitive suites.
 `https://moon-cache.madangryscientist.com`, over HTTP). Every request needs a bearer token, read from
 `MOON_REMOTE_TOKEN`. Only `ci.yml`'s `gate`, `apps`, `e2e` and `stack` jobs on a push to `main` write: the
 write token lives only in the `moon-cache-write` GitHub environment, which only `main` may use. Every other
-CI job, and those four on a pull request, read with the repository secret `MOON_CACHE_READ_TOKEN`; their uploads are refused,
+CI job that runs moon, and those four on a pull request, read with the repository secret `MOON_CACHE_READ_TOKEN`; their uploads are refused,
 and moon logs a WARN per task and goes on. The one exception is `release.yml`'s `publish` job: it reads
 no cache and builds with `--force`, so what it ships is always built from the tag, even if the cache
 was poisoned. A pull request from a fork or from Dependabot gets no
