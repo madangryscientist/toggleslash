@@ -29,3 +29,18 @@ pipeline:
   installDependencies: false
 
 telemetry: false
+
+# The shared remote cache: a bazel-remote store behind a token check, over HTTP. A task that main's CI
+# already ran is then a "cached from remote" hit in a pull request or a fresh checkout.
+# - Every request needs a token. MOON_REMOTE_TOKEN names the env var that holds it; unset, moon sends
+#   none (set but empty is the same), every read is refused and the run is cold, as it was before.
+# - Only ci.yml's gate on a push to main writes: it alone holds the write token. A pull request's
+#   gate reads with the read token, and the cache refuses its uploads (moon logs a WARN and carries on).
+# - Outside CI moon only downloads (localReadOnly), so a local run never uploads.
+remote:
+  api: "http"
+  host: "https://moon-cache.madangryscientist.com"
+  auth:
+    token: "MOON_REMOTE_TOKEN"
+  cache:
+    localReadOnly: true
