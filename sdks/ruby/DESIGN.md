@@ -32,7 +32,7 @@ argument is a keyword.
 | `hooks.afterEvaluation` | `hooks: Toggleslash::Hooks.new(after_evaluation: callable)`; default `nil` | `callable.call(event)` with an `EvaluationEvent`, on the caller's thread. The return value is ignored (a Thread or a future it returns is not awaited); an object that does not respond to `call` is ignored. A `Hash` with an `:after_evaluation` key is accepted too. |
 | `onError` | `on_error: callable`; default `nil` (ignore) | `callable.call(error)` with a `Toggleslash::Error` (a `StandardError` with a `code`). |
 | `accessor shape` | Both: the generic `variation` and `variation_detail` (the kind comes from the class of the fallback), and `int_variation` and `int_variation_detail` for the integer accessor. | There is no `bool_variation`, `string_variation` or `float_variation`: the generic method already compares the fallback's kind. An `Integer` or `Float` fallback to the generic method is the `number` kind with no integer rule (the harness `number` accessor), while `int_variation` applies contract 4's fractional and signed 64-bit rules. The `json` accessor is the generic method with an `Array` or `Hash` fallback. A `nil` fallback accepts any kind. |
-| `onError thread` | The SDK's own thread for what that thread did (a failed ruleset or stream attempt on `toggleslash-sync`, a failed usage request on `toggleslash-flush`); the caller's thread for a hook that raised and for `EVALUATION_FAILED`; the thread that called `close` for a usage request in the final flush and for counts lost at close. | No SDK lock is held while it runs. |
+| `onError thread` | The SDK's own thread for what that thread did (a failed ruleset or stream attempt on `toggleslash-sync`, a failed usage request on `toggleslash-flush`); the caller's thread for a hook that raised and for `EVALUATION_FAILED`; the thread that called `close` for a usage request in the final flush and for counts lost at close, except a `close` made on the SDK's own thread (from `on_error`), whose final flush runs on a `toggleslash-close` thread, which reports those there. | No SDK lock is held while it runs. |
 
 A fallback whose class is not a JSON value (an arbitrary object, a `Symbol`, a `Time`) never matches a served
 value and answers `ERROR TYPE_MISMATCH`: it is the caller's fallback, so it is still returned unchanged.
@@ -72,8 +72,10 @@ duration (`true` and `false` included) falls back to the default (contract 2, SH
   of one hash update and no other lock. A request in flight holds none of them, so a hung server cannot slow
   an evaluation down.
 - **Callbacks.** The hook and `onError` run with no SDK lock held. `ready` called from the SDK's own thread
-  (`Thread.current` is the sync or flush thread) returns at once with the state held, and `close` from an SDK
-  thread skips joining itself.
+  (`Thread.current` is the sync or flush thread) returns at once with the state held. `close` from an SDK
+  thread does not wait for that thread's work (contract 6.4): it sets the closing flag and the `closed` state and
+  aborts the requests in flight, hands the joins and the final flush to a thread named `toggleslash-close`, which
+  ends when shutdown ends, and returns at once. A second `close` on an SDK thread returns at once too, and so does one from `on_error` on the thread running shutdown (a final flush that failed reports there), which counts as an SDK thread while shutdown runs.
 - **Close.** `close` sets the closing flag and the stream state to `closed` under `@state_lock`, sets an
   `Event` (a mutex and a condition variable) both loops wait on, so no timer outlives it, closes the sockets of
   the in-flight ruleset and stream requests (below), joins the sync and flush threads with a bound of

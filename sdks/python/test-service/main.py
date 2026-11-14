@@ -10,6 +10,7 @@ import json
 import re
 import sys
 import threading
+import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -31,6 +32,28 @@ class Entry:
         self.hook_events: list[dict[str, Any]] = []
         self.errors: list[str] = []
         self.lock = threading.Lock()
+        # closeInHook / closeInOnError: the close made from inside a callback. `closing` is set when it
+        # starts, `calls` once it has returned.
+        self.closing = False
+        self.callback_close: dict[str, int] = {"calls": 0, "threw": 0, "maxMs": 0}
+
+    def close_from_callback(self) -> None:
+        """The first callback that finds the client stored closes it, timed; anything close raises is caught."""
+        with self.lock:
+            client = self.client
+            if client is None or self.closing:
+                return
+            self.closing = True
+        started = time.monotonic()
+        threw = 0
+        try:
+            client.close()
+        except Exception:
+            threw = 1
+        with self.lock:
+            self.callback_close["threw"] = threw
+            self.callback_close["maxMs"] = round((time.monotonic() - started) * 1000)
+            self.callback_close["calls"] = 1
 
 
 def clean(value: Any) -> Any:
@@ -117,6 +140,9 @@ class Service:
         if action == "GET hook-events":
             with entry.lock:
                 return 200, {"events": list(entry.hook_events)}
+        if action == "GET callback-close":
+            with entry.lock:
+                return 200, dict(entry.callback_close)
         if action == "GET errors":
             with entry.lock:
                 messages = list(entry.errors)
@@ -143,9 +169,11 @@ class Service:
             value = body.get(name)
             if isinstance(value, int | float) and not isinstance(value, bool):
                 options[option] = value / 1000
-        if body.get("hook") is True or body.get("hookThrows") is True:
+        if any(body.get(name) is True for name in ("hook", "hookThrows", "closeInHook")):
             options["hooks"] = toggleslash.Hooks(after_evaluation=self.hook_recorder(entry, body))
-        entry.client = toggleslash.create(**options)
+        client = toggleslash.create(**options)
+        with entry.lock:
+            entry.client = client
         with self.lock:
             self.counter += 1
             identifier = str(self.counter)
@@ -157,6 +185,8 @@ class Service:
         def record(error: Exception) -> None:
             with entry.lock:
                 entry.errors.append(str(error))
+            if body.get("closeInOnError") is True:
+                entry.close_from_callback()
             if body.get("onErrorThrows") is True:
                 raise RuntimeError("on_error raised, as the test asked")
 
@@ -167,6 +197,8 @@ class Service:
         def record(event: toggleslash.EvaluationEvent) -> None:
             with entry.lock:
                 entry.hook_events.append(event_json(event))
+            if body.get("closeInHook") is True:
+                entry.close_from_callback()
             if body.get("hookThrows") is True:
                 raise RuntimeError("the hook raised, as the test asked")
 

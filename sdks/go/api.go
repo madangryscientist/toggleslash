@@ -239,13 +239,29 @@ func (c *Client) Status() Status {
 }
 
 // Close stops every loop, waits for them and sends the pending usage counts.
-// It never fails and is safe to call twice or from several goroutines.
+// It never fails and is safe to call twice or from several goroutines. Called
+// from inside OnError, it stops following the server and returns at once; the
+// rest of shutdown, the final flush included, finishes on a goroutine of its
+// own (contract 6.4).
 func (c *Client) Close() {
+	if c.inOnError.Load() > 0 {
+		c.stopFollowing()
+		go c.shutDown()
+		return
+	}
+	c.shutDown()
+}
+
+func (c *Client) stopFollowing() {
+	c.closed.Store(true)
+	c.updateStatus(func(*statusSnapshot) {})
+	c.settleReady(false)
+	c.cancel()
+}
+
+func (c *Client) shutDown() {
 	c.closeOnce.Do(func() {
-		c.closed.Store(true)
-		c.updateStatus(func(*statusSnapshot) {})
-		c.settleReady(false)
-		c.cancel()
+		c.stopFollowing()
 		c.wg.Wait()
 		c.queueMu.Lock()
 		c.queueClosed = true

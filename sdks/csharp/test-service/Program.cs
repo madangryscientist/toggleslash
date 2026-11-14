@@ -99,6 +99,13 @@ async Task Route(HttpContext context)
             }
 
             break;
+        case "GET callback-close":
+            lock (entry.Lock)
+            {
+                Reply(context, Obj(("calls", JsonValue.From(entry.CloseCalls)), ("threw", JsonValue.From(entry.CloseThrew)), ("maxMs", JsonValue.From(entry.CloseMs))), 200).GetAwaiter().GetResult();
+            }
+
+            break;
         case "POST close":
             await entry.Client.CloseAsync();
             await Reply(context, Obj(), 200);
@@ -125,6 +132,11 @@ async Task Create(HttpContext context)
                 entry.Errors.Add(error.Message);
             }
 
+            if (Flag(body, "closeInOnError"))
+            {
+                entry.CloseFromCallback();
+            }
+
             if (Flag(body, "onErrorThrows"))
             {
                 throw new InvalidOperationException("onError threw, as the test asked");
@@ -139,14 +151,20 @@ async Task Create(HttpContext context)
     options.PollInterval = Millis(body, "pollIntervalMs");
     options.FlushInterval = Millis(body, "flushIntervalMs");
     options.RequestTimeout = Millis(body, "requestTimeoutMs");
-    if (Flag(body, "hook") || Flag(body, "hookThrows"))
+    if (Flag(body, "hook") || Flag(body, "hookThrows") || Flag(body, "closeInHook"))
     {
         var throws = Flag(body, "hookThrows");
+        var closes = Flag(body, "closeInHook");
         options.AfterEvaluation = evaluation =>
         {
             lock (entry.Lock)
             {
                 entry.HookEvents.Add(evaluation);
+            }
+
+            if (closes)
+            {
+                entry.CloseFromCallback();
             }
 
             if (throws)
@@ -156,7 +174,7 @@ async Task Create(HttpContext context)
         };
     }
 
-    entry.Client = ToggleSlashClient.Create(options);
+    entry.Store(ToggleSlashClient.Create(options));
     var id = Interlocked.Increment(ref created).ToString(CultureInfo.InvariantCulture);
     clients[id] = entry;
     await Reply(context, Obj(("id", JsonValue.From(id))), 201);
@@ -301,6 +319,8 @@ static JsonValue EventJson(EvaluationEvent e) => Obj(
 
 internal sealed class Entry
 {
+    private bool closing;
+
     public ToggleSlashClient Client { get; set; } = null!;
 
     public object Lock { get; } = new();
@@ -308,4 +328,54 @@ internal sealed class Entry
     public List<EvaluationEvent> HookEvents { get; } = [];
 
     public List<string> Errors { get; } = [];
+
+    // closeInHook / closeInOnError: set once the callback's close has returned. Guarded by Lock.
+    public int CloseCalls { get; private set; }
+
+    public int CloseThrew { get; private set; }
+
+    public long CloseMs { get; private set; }
+
+    /// <summary>Makes the client visible to the callbacks, once Create has returned it.</summary>
+    public void Store(ToggleSlashClient client)
+    {
+        lock (Lock)
+        {
+            Client = client;
+        }
+    }
+
+    /// <summary>The first callback that finds the client stored closes it, timed; anything Close throws is caught.</summary>
+    public void CloseFromCallback()
+    {
+        ToggleSlashClient? client;
+        lock (Lock)
+        {
+            client = Client;
+            if (client is null || closing)
+            {
+                return;
+            }
+
+            closing = true;
+        }
+
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        var threw = 0;
+        try
+        {
+            client.Close();
+        }
+        catch (Exception)
+        {
+            threw = 1;
+        }
+
+        lock (Lock)
+        {
+            CloseMs = started.ElapsedMilliseconds;
+            CloseThrew = threw;
+            CloseCalls = 1;
+        }
+    }
 }

@@ -39,6 +39,12 @@ type Client struct {
 	wg        sync.WaitGroup
 	closeOnce sync.Once
 	closed    atomic.Bool
+	// inOnError counts the onError calls the notify goroutine is making. Go
+	// has no goroutine identity, so a Close that sees it above zero takes
+	// itself to be on the SDK's own goroutine (contract 6.4) and returns at
+	// once, with shutdown finishing on a goroutine of its own. A Close from
+	// another goroutine during that window returns early too (DESIGN.md).
+	inOnError atomic.Int32
 
 	readyCh   chan struct{}
 	readyOK   atomic.Bool
@@ -195,7 +201,9 @@ func (c *Client) notifyLoop() {
 		err := c.queue[0]
 		c.queue = c.queue[1:]
 		c.queueMu.Unlock()
+		c.inOnError.Add(1)
 		c.callOnError(err)
+		c.inOnError.Add(-1)
 	}
 }
 

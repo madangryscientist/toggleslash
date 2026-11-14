@@ -576,6 +576,65 @@ class ClientTest {
   }
 
   @Test
+  void closeFromOnErrorDoesNotWaitForTheFinalFlush() throws Exception {
+    java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.CountDownLatch seen = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.atomic.AtomicBoolean fired =
+        new java.util.concurrent.atomic.AtomicBoolean();
+    long[] closeNanos = new long[1];
+    Client[] holder = new Client[1];
+    Consumer<Throwable> onError =
+        t -> {
+          if (fired.getAndSet(true)) {
+            return;
+          }
+          Client c = holder[0];
+          long started = System.nanoTime();
+          c.close();
+          closeNanos[0] = System.nanoTime() - started;
+          seen.countDown();
+        };
+    try (Fake fake = serving(Fake.body(Fake.flag("on", 1, BOOLS, 1)))) {
+      try {
+        holder[0] =
+            open(
+                fake,
+                b ->
+                    b.onError(onError)
+                        .requestTimeout(Duration.ofSeconds(5))
+                        .pollInterval(Duration.ofMillis(50))
+                        .flushInterval(Duration.ofHours(1)));
+        // Ready with a 200 first, so the callback always finds the client stored.
+        assertTrue(holder[0].ready());
+        holder[0].boolVariation("on", Context.of("u"), false); // a count is pending
+        fake.events =
+            x -> {
+              try {
+                release.await(30, java.util.concurrent.TimeUnit.SECONDS);
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+              }
+              Fake.reply(x, 202, "{}");
+            };
+        fake.ruleset = x -> Fake.reply(x, 500, "{}");
+        assertTrue(seen.await(10, java.util.concurrent.TimeUnit.SECONDS));
+        // Contract 6.4: it returns without waiting for the final flush, which hangs.
+        assertTrue(
+            closeNanos[0] < 1_000_000_000L, "close took " + closeNanos[0] / 1_000_000 + " ms");
+        long end = System.nanoTime() + 5_000_000_000L;
+        while (holder[0].status().stream() != StreamState.closed && System.nanoTime() < end) {
+          Thread.sleep(10);
+        }
+        assertEquals(StreamState.closed, holder[0].status().stream());
+        assertTrue(fake.await(5000, all -> fake.count("/sdk/v1/events") > 0));
+      } finally {
+        release.countDown();
+      }
+      holder[0].close();
+    }
+  }
+
+  @Test
   void daemonThreadsOnlyAndNoThreadOutlivesClose() throws Exception {
     try (Fake fake = serving(Fake.body(Fake.flag("on", 1, BOOLS, 1)))) {
       Client client = open(fake, b -> {});

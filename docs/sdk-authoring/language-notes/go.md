@@ -32,9 +32,12 @@ What the Go runs learned. Each fact cites its run: prompt `8a59987`, FS-96, 2026
   `Ready()` waits for them (FS-131).
 - **A test callback that needs the client.** It can run before `New` returns, so read the client through an
   `atomic.Pointer`, not a plain variable (FS-131).
-- **The SDK's own goroutine (contract 6.4).** Go has no goroutine identity; do not parse ids out of `runtime.Stack`. Each goroutine the
-  SDK starts marks itself (an atomic counter) while it runs an application callback, and `Close` does not wait for a goroutine so
-  marked, since it is doing nothing more until the callback returns; a goroutine the callback starts is the application's, and a `Ready` or `Close` there waits like any other caller's (FS-135, FS-137).
+- **The SDK's own goroutine (contract 6.4).** Go has no goroutine identity; do not parse ids out of `runtime.Stack`, and do not change
+  `Close`'s signature to carry one. `sdks/go` runs every `onError` on one notify goroutine, which raises an `atomic.Int32` around each
+  call it makes there (not in the shared `callOnError`, which a closed client also calls on the caller's goroutine). A `Close` that sees
+  it raised stops following the server, starts the usual `closeOnce` shutdown on a new goroutine and returns at once, so the final flush
+  still runs off the notify goroutine. The gap to document: a `Close` from another goroutine while that `onError` runs returns early too.
+  A goroutine the callback starts is the application's, and a `Ready` or `Close` there waits like any other caller's.
 - **A recovered panic is a raised error.** A panic recovered from a hook or the evaluator is passed to `onError` as an error that carries
   the panic's value: contract section 12's "An error a hook or the evaluator raised is passed to `onError` as raised" covers it (FS-135).
   The SDK starts three goroutines (`api.go`: `syncLoop`, which also runs the stream, `flushLoop` and `notifyLoop`), and a panic on any of them ends the host process (contract section 5 guarantee 1), so the sync and flush loops recover a panic, report it and carry on, and the notify loop's only foreign call, `onError`, is already recovered in `callOnError` (FS-178).

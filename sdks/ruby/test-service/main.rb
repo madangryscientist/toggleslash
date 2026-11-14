@@ -20,6 +20,35 @@ class Entry
     @hook_events = []
     @errors = []
     @lock = Mutex.new
+    # closeInHook / closeInOnError: the close made from inside a callback. `closing` is set when it starts,
+    # `calls` once it has returned.
+    @closing = false
+    @callback_close = { "calls" => 0, "threw" => 0, "maxMs" => 0 }
+  end
+
+  def callback_close
+    @lock.synchronize { @callback_close.dup }
+  end
+
+  # The first callback that finds the client stored closes it, timed; anything close raises is caught.
+  def close_from_callback
+    client = @lock.synchronize do
+      next nil if @client.nil? || @closing
+
+      @closing = true
+      @client
+    end
+    return if client.nil?
+
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    threw = 0
+    begin
+      client.close
+    rescue StandardError
+      threw = 1
+    end
+    took = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round
+    @lock.synchronize { @callback_close = { "calls" => 1, "threw" => threw, "maxMs" => took } }
   end
 end
 
@@ -66,6 +95,7 @@ class Service
     when "GET status" then [200, status_json(client.status)]
     when "GET hook-events" then [200, { "events" => entry.lock.synchronize { entry.hook_events.dup } }]
     when "GET errors" then [200, errors_json(entry)]
+    when "GET callback-close" then [200, entry.callback_close]
     when "POST close" then close(client)
     else [404, "no such route"]
     end
@@ -90,12 +120,13 @@ class Service
         value = body[name.to_s]
         options[option] = value / 1000.0 if value.is_a?(Numeric)
       end
-    if body["hook"] == true || body["hookThrows"] == true
+    if %w[hook hookThrows closeInHook].any? { |name| body[name] == true }
       options[:hooks] =
         Toggleslash::Hooks.new(after_evaluation: hook_recorder(entry,
                                                                body))
     end
-    entry.client = Toggleslash.create(**options)
+    client = Toggleslash.create(**options)
+    entry.lock.synchronize { entry.client = client }
     identifier = @lock.synchronize { (@counter += 1).to_s }
     @lock.synchronize { @clients[identifier] = entry }
     { "id" => identifier }
@@ -104,6 +135,7 @@ class Service
   def error_recorder(entry, body)
     lambda do |error|
       entry.lock.synchronize { entry.errors << error.message }
+      entry.close_from_callback if body["closeInOnError"] == true
       raise "on_error raised, as the test asked" if body["onErrorThrows"] == true
     end
   end
@@ -111,6 +143,7 @@ class Service
   def hook_recorder(entry, body)
     lambda do |event|
       entry.lock.synchronize { entry.hook_events << event_json(event) }
+      entry.close_from_callback if body["closeInHook"] == true
       raise "the hook raised, as the test asked" if body["hookThrows"] == true
     end
   end

@@ -122,16 +122,18 @@ module Toggleslash
         first
       end
       unless leader
-        @closed.wait(4 * @request_timeout)
+        @closed.wait(4 * @request_timeout) unless own_thread?
         return nil
       end
 
-      begin
-        shut_down
-      ensure
-        @aborts.dispose
-        @closed.set
+      stop_following
+      if own_thread?
+        # Contract 6.4: a close on the SDK's own thread does not wait for that thread's work. The rest of
+        # shutdown, the final flush included, runs on a thread of its own, which ends when it is done.
+        Thread.new { finish_close }.name = "toggleslash-close"
+        return nil
       end
+      finish_close
       nil
     end
 
@@ -185,6 +187,8 @@ module Toggleslash
       @ready_value = false
       @close_lock = Mutex.new
       @close_started = false
+      # The thread running shutdown while it runs: an on_error it calls (a final flush that failed) is on it.
+      @shutdown_thread = nil
       @closed = Event.new
     end
 
@@ -202,7 +206,7 @@ module Toggleslash
 
     def own_thread?
       me = Thread.current
-      [@sync_thread, @flush_thread].include?(me)
+      [@sync_thread, @flush_thread].include?(me) || me.equal?(@shutdown_thread)
     end
 
     # ---------------------------------------------------------------- callbacks
@@ -536,12 +540,24 @@ module Toggleslash
       end
     end
 
-    def shut_down
+    def stop_following
       @state_lock.synchronize do
         @closing.set
         @state = @state.with(stream: StreamState::CLOSED)
       end
       @aborts.abort_all
+    end
+
+    def finish_close
+      @shutdown_thread = Thread.current
+      shut_down
+    ensure
+      @aborts.dispose
+      @shutdown_thread = nil
+      @closed.set
+    end
+
+    def shut_down
       deadline = Clock.monotonic + @request_timeout
       me = Thread.current
       [@sync_thread, @flush_thread].each do |thread|

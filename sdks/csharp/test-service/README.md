@@ -15,7 +15,7 @@ capability `integer-accessor`: `IntVariation` returns a `long`, and a fractional
 
 | Protocol | C# SDK |
 | --- | --- |
-| `POST /clients` | `ToggleSlashClient.Create(options)`; `pollIntervalMs`, `flushIntervalMs`, `requestTimeoutMs` and `stream` pass through as `TimeSpan?` and `bool?`; `onError` always records, and `onErrorThrows` makes it throw after recording |
+| `POST /clients` | `ToggleSlashClient.Create(options)`; `pollIntervalMs`, `flushIntervalMs`, `requestTimeoutMs` and `stream` pass through as `TimeSpan?` and `bool?`; `onError` always records, `onErrorThrows` makes it throw after recording, and `closeInHook` and `closeInOnError` close the client from inside the callback (below) |
 | `ready` | `client.ReadyAsync()` |
 | `evaluate`, accessor `bool` | `BoolVariationDetail(flagKey, context, fallback)` |
 | `evaluate`, accessor `string` | `StringVariationDetail(flagKey, context, fallback)` |
@@ -27,6 +27,7 @@ capability `integer-accessor`: `IntVariation` returns a `long`, and a fractional
 | `hook-events` | the `EvaluationEvent`s `AfterEvaluation` received, as the SDK built them; `hookThrows` makes the hook throw after recording |
 | `errors` | what `OnError` received, each as its message |
 | `close` | `client.CloseAsync()` |
+| `callback-close` | `closeInHook` and `closeInOnError`: the first callback that finds the client stored calls the synchronous `client.Close()`, times it and catches anything it throws |
 
 The context is handed to the SDK as the `JsonValue` its parser made from the request body, so a lone surrogate or
 `1e999` reaches the evaluator as it was sent. The service catches nothing the SDK throws: a call that raises answers

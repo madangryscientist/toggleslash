@@ -61,15 +61,26 @@ status is whole epoch milliseconds, or null.
 | `GET /clients/{id}/hook-events` | | `{ "events": [ ... ] }`, every `afterEvaluation` event so far |
 | `GET /clients/{id}/errors` | | `{ "count": number, "messages": string[] }`, every `onError` call so far |
 | `POST /clients/{id}/close` | | `{}` once `close` has finished |
+| `GET /clients/{id}/callback-close` | | `{ "calls": number, "threw": number, "maxMs": number }`, the `close` made from a callback (below) |
 
 **Options** for `POST /clients`: `url`, `sdkKey`, `stream` (boolean), `pollIntervalMs`,
-`flushIntervalMs`, `requestTimeoutMs`, each passed to the SDK when present. Then three switches the service
+`flushIntervalMs`, `requestTimeoutMs`, each passed to the SDK when present. Then five switches the service
 implements itself:
 
 - `hook: true` installs an `afterEvaluation` hook that records each event.
 - `hookThrows: true` installs one that records each event and then throws.
 - `onErrorThrows: true` makes the `onError` the service installs (which always records) throw after
   recording.
+- `closeInHook: true` installs an `afterEvaluation` hook that records each event, as `hook: true` does
+  (which it implies), and calls `close` on the first event it sees.
+- `closeInOnError: true` makes the `onError` the service installs call `close` on its first call, after
+  recording. It acts on the first call that finds the client created and stored; a call before that (one
+  the SDK makes from `create`, say) is ignored and not counted.
+
+Each of the last two times its `close` call and catches anything it throws, and `GET
+/clients/{id}/callback-close` answers what happened: `calls` (1 once that close has returned, 0 before), `threw` (how many of those threw)
+and `maxMs` (how long the call took to return, 0 before one). An async SDK's `close` (TypeScript's promise)
+is not awaited inside the callback: the time is how long the call took to return.
 
 **Capabilities.** The only one is `integer-accessor`: the language has an integer type and an integer
 accessor (contract section 4, "Typed languages"). A scenario that `requires` a capability the service does
@@ -145,6 +156,8 @@ A check is a field on an `expect` or `waitUntil` step.
 - `errors`: the `onError` count, a number or a range, optionally `since` a mark.
 - `hookEvents`: `count`, and `events`, matched in order field by field.
 - `openStreams`: how many streams the server holds open.
+- `callbackClose`: `calls`, `threw` and `maxMs` from `GET /clients/{id}/callback-close`, each a number or a
+  range.
 
 A range is `{ "min": n, "max": n }`, either end optional, or a number for exactly that.
 
@@ -187,8 +200,10 @@ ruleset and answers `NOT_READY`. The status scenarios cover what an SDK does wit
 
 ## What a scenario cannot reach
 
-- **Section 6, concurrency.** Races between threads are not observable through a request/answer protocol
-  with any reliability; each language's own tests own them.
+- **Section 6, concurrency, but for item 4's `close`.** Races between threads are not observable through a
+  request/answer protocol with any reliability; each language's own tests own them. A `close` from a
+  callback is reachable (`closeInHook`, `closeInOnError` and the `callbackClose` check), and the `close`
+  scenarios with contract `6.4` cover it; a `ready` from a callback is not.
 - **The 60 s watchdog** (7.2) and **the 300 s `Retry-After` cap** (7.4): too long for real time.
 - **The day boundary** of usage counts (9): it needs a clock the harness does not control.
 - **A context or hook that raises inside the SDK's own process** (a throwing getter, a hook returning a

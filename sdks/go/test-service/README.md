@@ -19,7 +19,7 @@ It advertises `integer-accessor`: Go's `int64` is an integer type distinct from 
 
 | Protocol | Go SDK |
 | --- | --- |
-| `POST /clients` | `toggleslash.New(toggleslash.Options{...})`; `url`, `sdkKey`, `stream`, `pollIntervalMs`, `flushIntervalMs` and `requestTimeoutMs` pass through, `onError` always records, `hook` and `hookThrows` install `Hooks.AfterEvaluation` (which records, then panics for `hookThrows`), and `onErrorThrows` panics after recording |
+| `POST /clients` | `toggleslash.New(toggleslash.Options{...})`; `url`, `sdkKey`, `stream`, `pollIntervalMs`, `flushIntervalMs` and `requestTimeoutMs` pass through, `onError` always records, `hook` and `hookThrows` install `Hooks.AfterEvaluation` (which records, then panics for `hookThrows`), `onErrorThrows` panics after recording, and `closeInHook` and `closeInOnError` close the client from inside the callback (below) |
 | `ready` | `(*Client).Ready(context.Background())` |
 | `evaluate`, `bool` | `(*Client).BoolVariationDetail(flagKey, context, fallback)` with the fallback as a `bool` |
 | `evaluate`, `string` | `StringVariationDetail` with the fallback as a `string` |
@@ -31,6 +31,7 @@ It advertises `integer-accessor`: Go's `int64` is an integer type distinct from 
 | `hook-events` | the events `Hooks.AfterEvaluation` received, as `{ flagKey, context, value, variationIndex, reason, etag, flagVersion }` |
 | `errors` | what `onError` received, each as its message |
 | `close` | `(*Client).Close()` |
+| `callback-close` | `closeInHook` and `closeInOnError`: the first callback that finds the client stored calls `(*Client).Close()`, times it and recovers a panic |
 
 A reason is `{ kind }`, plus `ruleIndex` for `RULE_MATCH`, `flagKey` when a prerequisite failed and `code`
 for `ERROR`, which is the shape the vectors expect. An answer that is not a finite number is written as JSON

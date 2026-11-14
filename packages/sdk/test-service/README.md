@@ -18,5 +18,6 @@ It advertises no capability: TypeScript has one number type, so there is no inte
 | `hook-events` | the events `hooks.afterEvaluation` received, as the SDK built them |
 | `errors` | what `onError` received, each as its message |
 | `close` | `client.close()` |
+| `callback-close` | `closeInHook` and `closeInOnError`: the first callback that finds the client calls `client.close()` without awaiting it (the time is how long the call took to return) and catches anything it throws |
 
 It catches nothing the SDK throws: a call that raises answers 500 with the error text.
