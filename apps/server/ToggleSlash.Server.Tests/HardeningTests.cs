@@ -34,28 +34,43 @@ public sealed class HardeningTests : IDisposable
 
     public void Dispose()
     {
-        foreach (var server in started)
+        // Last started first: a server sharing another's database goes before the one that owns the file.
+        for (var i = started.Count - 1; i >= 0; i--)
         {
-            server.Dispose();
+            started[i].Dispose();
         }
     }
 
     private ApiServer Start(Action<IServiceCollection>? services = null, params (string Setting, string Value)[] settings)
     {
-        var server = ApiServer.With(builder =>
-        {
-            foreach (var (setting, value) in settings)
-            {
-                builder.UseSetting(setting, value);
-            }
-            builder.ConfigureTestServices(collection =>
-            {
-                collection.ConfigureDbContext<ToggleSlash.Server.Data.ToggleSlashDbContext>(options => options.AddInterceptors(slowness));
-                services?.Invoke(collection);
-            });
-        });
+        var server = ApiServer.With(builder => Configure(builder, services, settings));
         started.Add(server);
         return server;
+    }
+
+    /// <summary>
+    /// A second server on the same database file as <paramref name="other"/>. The timeout policy is read once at
+    /// startup, so a test that wants a short timeout for one request only seeds and checks through the first server
+    /// (the production timeout) and sends that one request to this one.
+    /// </summary>
+    private ApiServer StartSharing(ApiServer other, Action<IServiceCollection>? services = null)
+    {
+        var server = ApiServer.Sharing(other, builder => Configure(builder, services, []));
+        started.Add(server);
+        return server;
+    }
+
+    private void Configure(IWebHostBuilder builder, Action<IServiceCollection>? services, (string Setting, string Value)[] settings)
+    {
+        foreach (var (setting, value) in settings)
+        {
+            builder.UseSetting(setting, value);
+        }
+        builder.ConfigureTestServices(collection =>
+        {
+            collection.ConfigureDbContext<ToggleSlash.Server.Data.ToggleSlashDbContext>(options => options.AddInterceptors(slowness));
+            services?.Invoke(collection);
+        });
     }
 
     private static async Task<string> Key(ApiServer server, string kind)
@@ -334,9 +349,10 @@ public sealed class HardeningTests : IDisposable
     [Fact]
     public async Task A_request_past_its_timeout_is_answered_in_the_error_shape()
     {
-        // Long enough that seeding the key, cold, is not what runs into it.
-        var server = Start(TimeoutOf(TimeSpan.FromSeconds(1)));
-        var key = await Key(server, "server");
+        // Seeded through a server with the production timeout: only the request under test runs under the short one.
+        var seeding = Start();
+        var key = await Key(seeding, "server");
+        var server = StartSharing(seeding, TimeoutOf(TimeSpan.FromSeconds(1)));
         slowness.Mode = Mode.Hang;
 
         var response = await Call(server, HttpMethod.Get, Ruleset, key);
@@ -348,8 +364,9 @@ public sealed class HardeningTests : IDisposable
     [Fact]
     public async Task A_slow_admin_read_is_ended_by_the_timeout_because_the_handler_passes_the_token_on()
     {
-        var server = Start(TimeoutOf(TimeSpan.FromSeconds(1)));
-        await server.SeedProject();
+        var seeding = Start();
+        await seeding.SeedProject();
+        var server = StartSharing(seeding, TimeoutOf(TimeSpan.FromSeconds(1)));
         slowness.Mode = Mode.Hang;
 
         var response = await server.Get($"{Projects}/shop/flags");
@@ -361,22 +378,31 @@ public sealed class HardeningTests : IDisposable
     [Fact]
     public async Task A_slow_admin_write_is_ended_by_the_timeout_and_writes_nothing()
     {
-        var server = Start(TimeoutOf(TimeSpan.FromSeconds(1)));
+        var checking = Start();
+        var server = StartSharing(checking, TimeoutOf(TimeSpan.FromSeconds(1)));
         slowness.Mode = Mode.Hang;
 
         var response = await server.Post(Projects, new { key = "late", name = "Late" });
 
         await ApiServer.ExpectError(HttpStatusCode.GatewayTimeout, "request_timeout", response);
         slowness.Mode = Mode.Normal;
-        await ApiServer.Expect(HttpStatusCode.NotFound, await server.Get($"{Projects}/late"));
+        // Read from the file, and through the server with the long timeout: neither runs under the short one.
+        using (var connection = server.OpenDatabase())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT count(*) FROM projects WHERE key = 'late'";
+            Assert.Equal(0L, (long)command.ExecuteScalar()!);
+        }
+        await ApiServer.Expect(HttpStatusCode.NotFound, await checking.Get($"{Projects}/late"));
     }
 
     [Fact]
     public async Task A_stream_stays_open_past_that_same_timeout_and_its_heartbeat_still_works()
     {
         var heartbeat = new TickedHeartbeat();
-        var server = Start(TimeoutOf(TimeSpan.FromMilliseconds(500), services => services.AddSingleton<StreamHeartbeat>(heartbeat)));
-        var key = await Key(server, "server");
+        var seeding = Start();
+        var key = await Key(seeding, "server");
+        var server = StartSharing(seeding, TimeoutOf(TimeSpan.FromMilliseconds(500), services => services.AddSingleton<StreamHeartbeat>(heartbeat)));
 
         using var response = await Call(server, HttpMethod.Get, Stream, key);
         using var reader = new StreamReader(await response.Content.ReadAsStreamAsync());
