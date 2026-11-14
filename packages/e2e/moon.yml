@@ -6,7 +6,7 @@ dependsOn:
   - "sdk"
   - "sdk-otel"
 
-# e2e has no `test`: its suites are the two tasks below, which need the C# server and are not cached.
+# e2e has no `test`: its suites are the two tasks below, which need the C# server.
 workspace:
   inheritedTasks:
     exclude:
@@ -21,11 +21,65 @@ tasks:
     script: "oxlint --type-aware --deny-warnings packages/e2e && bun scripts/check-slop.ts packages/e2e"
     options:
       runFromWorkspaceRoot: true
+  # Both are cached. Their inputs are their own project (a task's inputs replace the default glob, so
+  # `**/*` is listed and the negations restated), the apps they build and start, the fixtures and the
+  # environment that changes what runs; the packages and the root files come from .moon/tasks.
   test-e2e:
     command: "bun --bun vitest run"
-    options:
-      cache: false
+    inputs:
+      - "**/*"
+      - "/apps/server/**/*"
+      - "/apps/example/**/*"
+      - "/fixtures/**/*"
+      - "!/**/node_modules/**"
+      - "!/**/dist/**"
+      - "!/**/.wrangler/**"
+      - "!/**/.tanstack/**"
+      - "!/**/test-results/**"
+      - "!/**/playwright-report/**"
+      - "!/apps/server/**/bin/**"
+      - "!/apps/server/**/obj/**"
+      - "!/apps/server/**/TestResults/**"
+      - "$CI"
+      # What the tasks will do: the SDK's version, or `none` when they skip. Set by scripts/moon.ts, so run
+      # them through the root scripts or `bun scripts/moon.ts run`; a bare `bunx moon run` hashes apart.
+      - "$TOGGLESLASH_DOTNET"
+      # The server gets this process's environment, and the e2e code does not set these.
+      - "$TOGGLESLASH_RATE_LIMIT_EVALUATE_PER_MINUTE"
+      - "$TOGGLESLASH_RATE_LIMIT_EVENTS_PER_MINUTE"
+      - "$TOGGLESLASH_RATE_LIMIT_AUTH_FAILURES_PER_MINUTE"
+      - "$TOGGLESLASH_RATE_LIMIT_STREAMS_PER_KEY"
+      - "$TOGGLESLASH_RATE_LIMIT_CLIENT_STREAMS_PER_IP"
+      - "$TOGGLESLASH_RATE_LIMIT_CLIENT_STREAMS_PER_KEY"
+      - "$TOGGLESLASH_TRUSTED_PROXIES"
+      - "$TOGGLESLASH_RULESET_RETENTION_DAYS"
   test-stack:
     command: "bun --bun playwright test"
-    options:
-      cache: false
+    inputs:
+      - "**/*"
+      - "/apps/server/**/*"
+      - "/apps/web/**/*"
+      - "/apps/example/**/*"
+      - "/fixtures/**/*"
+      - "!/**/node_modules/**"
+      - "!/**/dist/**"
+      - "!/**/.wrangler/**"
+      - "!/**/.tanstack/**"
+      - "!/**/test-results/**"
+      - "!/**/playwright-report/**"
+      - "!/apps/server/**/bin/**"
+      - "!/apps/server/**/obj/**"
+      - "!/apps/server/**/TestResults/**"
+      - "$CI"
+      # What the tasks will do: the SDK's version, or `none` when they skip. Set by scripts/moon.ts, so run
+      # them through the root scripts or `bun scripts/moon.ts run`; a bare `bunx moon run` hashes apart.
+      - "$TOGGLESLASH_DOTNET"
+      # The server gets this process's environment, and the e2e code does not set these.
+      - "$TOGGLESLASH_RATE_LIMIT_EVALUATE_PER_MINUTE"
+      - "$TOGGLESLASH_RATE_LIMIT_EVENTS_PER_MINUTE"
+      - "$TOGGLESLASH_RATE_LIMIT_AUTH_FAILURES_PER_MINUTE"
+      - "$TOGGLESLASH_RATE_LIMIT_STREAMS_PER_KEY"
+      - "$TOGGLESLASH_RATE_LIMIT_CLIENT_STREAMS_PER_IP"
+      - "$TOGGLESLASH_RATE_LIMIT_CLIENT_STREAMS_PER_KEY"
+      - "$TOGGLESLASH_TRUSTED_PROXIES"
+      - "$TOGGLESLASH_RULESET_RETENTION_DAYS"

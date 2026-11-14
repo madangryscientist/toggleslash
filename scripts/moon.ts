@@ -6,21 +6,28 @@
  * A contributor who only touches the TS projects must still be able to run the gate, so with no
  * working `dotnet` the run is limited to the projects not tagged `dotnet` (`--query "tag!=dotnet"`,
  * added to `moon run`); with one, the gate runs the server's tests too. `TOGGLESLASH_DOTNET_DISABLE`
- * set to any value skips the search and the banner and leaves the server out, quietly.
+ * set to any value skips the banner and leaves the server out, quietly.
  *
  * Which `dotnet` a task runs is decided here, not left to PATH. moon puts only its own and proto's
  * bin dirs ahead of the caller's PATH, so the first `dotnet` on the caller's
  * PATH wins, and on this machine that is `/usr/bin/dotnet`, a host with no SDK, ahead of the mise
  * SDK. The directory of the first `dotnet` that works goes first on PATH.
+ *
+ * `TOGGLESLASH_DOTNET` is set for moon to that SDK's version (`dotnet --version`) or `none`. The e2e
+ * tasks declare it as an input: they look for an SDK themselves and skip without one, so a skipped
+ * run must not hash like a real one. It describes what they will do, so it is found even when
+ * `TOGGLESLASH_DOTNET_DISABLE` is set, which leaves out only the `server` project.
  */
 import { delimiter, dirname, join } from "node:path";
-import { findDotnet, REPO_ROOT } from "./dotnet.ts";
+import { findDotnetSdk, REPO_ROOT } from "./dotnet.ts";
 
 const args = process.argv.slice(2);
 const env: Record<string, string | undefined> = { ...process.env };
-// Setting TOGGLESLASH_DOTNET_DISABLE yourself skips the search and the banner.
+// Setting TOGGLESLASH_DOTNET_DISABLE yourself skips the banner and leaves the server out.
 const disabled = env.TOGGLESLASH_DOTNET_DISABLE !== undefined;
-const dotnet = disabled ? null : findDotnet();
+const sdk = findDotnetSdk();
+const dotnet = disabled ? null : (sdk?.path ?? null);
+env.TOGGLESLASH_DOTNET = sdk?.version ?? "none";
 let banner: string | null = null;
 
 // `bun run <script>` puts the root's node_modules/.bin on PATH; running this file directly does not,

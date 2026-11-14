@@ -19,6 +19,6 @@ tasks:
     options:
       runFromWorkspaceRoot: true
   test:
-    command: "bun test scripts/check-workflows.test.ts"
+    command: "bun test scripts/check-workflows.test.ts scripts/dotnet.test.ts"
     options:
       runFromWorkspaceRoot: true
