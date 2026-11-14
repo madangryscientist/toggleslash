@@ -380,7 +380,7 @@ server recorded; read those before you change code.
 
 **Reads.**
 
-- `.github/workflows/ci.yml`: the checkout and Bun lines and `BUN_VERSION` (find them with `grep -n`).
+- `.github/workflows/ci.yml`: the checkout and Bun lines (find them with `grep -n`).
 - [`docs/sdk-contract.md`](../sdk-contract.md), section 5 (guarantees), for the README list.
 - `$L/DESIGN.md`: the mapping table and the toolchain item. `$L/mise.toml`.
 - A sibling `.github/workflows/sdk-<lang>.yml`, only if the toolchain step needs `jdx/mise-action` inputs.
@@ -402,7 +402,7 @@ server recorded; read those before you change code.
    version as `mise.toml` and a comment saying so, or `jdx/mise-action` limited to the tools in
    `$L/mise.toml` (unlimited, it also installs the root `.tool-versions`: .NET and a second Bun). Which one
    is a decision. For `jdx/mise-action` the inputs are `working_directory: sdks/<lang>` and `install_args` naming
-   the tools, so a run need not read a sibling's workflow. Copy the checkout and Bun lines and `BUN_VERSION` from `ci.yml` as they are when you run.
+   the tools, so a run need not read a sibling's workflow. Copy the checkout and Bun lines from `ci.yml` as they are when you run; Bun's version comes from the root `.tool-versions`, so the workflow does not write one.
 
    The job runs on GitHub's `ubuntu-latest`: it installs its own toolchain, has no `if:` guard, and the
    triggers are `pull_request` and `push` only (never `pull_request_target`, `workflow_run`, a comment
@@ -431,9 +431,6 @@ concurrency:
   group: sdk-<lang>-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  BUN_VERSION: <as in ci.yml>
-
 jobs:
   sdk:
     name: <Language> SDK (lint, test, conformance)
@@ -445,7 +442,7 @@ jobs:
           persist-credentials: false
       - uses: <the oven-sh/setup-bun line from ci.yml>
         with:
-          bun-version: ${{ env.BUN_VERSION }}
+          bun-version-file: .tool-versions
       # The toolchain step: the version sdks/<lang>/mise.toml pins.
       - run: bun install --frozen-lockfile
       - run: sdks/<lang>/bin/lint

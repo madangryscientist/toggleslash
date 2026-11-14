@@ -20,9 +20,6 @@ concurrency:
   group: sdk-python-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  BUN_VERSION: "1.4.2"
-
 jobs:
   sdk:
     name: Python SDK (lint, test, conformance)
@@ -34,7 +31,7 @@ jobs:
           persist-credentials: false
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: ${{ env.BUN_VERSION }}
+          bun-version-file: .tool-versions
       # The toolchain step: the versions sdks/python/mise.toml pins (Python and Ruff). Limited to those two
       # tools, so the root .tool-versions (.NET, a second Bun) is not installed.
       - uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
