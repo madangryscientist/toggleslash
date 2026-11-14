@@ -9,24 +9,35 @@ public sealed class ApiServer : IDisposable
 {
     public const string AdminToken = "test-admin-token-not-a-real-secret";
 
-    private readonly TempDatabase database = new();
+    private readonly TempDatabase database;
+    private readonly bool ownsDatabase;
 
     public ServerOn Server { get; }
 
     public ApiServer()
-        : this(null)
+        : this(new TempDatabase(), true, null)
     {
     }
 
-    private ApiServer(Action<IWebHostBuilder>? configure) =>
+    private ApiServer(TempDatabase database, bool ownsDatabase, Action<IWebHostBuilder>? configure)
+    {
+        this.database = database;
+        this.ownsDatabase = ownsDatabase;
         Server = new ServerOn(database.Path, builder =>
         {
             builder.UseSetting(ServerAuth.AdminTokenSetting, AdminToken);
             configure?.Invoke(builder);
         });
+    }
 
     /// <summary>A factory, not a second public constructor: xunit refuses a class fixture that has two.</summary>
-    public static ApiServer With(Action<IWebHostBuilder> configure) => new(configure);
+    public static ApiServer With(Action<IWebHostBuilder> configure) => new(new TempDatabase(), true, configure);
+
+    /// <summary>
+    /// A second server on <paramref name="other"/>'s database file, configured differently. The other server owns the
+    /// file: dispose this one first.
+    /// </summary>
+    public static ApiServer Sharing(ApiServer other, Action<IWebHostBuilder> configure) => new(other.database, false, configure);
 
     /// <summary>Sends the Authorization header exactly as given; null sends none.</summary>
     public async Task<HttpResponseMessage> Send(HttpMethod method, string path, string? authorization, object? body = null)
@@ -150,7 +161,10 @@ public sealed class ApiServer : IDisposable
     public void Dispose()
     {
         Server.Dispose();
-        database.Dispose();
+        if (ownsDatabase)
+        {
+            database.Dispose();
+        }
     }
 }
 
