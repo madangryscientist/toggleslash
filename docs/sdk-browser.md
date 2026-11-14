@@ -49,7 +49,7 @@ await client.close();
 - `identify(context)` evaluates for a new context. Until its answer arrives the previous context's values keep serving, so
   nothing flickers to the fallback; the answer then replaces the cache whole.
 - `on("change", listener)` returns the unsubscribe function. After each answer the client compares it with the cache and
-  calls the listener with the sorted keys whose value or variation index changed, appeared or disappeared, and with
+  calls the listener with the sorted keys whose value, variation index or reason changed, appeared or disappeared, and with
   nothing when nothing changed. The first answer reports every key as appeared. A listener that throws goes to `onError`.
 - `close()` stops the signal and the timers and sends the pending usage counts.
 - Usage is counted twice by design: `POST /sdk/v1/evaluate` counts the flags it evaluated on the server (docs/architecture.md), and the
