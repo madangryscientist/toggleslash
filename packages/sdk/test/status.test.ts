@@ -101,6 +101,26 @@ describe("status()", () => {
     expect(client.status()).toMatchObject({ etag: null, lastError: "http_401" });
   });
 
+  it("does not follow a redirect: the ruleset and the stream ask for manual", async () => {
+    const client = h.start();
+    await client.ready();
+    await settle();
+    for (const path of ["/sdk/v1/ruleset", "/sdk/v1/stream"]) {
+      const requests = h.server.requestsTo(path);
+      expect(requests.length).toBeGreaterThan(0);
+      for (const seen of requests) expect(seen.redirect).toBe("manual");
+    }
+  });
+
+  it("reports a redirected ruleset as its HTTP status", async () => {
+    h.server.redirected.set("/sdk/v1/ruleset", 302);
+    const client = h.start({ stream: false });
+    expect(await client.ready()).toBe(false);
+    await settle();
+    expect(client.status()).toMatchObject({ etag: null, lastSyncAt: null, lastError: "http_302" });
+    expect(h.errors).toHaveLength(1);
+  });
+
   it("reports a bad ruleset when the body has no flags and segments", async () => {
     h.server.rulesetBody = "{}";
     const client = h.start({ stream: false });

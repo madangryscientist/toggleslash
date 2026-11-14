@@ -11,7 +11,7 @@ harness ──(this protocol)──▶ test service ──(SDK calls)──▶ S
 ```
 
 The TypeScript SDK's test service is [`packages/sdk/test-service/main.ts`](../packages/sdk/test-service/main.ts).
-No other language has one yet.
+Every language SDK in `sdks/` has one (`sdks/<lang>/bin/test-service`), and runs this harness in its own workflow.
 
 ## Running it
 
@@ -94,7 +94,7 @@ language's own field names mapped back to these.
 ## Scenarios
 
 `fixtures/sdk/*.json` hold the scenarios, one file per area: `load`, `evaluation`, `stream`, `backoff`,
-`rate-limit`, `status`, `usage`, `hooks`, `close` and `privacy`. Each file is `{ "scenarios": [ ... ] }`
+`rate-limit`, `status`, `usage`, `hooks`, `close`, `privacy` and `redirects`. Each file is `{ "scenarios": [ ... ] }`
 and each scenario is:
 
 ```json
@@ -249,6 +249,8 @@ named here is in the file named before the colon.
 | reports a disconnected stream when it drops, and connected again once it reconnects | status: a dropped stream reads disconnected, then connected again |
 | holds the ETag through a server that is down, reports a network error, and clears it on recovery | stream: a server gone later leaves the last ruleset served, and the SDK recovers when it returns |
 | reports the HTTP status of a refused ruleset | status: a refused ruleset gives its HTTP status |
+| does not follow a redirect: the ruleset and the stream ask for manual | redirects: a redirected ruleset at start gives its HTTP status and is not followed; redirects: a redirected stream is an error for the stream and the client still loads (the option itself is not visible from outside: a followed redirect is, as a request to `/elsewhere`) |
+| reports a redirected ruleset as its HTTP status | redirects: a redirected ruleset at start gives its HTTP status and is not followed; redirects: a redirected ruleset after a good sync keeps the ruleset and is not followed |
 | reports a bad ruleset when the body has no flags and segments | status: a first answer that is not a ruleset leaves nothing held |
 | reports a timeout when the ruleset never answers | status: a ruleset that never answers is a timeout |
 | reports closed after close(), and still answers | status: after close the status reads closed and still holds the tag |
@@ -276,6 +278,7 @@ named here is in the file named before the colon.
 | are sent every flush interval, not only on close | usage: counts are sent every flush interval, and a flush with nothing to send sends nothing |
 | are kept when the server is down and sent, summed, when it is back | usage: counts refused with 5xx, 408 or 429 are kept and sent summed |
 | are dropped when the server refuses the batch, since it would refuse it again | usage: counts refused with another 4xx are dropped |
+| do not follow a redirect: the report asks for manual, and a 308 drops the batch | redirects: counts answered with a redirect are dropped and not followed |
 | go in batches the server's limits allow | usage: a flush of more than 500 entries goes in requests of at most 500 |
 | do not make close() wait longer than the request timeout | usage: a usage request is bounded by the request timeout, close included |
 | close stops all requests, and is safe to call twice | close: close stops every request and is safe to call twice at once |

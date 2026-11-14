@@ -228,9 +228,13 @@ class Client implements BrowserClient {
     );
   }
 
-  /** `fetch` that treats a 401 or 403 on any route as the end of this client. */
+  /**
+   * `fetch` that treats a 401 or 403 on any route as the end of this client, and that never follows a
+   * redirect (contract 7.5): a browser `fetch` answers one with an opaque redirect (status 0, not `ok`),
+   * which every caller already reports as a failed answer.
+   */
   private readonly guarded: Fetch = async (input, init) => {
-    const response = await this.fetch(input, init);
+    const response = await this.fetch(input, { ...init, redirect: "manual" });
     if (response.status === 401 || response.status === 403)
       this.halt(`${init?.method ?? "GET"} ${input.slice(this.baseUrl.length)}`, response.status);
     return response;

@@ -1,0 +1,210 @@
+{
+  "scenarios": [
+    {
+      "name": "a redirected ruleset at start gives its HTTP status and is not followed",
+      "contract": "7.5",
+      "steps": [
+        {
+          "do": "script",
+          "route": "ruleset",
+          "answers": [
+            {
+              "status": 302,
+              "headers": {
+                "Location": "{{url}}/elsewhere"
+              }
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {
+            "stream": false,
+            "pollIntervalMs": 60000
+          }
+        },
+        {
+          "do": "ready",
+          "expect": false
+        },
+        {
+          "do": "expect",
+          "status": {
+            "lastError": "http_302",
+            "etag": null
+          },
+          "errors": 1
+        }
+      ]
+    },
+    {
+      "name": "a redirected ruleset after a good sync keeps the ruleset and is not followed",
+      "contract": "7.5",
+      "steps": [
+        {
+          "do": "create",
+          "options": {
+            "stream": false,
+            "pollIntervalMs": 300
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "script",
+          "route": "ruleset",
+          "answers": [
+            {
+              "status": 307,
+              "headers": {
+                "Location": "{{url}}/elsewhere"
+              },
+              "times": "always"
+            }
+          ]
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "status": {
+            "lastError": "http_307",
+            "etag": "{{etag}}"
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "variationIndex": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "a redirected stream is an error for the stream and the client still loads",
+      "contract": "7.5",
+      "steps": [
+        {
+          "do": "script",
+          "route": "stream",
+          "answers": [
+            {
+              "status": 301,
+              "headers": {
+                "Location": "{{url}}/elsewhere"
+              },
+              "times": "always"
+            }
+          ]
+        },
+        {
+          "do": "create",
+          "options": {
+            "pollIntervalMs": 1000
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 3000,
+          "requests": {
+            "route": "stream",
+            "count": 1
+          },
+          "status": {
+            "stream": "disconnected",
+            "lastError": "http_301"
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false,
+          "expect": {
+            "value": true,
+            "variationIndex": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "counts answered with a redirect are dropped and not followed",
+      "contract": "7.5",
+      "steps": [
+        {
+          "do": "create",
+          "options": {
+            "flushIntervalMs": 300
+          }
+        },
+        {
+          "do": "ready",
+          "expect": true
+        },
+        {
+          "do": "script",
+          "route": "events",
+          "answers": [
+            {
+              "status": 308,
+              "headers": {
+                "Location": "{{url}}/elsewhere"
+              }
+            }
+          ]
+        },
+        {
+          "do": "evaluate",
+          "flag": "checkout",
+          "fallback": false
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 2000,
+          "requests": {
+            "route": "events",
+            "count": 1
+          }
+        },
+        {
+          "do": "evaluate",
+          "flag": "legacy",
+          "fallback": false
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 2000,
+          "requests": {
+            "route": "events",
+            "count": 2
+          }
+        },
+        {
+          "do": "expect",
+          "requests": {
+            "route": "events",
+            "nth": 1,
+            "events": [
+              {
+                "flag": "legacy",
+                "variationIndex": 0,
+                "count": 1,
+                "day": "{{today}}"
+              }
+            ]
+          },
+          "errors": {
+            "min": 1
+          }
+        }
+      ]
+    }
+  ]
+}

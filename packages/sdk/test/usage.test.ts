@@ -86,6 +86,18 @@ describe("usage counts", () => {
     expect(h.server.batches).toHaveLength(1);
   });
 
+  it("do not follow a redirect: the report asks for manual, and a 308 drops the batch", async () => {
+    const client = h.start({ flushIntervalMs: 5_000 });
+    await client.ready();
+    h.server.redirected.set("/sdk/v1/events", 308);
+    client.variation("checkout", user, false);
+    await h.clock.advance(5_000);
+    await h.clock.advance(5_000);
+    expect(h.server.batches).toHaveLength(1);
+    expect(h.server.requestsTo("/sdk/v1/events")[0]?.redirect).toBe("manual");
+    expect(h.errors).toHaveLength(1);
+  });
+
   it("go in batches the server's limits allow", async () => {
     h.server.setFlags(Array.from({ length: 600 }, (_, index) => flag(`flag-${index}`, true)));
     const client = h.start();

@@ -161,8 +161,9 @@ split across reads or across buffer boundaries is still one ending:
 UTF-8 inside an event is bytes, so a comment or a tag that is not valid UTF-8 passes through; the ETag is
 compared as an exact byte string.
 
-**Redirects** are followed (Go's default, up to 10), as the TypeScript SDK's `fetch` does and as 7.1
-allows. A `3xx` Go refuses to follow is `http_<status>` like any other status.
+**Redirects** are not followed (7.5): the client's `CheckRedirect` returns `http.ErrUseLastResponse`, so a
+redirect (a `3xx` but the `304`) comes back as the answer and is `http_<status>` (`http_302`) like any other status, and no request
+goes to the `Location`.
 
 **Reading a `200` body** follows 7.1: the bytes are handed to the JSON reader of section 5, which skips a
 leading byte order mark, replaces invalid UTF-8 with U+FFFD the way WHATWG's decoder does, keeps the last

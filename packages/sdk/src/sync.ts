@@ -149,7 +149,11 @@ export class RulesetSync {
       await withTimeout(clock, requestTimeoutMs, this.lifetime.signal, async (signal) => {
         const headers: Record<string, string> = { Authorization: `Bearer ${sdkKey}` };
         if (this.etag !== null && this.ruleset !== null) headers["If-None-Match"] = this.etag;
-        const response = await fetch(`${baseUrl}/sdk/v1/ruleset`, { headers, signal });
+        const response = await fetch(`${baseUrl}/sdk/v1/ruleset`, {
+          headers,
+          redirect: "manual",
+          signal,
+        });
         if (response.status === 304) {
           await response.body?.cancel();
           // A 304 answers If-None-Match, which is sent only with a ruleset held; with none it is unexpected.
@@ -197,6 +201,7 @@ export class RulesetSync {
     try {
       const response = await fetch(`${baseUrl}/sdk/v1/stream`, {
         headers: { Authorization: `Bearer ${sdkKey}`, Accept: "text/event-stream" },
+        redirect: "manual",
         signal: controller.signal,
       });
       if (response.status !== 200 || response.body === null) {

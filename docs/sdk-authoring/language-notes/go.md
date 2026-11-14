@@ -9,8 +9,9 @@ What the Go runs learned. Each fact cites its run: prompt `8a59987`, FS-96, 2026
 - **Headers `net/http` adds itself.** `User-Agent: Go-http-client/<n>`, `Accept-Encoding: gzip` (not sent when the transport's
   `DisableCompression` is true), `Host` and `Content-Length`. `Connection` did not show on a loopback request
   (FS-131). List each in `RUN.md` with why it identifies no one (CHECKLIST.md, "Code and documents").
-- **Redirects.** `http.Client` follows them and may resend `Authorization` on a same-host redirect. The
-  run set `CheckRedirect` to return `http.ErrUseLastResponse`, which makes a 3xx an `http_3xx` error.
+- **Redirects.** `http.Client` follows them and may resend `Authorization` on a same-host redirect.
+  Setting `CheckRedirect` to return `http.ErrUseLastResponse` is what contract 7.5 requires: a redirect (any
+  3xx but the 304) is not followed and is the `http_<status>` error, for example `http_302`.
 - **A network error's text carries the URL** (`*url.Error`). Report fixed text only (`network`, `timeout`).
 - **Bounding a body read.** `context.WithTimeoutCause` on the request covers the body read as well as the
   connect.
