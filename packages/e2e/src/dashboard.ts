@@ -20,9 +20,8 @@ interface DashboardOptions {
 
 /**
  * Builds the dashboard and serves it with `vite preview`, as `apps/web/playwright.config.ts` does
- * for its own run, but against a real server instead of the fake API. `TOGGLESLASH_E2E` keeps the
- * local state apart from `vite dev`'s and turns off the debugger port that two runs would fight
- * over.
+ * for its own run, but against a real server instead of the fake API. `TOGGLESLASH_E2E` turns off the
+ * debugger port that two runs would fight over.
  */
 export async function startDashboard(options: DashboardOptions): Promise<ManagedProcess> {
   mkdirSync(options.tmpdir, { recursive: true });
@@ -57,6 +56,9 @@ export async function startDashboard(options: DashboardOptions): Promise<Managed
         TOGGLESLASH_ADMIN_TOKEN: options.adminToken,
         TOGGLESLASH_OPERATOR_PASSWORD: options.operatorPassword,
         TOGGLESLASH_SESSION_SECRET: options.sessionSecret,
+        // The local server is not behind Cloudflare Access: set empty, so a shell's own values never leak in.
+        TOGGLESLASH_ACCESS_CLIENT_ID: "",
+        TOGGLESLASH_ACCESS_CLIENT_SECRET: "",
       }),
     },
   );

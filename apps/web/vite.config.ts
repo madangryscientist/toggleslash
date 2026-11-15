@@ -4,7 +4,7 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-// The Playwright run keeps its local state apart, so it never touches dev data.
+// Set by the Playwright run and the stack: no debugger port (below).
 const e2e = process.env["TOGGLESLASH_E2E"] === "1";
 
 export default defineConfig({
@@ -12,7 +12,6 @@ export default defineConfig({
   plugins: [
     cloudflare({
       viteEnvironment: { name: "ssr" },
-      persistState: e2e ? { path: ".wrangler/e2e" } : true,
       // The plugin probes for a free debugger port starting at 9229 and two runs probing at once
       // both get it (EADDRINUSE). Nothing in e2e attaches a debugger.
       ...(e2e ? { inspectorPort: false } : {}),

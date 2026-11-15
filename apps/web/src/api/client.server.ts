@@ -142,19 +142,39 @@ export function createAdminApi(connection: Connection, doFetch: Fetch) {
 
 export type AdminApi = ReturnType<typeof createAdminApi>;
 
+/** The raw values `readConnection` reads, as they come from the Worker's environment. */
+interface ConnectionValues {
+  url: unknown;
+  token: unknown;
+  accessClientId: unknown;
+  accessClientSecret: unknown;
+}
+
+const isSet = (value: unknown): value is string => typeof value === "string" && value !== "";
+
 /**
- * The connection from the Worker's environment (`TOGGLESLASH_API_URL`, `TOGGLESLASH_ADMIN_TOKEN`), or
+ * The connection from the Worker's environment (`TOGGLESLASH_API_URL`, `TOGGLESLASH_ADMIN_TOKEN`, and
+ * behind Cloudflare Access `TOGGLESLASH_ACCESS_CLIENT_ID` with `TOGGLESLASH_ACCESS_CLIENT_SECRET`), or
  * why there is none. The message names the variable, never a value.
  */
-export function readConnection(
-  url: unknown,
-  token: unknown,
-): { ok: true; connection: Connection } | { ok: false; message: string } {
+export function readConnection({
+  url,
+  token,
+  accessClientId,
+  accessClientSecret,
+}: ConnectionValues): { ok: true; connection: Connection } | { ok: false; message: string } {
   if (typeof url !== "string" || url.trim() === "") {
     return { ok: false, message: "TOGGLESLASH_API_URL is not set." };
   }
-  if (typeof token !== "string" || token === "") {
+  if (!isSet(token)) {
     return { ok: false, message: "TOGGLESLASH_ADMIN_TOKEN is not set." };
+  }
+  if (isSet(accessClientId) !== isSet(accessClientSecret)) {
+    return {
+      ok: false,
+      message:
+        "Set both TOGGLESLASH_ACCESS_CLIENT_ID and TOGGLESLASH_ACCESS_CLIENT_SECRET, or neither.",
+    };
   }
   let parsed: URL;
   try {
@@ -167,6 +187,12 @@ export function readConnection(
   }
   return {
     ok: true,
-    connection: { url: parsed.origin + parsed.pathname.replace(/\/+$/, ""), token },
+    connection: {
+      url: parsed.origin + parsed.pathname.replace(/\/+$/, ""),
+      token,
+      ...(isSet(accessClientId) && isSet(accessClientSecret)
+        ? { access: { clientId: accessClientId, clientSecret: accessClientSecret } }
+        : {}),
+    },
   };
 }

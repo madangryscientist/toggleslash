@@ -6,10 +6,15 @@
   "main": "src/server.ts",
   "observability": { "enabled": true },
   "upload_source_maps": true,
-  // There is no route and no custom domain: the product has no domain yet, and attaching one is
-  // part of the first deploy.
-  // `CLOUDFLARE_ENV=e2e`: the Playwright build.
+  // The dashboard is served only at flags.madangryscientist.com, which sits behind Cloudflare Access
+  // (docs/dashboard-hosting.md). A real deploy attaches it as a custom domain and creates its DNS record.
+  // No workers.dev or preview URL: either would reach the Worker without passing Access.
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "flags.madangryscientist.com", "custom_domain": true }],
+  // `CLOUDFLARE_ENV=e2e`: the Playwright build, which never deploys. It inherits the settings above but
+  // not the route, so a stray e2e deploy could never claim the dashboard's hostname.
   "env": {
-    "e2e": {},
+    "e2e": { "routes": [] },
   },
 }

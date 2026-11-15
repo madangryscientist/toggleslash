@@ -21,10 +21,13 @@ const WORKER_ENV = {
   CLOUDFLARE_INCLUDE_PROCESS_ENV: "true",
   TOGGLESLASH_API_URL: `http://127.0.0.1:${API_PORT}`,
   TOGGLESLASH_ADMIN_TOKEN: E2E_ADMIN_TOKEN,
+  // The fake API is not behind Cloudflare Access: set empty, so a shell's own values never leak in.
+  TOGGLESLASH_ACCESS_CLIENT_ID: "",
+  TOGGLESLASH_ACCESS_CLIENT_SECRET: "",
 };
 
 // A local production build, with a fake admin API (`e2e/fake-api.ts`) standing in for the C# server,
-// so the run needs no .NET SDK. Its local state stays apart from `vite dev`'s (`.wrangler/e2e`).
+// so the run needs no .NET SDK.
 export default defineConfig({
   testDir: "./e2e",
   globalSetup: "../../scripts/test-tmp-scope.ts",
