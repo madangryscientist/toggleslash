@@ -198,16 +198,14 @@
             "after": {
               "min": 1650
             }
-          },
-          "status": {
-            "lastError": null
           }
         },
         {
           "do": "waitUntil",
           "withinMs": 2000,
           "status": {
-            "etag": "{{etag}}"
+            "etag": "{{etag}}",
+            "lastError": null
           }
         }
       ]
