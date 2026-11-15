@@ -199,7 +199,7 @@ export function Shell({ controls, children, ...nav }: ShellProps) {
         />
       }
       nav={<Nav {...nav} />}
-      controls={
+      menuControls={
         <>
           {controls}
           <SignOut />

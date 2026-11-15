@@ -7,6 +7,12 @@ import { record, text } from "../src/data.ts";
 import { SEED_ENV, SEED_PROJECT } from "../src/seed.ts";
 import { SKIP_ENV, STACK_ENV, type StackInfo } from "./setup.ts";
 
+/** A section link in the dashboard nav. The nav is also in a phone menu, hidden on desktop, so match by role. */
+const section = (page: Page, label: string) =>
+  page
+    .getByRole("navigation", { name: "Sections" })
+    .getByRole("link", { name: label, exact: true });
+
 /**
  * One person's afternoon with the whole product, on the real stack: the dashboard in a browser,
  * two shoppers on the example app, and the CLI as a subprocess. Every step is something a user
@@ -75,7 +81,7 @@ async function shoppersDiffer({ free, pro }: Journey) {
 }
 
 async function createFlagWithRule({ dashboard, free, pro }: Journey) {
-  await dashboard.getByTestId("nav-flags").click();
+  await section(dashboard, "Flags").click();
   // A click can land while the navigation above is still settling and be dropped, so click again
   // only while the field is hidden. The form is idempotent to open, so a retry cannot close it.
   const name = dashboard.getByLabel("Name");
@@ -117,7 +123,7 @@ async function createFlagWithRule({ dashboard, free, pro }: Journey) {
 }
 
 async function toggleNewCheckout({ dashboard, free, pro }: Journey) {
-  await dashboard.getByTestId("nav-flags").click();
+  await section(dashboard, "Flags").click();
   await dashboard.getByTestId("toggle-new-checkout").click();
   await expect(dashboard.getByTestId("toggle-new-checkout")).toHaveText("Off");
   // The seeded flag's off variation and its fallthrough are both false, so the free shopper's
