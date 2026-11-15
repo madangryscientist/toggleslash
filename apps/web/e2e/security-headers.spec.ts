@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Response } from "@playwright/test";
 import { API_PORT, E2E_OPERATOR_PASSWORD } from "./constants.ts";
+import { gotoHydrated } from "./goto.ts";
 
 /** A section link in the dashboard nav. The nav is also in a phone menu, hidden on desktop, so match by role. */
 const section = (page: Page, label: string) =>
@@ -71,7 +72,7 @@ test.describe("signed out", () => {
     page.on("response", (response) => {
       if (response.request().resourceType() === "document") responses.push(response);
     });
-    await page.goto("/sign-in");
+    await gotoHydrated(page, "/sign-in");
     await page.reload();
     const nonces = await Promise.all(
       responses.map(
@@ -99,7 +100,7 @@ test.describe("signed out", () => {
     page,
   }) => {
     const seen = await watchViolations(page);
-    await page.goto("/");
+    await gotoHydrated(page, "/");
     await expect(page).toHaveURL(/\/sign-in/);
     await page.getByLabel("Password").fill(E2E_OPERATOR_PASSWORD);
     await page.getByTestId("sign-in-submit").click();
@@ -116,7 +117,7 @@ test("a signed-in page, its client assets and a server function carry the header
   const seen = await watchViolations(page);
   const answers: Response[] = [];
   page.on("response", (response) => answers.push(response));
-  const document = await page.goto("/");
+  const document = await gotoHydrated(page, "/");
   await expect(page.getByRole("heading", { name: "Flags" })).toBeVisible();
   expectHeaders((await document?.allHeaders()) ?? {});
 

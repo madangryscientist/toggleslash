@@ -5,6 +5,7 @@ import {
   E2E_OPERATOR_PASSWORD,
   E2E_SESSION_SECRET,
 } from "./constants.ts";
+import { gotoHydrated } from "./goto.ts";
 
 const API = `http://127.0.0.1:${API_PORT}`;
 
@@ -13,7 +14,7 @@ test.beforeEach(async ({ request }) => {
 });
 
 test("lists the first project's flags in its first environment", async ({ page }) => {
-  await page.goto("/");
+  await gotoHydrated(page, "/");
   await expect(page.getByRole("heading", { name: "Flags" })).toBeVisible();
   await expect(page.getByLabel("Project")).toHaveValue("shop");
   await expect(page.getByLabel("Environment")).toHaveValue("production");
@@ -26,7 +27,7 @@ test("lists the first project's flags in its first environment", async ({ page }
 });
 
 test("switches environment and project", async ({ page }) => {
-  await page.goto("/");
+  await gotoHydrated(page, "/");
   await page.getByLabel("Environment").selectOption("staging");
   await expect(page).toHaveURL(/env=staging/);
   await expect(page.getByTestId("toggle-dark-mode")).toHaveText("On");
@@ -38,7 +39,7 @@ test("switches environment and project", async ({ page }) => {
 });
 
 test("the last evaluated column follows the selected environment", async ({ page }) => {
-  await page.goto("/");
+  await gotoHydrated(page, "/");
   await expect(page.getByTestId("flag-checkout-v2")).toContainText("2026-11-04");
   await expect(page.getByTestId("flag-search-boost")).toContainText("2026-10-30");
 
@@ -51,7 +52,7 @@ test("the last evaluated column follows the selected environment", async ({ page
 });
 
 test("search narrows the list by key, name and tag", async ({ page }) => {
-  await page.goto("/");
+  await gotoHydrated(page, "/");
   const search = page.getByLabel("Search flags");
   await search.fill("ui");
   await expect(page.getByTestId("flag-dark-mode")).toBeVisible();
@@ -73,7 +74,7 @@ test("toggling a flag changes it on the server and keeps it after a reload", asy
   page,
   request,
 }) => {
-  await page.goto("/");
+  await gotoHydrated(page, "/");
   await page.getByTestId("toggle-dark-mode").click();
   await expect(page.getByTestId("toggle-dark-mode")).toHaveText("On");
 
@@ -88,7 +89,7 @@ test("toggling a flag changes it on the server and keeps it after a reload", asy
 });
 
 test("a stale toggle says so and shows what the server has", async ({ page, request }) => {
-  await page.goto("/");
+  await gotoHydrated(page, "/");
   // Someone else flips it after this page loaded.
   await request.post(`${API}/api/v1/projects/shop/flags/dark-mode/environments/production/toggle`, {
     headers: { authorization: `Bearer ${E2E_ADMIN_TOKEN}` },
@@ -100,7 +101,7 @@ test("a stale toggle says so and shows what the server has", async ({ page, requ
 });
 
 test("creates a flag", async ({ page }) => {
-  await page.goto("/");
+  await gotoHydrated(page, "/");
   await page.getByTestId("new-flag").click();
   await page.getByLabel("Name").fill("Fast lane");
   await page.getByLabel("Key", { exact: true }).fill("fast-lane");
@@ -125,7 +126,7 @@ test("creates a flag", async ({ page }) => {
 test("creating a flag with a taken key shows the server's reason and keeps the dialog", async ({
   page,
 }) => {
-  await page.goto("/");
+  await gotoHydrated(page, "/");
   await page.getByTestId("new-flag").click();
   await page.getByLabel("Name").fill("Again");
   await page.getByLabel("Key", { exact: true }).fill("dark-mode");
@@ -134,7 +135,7 @@ test("creating a flag with a taken key shows the server's reason and keeps the d
 });
 
 test("a bad key is caught before it is sent", async ({ page }) => {
-  await page.goto("/");
+  await gotoHydrated(page, "/");
   await page.getByTestId("new-flag").click();
   await page.getByLabel("Name").fill("Bad");
   await page.getByLabel("Key", { exact: true }).fill("Not A Key");
@@ -143,7 +144,7 @@ test("a bad key is caught before it is sent", async ({ page }) => {
 });
 
 test("archives a flag after confirming", async ({ page }) => {
-  await page.goto("/");
+  await gotoHydrated(page, "/");
   await page.getByRole("button", { name: "Archive Dark mode" }).click();
   // Cancelling leaves it.
   await page.getByRole("button", { name: "Cancel" }).click();
@@ -160,7 +161,7 @@ test("archives a flag after confirming", async ({ page }) => {
 
 test("shows a page, not a crash, when the server is down", async ({ page, request }) => {
   await request.post(`${API}/__down`);
-  const response = await page.goto("/");
+  const response = await gotoHydrated(page, "/");
   expect(response?.status()).toBeLessThan(500);
   const down = page.getByTestId("server-down");
   await expect(down).toContainText("not reachable");
@@ -180,7 +181,7 @@ test("the admin token is not in the page or any script the browser loads", async
       bodies.push(await response.text().catch(() => ""));
     }
   });
-  await page.goto("/");
+  await gotoHydrated(page, "/");
   await page.getByTestId("toggle-dark-mode").click();
   await expect(page.getByTestId("toggle-dark-mode")).toHaveText("On");
   await page.waitForLoadState("networkidle");

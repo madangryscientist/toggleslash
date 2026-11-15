@@ -1,5 +1,5 @@
 import { appShellRootClassFor } from "@hackcove/ui-react";
-import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
+import { HeadContent, Scripts, createRootRoute, useHydrated } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import appCss from "../styles.css?url";
 
@@ -17,8 +17,15 @@ export const Route = createRootRoute({
 });
 
 function RootDocument({ children }: { children: ReactNode }) {
+  // False on the server and through hydration, so the first client render matches the server HTML;
+  // the attribute then tells a browser test (or anyone) that the app has taken over the page.
+  const hydrated = useHydrated();
   return (
-    <html lang="en" className={appShellRootClassFor("dark")}>
+    <html
+      lang="en"
+      className={appShellRootClassFor("dark")}
+      data-hydrated={hydrated ? "" : undefined}
+    >
       <head>
         <HeadContent />
       </head>

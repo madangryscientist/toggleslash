@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { API_PORT, E2E_ADMIN_TOKEN } from "./constants.ts";
+import { gotoHydrated } from "./goto.ts";
 
 const API = `http://127.0.0.1:${API_PORT}`;
 const CONFIG = `${API}/api/v1/projects/shop/flags/checkout-v2/environments/production`;
@@ -10,15 +11,13 @@ test.beforeEach(async ({ request }) => {
 });
 
 async function openCheckout(page: Page) {
-  await page.goto("/flags/checkout-v2?project=shop&env=production");
+  await gotoHydrated(page, "/flags/checkout-v2?project=shop&env=production");
   await expect(page.getByRole("heading", { name: "Checkout v2" })).toBeVisible();
-  // The editor is disabled until React has hydrated it, so an enabled field is a live one.
-  await expect(page.getByTestId("targets-0")).toBeEnabled();
   await expect(page.getByTestId("targets-0")).toHaveValue("alice\nbob");
 }
 
 test("opens from the flag list and shows the flag's targeting", async ({ page }) => {
-  await page.goto("/");
+  await gotoHydrated(page, "/");
   await page.getByTestId("open-checkout-v2").click();
   await expect(page).toHaveURL(/\/flags\/checkout-v2/);
   await expect(page.getByTestId("meta-name")).toHaveValue("Checkout v2");
@@ -240,7 +239,7 @@ test("a save shows up in the history", async ({ page }) => {
 });
 
 test("an unknown flag says so instead of crashing", async ({ page }) => {
-  const response = await page.goto("/flags/nope?project=shop&env=production");
+  const response = await gotoHydrated(page, "/flags/nope?project=shop&env=production");
   expect(response?.status()).toBeLessThan(500);
   await expect(page.getByTestId("server-down")).toBeVisible();
 });
