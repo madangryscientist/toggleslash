@@ -474,15 +474,17 @@ matches that opening to its inputs; one with no path shows as a message above th
 is not a number is caught in the browser first.
 
 The flag list reads each flag's configuration for the environment (eight at a time) because the API
-has no bulk read of per-environment state. The D1 placeholder table in `apps/web` stays and stays unused.
+has no bulk read of per-environment state. The dashboard has no database of its own.
 
 ## Hosting
 
-**Hosting is undecided.** C# does not run on Cloudflare Workers, so the server ships as a container
+C# does not run on Cloudflare Workers, so the server ships as a container
 for self-hosting: `apps/server/Dockerfile` (multi-stage, base images pinned by digest, a non-root user, a
 `/data` volume for the SQLite file, a healthcheck on `/health`) and the root `compose.yaml`, described in
-[`self-hosting.md`](self-hosting.md). No image is published. The dashboard stays on Workers; the human
-steps in `AGENTS.md` (domain, routes, D1, publishing) still apply.
+[`self-hosting.md`](self-hosting.md). No image is published. The dashboard runs on Workers at
+`flags.madangryscientist.com`, behind Cloudflare Access, and calls the admin API through Access with a
+service token; [`dashboard-hosting.md`](dashboard-hosting.md) has the deploy, which is the maintainer's.
+The human steps in `AGENTS.md` (other domains and routes, every real deploy, publishing) still apply.
 
 ## Build and gate
 

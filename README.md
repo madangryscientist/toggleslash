@@ -1,7 +1,7 @@
 # ToggleSlash
 
-Feature flags you can run yourself. Source available under the Elastic License 2.0. The product has no domain
-yet.
+Feature flags you can run yourself. Source available under the Elastic License 2.0. The dashboard has a chosen
+hostname behind Cloudflare Access and a documented deploy ([`docs/dashboard-hosting.md`](docs/dashboard-hosting.md)).
 
 > **Status: alpha.** Changing fast. Expect breaking changes between versions. You can run ToggleSlash on your own machine or server:
 > a C# server keeps flags in SQLite and serves an admin API and the SDK routes, a `toggleslash` command
@@ -9,7 +9,7 @@ yet.
 > and a browser SDK evaluates them in a web page through the server. Server SDKs for Python, Go, Java, C# and Ruby live under
 > [`sdks/`](sdks/README.md). Every admin API write is recorded in an audit trail, and the server counts how often each flag variation is served per day
 > (counts only, never an end user's context). Evaluation follows the spec in
-> [`docs/evaluation.md`](docs/evaluation.md). There is no hosted service yet. The CLI and the TypeScript SDKs are packaged for npm by `release.yml` and not yet published.
+> [`docs/evaluation.md`](docs/evaluation.md). No hosted service runs until the maintainer deploys the dashboard. The CLI and the TypeScript SDKs are packaged for npm by `release.yml` and not yet published.
 >
 > The product page is [slashslash.build/toggleslash](https://slashslash.build/toggleslash).
 

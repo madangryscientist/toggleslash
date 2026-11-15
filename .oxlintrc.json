@@ -90,5 +90,5 @@
       }
     }
   ],
-  "ignorePatterns": ["src/routeTree.gen.ts", "worker-configuration.d.ts", "drizzle/**"]
+  "ignorePatterns": ["src/routeTree.gen.ts", "worker-configuration.d.ts"]
 }

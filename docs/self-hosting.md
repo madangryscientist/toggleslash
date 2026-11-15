@@ -1,9 +1,9 @@
 # Self-hosting
 
 The C# server (`apps/server`) ships as a container image you build yourself. Nothing is published:
-there is no image on any registry, and the product has no domain yet, so nothing is routed anywhere. The dashboard
-(`apps/web`) is not containerised; it runs on Cloudflare Workers and its hosting is undecided
-(see [`architecture.md`](architecture.md#hosting)). This page is about the server, plus
+there is no image on any registry, and no hosted server runs. The dashboard
+(`apps/web`) is not containerised; it runs on Cloudflare Workers at a chosen hostname behind Cloudflare Access,
+deployed by the maintainer as [`dashboard-hosting.md`](dashboard-hosting.md) describes. This page is about the server, plus
 [what the dashboard needs before anyone can sign in](#dashboard-sign-in).
 
 What you get: one container running one process, a SQLite file in a Docker volume, and the admin
@@ -104,7 +104,10 @@ If an upgrade has to be undone, restore the backup (above) and start the previou
 ## Dashboard sign-in
 
 The dashboard has one operator and no user table. It keeps nothing about a session: sign-in needs two
-Worker secrets, set by hand on the Worker.
+Worker secrets, set by hand on the Worker. The other four secrets (the admin API's address and token, and
+the Cloudflare Access service token) are in the table below; [`dashboard-hosting.md`](dashboard-hosting.md)
+has the whole deploy. Set these after the Worker's first deploy, as that page says: before it, `secret put`
+creates a placeholder Worker outside `wrangler.jsonc`.
 
 ```bash
 cd apps/web
@@ -118,8 +121,12 @@ openssl rand -hex 32 | bunx wrangler secret put TOGGLESLASH_SESSION_SECRET
 | --- | --- | --- |
 | `TOGGLESLASH_OPERATOR_PASSWORD` | 16 characters | the password on the sign-in page |
 | `TOGGLESLASH_SESSION_SECRET` | 32 characters | signs the session cookie (HMAC-SHA256) |
+| `TOGGLESLASH_API_URL` | none | the admin API's base URL |
+| `TOGGLESLASH_ADMIN_TOKEN` | none | the admin token the server was started with |
+| `TOGGLESLASH_ACCESS_CLIENT_ID` | none | the Cloudflare Access service token's client id, when the admin API is behind Access |
+| `TOGGLESLASH_ACCESS_CLIENT_SECRET` | none | its client secret; set both Access values or neither |
 
-**It fails closed.** With either one unset or too short, nobody can sign in: the sign-in page names the
+**It fails closed.** With the password or the session secret unset or too short, nobody can sign in: the sign-in page names the
 variable (never its value), every other page redirects to it, and every server function answers 401.
 
 **A session lasts 12 hours**, then you sign in again. The cookie holds an expiry and a signature, is
@@ -134,7 +141,7 @@ variable (never its value), every other page redirects to it, and every server f
 stand against that: the 16-character minimum (a long random password, as above, is out of reach of
 guessing), and a rate limit you add yourself. When you route the dashboard publicly, add a
 [Cloudflare rate limiting rule](https://developers.cloudflare.com/waf/rate-limiting-rules/) on `POST`
-requests to the path `/sign-in`. It is an operator step: this repository creates no Cloudflare resource.
+requests to the path `/sign-in`. It is an operator step, done in the Cloudflare dashboard.
 
 ## Limits
 

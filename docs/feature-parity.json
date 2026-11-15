@@ -1,5 +1,5 @@
 {
-  "updated": "2026-11-05",
+  "updated": "2026-11-15",
   "note": "Competitor cells are coarse and were read from public product and documentation pages on 2026-11-05. yes = documented first-class capability; partial = limited, plan-gated, adjacent, or not a core strength; no = not documented. Verify before using this in sales material. ToggleSlash cells are backed by evidence in this repository and are checked by scripts/parity.ts.",
   "competitors": [
     {
@@ -1296,7 +1296,14 @@
       "description": "Run the whole product on your own infrastructure.",
       "toggleslash": {
         "status": "yes",
-        "evidence": ["path:apps/server/Dockerfile", "path:compose.yaml", "doc:docs/self-hosting.md"]
+        "evidence": [
+          "path:apps/server/Dockerfile",
+          "path:compose.yaml",
+          "doc:docs/self-hosting.md",
+          "path:apps/web/wrangler.jsonc",
+          "doc:docs/dashboard-hosting.md",
+          "test:apps/web/src/api/access.server.test.ts"
+        ]
       },
       "competitors": {
         "unleash": "yes",

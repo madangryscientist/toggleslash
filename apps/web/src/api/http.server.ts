@@ -11,6 +11,8 @@ export type Fetch = (input: string, init: RequestInit) => Promise<Response>;
 export interface Connection {
   url: string;
   token: string;
+  /** A Cloudflare Access service token, sent beside the bearer when the admin API sits behind Access. */
+  access?: { clientId: string; clientSecret: string };
 }
 
 /** A call that did not give the dashboard what it needed. `kind` picks the page; `message` never has the token. */
@@ -86,10 +88,17 @@ async function send(
       headers: {
         authorization: `Bearer ${connection.token}`,
         accept: "application/json",
+        ...(connection.access === undefined
+          ? {}
+          : {
+              "cf-access-client-id": connection.access.clientId,
+              "cf-access-client-secret": connection.access.clientSecret,
+            }),
         ...(body === undefined ? {} : { "content-type": "application/json" }),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      // A redirect could carry the token somewhere else; the server does not redirect.
+      // A redirect could carry the token somewhere else; the server does not redirect, and
+      // Cloudflare Access redirects to its login page when it refuses (see `check`).
       redirect: "manual",
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
@@ -100,15 +109,35 @@ async function send(
   }
 }
 
-/** Throws the failure a non-2xx answer stands for. */
-function check({ status, text }: Answer): void {
-  if (status === 401 || status === 403) {
-    throw new ApiFailure(
+/**
+ * The failure a refusal stands for, or nothing when `status` is not one. `behindAccess` says the connection
+ * carries a Cloudflare Access service token, so a 403 may be Access's and not the server's. A 3xx is
+ * Access too: an app with a login policy redirects to its login page, which `redirect: "manual"` hands back.
+ */
+function refusal(status: number, behindAccess: boolean): ApiFailure | undefined {
+  if (status >= 300 && status < 400) {
+    return new ApiFailure(
       "unauthorized",
-      `The server rejected the admin token (${status}).`,
+      `The admin API redirected (${status}), which is what Cloudflare Access does when the service token is missing or wrong.`,
       status,
     );
   }
+  if (status === 401 || status === 403) {
+    return new ApiFailure(
+      "unauthorized",
+      behindAccess
+        ? `The admin API refused the request (${status}).`
+        : `The server rejected the admin token (${status}).`,
+      status,
+    );
+  }
+  return undefined;
+}
+
+/** Throws the failure a non-2xx answer stands for. */
+function check({ status, text }: Answer, behindAccess: boolean): void {
+  const refused = refusal(status, behindAccess);
+  if (refused !== undefined) throw refused;
   const detail = errorDetail(text);
   if (status >= 500 && detail === undefined) {
     throw new ApiFailure("unreachable", `The server answered ${status}.`, status);
@@ -144,7 +173,7 @@ export async function list(call: Call, path: string): Promise<Json[]> {
 export function makeCall(connection: Connection, doFetch: Fetch): Call {
   return async (method, path, body) => {
     const answer = await send(connection, doFetch, { method, path, body });
-    check(answer);
+    check(answer, connection.access !== undefined);
     return parseBody(answer);
   };
 }

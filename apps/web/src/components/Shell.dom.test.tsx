@@ -10,7 +10,11 @@ vi.mock("#/api/session", () => ({ signOut: vi.fn<typeof signOut>() }));
 test.each<[FailureKind, string, RegExp]>([
   ["unreachable", "The ToggleSlash server is not reachable", /TOGGLESLASH_API_URL/],
   ["unconfigured", "The dashboard is not configured", /address and the admin token/],
-  ["unauthorized", "The server rejected the admin token", /TOGGLESLASH_ADMIN_TOKEN/],
+  [
+    "unauthorized",
+    "The admin API refused the dashboard",
+    /TOGGLESLASH_ADMIN_TOKEN.*TOGGLESLASH_ACCESS_CLIENT_ID and TOGGLESLASH_ACCESS_CLIENT_SECRET/,
+  ],
   ["error", "The server could not answer", /look at the server's log/],
 ])("the %s page names what is wrong and what to check", async (kind, title, help) => {
   const onRetry = vi.fn<() => void>();

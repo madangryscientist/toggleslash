@@ -23,7 +23,7 @@ tasks:
       - ".wrangler/deploy"
   # Cached: its own project, the fake API's contract and CI (which sets forbidOnly); the packages and
   # the root files come from .moon/tasks. A task's inputs replace the default project glob, so `**/*`
-  # is listed, and the negations are restated for what a run writes (its own build, its D1, the report).
+  # is listed, and the negations are restated for what a run writes (its own build, its local state, the report).
   test-e2e:
     command: "bun run playwright test"
     inputs:

@@ -15,7 +15,7 @@ import type { Environment, Failure, Project } from "#/api/types";
 const FAILURE_TITLES: Record<Failure["kind"], string> = {
   unreachable: "The ToggleSlash server is not reachable",
   unconfigured: "The dashboard is not configured",
-  unauthorized: "The server rejected the admin token",
+  unauthorized: "The admin API refused the dashboard",
   error: "The server could not answer",
 };
 
@@ -23,9 +23,9 @@ const FAILURE_HELP: Record<Failure["kind"], string> = {
   unreachable:
     "The dashboard could not get an answer from the server. Check that it is running and that TOGGLESLASH_API_URL points at it, then try again.",
   unconfigured:
-    "The dashboard reads the server's address and the admin token from its environment. Set both, then try again.",
+    "The dashboard reads the server's address and the admin token from its environment, and behind Cloudflare Access both TOGGLESLASH_ACCESS_CLIENT_ID and TOGGLESLASH_ACCESS_CLIENT_SECRET. Set them, then try again.",
   unauthorized:
-    "The server answered, but not to this token. Check TOGGLESLASH_ADMIN_TOKEN against the token the server was started with.",
+    "The admin API answered, but not to these credentials. Check TOGGLESLASH_ADMIN_TOKEN against the token the server was started with and, behind Cloudflare Access, TOGGLESLASH_ACCESS_CLIENT_ID and TOGGLESLASH_ACCESS_CLIENT_SECRET against the Access service token.",
   error: "The server answered with an error. Try again; if it persists, look at the server's log.",
 };
 

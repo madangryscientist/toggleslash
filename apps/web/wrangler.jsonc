@@ -6,29 +6,15 @@
   "main": "src/server.ts",
   "observability": { "enabled": true },
   "upload_source_maps": true,
-  // The id is a placeholder: creating the real D1 database is the first deploy's job (a human
-  // step), not this scaffold's. Local dev and tests use local state. There is no route and no
-  // custom domain either: the product has no domain yet, and
-  // attaching one is part of that first deploy.
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "toggleslash",
-      "database_id": "00000000-0000-0000-0000-000000000000",
-      "migrations_dir": "drizzle",
-    },
-  ],
-  // `CLOUDFLARE_ENV=e2e`: the Playwright build. Bindings are not inherited by an env, so they repeat here.
+  // The dashboard is served only at flags.madangryscientist.com, which sits behind Cloudflare Access
+  // (docs/dashboard-hosting.md). A real deploy attaches it as a custom domain and creates its DNS record.
+  // No workers.dev or preview URL: either would reach the Worker without passing Access.
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "flags.madangryscientist.com", "custom_domain": true }],
+  // `CLOUDFLARE_ENV=e2e`: the Playwright build, which never deploys. It inherits the settings above but
+  // not the route, so a stray e2e deploy could never claim the dashboard's hostname.
   "env": {
-    "e2e": {
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "toggleslash",
-          "database_id": "00000000-0000-0000-0000-000000000000",
-          "migrations_dir": "drizzle",
-        },
-      ],
-    },
+    "e2e": { "routes": [] },
   },
 }

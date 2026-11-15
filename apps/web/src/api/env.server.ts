@@ -10,12 +10,14 @@ export function authSecrets(): AuthSecrets {
   };
 }
 
-/** The admin API client for this request, or why there is none. The only place the token is read. */
+/** The admin API client for this request, or why there is none. The only place the token and the Access service token are read. */
 export function adminApi(): { ok: true; api: AdminApi } | { ok: false; message: string } {
-  const read = readConnection(
-    Reflect.get(env, "TOGGLESLASH_API_URL"),
-    Reflect.get(env, "TOGGLESLASH_ADMIN_TOKEN"),
-  );
+  const read = readConnection({
+    url: Reflect.get(env, "TOGGLESLASH_API_URL"),
+    token: Reflect.get(env, "TOGGLESLASH_ADMIN_TOKEN"),
+    accessClientId: Reflect.get(env, "TOGGLESLASH_ACCESS_CLIENT_ID"),
+    accessClientSecret: Reflect.get(env, "TOGGLESLASH_ACCESS_CLIENT_SECRET"),
+  });
   if (!read.ok) return read;
   return { ok: true, api: createAdminApi(read.connection, fetch) };
 }

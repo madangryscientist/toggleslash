@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { ApiFailure, apiPath, createAdminApi, readConnection, type Fetch } from "./client.server";
+import { ApiFailure, apiPath, createAdminApi, type Fetch } from "./client.server";
 
 const TOKEN = "unit-test-token-123";
 const connection = { url: "http://api.test", token: TOKEN };
@@ -275,9 +275,12 @@ describe("failures", () => {
     expect((await refusedFailure()).kind).toBe("unreachable");
   });
 
-  test("401 and 403 are unauthorized", async () => {
-    expect((await failureOf(() => new Response("", { status: 401 }))).kind).toBe("unauthorized");
-    expect((await failureOf(() => new Response("", { status: 403 }))).kind).toBe("unauthorized");
+  test("401 and 403 are unauthorized, and name the admin token", async () => {
+    for (const status of [401, 403]) {
+      const error = await failureOf(() => new Response("", { status }));
+      expect(error.kind).toBe("unauthorized");
+      expect(error.message).toBe(`The server rejected the admin token (${status}).`);
+    }
   });
 
   test("a 5xx with no error body is unreachable; with one it is the server's error", async () => {
@@ -306,26 +309,5 @@ describe("failures", () => {
       await failureOf(() => new Response("nope", { status: 500 })),
     ];
     for (const error of errors) expect(error.message).not.toContain(TOKEN);
-  });
-});
-
-describe("readConnection", () => {
-  test("accepts an http(s) url and a token, and drops a trailing slash", () => {
-    expect(readConnection("http://localhost:5000/", "t")).toEqual({
-      ok: true,
-      connection: { url: "http://localhost:5000", token: "t" },
-    });
-  });
-
-  test.each([
-    [undefined, undefined],
-    ["http://x", undefined],
-    ["ftp://x", "secret-value"],
-    ["not a url", "secret-value"],
-  ])("says which variable is missing or wrong, never a value (%s, %s)", (url, token) => {
-    const result = readConnection(url, token);
-    expect(result.ok).toBe(false);
-    expect(JSON.stringify(result)).toMatch(/TOGGLESLASH_/);
-    expect(JSON.stringify(result)).not.toContain("secret-value");
   });
 });
