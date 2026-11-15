@@ -103,9 +103,10 @@ test("creates a flag", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("new-flag").click();
   await page.getByLabel("Name").fill("Fast lane");
-  await page.getByLabel("Key").fill("fast-lane");
+  await page.getByLabel("Key", { exact: true }).fill("fast-lane");
   await page.getByLabel("Tags").fill("perf, checkout");
   await page.getByLabel("Temporary").check();
+  await page.getByLabel("Visible to client keys").check();
   await page.getByRole("button", { name: "Create flag" }).click();
 
   const row = page.getByTestId("flag-fast-lane");
@@ -114,6 +115,11 @@ test("creates a flag", async ({ page }) => {
   await expect(row).toContainText("temporary");
   await expect(row).toContainText("perf");
   await expect(page.getByTestId("toggle-fast-lane")).toHaveText("Off");
+
+  await page.getByTestId("open-fast-lane").click();
+  await expect(page.getByTestId("meta-name")).toHaveValue("Fast lane");
+  await expect(page.getByLabel("Visible to client keys")).toBeChecked();
+  await expect(page.getByLabel("Temporary")).toBeChecked();
 });
 
 test("creating a flag with a taken key shows the server's reason and keeps the dialog", async ({
@@ -122,7 +128,7 @@ test("creating a flag with a taken key shows the server's reason and keeps the d
   await page.goto("/");
   await page.getByTestId("new-flag").click();
   await page.getByLabel("Name").fill("Again");
-  await page.getByLabel("Key").fill("dark-mode");
+  await page.getByLabel("Key", { exact: true }).fill("dark-mode");
   await page.getByRole("button", { name: "Create flag" }).click();
   await expect(page.getByTestId("create-error")).toContainText("already exists");
 });
@@ -131,7 +137,7 @@ test("a bad key is caught before it is sent", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("new-flag").click();
   await page.getByLabel("Name").fill("Bad");
-  await page.getByLabel("Key").fill("Not A Key");
+  await page.getByLabel("Key", { exact: true }).fill("Not A Key");
   await page.getByRole("button", { name: "Create flag" }).click();
   await expect(page.getByTestId("create-error")).toContainText("key");
 });

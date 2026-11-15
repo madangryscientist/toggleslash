@@ -255,16 +255,23 @@ Under `/api/v1`, every route behind the `admin` policy, so for the root token an
     - A stream ends when the client leaves or the host starts stopping, since Kestrel otherwise waits on open
       requests at shutdown. Either way its subscriber is removed.
     - Writes that signal are the ones the ruleset can see: config, toggle, segment, flag create, archive and restore.
-      A flag `PATCH` (its name and description are not in the ruleset) and a new environment (no keys yet) do not.
+      A flag `PATCH` (its name and description are not in the ruleset) and a new environment (no keys yet) do not,
+      except a `PATCH` that changes `clientVisible`, which signals every environment of the project (see the changes route).
   - `GET /sdk/v1/changes` (client key only; a server key is 403) is the same Server-Sent Events for a browser, which must
     not read the ruleset or its ETag. It runs the stream's loop (`RulesetStream`) and sends the same `connected`, `changed`
     and keep-alive, but every event's `data` is `{}`: no tag, no flag key, no count. It still compares tags inside the
-    server, so a write that leaves the served bytes as they were sends nothing. The client calls `evaluate` again on
+    server, so a write that leaves the served bytes as they were sends nothing. It also compares the keys a client key
+    may evaluate, so marking a flag visible or hidden sends `changed` though the bytes and the tag stay the same (the
+    server stream sends nothing for it). The client calls `evaluate` again on
     `changed`. It is the one stream route with CORS, and its connections are limited per IP and per key (see Rate limits).
   - `POST /sdk/v1/evaluate` (server or client key) takes `{ "context: { "key", "attributes" }, "flagKey"? }`
     and returns `{ "flags": { "<key>": { "value", "variationIndex", "reason" } } }`, from the same
     `ToggleSlash.Evaluation` the vectors run against, for the key's environment: every flag that is
-    not archived, or only `flagKey`. `reason` is `kind` plus whichever of `ruleIndex`, `flagKey` (the
+    not archived, or only `flagKey`. A client key is public, so it is answered only the flags marked visible to client
+    keys (the flag's `clientVisible`, false for a new flag; not part of the ruleset, so it moves no ETag), and a hidden
+    `flagKey` is the same `404` as a missing one. A server key and the admin diagnostic route answer every flag. Hidden
+    flags stay in the ruleset the evaluator loads, so a visible flag's hidden prerequisite still evaluates, and its
+    `PREREQUISITE_FAILED` reason can name it. `reason` is `kind` plus whichever of `ruleIndex`, `flagKey` (the
     failed prerequisite) and `code` apply. It never returns rules, targets, segments, salts, prerequisites or any
     context key but the caller's own. A flag that cannot be evaluated is reported in its own entry
     (`kind: ERROR`, `value: null`) and does not fail the request. An invalid context or body is a `400`
@@ -272,7 +279,7 @@ Under `/api/v1`, every route behind the `admin` policy, so for the root token an
     or is archived is a `404`.
   - `POST /sdk/v1/events` (server or client key) takes `{ "events": [{ "flag", "variationIndex", "count", "day" }] }`
     (`day` is `yyyy-MM-dd`, UTC) and adds each count to the key's own environment, summing entries that share a
-    flag, variation and day. It answers `{ "accepted", "unknownFlags" }`. See **Usage counts** below. It is for
+    flag, variation and day. For a client key a flag not marked visible to client keys is unknown, as on evaluate. It answers `{ "accepted", "unknownFlags" }`. See **Usage counts** below. It is for
     evaluations the server did not perform (a server SDK evaluating locally): `evaluate` counts its own, so an SDK
     that calls `evaluate` and also reports the result here counts it twice.
   - **CORS is on `evaluate`, `events` and `changes` only**: any origin, `GET` and `POST`, the `Authorization` and `Content-Type` headers, a ten-minute

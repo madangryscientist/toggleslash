@@ -25,6 +25,7 @@ function toDetail(raw: unknown): FlagDetail {
     owner: typeof raw["owner"] === "string" ? raw["owner"] : "",
     tags: strings(raw["tags"]),
     temporary: raw["temporary"] === true,
+    clientVisible: raw["clientVisible"] === true,
     archived: typeof raw["archivedAt"] === "string",
     lifecycle: lifecycleOf(raw["lifecycle"]),
     variations: variationLabels(raw["variations"]),
@@ -71,6 +72,7 @@ export interface FlagPatch {
   description: string;
   owner: string;
   temporary: boolean;
+  clientVisible: boolean;
   tags: string[];
 }
 

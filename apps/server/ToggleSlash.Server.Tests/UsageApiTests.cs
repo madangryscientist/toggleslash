@@ -22,8 +22,9 @@ public sealed class UsageApiTests : IDisposable
         await server.SeedProject();
         await server.SeedEnvironment("shop", "prod");
         await server.SeedEnvironment("shop", "staging");
-        await server.SeedFlag("shop", "checkout");
-        await server.SeedFlag("shop", "banner", ["a", "b", "c"]);
+        // Visible to client keys: several tests count what a client key's evaluate served.
+        await server.SeedFlag("shop", "checkout", clientVisible: true);
+        await server.SeedFlag("shop", "banner", ["a", "b", "c"], clientVisible: true);
     }
 
     private async Task<string> Key(string kind, string env = "prod")

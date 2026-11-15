@@ -94,7 +94,7 @@ describe.skipIf(skip)("server, CLI and SDK end to end", () => {
   it("creates a project, an environment, a flag and SDK keys with the CLI", async () => {
     await cli.json(["projects", "create", PROJECT, "--name", "Shop"]);
     await cli.json(["envs", "create", ENV, "--project", PROJECT]);
-    await cli.json(["flags", "create", "new-checkout", "--project", PROJECT]);
+    await cli.json(["flags", "create", "new-checkout", "--project", PROJECT, "--client-visible"]);
 
     const serverCreated = record(
       await cli.json([
@@ -211,6 +211,8 @@ describe.skipIf(skip)("server, CLI and SDK end to end", () => {
         PROJECT,
         "--variations",
         JSON.stringify(variations),
+        // The comparison asks with a client key, which is answered only flags marked visible to it.
+        "--client-visible",
       ]);
 
     async function configure(flag: string, config: Record<string, unknown>): Promise<void> {

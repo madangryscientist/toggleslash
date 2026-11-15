@@ -9,7 +9,7 @@ export const flagCases: Case[] = [
     routes: { [`GET ${P}/shop/flags`]: json(200, [{ ...flag, lifecycle: "inactive" }]) },
     method: "GET",
     path: `${P}/shop/flags`,
-    shows: ["new-checkout", "inactive"],
+    shows: ["new-checkout", "inactive", "CLIENT VISIBLE", "true"],
     reply: [{ ...flag, lifecycle: "inactive" }],
   },
   {

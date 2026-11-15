@@ -42,7 +42,7 @@ public sealed record RulesetResponse(RulesetFlag[] Flags, RulesetSegment[] Segme
 /// An environment's ruleset as served. <see cref="Body"/> is exactly what the ruleset route sends and
 /// <see cref="ETag"/> is the strong tag of those bytes, so the tag changes when, and only when, the body does.
 /// </summary>
-internal sealed class RulesetSnapshot(RulesetResponse ruleset, byte[] body)
+internal sealed class RulesetSnapshot(RulesetResponse ruleset, byte[] body, IReadOnlyList<string>? clientFlagKeys)
 {
     private static readonly JsonSerializerOptions WireOptions = new(JsonSerializerDefaults.Web);
 
@@ -58,6 +58,12 @@ internal sealed class RulesetSnapshot(RulesetResponse ruleset, byte[] body)
     /// <summary>Keys of the flags in the ruleset, in key order.</summary>
     public IReadOnlyList<string> FlagKeys { get; } = [.. ruleset.Flags.Select(flag => flag.Key)];
 
+    /// <summary>
+    /// Keys of the flags a client key may evaluate, in key order. Not part of <see cref="Body"/>, so it never moves the
+    /// ETag. <c>null</c> for a <see cref="FromStored"/> body, which kept no visibility and serves no client key.
+    /// </summary>
+    public IReadOnlyList<string>? ClientFlagKeys { get; } = clientFlagKeys;
+
     /// <summary>The ruleset as <c>ToggleSlash.Evaluation</c> loads it, from the same bytes that were served.</summary>
     public Ruleset Load()
     {
@@ -65,11 +71,11 @@ internal sealed class RulesetSnapshot(RulesetResponse ruleset, byte[] body)
         return Ruleset.Load(document.RootElement);
     }
 
-    public static RulesetSnapshot Of(RulesetResponse ruleset) =>
-        new(ruleset, JsonSerializer.SerializeToUtf8Bytes(ruleset, WireOptions));
+    public static RulesetSnapshot Of(RulesetResponse ruleset, IReadOnlyList<string> clientFlagKeys) =>
+        new(ruleset, JsonSerializer.SerializeToUtf8Bytes(ruleset, WireOptions), clientFlagKeys);
 
     /// <summary>A snapshot of bytes that were served and kept, so its hash is the hash they were stored under.</summary>
-    public static RulesetSnapshot FromStored(byte[] body) => new(Parse(body), body);
+    public static RulesetSnapshot FromStored(byte[] body) => new(Parse(body), body, null);
 
     /// <summary>A body this class serialized, read back.</summary>
     public static RulesetResponse Parse(byte[] body) => JsonSerializer.Deserialize<RulesetResponse>(body, WireOptions)!;
@@ -122,7 +128,8 @@ internal sealed class RulesetReader(ToggleSlashDbContext database, ILogger<Rules
             {
                 IncludedContexts = NonEmpty(s.IncludedContexts),
                 ExcludedContexts = NonEmpty(s.ExcludedContexts),
-            })]));
+            })]),
+            [.. flags.Where(f => f.flag.ClientVisible).Select(f => f.flag.Key)]);
     }
 
     /// <summary>

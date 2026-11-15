@@ -36,9 +36,10 @@ public sealed class DiagnoseApiTests : IDisposable
         await server.SeedProject();
         await server.SeedEnvironment("shop", "prod");
         await server.SeedEnvironment("shop", "staging");
+        // Visible to client keys, so the SDK route answers every flag to compare with.
         foreach (var flag in new[] { "dark-mode", "beta-ui", "old-flag" })
         {
-            await server.SeedFlag("shop", flag);
+            await server.SeedFlag("shop", flag, clientVisible: true);
         }
         await Save("dark-mode", Targeted);
         await ApiServer.Expect(HttpStatusCode.OK, await server.Post("/api/v1/projects/shop/flags/beta-ui/environments/prod/toggle", new { on = true }));

@@ -6,6 +6,7 @@ export interface Flag {
   description: string;
   variations: unknown[];
   temporary: boolean;
+  clientVisible: boolean;
   owner: string | null;
   tags: string[];
   createdAt: string;
@@ -96,6 +97,7 @@ interface Seed {
   name: string;
   tags?: string[];
   temporary?: boolean;
+  clientVisible?: boolean;
   description?: string;
   last?: string | null;
   lifecycle?: Flag["lifecycle"];
@@ -109,6 +111,7 @@ export function flag(seed: Seed): Flag {
     description: seed.description ?? "",
     variations: [true, false],
     temporary: seed.temporary ?? false,
+    clientVisible: seed.clientVisible ?? false,
     owner: null,
     tags: seed.tags ?? [],
     createdAt: "2026-11-01T09:00:00Z",

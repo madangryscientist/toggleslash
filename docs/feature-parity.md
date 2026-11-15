@@ -13,9 +13,9 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 
 | Metric | ToggleSlash | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| ✅ yes | 27 | 63 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
+| ✅ yes | 28 | 64 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
 | 🟡 partial | 12 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
-| ❌ no | 27 | 3 | 9 | 7 | 6 | 7 | 7 | 9 | 17 |
+| ❌ no | 27 | 3 | 10 | 8 | 7 | 8 | 8 | 10 | 18 |
 
 ## Matrix
 
@@ -72,6 +72,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | SDK keys | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Private attributes | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Secure mode and signed contexts | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Client-side availability | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 ### Experimentation
 
@@ -175,6 +176,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | SDK keys | ✅ | `api:/api/v1/projects/{project}/environments/{env}/keys`<br>`api:/api/v1/projects/{project}/environments/{env}/keys/{id}`<br>`cli:keys list`<br>`cli:keys create`<br>`cli:keys revoke`<br>`dashboard:/keys` |
 | Private attributes | ❌ | none |
 | Secure mode and signed contexts | ❌ | none |
+| Client-side availability | ✅ | `api:/api/v1/projects/{project}/flags/{flag}`<br>`cli:flags create`<br>`dashboard:/flags/$flag`<br>`test:apps/server/ToggleSlash.Server.Tests/ClientVisibilityTests.cs` |
 
 ### Experimentation
 

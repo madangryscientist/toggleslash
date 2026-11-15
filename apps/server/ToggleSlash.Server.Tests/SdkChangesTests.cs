@@ -50,7 +50,7 @@ public sealed class SdkChangesTests : IDisposable
     private async Task Toggle(bool on) =>
         await ApiServer.Expect(HttpStatusCode.OK, await server.Post($"{Flags}/dark-mode/environments/prod/toggle", new { on }));
 
-    private Task<OpenStream> Open(string key) => OpenStream.Connect(server, key);
+    private Task<OpenStream> Open(string key, string path = ChangesPath) => OpenStream.Connect(server, key, path);
 
     // --- who may open it ---------------------------------------------------------------------------------------
 
@@ -115,6 +115,31 @@ public sealed class SdkChangesTests : IDisposable
             Assert.DoesNotContain(etag.Trim('"'), stream.Transcript);
         }
         Assert.DoesNotContain("dark-mode", stream.Transcript);
+    }
+
+    [Fact]
+    public async Task Marking_a_flag_visible_to_client_keys_signals_changed_and_sends_nothing_on_the_server_stream()
+    {
+        await Seed();
+        using var changes = await Open(await Key("client"));
+        using var stream = await Open(await Key("server"), StreamPath);
+        await changes.NextEvent();
+        await stream.NextEvent();
+
+        await ApiServer.Expect(HttpStatusCode.OK, await server.Patch($"{Flags}/dark-mode", new { clientVisible = true }));
+        Assert.Equal(("changed", "{}"), await changes.NextEvent());
+        // Leaving it as it is changes nothing, so nothing is sent.
+        await ApiServer.Expect(HttpStatusCode.OK, await server.Patch($"{Flags}/dark-mode", new { clientVisible = true }));
+        await ApiServer.Expect(HttpStatusCode.OK, await server.Patch($"{Flags}/dark-mode", new { clientVisible = false }));
+        Assert.Equal(("changed", "{}"), await changes.NextEvent());
+
+        // One tick per open stream: each waiting stream takes one.
+        heartbeat.Tick();
+        heartbeat.Tick();
+        await changes.NextKeepAlive();
+        // The bytes never moved: the server stream heard no change, only the keep-alive.
+        await stream.NextKeepAlive();
+        Assert.DoesNotContain("dark-mode", changes.Transcript);
     }
 
     // --- the end of a stream -----------------------------------------------------------------------------------
@@ -188,10 +213,10 @@ public sealed class SdkChangesTests : IDisposable
         /// <summary>Every line read so far.</summary>
         public string Transcript => string.Join('\n', lines);
 
-        public static async Task<OpenStream> Connect(ApiServer server, string key)
+        public static async Task<OpenStream> Connect(ApiServer server, string key, string path)
         {
             var client = server.Server.CreateClient();
-            using var request = new HttpRequestMessage(HttpMethod.Get, ChangesPath);
+            using var request = new HttpRequestMessage(HttpMethod.Get, path);
             request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {key}");
             var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead).WaitAsync(Guard);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);

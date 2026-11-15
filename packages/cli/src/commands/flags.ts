@@ -43,9 +43,15 @@ const flagsList: Command = {
       cell(f["variations"]),
       Array.isArray(f["tags"]) && f["tags"].length > 0 ? f["tags"].join(",") : "-",
       stage(f),
+      cell(f["clientVisible"]),
       cell(f["lastEvaluated"]),
     ]);
-    ctx.out(table(["KEY", "NAME", "VARIATIONS", "TAGS", "STATE", "LAST EVALUATED"], rows));
+    ctx.out(
+      table(
+        ["KEY", "NAME", "VARIATIONS", "TAGS", "STATE", "CLIENT VISIBLE", "LAST EVALUATED"],
+        rows,
+      ),
+    );
   },
 };
 
@@ -81,6 +87,7 @@ const flagsShow: Command = {
       ["description", cell(found["description"])],
       ["variations", cell(found["variations"])],
       ["temporary", cell(found["temporary"])],
+      ["client visible", cell(found["clientVisible"])],
       ["owner", cell(found["owner"])],
       [
         "tags",
@@ -132,6 +139,7 @@ function createRequest(values: Values, key: string): Record<string, unknown> {
   const optional: [string, unknown][] = [
     ["description", str(values, "description")],
     ["temporary", flagOn(values, "temporary") ? true : undefined],
+    ["clientVisible", flagOn(values, "client-visible") ? true : undefined],
     ["owner", str(values, "owner")],
     ["tags", strings(values, "tag")],
     ["offVariation", whole(values, "off-variation")],
@@ -147,14 +155,16 @@ function createRequest(values: Values, key: string): Record<string, unknown> {
 const flagsCreate: Command = {
   name: "flags create",
   usage:
-    "<key> --project <project> [--name <name>] [--variations <json>] [--description <text>] [--temporary] [--owner <owner>] [--tag <tag>]... [--off-variation <n>] [--fallthrough-variation <n>]",
-  summary: "create a flag (variations default to [true,false]: a boolean flag)",
+    "<key> --project <project> [--name <name>] [--variations <json>] [--description <text>] [--temporary] [--client-visible] [--owner <owner>] [--tag <tag>]... [--off-variation <n>] [--fallthrough-variation <n>]",
+  summary:
+    "create a flag (variations default to [true,false]: a boolean flag; client keys see it only with --client-visible)",
   options: {
     project: PROJECT,
     name: { type: "string" },
     variations: { type: "string" },
     description: { type: "string" },
     temporary: { type: "boolean" },
+    "client-visible": { type: "boolean" },
     owner: { type: "string" },
     tag: { type: "string", multiple: true },
     "off-variation": { type: "string" },

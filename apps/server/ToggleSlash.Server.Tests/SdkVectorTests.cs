@@ -124,7 +124,7 @@ public sealed class SdkVectorTests(ApiServer server) : IClassFixture<ApiServer>
 
     private static int project;
 
-    /// <summary>A project and environment of their own, the vector's flags and segments stored, and a client key for it.</summary>
+    /// <summary>A project and environment of their own, the vector's flags and segments stored, and a server key for it (a client key sees only flags marked visible to it).</summary>
     private async Task<string> Store(JsonElement vector)
     {
         var key = $"vector-{Interlocked.Increment(ref project)}";
@@ -182,7 +182,7 @@ public sealed class SdkVectorTests(ApiServer server) : IClassFixture<ApiServer>
             await database.SaveChangesAsync();
         }
 
-        var created = await server.Post($"/api/v1/projects/{key}/environments/prod/keys", new { kind = "client", name = "vector" });
+        var created = await server.Post($"/api/v1/projects/{key}/environments/prod/keys", new { kind = "server", name = "vector" });
         await ApiServer.Expect(HttpStatusCode.Created, created);
         return (await ApiServer.Json(created)).GetProperty("key").GetString()!;
     }

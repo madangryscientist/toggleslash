@@ -96,6 +96,7 @@ function createInput(data: unknown): CreateInput {
       name: str(f["name"]),
       description: str(f["description"]),
       temporary: f["temporary"] === true,
+      clientVisible: f["clientVisible"] === true,
       tags: strings(f["tags"]),
     },
   };
@@ -196,6 +197,7 @@ function metaInput(data: unknown): MetaInput {
       description: str(p["description"]),
       owner: str(p["owner"]),
       temporary: p["temporary"] === true,
+      clientVisible: p["clientVisible"] === true,
       tags: strings(p["tags"]),
     },
   };

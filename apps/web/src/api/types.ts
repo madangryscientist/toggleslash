@@ -40,6 +40,8 @@ export interface FlagDetail {
   owner: string;
   tags: string[];
   temporary: boolean;
+  /** Whether a client key (the browser SDK) is answered this flag; a server key always is. */
+  clientVisible: boolean;
   archived: boolean;
   lifecycle: Lifecycle | null;
   /** Each variation's value as JSON text (`true`, `"blue"`, `42`); the index is what targeting refers to. */
@@ -124,6 +126,7 @@ export interface NewFlag {
   name: string;
   description: string;
   temporary: boolean;
+  clientVisible: boolean;
   tags: string[];
 }
 

@@ -49,6 +49,9 @@ public static class ServerAuth
     public static long EnvironmentId(ClaimsPrincipal user) =>
         long.Parse(user.FindFirst(EnvironmentClaim)!.Value, System.Globalization.CultureInfo.InvariantCulture);
 
+    /// <summary>Whether the caller is a client key, which is public and sees only flags marked visible to client keys.</summary>
+    public static bool IsClientKey(ClaimsPrincipal user) => user.FindFirst(PrincipalClaim)?.Value == ClientKeyPolicy;
+
     /// <summary>The authenticated SDK key's id.</summary>
     public static long KeyId(ClaimsPrincipal user) =>
         long.Parse(user.FindFirst(KeyClaim)!.Value, System.Globalization.CultureInfo.InvariantCulture);

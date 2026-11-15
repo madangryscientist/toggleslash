@@ -71,8 +71,8 @@ public sealed class ApiServer : IDisposable
     public async Task SeedEnvironment(string project, string key) =>
         await Expect(HttpStatusCode.Created, await Post($"/api/v1/projects/{project}/environments", new { key, name = key }));
 
-    public async Task SeedFlag(string project, string key, object[]? variations = null) =>
-        await Expect(HttpStatusCode.Created, await Post($"/api/v1/projects/{project}/flags", new { key, name = key, variations = variations ?? [true, false] }));
+    public async Task SeedFlag(string project, string key, object[]? variations = null, bool clientVisible = false) =>
+        await Expect(HttpStatusCode.Created, await Post($"/api/v1/projects/{project}/flags", new { key, name = key, variations = variations ?? [true, false], clientVisible }));
 
     public static async Task<JsonElement> Json(HttpResponseMessage response) =>
         JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.Clone();

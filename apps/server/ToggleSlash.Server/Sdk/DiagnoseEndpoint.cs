@@ -52,7 +52,7 @@ public static class DiagnoseEndpoint
         var ask = new EvaluateRequest(request.Context, request.FlagKey);
         if (request.Etag is null)
         {
-            var current = await EvaluateAll(ask, () => reader.Read(environment.Id, cancellation));
+            var current = await EvaluateAll(ask, () => reader.Read(environment.Id, cancellation), EveryFlag);
             return current.Failure ?? Results.Ok(current.Response);
         }
         var stored = await database.RulesetSnapshots.AsNoTracking()
@@ -61,7 +61,10 @@ public static class DiagnoseEndpoint
         {
             return Failures.RulesetNotFound();
         }
-        var outcome = await EvaluateAll(ask, () => Task.FromResult(RulesetSnapshot.FromStored(stored.Body)));
+        var outcome = await EvaluateAll(ask, () => Task.FromResult(RulesetSnapshot.FromStored(stored.Body)), EveryFlag);
         return outcome.Failure ?? Results.Ok(outcome.Response);
     }
+
+    /// <summary>An operator sees every flag, whatever a client key may see.</summary>
+    private static IReadOnlyList<string> EveryFlag(RulesetSnapshot snapshot) => snapshot.FlagKeys;
 }

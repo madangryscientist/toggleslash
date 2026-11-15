@@ -146,7 +146,7 @@ public static class UsageEndpoints
             entries.Add(entry!);
         }
 
-        var result = await recorder.Record(ServerAuth.EnvironmentId(http.User), entries, http.RequestAborted);
+        var result = await recorder.Record(ServerAuth.EnvironmentId(http.User), entries, http.RequestAborted, ServerAuth.IsClientKey(http.User));
         return result.OutOfRange is { } bad
             ? Failures.BadRequest($"\"{bad.FlagKey}\" has no variation {bad.Variation}. Nothing in the batch was counted.")
             : Results.Ok(new EventsResponse(result.Accepted, result.UnknownFlags));

@@ -132,6 +132,7 @@ export function patchFlag(project: string, flag: Flag, body: Body): Reply {
   if (typeof body["description"] === "string") flag.description = body["description"];
   if (typeof body["owner"] === "string") flag.owner = body["owner"] === "" ? null : body["owner"];
   if (typeof body["temporary"] === "boolean") flag.temporary = body["temporary"];
+  if (typeof body["clientVisible"] === "boolean") flag.clientVisible = body["clientVisible"];
   if (Array.isArray(body["tags"])) flag.tags = body["tags"].map(String);
   record({ project, flag: flag.key, action: "flag.updated", env: null, version: null });
   return [200, flag];

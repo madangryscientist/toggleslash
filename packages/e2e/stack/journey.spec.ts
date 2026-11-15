@@ -85,7 +85,9 @@ async function createFlagWithRule({ dashboard, free, pro }: Journey) {
     await expect(name).toBeVisible({ timeout: 2_000 });
   }).toPass({ timeout: 15_000 });
   await name.fill("Journey flag");
-  await dashboard.getByLabel("Key").fill(FLAG);
+  await dashboard.getByLabel("Key", { exact: true }).fill(FLAG);
+  // The browser SDK's table below must see it, and a client key is answered only flags marked visible.
+  await dashboard.getByLabel("Visible to client keys").check();
   await dashboard.getByRole("button", { name: "Create flag" }).click();
   await expect(dashboard.getByTestId(`flag-${FLAG}`)).toBeVisible();
 

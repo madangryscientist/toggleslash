@@ -80,6 +80,7 @@ async function createFlag({ req, res, project }: Ctx) {
     name: String(body["name"]),
     tags: Array.isArray(body["tags"]) ? body["tags"].map(String) : [],
     temporary: body["temporary"] === true,
+    clientVisible: body["clientVisible"] === true,
     description: typeof body["description"] === "string" ? body["description"] : "",
   });
   activeFlags(project).push(created);

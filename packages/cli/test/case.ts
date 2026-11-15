@@ -13,6 +13,7 @@ export const flag = {
   description: "",
   variations: [true, false],
   temporary: false,
+  clientVisible: true,
   owner: null,
   tags: ["checkout"],
   createdAt: "2026-11-01T11:00:00Z",

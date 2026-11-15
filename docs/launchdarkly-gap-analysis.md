@@ -285,7 +285,8 @@ browser SDK that calls the server per evaluation. It is not enough for a good on
 
 - per-context result caching and a change stream (otherwise every flag read is a network round trip);
 - secure mode / signed contexts (otherwise anyone can evaluate as any context key);
-- flag-level client availability controls (otherwise every flag is exposed to every client);
+- flag-level client availability controls: **built**. A flag reaches a client key only when marked visible to client
+  keys (`clientVisible`, false for a new flag); a server key sees every flag. See `docs/sdk-browser.md`;
 - private-attribute handling and event policy;
 - a CDN/edge story for latency.
 

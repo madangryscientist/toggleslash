@@ -36,6 +36,9 @@ public sealed class Flag
     public required string Salt { get; set; }
 
     public bool Temporary { get; set; }
+
+    /// <summary>Whether a client key may evaluate this flag. Not part of the ruleset: only <c>evaluate</c> reads it.</summary>
+    public bool ClientVisible { get; set; }
     public string? Owner { get; set; }
 
     /// <summary>JSON array of strings.</summary>

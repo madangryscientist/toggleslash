@@ -84,6 +84,8 @@ public sealed class StorageTests : IDisposable
         var stored = scope.ServiceProvider.GetRequiredService<ToggleSlashDbContext>();
         var flag = stored.Flags.Single();
         Assert.Equal(("checkout", "[true,false]", true), (flag.Key, flag.Variations, flag.Temporary));
+        // A flag from before client visibility is hidden from client keys until it is marked.
+        Assert.False(flag.ClientVisible);
         Assert.Equal(DateTimeKind.Utc, flag.CreatedAt.Kind);
         Assert.Equal(Now, flag.CreatedAt);
         var config = stored.FlagEnvironmentConfigs.Single();
