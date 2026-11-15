@@ -7,6 +7,7 @@ import {
   E2E_OPERATOR_PASSWORD,
   E2E_SESSION_SECRET,
   PORT,
+  SIGNED_IN_STATE,
   UNCONFIGURED_PORT,
 } from "./constants.ts";
 import { gotoHydrated } from "./goto.ts";
@@ -22,17 +23,11 @@ const UNCONFIGURED = `http://localhost:${UNCONFIGURED_PORT}`;
 const ORIGIN = `http://localhost:${PORT}`;
 const CLIENT_BUILD = join(import.meta.dirname, "../dist/client");
 const COOKIE = "toggleslash_session";
-
-test.use({ storageState: { cookies: [], origins: [] } });
+const SIGNED_OUT = { cookies: [], origins: [] };
 
 test.beforeEach(async ({ request }) => {
   await request.post(`${API}/__reset`);
 });
-
-async function signIn(page: Page, password = E2E_OPERATOR_PASSWORD) {
-  await page.getByLabel("Password").fill(password);
-  await page.getByTestId("sign-in-submit").click();
-}
 
 function filesUnder(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
@@ -72,97 +67,78 @@ async function expectRefused(request: APIRequestContext, base: string, name: str
   expect({ name, statuses }).toEqual({ name, statuses: [401, 405] });
 }
 
-test("a signed-out page redirects to sign-in, and returns there afterwards", async ({ page }) => {
-  await gotoHydrated(page, "/keys?project=shop&env=staging");
-  await expect(page).toHaveURL(/\/sign-in\?returnTo=%2Fkeys%3Fproject%3Dshop%26env%3Dstaging/);
-  await signIn(page);
-  await expect(page).toHaveURL(/\/keys\?project=shop&env=staging$/);
-  await expect(page.getByLabel("Environment")).toHaveValue("staging");
-});
-
-test("a wrong password stays signed out, and says only that it failed", async ({ page }) => {
-  await gotoHydrated(page, "/");
-  await signIn(page, "not the password at all");
-  await expect(page).toHaveURL(/\/sign-in\?failed=true/);
-  await expect(page.getByTestId("sign-in-failed")).toHaveText(
-    /That did not work\s*Check the password and try again\./,
+/** The session cookie the setup project signed in with. */
+function signedInCookie(): { name: string; value: string } {
+  const state: { cookies: { name: string; value: string }[] } = JSON.parse(
+    readFileSync(SIGNED_IN_STATE, "utf8"),
   );
-  expect(page.url()).not.toContain("password");
-  expect((await page.context().cookies()).filter((c) => c.name === COOKIE)).toEqual([]);
-  await gotoHydrated(page, "/");
-  await expect(page).toHaveURL(/\/sign-in/);
-});
+  const cookie = state.cookies.find((c) => c.name === COOKIE);
+  if (cookie === undefined) throw new Error("the setup project saved no session cookie");
+  return cookie;
+}
 
-test("sign-out ends access", async ({ page }) => {
-  await gotoHydrated(page, "/");
-  await signIn(page);
-  await expect(page.getByRole("heading", { name: "Flags" })).toBeVisible();
-  await page.getByTestId("sign-out").click();
-  await expect(page).toHaveURL(/\/sign-in/);
-  expect((await page.context().cookies()).filter((c) => c.name === COOKIE)).toEqual([]);
-  await gotoHydrated(page, "/keys");
-  await expect(page).toHaveURL(/\/sign-in/);
-});
+test.describe("signed out", () => {
+  test.use({ storageState: SIGNED_OUT });
 
-test("a session that ends while a page is open sends the next call to sign-in", async ({
-  page,
-}) => {
-  await gotoHydrated(page, "/");
-  await signIn(page);
-  await expect(section(page, "SDK keys")).toBeVisible();
-  await page.context().clearCookies();
-  await section(page, "SDK keys").click();
-  await expect(page).toHaveURL(/\/sign-in\?returnTo=/);
-});
-
-test("signed-out direct requests to every server function return no data", async ({ request }) => {
-  const functions = builtServerFunctions();
-  expect([...functions.keys()].toSorted()).toEqual(declaredServerFunctions().toSorted());
-  for (const [name, url] of functions) {
-    await expectRefused(request, ORIGIN, name, url);
-  }
-});
-
-test("the same request with a real session gets its data", async ({ page }) => {
-  await gotoHydrated(page, "/");
-  await signIn(page);
-  await expect(page.getByRole("heading", { name: "Flags" })).toBeVisible();
-  const url = builtServerFunctions().get("loadEnvironments") ?? "";
-  const response = await page.context().request.get(url, {
-    headers: { "x-tsr-serverfn": "true" },
+  test("a page redirects to sign-in, and the form returns there afterwards", async ({ page }) => {
+    await gotoHydrated(page, "/keys?project=shop&env=staging");
+    await expect(page).toHaveURL(/\/sign-in\?returnTo=%2Fkeys%3Fproject%3Dshop%26env%3Dstaging/);
+    await page.getByLabel("Password").fill(E2E_OPERATOR_PASSWORD);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page).toHaveURL(/\/keys\?project=shop&env=staging$/);
+    await expect(page.getByLabel("Environment")).toHaveValue("staging");
   });
-  expect(response.status()).toBe(200);
-  expect(await response.text()).toContain("production");
-});
 
-test("a tampered cookie is refused by pages and by server functions", async ({ page }) => {
-  await gotoHydrated(page, "/");
-  await signIn(page);
-  await expect(page.getByRole("heading", { name: "Flags" })).toBeVisible();
-  const context = page.context();
-  const real = (await context.cookies()).find((c) => c.name === COOKIE);
-  if (real === undefined) throw new Error("no session cookie");
+  test("a wrong password sets no cookie, and the page it lands on says only that it failed", async ({
+    request,
+  }) => {
+    const answer = await request.post("/sign-in", {
+      form: { password: "not the password at all", returnTo: "/" },
+      maxRedirects: 0,
+    });
+    expect(answer.status()).toBe(303);
+    expect(answer.headers()["set-cookie"]).toBeUndefined();
+    const location = answer.headers()["location"] ?? "";
+    expect(location).toMatch(/\/sign-in\?.*failed=true/);
+    expect(location).not.toContain("password");
 
-  const [expiry, signature = ""] = real.value.split(".");
-  const flipped = `${signature.startsWith("0") ? "1" : "0"}${signature.slice(1)}`;
-  await context.clearCookies();
-  await context.addCookies([{ ...real, value: `${expiry ?? ""}.${flipped}` }]);
-  await gotoHydrated(page, "/");
-  await expect(page).toHaveURL(/\/sign-in/);
+    const page = await request.get(location);
+    const html = await page.text();
+    expect(html).toContain("That did not work");
+    expect(html).toContain("Check the password and try again.");
+  });
 
-  const url = builtServerFunctions().get("loadEnvironments") ?? "";
-  const response = await context.request.get(url);
-  expect(response.status()).toBe(401);
-});
+  test("direct requests to every server function return no data", async ({ request }) => {
+    const functions = builtServerFunctions();
+    expect([...functions.keys()].toSorted()).toEqual(declaredServerFunctions().toSorted());
+    for (const [name, url] of functions) {
+      await expectRefused(request, ORIGIN, name, url);
+    }
+  });
 
-test.describe("with neither secret set", () => {
-  test("the sign-in page names the variables and nobody gets in", async ({ page, request }) => {
-    await gotoHydrated(page, `${UNCONFIGURED}/`);
-    await expect(page).toHaveURL(/\/sign-in/);
-    const message = page.getByTestId("sign-in-unconfigured");
-    await expect(message).toContainText("TOGGLESLASH_OPERATOR_PASSWORD");
-    await expect(message).toContainText("TOGGLESLASH_SESSION_SECRET");
-    await expect(page.getByLabel("Password")).toHaveCount(0);
+  test("a tampered cookie is refused by pages and by server functions", async ({ request }) => {
+    const real = signedInCookie();
+    const [expiry, signature = ""] = real.value.split(".");
+    const flipped = `${signature.startsWith("0") ? "1" : "0"}${signature.slice(1)}`;
+    const cookie = `${COOKIE}=${expiry ?? ""}.${flipped}`;
+
+    const page = await request.get("/", { headers: { cookie }, maxRedirects: 0 });
+    expect(page.status()).toBe(303);
+    expect(page.headers()["location"]).toMatch(/\/sign-in/);
+    const url = builtServerFunctions().get("loadEnvironments") ?? "";
+    const call = await request.get(url, { headers: { cookie, "x-tsr-serverfn": "true" } });
+    expect(call.status()).toBe(401);
+  });
+
+  test("with neither secret set, the sign-in page names the variables and nobody gets in", async ({
+    request,
+  }) => {
+    const page = await request.get(`${UNCONFIGURED}/`);
+    expect(new URL(page.url()).pathname).toBe("/sign-in");
+    const html = await page.text();
+    expect(html).toContain("TOGGLESLASH_OPERATOR_PASSWORD");
+    expect(html).toContain("TOGGLESLASH_SESSION_SECRET");
+    expect(html).not.toContain('name="password"');
 
     const answer = await request.post(`${UNCONFIGURED}/sign-in`, {
       form: { password: E2E_OPERATOR_PASSWORD, returnTo: "/" },
@@ -174,6 +150,32 @@ test.describe("with neither secret set", () => {
     const url = builtServerFunctions().get("loadEnvironments") ?? "";
     await expectRefused(request, UNCONFIGURED, "loadEnvironments", url);
   });
+});
+
+test("a signed-in request to a server function gets its data", async ({ request }) => {
+  const url = builtServerFunctions().get("loadEnvironments") ?? "";
+  const response = await request.get(url, { headers: { "x-tsr-serverfn": "true" } });
+  expect(response.status()).toBe(200);
+  expect(await response.text()).toContain("production");
+});
+
+test("sign-out ends access", async ({ page }) => {
+  await gotoHydrated(page, "/");
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/sign-in/);
+  expect((await page.context().cookies()).filter((c) => c.name === COOKIE)).toEqual([]);
+  await gotoHydrated(page, "/keys");
+  await expect(page).toHaveURL(/\/sign-in/);
+});
+
+test("a session that ends while a page is open sends the next call to sign-in", async ({
+  page,
+}) => {
+  await gotoHydrated(page, "/");
+  await expect(section(page, "SDK keys")).toBeVisible();
+  await page.context().clearCookies();
+  await section(page, "SDK keys").click();
+  await expect(page).toHaveURL(/\/sign-in\?returnTo=/);
 });
 
 test("no secret is in anything the browser is served", () => {

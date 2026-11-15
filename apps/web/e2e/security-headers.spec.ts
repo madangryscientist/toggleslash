@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Response } from "@playwright/test";
-import { API_PORT, E2E_OPERATOR_PASSWORD } from "./constants.ts";
+import { API_PORT } from "./constants.ts";
 import { gotoHydrated } from "./goto.ts";
 
 /** A section link in the dashboard nav. The nav is also in a phone menu, hidden on desktop, so match by role. */
@@ -67,46 +67,29 @@ test.describe("signed out", () => {
     expectHeaders(page.headers());
   });
 
-  test("each response has its own nonce, and every inline script carries it", async ({ page }) => {
-    const responses: Response[] = [];
-    page.on("response", (response) => {
-      if (response.request().resourceType() === "document") responses.push(response);
-    });
-    await gotoHydrated(page, "/sign-in");
-    await page.reload();
-    const nonces = await Promise.all(
-      responses.map(
-        async (response) =>
-          /'nonce-([^']+)'/.exec(
-            (await response.allHeaders())["content-security-policy"] ?? "",
-          )?.[1],
-      ),
-    );
-    expect(nonces.length).toBeGreaterThanOrEqual(2);
-    expect(nonces.every((nonce) => nonce !== undefined)).toBe(true);
-    expect(new Set(nonces).size).toBe(nonces.length);
-
-    // The browser hides a nonce attribute once it has parsed it, but the property keeps it.
-    const bare = await page.evaluate(
-      () =>
-        [...document.querySelectorAll<HTMLScriptElement>("script:not([src])")].filter(
-          (script) => script.nonce === "",
-        ).length,
-    );
-    expect(bare).toBe(0);
+  test("each response has its own nonce, and every inline script carries it", async ({
+    request,
+  }) => {
+    const nonces: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const answer = await request.get("/sign-in");
+      const nonce = /'nonce-([^']+)'/.exec(answer.headers()["content-security-policy"] ?? "")?.[1];
+      if (nonce === undefined) throw new Error("the policy has no nonce");
+      nonces.push(nonce);
+      const inline = [...(await answer.text()).matchAll(/<script(?![^>]*\bsrc=)([^>]*)>/g)];
+      expect(inline.length).toBeGreaterThan(0);
+      for (const [, attributes = ""] of inline) {
+        expect(attributes).toContain(`nonce="${nonce}"`);
+      }
+    }
+    expect(new Set(nonces).size).toBe(2);
   });
 
-  test("signing in through the form and toggling a flag raise no policy violation", async ({
-    page,
-  }) => {
+  test("the sign-in page raises no policy violation", async ({ page }) => {
     const seen = await watchViolations(page);
     await gotoHydrated(page, "/");
     await expect(page).toHaveURL(/\/sign-in/);
-    await page.getByLabel("Password").fill(E2E_OPERATOR_PASSWORD);
-    await page.getByTestId("sign-in-submit").click();
-    await expect(page.getByTestId("toggle-checkout-v2")).toHaveText("On");
-    await page.getByTestId("toggle-checkout-v2").click();
-    await expect(page.getByTestId("toggle-checkout-v2")).toHaveText("Off");
+    await expect(page.getByRole("button", { name: "Sign in" })).toBeEnabled();
     expect(seen).toEqual([]);
   });
 });
@@ -122,8 +105,9 @@ test("a signed-in page, its client assets and a server function carry the header
   expectHeaders((await document?.allHeaders()) ?? {});
 
   // A client-side navigation calls the server functions; the first load rendered them on the server.
-  await page.getByTestId("toggle-checkout-v2").click();
-  await expect(page.getByTestId("toggle-checkout-v2")).toHaveText("Off");
+  const toggle = page.getByRole("button", { name: "Checkout v2 in Production" });
+  await toggle.click();
+  await expect(toggle).toHaveText("Off");
   await section(page, "SDK keys").click();
   await expect(page).toHaveURL(/\/keys/);
 

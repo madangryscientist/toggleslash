@@ -7,6 +7,13 @@ import { expect, type Page } from "@playwright/test";
  */
 export async function gotoHydrated(page: Page, url: string) {
   const response = await page.goto(url);
-  await expect(page.locator("html")).toHaveAttribute("data-hydrated", "");
+  await hydrated(page);
   return response;
+}
+
+/** Resolves once `<html>` carries `data-hydrated`. The root element has no role or name, so this reads the attribute in the page. */
+export async function hydrated(page: Page) {
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.hasAttribute("data-hydrated")))
+    .toBe(true);
 }

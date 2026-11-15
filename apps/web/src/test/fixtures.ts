@@ -1,5 +1,14 @@
 /** Plain data in the shapes the dashboard's server functions answer (`#/api/types`), for DOM tests. */
-import type { DetailLoaded, Environment, FlagDetail, FlagRow, Loaded, Project } from "#/api/types";
+import type {
+  ApiKey,
+  DetailLoaded,
+  Environment,
+  FlagDetail,
+  FlagRow,
+  Loaded,
+  Project,
+  Segment,
+} from "#/api/types";
 import type { Config } from "#/targeting/model";
 
 export const shop: Project = { key: "shop", name: "Shop" };
@@ -70,7 +79,9 @@ export const darkMode: FlagDetail = {
 };
 
 /** What `loadFlagDetail` answers for checkout-v2 in production, at `config`'s version. */
-export function checkoutDetail(config: Config = checkoutConfig): DetailLoaded {
+export function checkoutDetail(
+  config: Config = checkoutConfig,
+): Extract<DetailLoaded, { ok: true }> {
   return {
     ok: true,
     project: shop,
@@ -112,7 +123,10 @@ export const shopRows: FlagRow[] = [
 ];
 
 /** What `loadDashboard` answers for shop in production, with `flags` as its rows. */
-export function dashboard(flags: FlagRow[] = shopRows, archived = false): Loaded {
+export function dashboard(
+  flags: FlagRow[] = shopRows,
+  archived = false,
+): Extract<Loaded, { ok: true }> {
   return {
     ok: true,
     projects: [shop, docs],
@@ -123,3 +137,46 @@ export function dashboard(flags: FlagRow[] = shopRows, archived = false): Loaded
     archived,
   };
 }
+
+/** The project and environment part every operator page's loader answers. */
+export function scope(env: Environment | null = production) {
+  return {
+    ok: true as const,
+    projects: [shop, docs],
+    project: shop,
+    environments: [production, staging],
+    environment: env,
+  };
+}
+
+export function apiKey(id: number, name: string, more: Partial<ApiKey> = {}): ApiKey {
+  return {
+    id,
+    kind: "server",
+    name,
+    prefix: `tgl_srv_a1b2c3d${id}`,
+    createdAt: "2026-11-01T09:00:00Z",
+    revokedAt: null,
+    ...more,
+  };
+}
+
+export function segment(key: string, more: Partial<Segment> = {}): Segment {
+  return {
+    key,
+    included: [],
+    excluded: [],
+    includedContexts: [],
+    excludedContexts: [],
+    rules: "[]",
+    version: 1,
+    ...more,
+  };
+}
+
+export const betaTesters = segment("beta-testers", {
+  included: ["alice", "bob"],
+  excluded: ["mallory"],
+  rules: '[{"clauses":[{"attribute":"plan","op":"in","values":["beta"]}]}]',
+});
+export const staff = segment("staff");

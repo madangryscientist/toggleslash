@@ -70,3 +70,75 @@ test("an unknown flag shows the server's answer as a page, not a crash", async (
   expect(page.container.textContent).toContain('Flag "nope" was not found in project "shop".');
   expect(page.queryByRole("button", { name: "Save targeting" })).toBeNull();
 });
+
+test("a details save the server refuses marks the field", async () => {
+  load.mockResolvedValue(checkoutDetail());
+  saveMeta.mockResolvedValue({
+    ok: false,
+    failure: { kind: "error", message: "The server refused it." },
+    detail: "name must not be empty.",
+  });
+  const page = await render(PAGE, { url: URL });
+  await page.user.clear(page.getByRole("textbox", { name: "Name" }));
+  await page.user.click(page.getByRole("button", { name: "Save details" }));
+  const details = within(page.getByRole("region", { name: "Details" }));
+  expect(await details.findByText("name must not be empty.")).toBeTruthy();
+  expect(page.queryByText("The flag's details were saved.")).toBeNull();
+});
+
+test("shows the flag's history and its usage in the chosen environment", async () => {
+  load.mockResolvedValue({
+    ...checkoutDetail(),
+    history: [
+      {
+        id: 3,
+        at: "2026-11-04T10:00:00Z",
+        actor: "admin",
+        entityType: "flag_config",
+        action: "config.updated",
+        environment: "production",
+        version: 3,
+      },
+      {
+        id: 1,
+        at: "2026-11-01T09:00:00Z",
+        actor: "admin",
+        entityType: "flag",
+        action: "flag.created",
+        environment: null,
+        version: null,
+      },
+    ],
+    usage: {
+      environments: [
+        {
+          environment: "production",
+          total: 42,
+          days: [
+            {
+              day: "2026-11-04",
+              count: 30,
+              variations: [
+                { variation: 0, count: 10 },
+                { variation: 1, count: 20 },
+              ],
+            },
+          ],
+        },
+        { environment: "staging", total: 7, days: [] },
+      ],
+    },
+  });
+  const page = await render(PAGE, { url: URL });
+  const history = within(page.getByRole("list", { name: "History of this flag" }));
+  expect(history.getAllByRole("listitem")).toHaveLength(2);
+  expect(history.getByText("config.updated flag_config in production (version 3)")).toBeTruthy();
+  expect(history.getByText("2026-11-04 10:00:00 UTC, admin")).toBeTruthy();
+
+  const usage = within(page.getByRole("region", { name: "Usage" }));
+  expect(usage.getByText("42")).toBeTruthy();
+  const day = usage.getByRole("row", { name: /2026-11-04/ });
+  expect(day.textContent).toContain("true: 10, false: 20");
+  // Only the chosen environment's counts.
+  expect(usage.queryByText("Evaluations in staging")).toBeNull();
+});

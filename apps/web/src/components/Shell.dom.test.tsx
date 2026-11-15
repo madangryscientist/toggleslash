@@ -1,8 +1,9 @@
+import { within } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { signOut } from "#/api/session";
 import type { FailureKind } from "#/api/types";
 import { render } from "#/test/render";
-import { ServerDown } from "./Shell";
+import { ServerDown, Shell } from "./Shell";
 
 vi.mock("#/api/session", () => ({ signOut: vi.fn<typeof signOut>() }));
 
@@ -22,4 +23,24 @@ test.each<[FailureKind, string, RegExp]>([
   expect(page.container.textContent).toContain("the detail");
   await page.user.click(page.getByRole("button", { name: /try again/i }));
   expect(onRetry).toHaveBeenCalledOnce();
+});
+
+test("every section link carries the project and environment along", async () => {
+  const page = await render(
+    <Shell active="audit" project="shop" env="staging">
+      <p>page</p>
+    </Shell>,
+  );
+  const nav = within(page.getAllByRole("navigation", { name: "Sections" })[0] ?? document.body);
+  for (const [label, path] of [
+    ["Flags", "/"],
+    ["Environments", "/environments"],
+    ["SDK keys", "/keys"],
+    ["Segments", "/segments"],
+    ["Audit log", "/audit"],
+  ] as const) {
+    const href = nav.getByRole("link", { name: label }).getAttribute("href");
+    expect(href).toBe(`${path}?project=shop&env=staging`);
+  }
+  expect(nav.getByRole("link", { name: "Audit log" }).getAttribute("aria-current")).toBe("page");
 });
