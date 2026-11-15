@@ -235,15 +235,20 @@ export function SigningKeyDialog({ project, environment, onClose, onMade }: Sign
     );
   }
 
+  // Once the request is out the server may already have replaced the key, so the dialog stays until the
+  // answer is here: closing it then would drop the only copy of the new private key.
+  const closeUnlessSaving = () => {
+    if (!saving) onClose();
+  };
   return (
     <Dialog
       title={`Make a signing key for ${environment.name}?`}
       description="A new key replaces any old one at once, so every signature made with the old key stops working."
       size="sm"
-      onClose={onClose}
+      onClose={closeUnlessSaving}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" disabled={saving} onClick={closeUnlessSaving}>
             Cancel
           </Button>
           <Button

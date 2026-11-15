@@ -94,6 +94,7 @@ test.describe("secure mode and the signing key", () => {
     await page.getByTestId("confirm-signing-key").click();
     const pem = page.getByTestId("signing-key-pem");
     await expect(pem).toContainText("-----BEGIN PRIVATE KEY-----");
+    await expect(pem.getByRole("button", { name: "copy" })).toBeVisible();
     const body = (await pem.textContent()) ?? "";
     // The PEM's base64 body, without its armour: what must not survive the dialog.
     const secret = (
@@ -142,5 +143,30 @@ test.describe("secure mode and the signing key", () => {
       "aria-checked",
       "false",
     );
+  });
+});
+
+test.describe("a signing key on a slow server", () => {
+  test("the confirm cannot be closed while the key is being made, so the new key is not lost", async ({
+    page,
+  }) => {
+    await page.goto("/environments?project=shop");
+    await page.getByTestId("signing-key-staging").click();
+    // Hold the dashboard's server call, as a slow server would, until the closes below have been tried.
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route("**/_serverFn/**", async (route) => {
+      if (route.request().method() === "POST") await held;
+      await route.continue();
+    });
+    await page.getByTestId("confirm-signing-key").click();
+    const dialog = page.getByRole("dialog", { name: "Make a signing key for Staging?" });
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeVisible();
+    release?.();
+    await expect(page.getByTestId("signing-key-pem")).toContainText("BEGIN PRIVATE KEY");
   });
 });
