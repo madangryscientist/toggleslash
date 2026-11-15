@@ -70,7 +70,12 @@ class ServiceError extends Error {}
 export class Service {
   constructor(readonly url: string) {}
 
-  async call(method: string, path: string, body?: unknown): Promise<Rec> {
+  /** The status and the body as they came, for the one case where a 4xx is the expected answer. */
+  async callWithStatus(
+    method: string,
+    path: string,
+    body?: unknown,
+  ): Promise<{ status: number; body: string }> {
     const init: RequestInit = { method, signal: AbortSignal.timeout(CALL_TIMEOUT_MS) };
     if (body !== undefined) {
       init.body = toJson(body);
@@ -82,11 +87,14 @@ export class Service {
     } catch (error) {
       throw new ServiceError(`${method} ${path} to the service failed: ${String(error)}`);
     }
-    const text = await response.text();
-    if (response.status === 500)
-      throw new ServiceError(`the SDK threw during ${method} ${path}:\n${text}`);
-    if (!response.ok)
-      throw new ServiceError(`${method} ${path} answered ${response.status}: ${show(text)}`);
+    return { status: response.status, body: await response.text() };
+  }
+
+  async call(method: string, path: string, body?: unknown): Promise<Rec> {
+    const { status, body: text } = await this.callWithStatus(method, path, body);
+    if (status === 500) throw new ServiceError(`the SDK threw during ${method} ${path}:\n${text}`);
+    if (status < 200 || status > 299)
+      throw new ServiceError(`${method} ${path} answered ${status}: ${show(text)}`);
     const parsed: unknown = text === "" ? {} : JSON.parse(text);
     return record(parsed, `the answer to ${method} ${path}`);
   }

@@ -1,6 +1,10 @@
 package eval
 
-import "github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+import (
+	"sort"
+
+	"github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+)
 
 // kindContext is one kind's key and attributes, after normalising.
 type kindContext struct {
@@ -84,4 +88,27 @@ func readEntry(obj jsonval.Object) (kindContext, bool) {
 		return kindContext{key: key, attributes: attributes}, true
 	}
 	return kindContext{key: key}, true
+}
+
+// KindKey is one kind of a normalised context and that kind's key.
+type KindKey struct {
+	Kind string
+	Key  string
+}
+
+// ContextKeys normalises a context as the evaluator does and answers its kinds
+// and keys in byte order of the kind, or false when the context is not valid.
+// It is what secure-mode signing covers (docs/sdk-browser.md, "Secure mode").
+func ContextKeys(value jsonval.Value) ([]KindKey, bool) {
+	contexts, ok := normaliseContext(value)
+	if !ok {
+		return nil, false
+	}
+	out := make([]KindKey, 0, len(contexts))
+	for kind, entry := range contexts {
+		out = append(out, KindKey{Kind: kind, Key: entry.key})
+	}
+	// Go compares strings bytewise, which is the ordinal order the spec names.
+	sort.Slice(out, func(i, j int) bool { return out[i].Kind < out[j].Kind })
+	return out, true
 }

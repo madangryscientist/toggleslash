@@ -11,6 +11,7 @@ import {
   type Context,
   createClient,
   type EvaluationEvent,
+  signContext,
 } from "../src/index.ts";
 
 interface CallbackClose {
@@ -149,11 +150,29 @@ async function clientRoute(entry: Entry, action: string, request: Request): Prom
   return new Response("no such route", { status: 404 });
 }
 
+/** `POST /sign`: contract 14 is the one call allowed to throw, so a refusal is a 400, not the 500 of a throw. */
+async function sign(request: Request): Promise<Response> {
+  const body = await readBody(request);
+  const context = body["context"];
+  if (!passedThrough(context)) throw new TypeError("unreachable");
+  try {
+    return Response.json({ signature: signContext(String(body["privateKeyPem"]), context) });
+  } catch (error) {
+    return Response.json({ error: String(error) }, { status: 400 });
+  }
+}
+
+const TOP_LEVEL: Record<string, (request: Request) => Promise<Response>> = {
+  "GET /": async () =>
+    Response.json({ name: "toggleslash-sdk (TypeScript)", capabilities: ["sign-context"] }),
+  "POST /clients": create,
+  "POST /sign": sign,
+};
+
 async function route(request: Request): Promise<Response> {
   const { pathname } = new URL(request.url);
-  if (request.method === "GET" && pathname === "/")
-    return Response.json({ name: "toggleslash-sdk (TypeScript)", capabilities: [] });
-  if (request.method === "POST" && pathname === "/clients") return create(request);
+  const topLevel = TOP_LEVEL[`${request.method} ${pathname}`];
+  if (topLevel !== undefined) return topLevel(request);
   const match = /^\/clients\/([^/]+)\/([a-z-]+)$/.exec(pathname);
   const entry = clients.get(match?.[1] ?? "");
   if (match === null || entry === undefined) return new Response("no such client", { status: 404 });

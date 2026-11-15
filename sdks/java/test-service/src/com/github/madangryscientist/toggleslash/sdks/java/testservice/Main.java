@@ -6,6 +6,7 @@ import com.github.madangryscientist.toggleslash.sdks.java.EvaluationEvent;
 import com.github.madangryscientist.toggleslash.sdks.java.Json;
 import com.github.madangryscientist.toggleslash.sdks.java.Options;
 import com.github.madangryscientist.toggleslash.sdks.java.Reason;
+import com.github.madangryscientist.toggleslash.sdks.java.Signing;
 import com.github.madangryscientist.toggleslash.sdks.java.Status;
 import com.github.madangryscientist.toggleslash.sdks.java.eval.Utf8;
 import com.sun.net.httpserver.HttpExchange;
@@ -133,11 +134,14 @@ public final class Main {
     if (method.equals("GET") && path.equals("/")) {
       Map<String, Object> hello = new LinkedHashMap<>();
       hello.put("name", "toggleslash-sdk (Java)");
-      hello.put("capabilities", List.of("integer-accessor"));
+      hello.put("capabilities", List.of("integer-accessor", "sign-context"));
       return ok(hello);
     }
     if (method.equals("POST") && path.equals("/clients")) {
       return create(readBody(exchange));
+    }
+    if (method.equals("POST") && path.equals("/sign")) {
+      return sign(readBody(exchange));
     }
     Matcher match = CLIENT_ROUTE.matcher(path);
     Entry entry = match.matches() ? CLIENTS.get(match.group(1)) : null;
@@ -171,6 +175,22 @@ public final class Main {
       default:
         return new Object[] {404, "no such route"};
     }
+  }
+
+  /**
+   * POST /sign: contract 14 lets signContext throw on a bad key or context, so that refusal is a
+   * 400, not the 500 of a throw.
+   */
+  private static Object[] sign(Map<String, Object> body) {
+    Object pem = body.get("privateKeyPem");
+    String signature;
+    try {
+      signature =
+          Signing.signContext(pem instanceof String text ? text : null, body.get("context"));
+    } catch (IllegalArgumentException e) {
+      return new Object[] {400, Json.stringify(Map.of("error", String.valueOf(e.getMessage())))};
+    }
+    return ok(Map.of("signature", signature));
   }
 
   @SuppressWarnings("unchecked")

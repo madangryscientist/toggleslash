@@ -25,6 +25,7 @@ are `Options` (a builder), and `Client.create(Options)` starts it. Nothing is re
 | `hooks.afterEvaluation` | `Options.Builder.afterEvaluation(Hook)`: `Hook` is a functional interface, `Object onEvaluation(EvaluationEvent event) throws Exception`, default none. The return value is ignored, except that a `Future` or `CompletionStage` it returns that later fails goes to `onError`. An `EvaluationEvent` is a record `(String flagKey, Object context, Object value, Integer variationIndex, Reason reason, String etag, Long flagVersion)`. |
 | `onError` | `Options.Builder.onError(Consumer<Throwable>)`, default ignore. |
 | `accessor shape` | both: typed methods (`bool`, `string`, `int`, `float`, `json`, each with a `Detail` twin) and one generic `variation`/`variationDetail` over the fallback's class. The typed integer accessor is `intVariation` and uses `long`, the signed 64-bit type. The generic method reads the fallback's class: `Boolean`, `String`, `Byte`, `Short`, `Integer`, `Long` (integer accessor semantics in that type's range), `Float`, `Double`, `List`, `Map`, or null (any kind). A class with no JSON kind gives the fallback and `TYPE_MISMATCH`. The hook event's `value` is what the caller gets, boxed: `Boolean`, `String`, `Double`, `Long` for `intVariation` (the accessor's own integer type), `Integer`/`Short`/`Byte` for a generic call with that fallback class, and the JSON tree (`List`, `Map`, `Double`, `String`, `Boolean`, null) for `json`. |
+| `signContext` | `String Signing.signContext(String privateKeyPem, Object context)` (contract 14): a static method that needs no `Client`, signs the context's kinds and keys with the PKCS#8 PEM's P-256 key and answers the 86-character base64url P1363 signature. It throws `IllegalArgumentException` for an invalid context or a key that is not a P-256 PKCS#8 PEM (the curve is checked, since `KeyFactory` reads any EC curve); the one method allowed to throw. The signed bytes come from `eval.ContextMessage`, over the evaluator's own normalisation. |
 | `onError thread` | the thread that saw the failure: the sync thread (`toggleslash-sync`) for ruleset and stream failures, the flush thread (`toggleslash-flush`) for usage failures, the caller's own thread for a hook that raised, an evaluation that raised and counts lost at `close`. No SDK lock is held while it runs. |
 
 **The closed sets keep their spelling.** `ReasonKind` is an enum with the constants `OFF`,
@@ -181,10 +182,11 @@ sdks/java/
   bin/lint  bin/test  bin/test-service
   src/main/java/com/github/madangryscientist/toggleslash/sdks/java/
     Client, Options, Status, StreamState, Detail, Reason, ReasonKind, ErrorCode,
-    Hook, EvaluationEvent, Context, Json, JsonException       the public API
+    Hook, EvaluationEvent, Context, Json, JsonException, Signing   the public API
     Kinds        (package-private) the accessor kinds, the integer range check, the read-only JSON copy
     eval/        PatternParser, PatternVm, Semver, Instants, Reference, Model, Parse, Values, Contexts,
-                 Clauses, Bucket, Ruleset, Evaluator, Evaluation, Utf8 (the evaluator and its parts)
+                 Clauses, Bucket, Ruleset, Evaluator, Evaluation, Utf8, ContextMessage (the evaluator and
+                 its parts, and the bytes a secure-mode signature covers)
     internal/    SDK plumbing, public only so the root package can reach it: Hub, Sync, Usage, SseParser,
                  Gate, Clock, Core, Tuning, SdkThread, SdkException
   src/test/java/...            native tests, the vector test and the fake loopback server

@@ -38,6 +38,11 @@ Console.WriteLine($"{detail.Value} {detail.VariationIndex} {detail.Reason.Kind}"
 `Create` returns at once. Before the first load, and when a flag is missing, malformed or of another type, an
 accessor answers the fallback, and the `Detail` form says why. The leaving `using` calls `Close`.
 
+For an environment with secure mode on, sign each user's context on your server with
+`Signing.SignContext(privateKeyPem, context)` (the PEM `toggleslash envs signing-key` printed once) and hand the
+signature to the page with the context. It needs no client, and unlike the rest of the SDK it throws an
+`ArgumentException` for a key that is not P-256 or a context that is not valid.
+
 A context is a dictionary with string keys and a `key` entry, with strings, booleans, every .NET number type and
 nested lists and dictionaries as attribute values. A value the SDK cannot send as JSON
 gives the fallback with `INVALID_CONTEXT`.

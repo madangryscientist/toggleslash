@@ -23,7 +23,7 @@ what it cannot see.
   not a guess. The ten runs then start again from the first. Any change to the tree after a run (a fix, a new test, a comment) also starts them again: the ten are of the tree that is committed. Writing `RUN.md`, which holds their counts, does not. A test that races a fixed number of rounds against background workers waits until each worker has
   made progress, not only until the rounds are done.
 - [ ] The harness exits 0, with the only skips the 2 named vectors and, without `integer-accessor`, the 2
-  scenarios that require it (sdk-test-service.md, "Running it").
+  scenarios that require it, and `signing: 8 passed, 0 failed, 0 skipped` (sdk-test-service.md, "Running it").
 
 ## What the harness checks (contract MUSTs it covers)
 
@@ -54,6 +54,10 @@ what it cannot see.
   `hooks.json`.
 - [ ] `close` in order, twice at once, during a hold, with a final flush (contract 11): the harness,
   `close.json`, `rate-limit.json`, `usage.json`, `status.json`.
+- [ ] `signContext(privateKeyPem, context)` is in the public API, needs no client, signs the bytes
+  `sdk-browser.md` defines as a 64-byte P1363 signature in unpadded base64url, and refuses a key that is not
+  P-256 and an invalid context by the language's error convention (contract 14): the harness, `POST /sign`, and a
+  native test over every entry of `fixtures/signing/messages.json` plus a sign-then-verify round trip.
 - [ ] No context, context key or attribute in any request or `onError` message, and no header beyond the
   protocol's (contract 12): the harness, `privacy.json` and the privacy and protocol checks after every
   scenario. The harness cannot see logs: no log line the SDK writes and no error value it builds carries a

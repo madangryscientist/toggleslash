@@ -23,6 +23,10 @@ for path in sys.argv[1:]:
         compile(handle.read(), path, "exec", dont_inherit=True)
 ' $files
 
+# The `signing` extra (cryptography) in a project-local venv, made by bin/venv when missing: the SDK needs
+# nothing, but the signing tests call `sign_context`.
+python="$(bin/venv)"
+
 # Run: the development mode turns on the runtime checks Python has instead of a race detector, and `-W error`
 # makes a warning (an unclosed socket, a thread that raised) a failure.
-PYTHONPATH=src tool python -X dev -W error -m unittest discover -s tests -t tests
+PYTHONPATH=src "$python" -X dev -W error -m unittest discover -s tests -t tests

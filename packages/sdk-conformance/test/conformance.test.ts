@@ -2,10 +2,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { failed, runAll, type Summary, summaryLine } from "../src/run.ts";
 import { isRecord } from "../src/json.ts";
 import { loadScenarios } from "../src/scenarios.ts";
-import { type Started, startService } from "../src/service.ts";
+import { Service, type Started, startService } from "../src/service.ts";
+import { runSigning } from "../src/signing.ts";
 import { STEPS } from "../src/steps.ts";
 
-const CAPABILITIES = ["integer-accessor"];
+const CAPABILITIES = ["integer-accessor", "sign-context"];
 
 describe("the scenarios in fixtures/sdk", () => {
   const scenarios = loadScenarios();
@@ -42,6 +43,14 @@ describe("startService", () => {
   });
 });
 
+describe("the signing checks", () => {
+  it("skip every check, asking nothing, for a service without sign-context", async () => {
+    // Nothing listens on port 1: a request would fail the check instead of skipping it.
+    const outcome = await runSigning(new Service("http://127.0.0.1:1"), ["integer-accessor"]);
+    expect(outcome).toEqual({ passed: 0, skipped: 8, failures: [] });
+  });
+});
+
 describe("the TypeScript SDK through its test service", () => {
   let started: Started;
   let summary: Summary;
@@ -67,12 +76,16 @@ describe("the TypeScript SDK through its test service", () => {
     expect(summary.vectors).toEqual({ passed: 1369, skipped: 2, failures: [] });
   });
 
+  it("signs every fixture message so the signature verifies, and refuses a P-384 key", () => {
+    expect(summary.signing).toEqual({ passed: 8, skipped: 0, failures: [] });
+  });
+
   it("prints one line per scenario and a summary", () => {
     expect(lines.filter((line) => /^(pass|skip|FAIL) /.test(line))).toHaveLength(
       summary.outcomes.length,
     );
     expect(summaryLine(summary)).toMatch(
-      /^scenarios: \d+ passed, 0 failed, \d+ skipped; vectors: 1369 passed, 0 failed, 2 skipped$/,
+      /^scenarios: \d+ passed, 0 failed, \d+ skipped; vectors: 1369 passed, 0 failed, 2 skipped; signing: 8 passed, 0 failed, 0 skipped$/,
     );
   });
 });

@@ -13,14 +13,18 @@ Run it from the repository root:
 bun run conformance -- --service sdks/python/bin/test-service
 ```
 
-`bin/test-service` starts it under `mise` when `mise` is on the PATH, else under `python`, with `-X dev -W
-error`; it prints `listening http://127.0.0.1:<port>`. There is no build step: `bin/test` compiles this file
-with the sources and the tests, under `-W error`, so a syntax error here fails there. It puts `../src` on the
-import path itself, so nothing needs installing.
+`bin/test-service` starts it with `-X dev -W error` on the project-local venv `bin/venv` makes (the mise Python,
+plus the `signing` extra for `POST /sign`); it prints `listening http://127.0.0.1:<port>`. There is no build
+step: `bin/test` compiles this file with the sources and the tests, under `-W error`, so a syntax error here fails
+there. It puts `../src` on the import path itself.
 
 ## Capabilities
 
 `integer-accessor`: the SDK has `int_variation` and `int_variation_detail`.
+
+`sign-context`: `POST /sign` calls `toggleslash.sign_context(privateKeyPem, context)`. It is the one route that
+catches what the SDK raises: a `ValueError` (a key that is not P-256, an invalid context) or an `ImportError`
+answers `400 { "error": "<text>" }` (contract 14).
 
 ## Accessor mapping
 

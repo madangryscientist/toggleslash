@@ -17,6 +17,7 @@ require_relative "toggleslash/sse"
 require_relative "toggleslash/http"
 require_relative "toggleslash/usage"
 require_relative "toggleslash/client"
+require_relative "toggleslash/sign"
 
 # The ToggleSlash server SDK for Ruby. See README.md for the mapping from the contract.
 module Toggleslash

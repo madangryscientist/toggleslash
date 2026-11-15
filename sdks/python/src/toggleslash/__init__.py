@@ -5,10 +5,12 @@
         ...
     client.close()
 
-It never raises at a caller and sends nothing about an end user. See README.md in the repository.
+It never raises at a caller and sends nothing about an end user. `sign_context`, for secure mode, is the one
+function that raises (contract 14). See README.md in the repository.
 """
 
 from ._client import Client, create
+from ._sign import sign_context
 from ._types import (
     Detail,
     ErrorCode,
@@ -35,4 +37,5 @@ __all__ = [
     "StreamState",
     "ToggleSlashError",
     "create",
+    "sign_context",
 ]

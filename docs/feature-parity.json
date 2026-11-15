@@ -917,9 +917,16 @@
           "test:apps/server/ToggleSlash.Server.Tests/SecureModeTests.cs",
           "doc:docs/sdk-browser.md",
           "dashboard:/environments",
-          "test:packages/e2e/stack/journey.spec.ts"
+          "test:packages/e2e/stack/journey.spec.ts",
+          "test:packages/sdk-conformance/test/conformance.test.ts",
+          "doc:docs/sdk-contract.md",
+          "test:sdks/csharp/tests/ToggleSlash.Sdk.Tests/SigningTests.cs",
+          "test:sdks/go/sign_test.go",
+          "test:sdks/java/src/test/java/com/github/madangryscientist/toggleslash/sdks/java/SigningTest.java",
+          "test:sdks/python/tests/test_sign.py",
+          "test:sdks/ruby/test/sign_test.rb"
         ],
-        "note": "Per environment: an ECDSA P-256 signature over the context's keys, made with signContext on the application's server; the dashboard makes the key and turns it on."
+        "note": "Per environment: an ECDSA P-256 signature over the context's keys, made with signContext on the application's server (the TypeScript SDK and the five sdks/* server SDKs, proven by the conformance harness); the dashboard makes the key and turns it on."
       },
       "competitors": {
         "launchdarkly": "yes"
