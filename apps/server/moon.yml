@@ -14,9 +14,14 @@ tasks:
       mutex: "dotnet-server"
   # `--blame` (sequence only) makes a crashed test host name the test that was running, in the output
   # and in TestResults/**/Sequence_*.xml (gitignored). No `--blame-crash`: a Linux crash dump is
-  # hundreds of MB.
+  # hundreds of MB. `--blame-hang` kills a test host whose test has run for 5 minutes, names that test
+  # and leaves a dump beside the sequence file, so a stall fails instead of holding the run until someone
+  # kills it. A `mini` dump is still hundreds of MB, but it is written only on a hang. It holds thread
+  # stacks and no heap: `dotnet-dump analyze <dump>`, then `clrstack -all`, shows a test blocked on a
+  # thread (a lock, a sync wait, a loop); an `await` that never completes is on no thread, and finding
+  # it needs `--blame-hang-dump-type full` and `dumpasync`.
   test:
-    script: "dotnet test ToggleSlash.Evaluation.Tests/ToggleSlash.Evaluation.Tests.csproj --blame && dotnet test ToggleSlash.Server.Tests/ToggleSlash.Server.Tests.csproj --blame"
+    script: "dotnet test ToggleSlash.Evaluation.Tests/ToggleSlash.Evaluation.Tests.csproj --blame --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type mini && dotnet test ToggleSlash.Server.Tests/ToggleSlash.Server.Tests.csproj --blame --blame-hang --blame-hang-timeout 5m --blame-hang-dump-type mini"
     inputs:
       - "**/*"
       - "/fixtures/**/*"
