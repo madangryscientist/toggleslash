@@ -4,13 +4,18 @@ tags: ["dotnet"]
 
 # The four csproj files are built and tested here as one. dotnet restores and
 # builds on its own, and its incremental build is its own cache, so `build` is never cached by moon.
+# Every task that builds the server holds the `dotnet-server` mutex (here and in packages/e2e): two
+# dotnet builds of the same projects at once race on the same obj/ and bin/ files and one fails.
 tasks:
   build:
     script: "dotnet build ToggleSlash.Evaluation.Tests/ToggleSlash.Evaluation.Tests.csproj && dotnet build ToggleSlash.Server.Tests/ToggleSlash.Server.Tests.csproj"
     options:
       cache: false
+      mutex: "dotnet-server"
   test:
     script: "dotnet test ToggleSlash.Evaluation.Tests/ToggleSlash.Evaluation.Tests.csproj && dotnet test ToggleSlash.Server.Tests/ToggleSlash.Server.Tests.csproj"
     inputs:
       - "**/*"
       - "/fixtures/**/*"
+    options:
+      mutex: "dotnet-server"
