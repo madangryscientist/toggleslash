@@ -141,10 +141,11 @@ One app: `bunx moon run web:test-e2e`, `bunx moon run web:build`. The cross-lang
 
 First time on a machine: `bunx playwright install chromium-headless-shell`.
 
-**The server's container is checked in CI, not by the gate.** The `container` job in `.github/workflows/ci.yml`
+**The server's container is checked in CI, not by the local gate.** The `container` job in `.github/workflows/ci.yml`
 runs `docker build -f apps/server/Dockerfile`, `docker compose up -d`, waits for `/health` and runs
 `docker compose down -v`; it pushes nothing, logs in to no registry and uses a throwaway token. You need Docker to
-run the same commands locally, and the gate does not. Both base images in the Dockerfile are pinned by digest
+run the same commands locally, and the local gate does not. In CI the required `gate` check waits for it, with
+`checks`, `apps`, `e2e` and `stack`, so a red one blocks a merge. Both base images in the Dockerfile are pinned by digest
 (the multi-arch index digest from `mcr.microsoft.com`); a bump changes the tag and the digest together, and
 the SDK image matches `global.json`. `.dockerignore` keeps `node_modules`, `bin`, `obj` and any `*.db` out of the
 context. `apps/web` is not containerised.

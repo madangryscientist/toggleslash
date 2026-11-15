@@ -28,7 +28,8 @@ name: CI
 # last job: it waits for `checks` (typecheck, lint, format, parity, test), `changes`, `apps` (web
 # build, deploy dry run and web e2e), `e2e` (cross-language), `stack` (browser journey) and
 # `container` (self-hosting), and fails when any of them failed or was cancelled. A skipped job
-# passes: `apps` skips when nothing it covers changed, and on a tag every job but `checks` skips.
+# passes: `apps` skips when nothing it covers changed, and on a tag every job it waits for but
+# `checks` skips.
 
 on:
   pull_request:

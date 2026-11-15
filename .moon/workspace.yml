@@ -33,7 +33,7 @@ telemetry: false
 # already ran is then a "cached from remote" hit in a pull request or a fresh checkout.
 # - Every request needs a token. MOON_REMOTE_TOKEN names the env var that holds it; unset, moon sends
 #   none (set but empty is the same), every read is refused and the run is cold, as it was before.
-# - Only ci.yml's gate, apps, e2e and stack jobs on a push to main write: they alone hold the write
+# - Only ci.yml's checks, apps, e2e and stack jobs on a push to main write: they alone hold the write
 #   token. A pull request's jobs read with the read token, and the cache refuses their uploads (moon
 #   logs a WARN and carries on).
 # - Outside CI moon only downloads (localReadOnly), so a local run never uploads.
