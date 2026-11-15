@@ -13,6 +13,11 @@ function keysOf(project: string, env: string): KeyRow[] | null {
 
 let counter = 0;
 
+/** Starts the minted secrets over, so a reset server numbers its first new key 1, as a fresh one does. */
+export function resetSecrets(): void {
+  counter = 0;
+}
+
 /** One request under an environment: its project, environment, verb, the path after the collection and the body. */
 interface Call {
   project: string;

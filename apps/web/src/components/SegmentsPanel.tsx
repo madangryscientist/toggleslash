@@ -12,6 +12,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "@hackcove/ui-react";
+import { useHydrated } from "@tanstack/react-router";
 import { useState } from "react";
 import { deleteSegment } from "#/api/operator";
 import type { Environment, KindMembers, Project, Segment } from "#/api/types";
@@ -38,6 +39,8 @@ interface TableProps {
 }
 
 function SegmentTable({ project, environment, segments, onEdit, onDelete }: TableProps) {
+  // Disabled until hydrated: before React attaches the handlers a click would do nothing, and nothing would say so.
+  const hydrated = useHydrated();
   return (
     <Table caption={`Segments in ${project.name}, ${environment.name}`} data-testid="segments">
       <TableHead>
@@ -75,6 +78,7 @@ function SegmentTable({ project, environment, segments, onEdit, onDelete }: Tabl
                 <Button
                   variant="outline"
                   size="sm"
+                  disabled={!hydrated}
                   aria-label={`Edit ${segment.key}`}
                   data-testid={`edit-${segment.key}`}
                   onClick={() => onEdit(segment)}
@@ -85,6 +89,7 @@ function SegmentTable({ project, environment, segments, onEdit, onDelete }: Tabl
                   variant="ghost"
                   size="sm"
                   tone="danger"
+                  disabled={!hydrated}
                   aria-label={`Delete ${segment.key}`}
                   data-testid={`delete-${segment.key}`}
                   onClick={() => onDelete(segment)}
@@ -101,10 +106,16 @@ function SegmentTable({ project, environment, segments, onEdit, onDelete }: Tabl
 }
 
 function NoSegments({ environment, onCreate }: { environment: Environment; onCreate: () => void }) {
+  // Disabled until hydrated: before React attaches the handlers a click would do nothing, and nothing would say so.
+  const hydrated = useHydrated();
   return (
     <EmptyState
       title="No segments yet"
-      actions={<Button onClick={onCreate}>Create the first segment</Button>}
+      actions={
+        <Button disabled={!hydrated} onClick={onCreate}>
+          Create the first segment
+        </Button>
+      }
     >
       A segment is a reusable group of contexts that flag rules can name. None exists in{" "}
       {environment.name} yet.
@@ -125,6 +136,8 @@ export function SegmentsPanel({ project, environment, segments, onChanged }: Pro
   const [editing, setEditing] = useState<Segment | null>(null);
   const [deleting, setDeleting] = useState<Segment | null>(null);
   const { busy, problem, run, clear } = useRunner(onChanged);
+  // Disabled until hydrated: before React attaches the handlers a click would do nothing, and nothing would say so.
+  const hydrated = useHydrated();
 
   /** A new action clears the last failure. */
   function open(action: () => void) {
@@ -146,7 +159,7 @@ export function SegmentsPanel({ project, environment, segments, onChanged }: Pro
         title="Segments"
         subtitle={`${project.name} · ${environment.name}`}
         actions={
-          <Button onClick={create} data-testid="new-segment">
+          <Button disabled={!hydrated} onClick={create} data-testid="new-segment">
             New segment
           </Button>
         }

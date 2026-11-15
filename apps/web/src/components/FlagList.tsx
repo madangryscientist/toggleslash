@@ -15,7 +15,7 @@ import {
   Text,
   TextLink,
 } from "@hackcove/ui-react";
-import { Link } from "@tanstack/react-router";
+import { Link, useHydrated } from "@tanstack/react-router";
 import { useState } from "react";
 import { archiveFlag, toggleFlag } from "#/api/dashboard";
 import type { Environment, FlagRow, Project } from "#/api/types";
@@ -47,6 +47,8 @@ interface RowProps {
 }
 
 function ToggleCell({ project, environment, flag, busy, run }: Omit<RowProps, "onArchive">) {
+  // Disabled until hydrated: before React attaches the handlers a click would do nothing, and nothing would say so.
+  const hydrated = useHydrated();
   if (flag.on === null) return <Text tone="muted">unknown</Text>;
   return (
     <Button
@@ -54,6 +56,7 @@ function ToggleCell({ project, environment, flag, busy, run }: Omit<RowProps, "o
       size="sm"
       tone={flag.on ? "positive" : undefined}
       pressed={flag.on}
+      disabled={!hydrated}
       busy={busy === flag.key}
       busyLabel="Saving"
       aria-label={`${flag.name} in ${environment.name}`}
@@ -79,6 +82,8 @@ function ToggleCell({ project, environment, flag, busy, run }: Omit<RowProps, "o
 
 function FlagRowView(props: RowProps) {
   const { flag, busy, onArchive } = props;
+  // Disabled until hydrated: before React attaches the handlers a click would do nothing, and nothing would say so.
+  const hydrated = useHydrated();
   return (
     <TableRow data-testid={`flag-${flag.key}`}>
       <TableCell
@@ -126,7 +131,7 @@ function FlagRowView(props: RowProps) {
           size="sm"
           tone="danger"
           aria-label={`Archive ${flag.name}`}
-          disabled={busy !== null}
+          disabled={!hydrated || busy !== null}
           onClick={() => onArchive(flag)}
         >
           Archive
@@ -177,11 +182,17 @@ interface ListProps extends TableProps {
 /** The empty states, or the table. */
 function Results({ total, query, onCreate, flags, ...row }: ListProps) {
   const { project, environment } = row;
+  // Disabled until hydrated: before React attaches the handlers a click would do nothing, and nothing would say so.
+  const hydrated = useHydrated();
   if (total === 0) {
     return (
       <EmptyState
         title="No flags yet"
-        actions={<Button onClick={onCreate}>Create the first flag</Button>}
+        actions={
+          <Button disabled={!hydrated} onClick={onCreate}>
+            Create the first flag
+          </Button>
+        }
       >
         Flags you create in {project.name} appear here, with their state in {environment.name}.
       </EmptyState>
@@ -202,6 +213,8 @@ export function FlagList({ project, environment, flags, archived, onView, onChan
   const [creating, setCreating] = useState(false);
   const [archiving, setArchiving] = useState<FlagRow | null>(null);
   const { busy, problem, run } = useRunner(onChanged);
+  // Disabled until hydrated: before React attaches the handlers a click would do nothing, and nothing would say so.
+  const hydrated = useHydrated();
 
   const shown = flags.filter((flag) => matches(flag, query));
 
@@ -212,7 +225,7 @@ export function FlagList({ project, environment, flags, archived, onView, onChan
         subtitle={`${project.name} · ${environment.name}`}
         actions={
           archived ? undefined : (
-            <Button onClick={() => setCreating(true)} data-testid="new-flag">
+            <Button disabled={!hydrated} onClick={() => setCreating(true)} data-testid="new-flag">
               New flag
             </Button>
           )
