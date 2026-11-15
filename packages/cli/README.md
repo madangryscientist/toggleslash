@@ -46,6 +46,8 @@ toggleslash projects create <key> [--name <name>] create a project (the name def
 toggleslash envs list --project <project>                          list a project's environments
 toggleslash envs create <key> --project <project> [--name <name>]  create an environment
 toggleslash envs rename <key> --project <project> --name <name>    rename an environment (its key never changes)
+toggleslash envs signing-key <key> --project <project>             make the secure-mode signing key; prints its private key once
+toggleslash envs secure-mode <key> on|off --project <project>      turn secure mode on or off (see below)
 toggleslash envs delete <key> --project <project> --yes            delete an environment (see below)
 
 toggleslash flags list --project <project> [--tag <tag>] [--archived false|true|all]
@@ -101,6 +103,13 @@ toggleslash rulesets show <hash> --project <project> --env <env> [--flag <flag>]
   no prompt, because the CLI is scripted: without `--yes` it exits 2 and sends nothing. The server refuses (exit 1, with
   its message) while the environment has any SDK key that is not revoked, so revoke them with `keys revoke` first. A
   write-scoped token may do both for its own project.
+- **Secure mode**: with it on, a client key evaluates only a context the application's server signed, so a page cannot
+  ask for another user's flags. `envs signing-key` makes the environment's ECDSA P-256 signing key and prints the
+  private key (a PKCS#8 PEM) to stdout **once**, with a reminder on stderr; the server keeps only the public half.
+  Running it again makes a new key, and signatures made with the old one stop working at once. `envs secure-mode <key>
+  on` is refused (exit 1, with the server's message) until the environment has a signing key; `off` always works.
+  `envs list` prints each environment's secure mode. The application signs with `signContext` from the server SDK;
+  see `docs/sdk-browser.md`, "Secure mode".
 - **SDK keys** (`keys create`) print the plain key **once**. The server keeps only a hash and a prefix, so
   `keys list` shows prefixes and `keys revoke` takes the id from that list.
 - **Scoped API tokens** (`tokens create`) are for Terraform and CI: one project, `read` or `write`, always with an

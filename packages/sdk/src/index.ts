@@ -13,6 +13,7 @@ export {
   type VariationDetail,
 } from "./client.ts";
 export type { Clock } from "./clock.ts";
+export { signContext } from "./sign.ts";
 export type { Fetch } from "./http.ts";
 export type { ClientStatus, StreamState, SyncErrorCode } from "./sync.ts";
 export type { Context, SingleContext } from "@hackcove/toggleslash-engine";

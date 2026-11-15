@@ -5,7 +5,7 @@ import {
   UsageReporter,
   withTimeout,
 } from "@hackcove/toggleslash-sdk/shared";
-import { changedKeys, readAnswer } from "./answer.ts";
+import { changedKeys, readAnswer, readSignatureRefusal } from "./answer.ts";
 import { ChangeSignal } from "./signal.ts";
 import { fallbackDetail, sameKind } from "./support.ts";
 import type { Context, Evaluation, VariationDetail } from "./types.ts";
@@ -17,6 +17,11 @@ export interface BrowserClientOptions {
   clientKey: string;
   /** Who the flags are evaluated for: a single or a multi context, as `POST /sdk/v1/evaluate` takes it. */
   context: Context;
+  /**
+   * The context's signature, for an environment with secure mode on: made by the application's server with
+   * `signContext` from the server SDK and handed to the page. Sent with every evaluate for this context.
+   */
+  signature?: string;
   /** Default: the global `fetch`. */
   fetch?: Fetch;
   /** Default: the system clock. */
@@ -42,8 +47,11 @@ export interface BrowserClient {
   detail<T>(flag: string, fallback: T): VariationDetail<T>;
   /** Every cached value by flag key (the bootstrap values before the first answer). */
   allFlags(): Record<string, unknown>;
-  /** Evaluates for a new context. Until its answer arrives the previous context's values keep serving. Never rejects. */
-  identify(context: Context): Promise<void>;
+  /**
+   * Evaluates for a new context, sending `signature` with it in secure mode (the old context's signature is not
+   * kept). Until its answer arrives the previous context's values keep serving. Never rejects.
+   */
+  identify(context: Context, signature?: string): Promise<void>;
   /** Called with the sorted keys whose value, variation index or reason changed. Returns the unsubscribe function. */
   on(event: "change", listener: (flags: string[]) => void): () => void;
   /** Stops the signal and the timers and sends the pending usage counts. Never rejects; safe to call twice. */
@@ -116,7 +124,7 @@ class Client implements BrowserClient {
       },
     });
     this.usage = options.sendUsage === false ? null : this.makeUsage();
-    this.setContext(options.context);
+    this.setContext(options.context, options.signature);
     void this.refresh();
     this.loops = [this.signal.run(), this.poll(options.pollIntervalMs ?? DEFAULT_POLL_MS)];
     if (this.usage) this.loops.push(this.flushLoop(this.usage));
@@ -147,10 +155,10 @@ class Client implements BrowserClient {
     return Object.fromEntries([...this.cache].map(([key, entry]) => [key, entry.value]));
   }
 
-  identify(context: Context): Promise<void> {
+  identify(context: Context, signature?: string): Promise<void> {
     if (this.lifetime.signal.aborted) return Promise.resolve();
     this.generation++;
-    this.setContext(context);
+    this.setContext(context, signature);
     return this.refresh();
   }
 
@@ -196,9 +204,9 @@ class Client implements BrowserClient {
     if (this.usage && !this.halted) await this.usage.finish();
   }
 
-  private setContext(context: Context): void {
+  private setContext(context: Context, signature: string | undefined): void {
     try {
-      this.body = JSON.stringify({ context });
+      this.body = JSON.stringify(signature === undefined ? { context } : { context, signature });
     } catch (error) {
       this.body = null;
       this.report(error);
@@ -229,12 +237,15 @@ class Client implements BrowserClient {
   }
 
   /**
-   * `fetch` that treats a 401 or 403 on any route as the end of this client, and that never follows a
-   * redirect (contract 7.5): a browser `fetch` answers one with an opaque redirect (status 0, not `ok`),
-   * which every caller already reports as a failed answer.
+   * `fetch` that never follows a redirect (contract 7.5): a browser `fetch` answers one with an opaque redirect
+   * (status 0, not `ok`), which every caller already reports as a failed answer.
    */
+  private readonly unguarded: Fetch = (input, init) =>
+    this.fetch(input, { ...init, redirect: "manual" });
+
+  /** `unguarded`, and a 401 or 403 is the end of this client. */
   private readonly guarded: Fetch = async (input, init) => {
-    const response = await this.fetch(input, { ...init, redirect: "manual" });
+    const response = await this.unguarded(input, init);
     if (response.status === 401 || response.status === 403)
       this.halt(`${init?.method ?? "GET"} ${input.slice(this.baseUrl.length)}`, response.status);
     return response;
@@ -278,7 +289,7 @@ class Client implements BrowserClient {
         this.requestTimeoutMs,
         this.lifetime.signal,
         async (signal) => {
-          const response = await this.guarded(`${this.baseUrl}/sdk/v1/evaluate`, {
+          const response = await this.unguarded(`${this.baseUrl}/sdk/v1/evaluate`, {
             method: "POST",
             headers: {
               Authorization: `Bearer ${this.clientKey}`,
@@ -288,8 +299,17 @@ class Client implements BrowserClient {
             signal,
           });
           if (!response.ok) {
-            await response.body?.cancel();
-            throw new Error(`POST /sdk/v1/evaluate answered ${response.status}`);
+            // A secure-mode refusal is about this context's signature, not the key: the next identify can fix it.
+            const refusal =
+              response.status === 403
+                ? readSignatureRefusal(await response.text().catch(() => ""))
+                : null;
+            if (response.status !== 403) await response.body?.cancel();
+            if (refusal === null && (response.status === 401 || response.status === 403))
+              this.halt("POST /sdk/v1/evaluate", response.status);
+            throw new Error(
+              `POST /sdk/v1/evaluate answered ${response.status}${refusal === null ? "" : ` ${refusal}`}`,
+            );
           }
           return await response.text();
         },

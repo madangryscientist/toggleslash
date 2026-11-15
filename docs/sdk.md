@@ -142,6 +142,24 @@ createClient({
 | `onError` | ignore | called with each failure; it may throw, and it is ignored if it does |
 | `fetch`, `clock`, `random` | the platform's | injected by the tests |
 
+## Secure mode: `signContext`
+
+For an environment with secure mode on, the browser SDK must send a signature over its context, made by the
+application's server (see [`sdk-browser.md`](sdk-browser.md#secure-mode)). `signContext` makes it:
+
+```ts
+import { signContext } from "@hackcove/toggleslash-sdk";
+
+// TOGGLESLASH_SIGNING_KEY holds the PEM that `toggleslash envs signing-key` printed once.
+const signature = signContext(process.env.TOGGLESLASH_SIGNING_KEY!, { key: user.id });
+// hand { context, signature } to the page, which passes both to createBrowserClient or identify
+```
+
+It signs the context's kinds and keys (not its attributes) with ECDSA P-256 and answers 86 base64url characters. It
+needs `node:crypto`, so it is on the main entry only and never on `@hackcove/toggleslash-sdk/shared`, which the browser
+SDK imports. Unlike the rest of the SDK it **throws**, on a context that is not valid or a key that is not a P-256
+private key: both are mistakes at the call site. It needs no `Client`.
+
 ## OpenFeature
 
 `packages/sdk-openfeature` is a server-side OpenFeature provider over this client: `new ToggleSlashProvider(client)`.

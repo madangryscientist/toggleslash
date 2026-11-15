@@ -1,10 +1,14 @@
+using System.Buffers.Text;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using ToggleSlash.Evaluation;
 using ToggleSlash.Server.Auth;
 using ToggleSlash.Server.Catalogue;
+using ToggleSlash.Server.Data;
 using ToggleSlash.Server.Limits;
 using ToggleSlash.Server.Usage;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Net.Http.Headers;
 
 namespace ToggleSlash.Server.Sdk;
@@ -29,9 +33,12 @@ public static class SdkEndpoints
     /// <c>{ "kind": "user", "key": "user-1", "attributes": { ... } }</c> (<c>kind</c> optional, absent is <c>user</c>), or a multi-context,
     /// <c>{ "kind": "multi", "contexts": { "user": { "key": "user-1" }, "org": { "key": "acme", "attributes": { ... } } } }</c>.
     /// Send <c>flagKey</c> to evaluate that one flag; leave it out for every flag that is not archived.
+    /// <c>signature</c> is what a client key sends in an environment with secure mode on: the application server's ECDSA
+    /// P-256 signature over the context's keys (docs/sdk-browser.md, "Secure mode"), base64url with no padding. A server
+    /// key, and a client key where secure mode is off, need none, and one sent is ignored.
     /// </summary>
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-    public sealed record EvaluateRequest(JsonElement? Context, string? FlagKey = null);
+    public sealed record EvaluateRequest(JsonElement? Context, string? FlagKey = null, string? Signature = null);
 
     /// <summary>
     /// The reason, as <c>docs/evaluation.md</c> spells it. It names no rule beyond the index of the one that
@@ -133,11 +140,17 @@ public static class SdkEndpoints
         return Results.Bytes(snapshot.Body, "application/json");
     }
 
-    private static async Task<IResult> Evaluate(EvaluateRequest request, HttpContext http, RulesetReader reader, UsageRecorder usage)
+    private static async Task<IResult> Evaluate(EvaluateRequest request, HttpContext http, RulesetReader reader, UsageRecorder usage, ToggleSlashDbContext database)
     {
         var environmentId = ServerAuth.EnvironmentId(http.User);
         // A client key ships in a page, so it is answered only the flags marked visible to it.
         var clientKey = ServerAuth.IsClientKey(http.User);
+        // A missing or invalid context falls through to EvaluateAll's 400: the context is checked before any signature.
+        if (clientKey && request.Context is { } context && ContextSignature.Message(context) is { } message
+            && await SignatureRefusal(database, environmentId, message, request.Signature, http.RequestAborted) is { } refused)
+        {
+            return refused;
+        }
         var outcome = await EvaluateAll(
             request,
             () => reader.Read(environmentId, http.RequestAborted),
@@ -148,6 +161,65 @@ public static class SdkEndpoints
         }
         await usage.RecordEvaluations(environmentId, outcome.Served, http.RequestAborted);
         return Results.Ok(outcome.Response);
+    }
+
+    /// <summary>
+    /// Null when the environment's secure mode is off or <paramref name="signature"/> verifies over <paramref name="message"/>
+    /// with its public key; otherwise the 403 to send. Neither 403 says anything about the key.
+    /// </summary>
+    private static async Task<IResult?> SignatureRefusal(
+        ToggleSlashDbContext database, long environmentId, byte[] message, string? signature, CancellationToken cancellation)
+    {
+        var environment = await database.Environments.AsNoTracking()
+            .Where(e => e.Id == environmentId)
+            .Select(e => new { e.SecureMode, e.SigningPublicKey })
+            .SingleAsync(cancellation);
+        if (!environment.SecureMode)
+        {
+            return null;
+        }
+        if (string.IsNullOrEmpty(signature))
+        {
+            return ApiError.Result(StatusCodes.Status403Forbidden, "signature_required",
+                "Secure mode is on in this environment, so a client key must send the context's \"signature\", made by the application's server.");
+        }
+        return Verifies(environment.SigningPublicKey, message, signature)
+            ? null
+            : ApiError.Result(StatusCodes.Status403Forbidden, "bad_signature", "The signature does not match this context.");
+    }
+
+    /// <summary>A 64-byte IEEE P1363 <c>r || s</c>, base64url with no padding; anything else fails, and nothing here throws.</summary>
+    private static bool Verifies(byte[]? publicKey, byte[] message, string signature)
+    {
+        // Secure mode cannot be turned on without a key, so null is not expected here; it still fails closed. And 64 bytes
+        // are exactly 86 base64url characters with no padding, so a padded or short one fails before it is decoded.
+        if (publicKey is null || signature.Length != 86)
+        {
+            return false;
+        }
+        byte[] bytes;
+        try
+        {
+            bytes = Base64Url.DecodeFromChars(signature);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+        if (bytes.Length != 64)
+        {
+            return false;
+        }
+        try
+        {
+            using var key = ECDsa.Create();
+            key.ImportSubjectPublicKeyInfo(publicKey, out _);
+            return key.VerifyData(message, bytes, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+        }
+        catch (CryptographicException)
+        {
+            return false;
+        }
     }
 
     /// <summary>

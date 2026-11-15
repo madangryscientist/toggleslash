@@ -24,6 +24,7 @@ public sealed class AdminTokenTests : IDisposable
         ["GET /api/v1/projects/{project}/environments/{env}"] = (true, true),
         ["PATCH /api/v1/projects/{project}/environments/{env}"] = (false, true),
         ["DELETE /api/v1/projects/{project}/environments/{env}"] = (false, true),
+        ["POST /api/v1/projects/{project}/environments/{env}/signing-key"] = (false, true),
         ["POST /api/v1/projects/{project}/environments/{env}/evaluate"] = (true, true),
         ["GET /api/v1/projects/{project}/environments/{env}/flag-states"] = (true, true),
         ["GET /api/v1/projects/{project}/environments/{env}/keys"] = (true, true),
@@ -82,8 +83,9 @@ public sealed class AdminTokenTests : IDisposable
     private static (HttpMethod Method, string Path, object? Body) RequestFor(string route)
     {
         var parts = route.Split(' ');
-        // Renaming or deleting the environment itself would really do it to the seeded `prod`: name one that is not there.
-        var changesTheEnvironment = parts[1].EndsWith("/environments/{env}", StringComparison.Ordinal) && parts[0] is "PATCH" or "DELETE";
+        // Renaming, deleting or re-keying the environment itself would really do it to the seeded `prod`: name one that is not there.
+        var changesTheEnvironment = (parts[1].EndsWith("/environments/{env}", StringComparison.Ordinal) && parts[0] is "PATCH" or "DELETE")
+            || parts[1].EndsWith("/signing-key", StringComparison.Ordinal);
         var path = parts[1]
             .Replace("{project}", "shop")
             .Replace("{env}", changesTheEnvironment ? "absent" : "prod")

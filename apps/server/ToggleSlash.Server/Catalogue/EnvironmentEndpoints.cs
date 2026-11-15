@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using ToggleSlash.Server.Audit;
 using ToggleSlash.Server.Auth;
 using ToggleSlash.Server.Data;
@@ -10,10 +11,20 @@ public static class EnvironmentEndpoints
 {
     public sealed record CreateEnvironmentRequest(string? Key, string? Name);
 
-    /// <summary>Only the name can change: an environment's key is what audit rows, clients and URLs address it by.</summary>
-    public sealed record RenameEnvironmentRequest(string? Name);
+    /// <summary>
+    /// The name and secure mode can change, and a field left out stays as it is. The key cannot: it is what audit rows,
+    /// clients and URLs address the environment by. Secure mode can be turned on only once the environment has a signing key.
+    /// </summary>
+    public sealed record UpdateEnvironmentRequest(string? Name = null, bool? SecureMode = null);
 
-    public sealed record EnvironmentResponse(string Key, string Name, DateTime CreatedAt);
+    /// <summary>
+    /// <c>secureMode</c>: a client-key evaluate must carry a signature over its context's keys. <c>signingKeyCreatedAt</c>
+    /// is when the current signing key was made, or null when there is none; the key itself is never returned here.
+    /// </summary>
+    public sealed record EnvironmentResponse(string Key, string Name, DateTime CreatedAt, bool SecureMode, DateTime? SigningKeyCreatedAt);
+
+    /// <summary>The private half of a new signing key, as a PKCS#8 PEM. This answer is the only time it is sent; the server keeps only the public half.</summary>
+    public sealed record SigningKeyResponse(string PrivateKey, DateTime CreatedAt);
 
     public static void MapEnvironmentEndpoints(this IEndpointRouteBuilder routes)
     {
@@ -35,10 +46,16 @@ public static class EnvironmentEndpoints
             .WithName("getEnvironment")
             .Produces<EnvironmentResponse>()
             .Produces<ApiError>(StatusCodes.Status404NotFound);
-        environments.MapPatch("{env}", Rename)
-            .WithName("renameEnvironment")
+        environments.MapPatch("{env}", Update)
+            .WithName("updateEnvironment")
             .Produces<EnvironmentResponse>()
             .Produces<ApiError>(StatusCodes.Status400BadRequest)
+            .Produces<ApiError>(StatusCodes.Status404NotFound)
+            .Produces<ApiError>(StatusCodes.Status409Conflict);
+        environments.MapPost("{env}/signing-key", CreateSigningKey)
+            .WithName("createSigningKey")
+            .WithSummary("Makes a new ECDSA P-256 signing key for secure mode and answers its private half, once. It replaces any key the environment had, so signatures made with that one stop verifying at once.")
+            .Produces<SigningKeyResponse>(StatusCodes.Status201Created)
             .Produces<ApiError>(StatusCodes.Status404NotFound);
         environments.MapDelete("{env}", Delete)
             .WithName("deleteEnvironment")
@@ -119,12 +136,12 @@ public static class EnvironmentEndpoints
     }
 
     /// <summary>
-    /// Changes the name and nothing else. A ruleset does not carry the environment's name, so its ETag stays
-    /// and no stream is told. The targeting lock is held so the event's before is the row's true before.
+    /// Changes the name, secure mode or both. Neither is in a ruleset, so its ETag stays and no stream is told. The
+    /// targeting lock is held so the event's before is the row's true before.
     /// </summary>
-    private static async Task<IResult> Rename(string project, string env, RenameEnvironmentRequest request, ToggleSlashDbContext database, TargetingLock targetingLock, CancellationToken cancellation)
+    private static async Task<IResult> Update(string project, string env, UpdateEnvironmentRequest request, ToggleSlashDbContext database, TargetingLock targetingLock, CancellationToken cancellation)
     {
-        if (Validation.Name(request.Name) is { } problem)
+        if (request.Name is not null && Validation.Name(request.Name) is { } problem)
         {
             return Failures.BadRequest(problem);
         }
@@ -137,14 +154,48 @@ public static class EnvironmentEndpoints
         {
             return Failures.EnvironmentNotFound();
         }
+        if (request.SecureMode == true && found.SigningPublicKey is null)
+        {
+            return Failures.Conflict(
+                $"Environment \"{found.Key}\" has no signing key, so nothing could sign for it. Make one first (POST .../environments/{found.Key}/signing-key), then turn secure mode on.");
+        }
 
         var before = Describe(found);
         var row = await database.Environments.SingleAsync(e => e.Id == found.Id, cancellation);
-        row.Name = request.Name!.Trim();
-        var renamed = Describe(row);
-        database.Record(AuditEntity.Environment, row.Key, AuditAction.Updated, new AuditScope(owner.Key, row.Key), before, renamed);
+        row.Name = request.Name?.Trim() ?? row.Name;
+        row.SecureMode = request.SecureMode ?? row.SecureMode;
+        var updated = Describe(row);
+        database.Record(AuditEntity.Environment, row.Key, AuditAction.Updated, new AuditScope(owner.Key, row.Key), before, updated);
         await database.SaveChangesAsync(cancellation);
-        return Results.Json(renamed);
+        return Results.Json(updated);
+    }
+
+    /// <summary>
+    /// Makes a P-256 key pair, stores the public half (SubjectPublicKeyInfo DER) over any old one and answers the private
+    /// half (PKCS#8 PEM). The private half is in this answer only: not in the row, the audit event or a log. Replacing the
+    /// key is the rotation: a signature made with the old one fails from the moment this commits.
+    /// </summary>
+    private static async Task<IResult> CreateSigningKey(string project, string env, ToggleSlashDbContext database, TargetingLock targetingLock, CancellationToken cancellation)
+    {
+        using var held = await targetingLock.Enter(cancellation);
+        if (await database.Project(project, cancellation) is not { } owner)
+        {
+            return Failures.ProjectNotFound();
+        }
+        if (await database.Environment(owner.Id, env, cancellation) is not { } found)
+        {
+            return Failures.EnvironmentNotFound();
+        }
+
+        using var pair = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var before = Describe(found);
+        var row = await database.Environments.SingleAsync(e => e.Id == found.Id, cancellation);
+        row.SigningPublicKey = pair.ExportSubjectPublicKeyInfo();
+        row.SigningKeyCreatedAt = DateTime.UtcNow;
+        var after = Describe(row);
+        database.Record(AuditEntity.Environment, row.Key, AuditAction.Updated, new AuditScope(owner.Key, row.Key), before, after);
+        await database.SaveChangesAsync(cancellation);
+        return Results.Json(new SigningKeyResponse(pair.ExportPkcs8PrivateKeyPem(), row.SigningKeyCreatedAt.Value), statusCode: StatusCodes.Status201Created);
     }
 
     /// <summary>
@@ -184,5 +235,5 @@ public static class EnvironmentEndpoints
         Failures.Conflict($"An environment with key \"{key}\" already exists in this project.");
 
     private static EnvironmentResponse Describe(ProjectEnvironment environment) =>
-        new(environment.Key, environment.Name, environment.CreatedAt);
+        new(environment.Key, environment.Name, environment.CreatedAt, environment.SecureMode, environment.SigningKeyCreatedAt);
 }

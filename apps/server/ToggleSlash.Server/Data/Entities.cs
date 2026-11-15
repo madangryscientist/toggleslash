@@ -19,6 +19,17 @@ public sealed class ProjectEnvironment
     public required string Key { get; set; }
     public required string Name { get; set; }
     public required DateTime CreatedAt { get; set; }
+
+    /// <summary>Whether a client-key evaluate must carry a signature over its context's keys, made with the signing key.</summary>
+    public bool SecureMode { get; set; }
+
+    /// <summary>
+    /// The public half of the environment's ECDSA P-256 signing key, as SubjectPublicKeyInfo DER. The private half
+    /// is returned once, when the key is made, and never stored: nothing the server holds can sign.
+    /// </summary>
+    public byte[]? SigningPublicKey { get; set; }
+
+    public DateTime? SigningKeyCreatedAt { get; set; }
 }
 
 public sealed class Flag

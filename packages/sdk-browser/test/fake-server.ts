@@ -53,6 +53,11 @@ export class FakeServer {
   /** Statuses by path, answered instead of the route. `retryAfter` goes in the `Retry-After` header. */
   readonly statuses = new Map<string, { status: number; retryAfter?: string }>();
   readonly seen: Seen[] = [];
+  /**
+   * Secure mode, when set: the signature each context key must send, as the real server checks it. A missing one is
+   * a 403 `signature_required`, another one a 403 `bad_signature`.
+   */
+  signatures: Map<string, string> | null = null;
   /** Evaluate requests wait for these, in order, after reading the state they answer. */
   private holds: Promise<void>[] = [];
   private streams = new Set<ReadableStreamDefaultController<Uint8Array>>();
@@ -143,6 +148,11 @@ export class FakeServer {
   }
 
   private async evaluate(body: unknown, signal: AbortSignal | undefined): Promise<Response> {
+    if (this.signatures !== null) {
+      const sent = isRecord(body) ? body["signature"] : undefined;
+      if (typeof sent !== "string" || sent === "") return refusal("signature_required");
+      if (this.signatures.get(contextKey(body)) !== sent) return refusal("bad_signature");
+    }
     const answer = this.answers.get(contextKey(body)) ?? this.fallback;
     const text = JSON.stringify({ flags: answer });
     const hold = this.holds.shift();
@@ -190,6 +200,13 @@ class Gate {
       this.open = resolve;
     });
   }
+}
+
+function refusal(code: string): Response {
+  return new Response(JSON.stringify({ error: { code, message: "refused" } }), {
+    status: 403,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 function overridden(override: { status: number; retryAfter?: string }): Response {

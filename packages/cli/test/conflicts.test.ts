@@ -52,4 +52,16 @@ describe("a 409 exits 1 with the server's message", () => {
     expect(result.stderr).toBe(line);
     expect(requests).toBe(1);
   });
+
+  it("envs secure-mode on, when the environment has no signing key", async () => {
+    const { result, requests, line } = await conflict(
+      ["envs", "secure-mode", "production", "on", "-p", "shop"],
+      `PATCH ${P}/shop/environments/production`,
+      'Environment "production" has no signing key.',
+    );
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(line);
+    expect(requests).toBe(1);
+  });
 });

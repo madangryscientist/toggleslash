@@ -144,11 +144,11 @@ public sealed class EnvironmentRenameDeleteTests : IDisposable
         Assert.Equal("Renamed", JsonDocument.Parse(row.After!).RootElement.GetProperty("name").GetString());
     }
 
+    // A patch that leaves the name out keeps it; SecureModeTests covers that.
     [Theory]
-    [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public async Task A_missing_or_blank_name_is_400_and_changes_nothing(string? name)
+    public async Task A_blank_name_is_400_and_changes_nothing(string name)
     {
         await Seed();
         var count = server.AuditRows().Count;

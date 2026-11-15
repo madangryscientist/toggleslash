@@ -6,6 +6,8 @@ export const environment = {
   key: "production",
   name: "Production",
   createdAt: "2026-11-01T10:05:00Z",
+  secureMode: true,
+  signingKeyCreatedAt: "2026-11-02T10:05:00Z",
 };
 export const flag = {
   key: "new-checkout",

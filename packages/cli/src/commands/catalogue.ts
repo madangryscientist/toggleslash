@@ -1,5 +1,5 @@
 import { apiPath } from "../api.ts";
-import { UsageError } from "../errors.ts";
+import { FailureError, UsageError } from "../errors.ts";
 import { PROJECT, first, flagOn, need, printJson, str, type Command } from "../command.ts";
 import { cell, expectObject, expectObjects, table } from "../render.ts";
 
@@ -56,9 +56,10 @@ const envsList: Command = {
     const rows = expectObjects(body).map((e) => [
       cell(e["key"]),
       cell(e["name"]),
+      e["secureMode"] === true ? "on" : "off",
       cell(e["createdAt"]),
     ]);
-    ctx.out(table(["KEY", "NAME", "CREATED"], rows));
+    ctx.out(table(["KEY", "NAME", "SECURE MODE", "CREATED"], rows));
   },
 };
 
@@ -105,6 +106,56 @@ const envsRename: Command = {
   },
 };
 
+const envsSigningKey: Command = {
+  name: "envs signing-key",
+  usage: "<key> --project <project>",
+  summary:
+    "make the environment's secure-mode signing key and print its private key (PEM) once; it replaces the old key, whose signatures stop working at once",
+  options: { project: PROJECT },
+  required: ["the environment key"],
+  api: true,
+  async run({ values, positionals }, ctx) {
+    const project = need(values, "project");
+    const key = first(positionals, "the environment key");
+    const body = await ctx
+      .api(str(values, "url"))
+      .post(apiPath("projects", project, "environments", key, "signing-key"));
+    if (!printJson(values, ctx, body)) {
+      const pem = expectObject(body)["privateKey"];
+      if (typeof pem !== "string" || pem === "")
+        throw new FailureError("the server answered no private key.");
+      ctx.out(pem.endsWith("\n") ? pem : `${pem}\n`);
+    }
+    ctx.err(
+      "toggleslash: store the private key now, on the application's server only; the server keeps only the public half and will not show it again.\n",
+    );
+  },
+};
+
+const envsSecureMode: Command = {
+  name: "envs secure-mode",
+  usage: "<key> on|off --project <project>",
+  summary:
+    "turn secure mode on or off: when on, a client key evaluates only a context its application's server signed (on needs a signing key)",
+  options: { project: PROJECT },
+  required: ["the environment key", "on or off"],
+  api: true,
+  async run({ values, positionals }, ctx) {
+    const project = need(values, "project");
+    const key = first(positionals, "the environment key");
+    const mode = positionals[1];
+    if (mode !== "on" && mode !== "off") throw new UsageError('secure mode is "on" or "off".');
+    const body = await ctx
+      .api(str(values, "url"))
+      .patch(apiPath("projects", project, "environments", key), { secureMode: mode === "on" });
+    if (printJson(values, ctx, body)) return;
+    const updated = expectObject(body);
+    ctx.out(
+      `secure mode is ${updated["secureMode"] === true ? "on" : "off"} for environment ${cell(updated["key"])} in ${project}\n`,
+    );
+  },
+};
+
 const envsDelete: Command = {
   name: "envs delete",
   usage: "<key> --project <project> --yes",
@@ -134,5 +185,7 @@ export const CATALOGUE: readonly Command[] = [
   envsList,
   envsCreate,
   envsRename,
+  envsSigningKey,
+  envsSecureMode,
   envsDelete,
 ];

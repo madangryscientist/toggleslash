@@ -24,6 +24,12 @@ A client key never reads the ruleset or the stream. It may open `GET /sdk/v1/cha
 changed and carries no ETag, no flag key and no count. `evaluate` returns only each flag's value, its
 variation index and its reason, never the rules, targets or salts behind them.
 
+In an environment with **secure mode** on, a client-key `evaluate` must also send `signature`, the application server's
+signature over the context's keys ([`sdk-browser.md`](sdk-browser.md#secure-mode)): none is a `403` `signature_required`,
+one that does not verify a `403` `bad_signature`. `POST /api/v1/projects/{project}/environments/{env}/signing-key` makes
+the environment's signing key and answers its private half once; the server keeps only the public half.
+`PATCH .../environments/{env}` takes `secureMode`, which needs a signing key to turn on.
+
 Any route that takes a credential can answer `429` with `Retry-After` in whole seconds and the error code `rate_limited`: an
 IP has sent too many wrong credentials, or a key or an IP has reached its limit on evaluate, events or open streams. The numbers
 are in [`self-hosting.md`](self-hosting.md#rate-limits).
