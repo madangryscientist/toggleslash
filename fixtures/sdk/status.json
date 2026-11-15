@@ -282,8 +282,14 @@
           "status": {
             "lastError": "http_401",
             "etag": null
-          },
-          "errors": 1
+          }
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 2000,
+          "errors": {
+            "min": 1
+          }
         },
         {
           "do": "waitUntil",
@@ -298,7 +304,8 @@
           "status": {
             "lastError": null,
             "etag": "{{etag}}"
-          }
+          },
+          "errors": 2
         }
       ]
     },
@@ -579,7 +586,11 @@
           "status": {
             "lastError": "network",
             "etag": null
-          },
+          }
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 2000,
           "errors": {
             "min": 1
           }
