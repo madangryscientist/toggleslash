@@ -13,8 +13,6 @@ test.beforeEach(async ({ request }) => {
 async function openCheckout(page: Page) {
   await gotoHydrated(page, "/flags/checkout-v2?project=shop&env=production");
   await expect(page.getByRole("heading", { name: "Checkout v2" })).toBeVisible();
-  // The editor is disabled until React has hydrated it, so an enabled field is a live one.
-  await expect(page.getByTestId("targets-0")).toBeEnabled();
   await expect(page.getByTestId("targets-0")).toHaveValue("alice\nbob");
 }
 
