@@ -37,7 +37,7 @@ A small moon workspace (moon 2.6.5) on Bun workspaces. `.moon/workspace.yml` lis
 makes a warm worktree install fast): a package sees its own declared dependencies and the root's, not
 another package's. Declare what a package imports in that package's `package.json`.
 
-CI runs on GitHub-hosted `ubuntu-latest`, so a pull request from a fork runs with a read-only token. `scripts/check-workflows.ts` (run by the `gate` job) forbids a self-hosted runner in any workflow and any trigger a fork can drive beyond `pull_request`: a workflow takes only `push`, `pull_request`, `workflow_dispatch` and `workflow_call`.
+CI runs on GitHub-hosted `ubuntu-latest`, so a pull request from a fork runs with a read-only token. `scripts/check-workflows.ts` (run by the `checks` job) forbids a self-hosted runner in any workflow and any trigger a fork can drive beyond `pull_request`: a workflow takes only `push`, `pull_request`, `workflow_dispatch` and `workflow_call`.
 
 A change is green when all of these pass **from the worktree**:
 
@@ -101,7 +101,7 @@ starved the timing-sensitive suites.
 
 **A remote cache sits on top of `.moon/cache`** (`.moon/workspace.yml` `remote:`, at
 `https://moon-cache.madangryscientist.com`, over HTTP). Every request needs a bearer token, read from
-`MOON_REMOTE_TOKEN`. Only `ci.yml`'s `gate`, `apps`, `e2e` and `stack` jobs on a push to `main` write: the
+`MOON_REMOTE_TOKEN`. Only `ci.yml`'s `checks`, `apps`, `e2e` and `stack` jobs on a push to `main` write: the
 write token lives only in the `moon-cache-write` GitHub environment, which only `main` may use. Every other
 CI job that runs moon, and those four on a pull request, read with the repository secret `MOON_CACHE_READ_TOKEN`; their uploads are refused,
 and moon logs a WARN per task and goes on. The one exception is `release.yml`'s `publish` job: it reads
@@ -141,10 +141,11 @@ One app: `bunx moon run web:test-e2e`, `bunx moon run web:build`. The cross-lang
 
 First time on a machine: `bunx playwright install chromium-headless-shell`.
 
-**The server's container is checked in CI, not by the gate.** The `container` job in `.github/workflows/ci.yml`
+**The server's container is checked in CI, not by the local gate.** The `container` job in `.github/workflows/ci.yml`
 runs `docker build -f apps/server/Dockerfile`, `docker compose up -d`, waits for `/health` and runs
 `docker compose down -v`; it pushes nothing, logs in to no registry and uses a throwaway token. You need Docker to
-run the same commands locally, and the gate does not. Both base images in the Dockerfile are pinned by digest
+run the same commands locally, and the local gate does not. In CI the required `gate` check waits for it, with
+`checks`, `apps`, `e2e` and `stack`, so a red one blocks a merge. Both base images in the Dockerfile are pinned by digest
 (the multi-arch index digest from `mcr.microsoft.com`); a bump changes the tag and the digest together, and
 the SDK image matches `global.json`. `.dockerignore` keeps `node_modules`, `bin`, `obj` and any `*.db` out of the
 context. `apps/web` is not containerised.
