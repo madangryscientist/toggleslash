@@ -57,7 +57,7 @@ interface RowProps {
 }
 
 function ArchivedRow({ project, environment, flag, busy, run, onDelete }: RowProps) {
-  // The server renders these buttons enabled, but a click before React attaches its handlers does nothing.
+  // Disabled until hydrated: before React attaches the handlers a click would do nothing, and nothing would say so.
   const hydrated = useHydrated();
   return (
     <TableRow data-testid={`flag-${flag.key}`}>
