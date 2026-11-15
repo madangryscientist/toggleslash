@@ -13,7 +13,7 @@ import {
   Text,
   TextLink,
 } from "@hackcove/ui-react";
-import { Link } from "@tanstack/react-router";
+import { Link, useHydrated } from "@tanstack/react-router";
 import { useState } from "react";
 import { deleteFlag, restoreFlag } from "#/api/dashboard";
 import type { Environment, FlagRow, Project } from "#/api/types";
@@ -57,6 +57,8 @@ interface RowProps {
 }
 
 function ArchivedRow({ project, environment, flag, busy, run, onDelete }: RowProps) {
+  // The server renders these buttons enabled, but a click before React attaches its handlers does nothing.
+  const hydrated = useHydrated();
   return (
     <TableRow data-testid={`flag-${flag.key}`}>
       <TableCell
@@ -100,7 +102,7 @@ function ArchivedRow({ project, environment, flag, busy, run, onDelete }: RowPro
             size="sm"
             aria-label={`Restore ${flag.name}`}
             data-testid="restore-flag"
-            disabled={busy !== null}
+            disabled={!hydrated || busy !== null}
             onClick={() =>
               void run(flag.key, () =>
                 restoreFlag({ data: { project: project.key, flag: flag.key } }),
@@ -115,7 +117,7 @@ function ArchivedRow({ project, environment, flag, busy, run, onDelete }: RowPro
             tone="danger"
             aria-label={`Delete ${flag.name}`}
             data-testid="delete-flag"
-            disabled={busy !== null}
+            disabled={!hydrated || busy !== null}
             onClick={() => onDelete(flag)}
           >
             Delete

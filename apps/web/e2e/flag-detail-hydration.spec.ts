@@ -1,5 +1,6 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { API_PORT, E2E_ADMIN_TOKEN } from "./constants.ts";
+import { holdScripts } from "./hold-scripts.ts";
 
 const API = `http://127.0.0.1:${API_PORT}`;
 const CONFIG = `${API}/api/v1/projects/shop/flags/checkout-v2/environments/production`;
@@ -8,21 +9,6 @@ const AUTH = { authorization: `Bearer ${E2E_ADMIN_TOKEN}` };
 test.beforeEach(async ({ request }) => {
   await request.post(`${API}/__reset`);
 });
-
-/** Holds every client script request until `release` runs, so React cannot hydrate before then. */
-async function holdScripts(page: Page) {
-  const held: Route[] = [];
-  let release!: () => void;
-  const promise = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await page.route(/\/assets\/[^?]*\.js(\?.*)?$/, async (route) => {
-    held.push(route);
-    await promise;
-    await route.continue();
-  });
-  return { held, release };
-}
 
 test("typing is refused until React hydrates, and a fill after it saves exactly what was typed", async ({
   page,
