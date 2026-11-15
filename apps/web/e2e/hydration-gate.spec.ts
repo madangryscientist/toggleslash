@@ -24,11 +24,20 @@ const PAGES: {
     url: "/",
     environmentPicker: true,
     controls: (page) => [
-      page.getByTestId("new-flag"),
+      page.getByRole("button", { name: "New flag" }),
       page.getByLabel("Search flags"),
       page.getByRole("radio", { name: "Archived" }),
-      page.locator("[data-testid^='toggle-']").first(),
-      page.getByRole("button", { name: /^Archive / }).first(),
+      page.getByRole("button", { name: "Checkout v2 in Production" }),
+      page.getByRole("button", { name: "Archive Checkout v2" }),
+    ],
+  },
+  {
+    name: "/?archived=true",
+    url: "/?archived=true",
+    environmentPicker: true,
+    controls: (page) => [
+      page.getByRole("button", { name: "Restore Old banner" }),
+      page.getByRole("button", { name: "Delete Old banner" }),
     ],
   },
   {
@@ -36,28 +45,34 @@ const PAGES: {
     url: "/environments?project=shop&env=production",
     environmentPicker: false,
     controls: (page) => [
-      page.getByTestId("new-environment"),
-      page.getByTestId("rename-production"),
-      page.getByTestId("signing-key-production"),
+      page.getByRole("button", { name: "New environment" }),
+      page.getByRole("button", { name: "Rename production" }),
+      page.getByRole("button", { name: "Signing key for production" }),
     ],
   },
   {
     name: "/segments",
     url: "/segments?project=shop&env=production",
     environmentPicker: true,
-    controls: (page) => [page.getByTestId("new-segment"), page.getByTestId("edit-beta-testers")],
+    controls: (page) => [
+      page.getByRole("button", { name: "New segment" }),
+      page.getByRole("button", { name: "Edit beta-testers" }),
+    ],
   },
   {
     name: "/keys",
     url: "/keys?project=shop&env=production",
     environmentPicker: true,
-    controls: (page) => [page.getByTestId("new-key-button"), page.getByTestId("revoke-1")],
+    controls: (page) => [
+      page.getByRole("button", { name: "New key" }),
+      page.getByRole("button", { name: "Revoke Backend" }),
+    ],
   },
   {
     name: "/audit",
     url: "/audit?project=shop",
     environmentPicker: false,
-    controls: (page) => [page.getByTestId("apply-filters")],
+    controls: (page) => [page.getByRole("button", { name: "Apply filters" })],
   },
 ];
 
@@ -69,7 +84,7 @@ for (const { name, url, environmentPicker, controls } of PAGES) {
 
     // The default wait is the load event, which held module scripts block.
     await page.goto(url, { waitUntil: "commit" });
-    const header = [page.getByLabel("Project"), page.getByTestId("sign-out")];
+    const header = [page.getByLabel("Project"), page.getByRole("button", { name: "Sign out" })];
     if (environmentPicker) header.push(page.getByLabel("Environment"));
     const shown = [...header, ...controls(page)];
     for (const control of shown) {
@@ -93,19 +108,20 @@ test("the flag page's name field and save button are disabled until React hydrat
   // The default wait is the load event, which held module scripts block.
   await page.goto("/flags/checkout-v2?project=shop&env=production", { waitUntil: "commit" });
   const gated = [
-    page.getByTestId("meta-name"),
-    page.getByTestId("meta-owner"),
+    page.getByLabel("Name"),
+    page.getByLabel("Owner"),
     page.getByLabel("Visible to client keys"),
-    page.getByTestId("sign-out"),
+    page.getByRole("button", { name: "Sign out" }),
     page.getByLabel("Environment"),
   ];
-  await expect(page.getByTestId("meta-name")).toBeVisible();
+  const saveDetails = page.getByRole("button", { name: "Save details" });
+  await expect(page.getByLabel("Name")).toBeVisible();
   for (const control of gated) await expect(control).toBeDisabled();
-  await expect(page.getByTestId("save-meta")).toBeDisabled();
+  await expect(saveDetails).toBeDisabled();
   expect(held.length).toBeGreaterThan(0);
 
   release();
   for (const control of gated) await expect(control).toBeEnabled();
-  await page.getByTestId("meta-name").fill("Checkout v2 (gated)");
-  await expect(page.getByTestId("save-meta")).toBeEnabled();
+  await page.getByLabel("Name").fill("Checkout v2 (gated)");
+  await expect(saveDetails).toBeEnabled();
 });

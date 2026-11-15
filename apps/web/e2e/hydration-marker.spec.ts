@@ -25,8 +25,10 @@ test.describe("signed out", () => {
   });
 });
 
-// A plain goto, not the helper this marker serves, so the check does not lean on itself.
+// A plain goto and its own read, not the helper this marker serves, so the check does not lean on itself.
 test("a loaded page's root carries the hydration marker", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator("html")).toHaveAttribute("data-hydrated", "");
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.getAttribute("data-hydrated")))
+    .toBe("");
 });

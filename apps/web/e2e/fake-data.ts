@@ -330,9 +330,8 @@ export function fixture(): Store {
   };
 }
 
-export const db = { data: fixture(), down: false };
+export const db = { data: fixture() };
 
 export function reset() {
   db.data = fixture();
-  db.down = false;
 }

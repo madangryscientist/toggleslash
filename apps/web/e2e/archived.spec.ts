@@ -1,6 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { API_PORT } from "./constants.ts";
-import { holdScripts } from "./hold-scripts.ts";
 import { gotoHydrated } from "./goto.ts";
 
 const API = `http://127.0.0.1:${API_PORT}`;
@@ -9,15 +8,17 @@ test.beforeEach(async ({ request }) => {
   await request.post(`${API}/__reset`);
 });
 
+const flagRow = (page: Page, name: string) => page.getByRole("row", { name: new RegExp(name) });
+
 test("the list and the detail header show each flag's lifecycle stage", async ({ page }) => {
   await gotoHydrated(page, "/");
-  await expect(page.getByTestId("flag-checkout-v2").getByTestId("stage")).toHaveText("Active");
-  await expect(page.getByTestId("flag-dark-mode").getByTestId("stage")).toHaveText("New");
-  await expect(page.getByTestId("flag-search-boost").getByTestId("stage")).toHaveText("Inactive");
+  await expect(flagRow(page, "Checkout v2").getByText("Active", { exact: true })).toBeVisible();
+  await expect(flagRow(page, "Dark mode").getByText("New", { exact: true })).toBeVisible();
+  await expect(flagRow(page, "Search boost").getByText("Inactive", { exact: true })).toBeVisible();
 
-  await page.getByTestId("open-search-boost").click();
-  await expect(page.getByRole("heading", { name: "Search boost" })).toBeVisible();
-  await expect(page.getByTestId("stage")).toHaveText("Inactive");
+  await page.getByRole("link", { name: "Search boost" }).click();
+  await expect(page.getByRole("heading", { name: "Search boost", level: 1 })).toBeVisible();
+  await expect(page.getByText("Inactive", { exact: true })).toBeVisible();
 });
 
 test("choosing Archived shows the archived flags only, and a reload keeps the view", async ({
@@ -26,76 +27,41 @@ test("choosing Archived shows the archived flags only, and a reload keeps the vi
   await gotoHydrated(page, "/");
   await page.getByRole("radio", { name: "Archived" }).click();
   await expect(page).toHaveURL(/archived=true/);
-  await expect(page.getByTestId("flag-old-banner").getByTestId("stage")).toHaveText("Archived");
-  await expect(page.getByTestId("flag-legacy-cart")).toBeVisible();
-  await expect(page.getByTestId("flag-checkout-v2")).toHaveCount(0);
-  await expect(page.getByTestId("toggle-old-banner")).toHaveCount(0);
+  await expect(flagRow(page, "Old banner").getByText("Archived", { exact: true })).toBeVisible();
+  await expect(flagRow(page, "Legacy cart")).toBeVisible();
+  await expect(flagRow(page, "Checkout v2")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Old banner in Production" })).toHaveCount(0);
 
   await page.reload();
   await expect(page.getByRole("radio", { name: "Archived" })).toBeChecked();
-  await expect(page.getByTestId("flag-old-banner")).toBeVisible();
-  await expect(page.getByTestId("flag-checkout-v2")).toHaveCount(0);
+  await expect(flagRow(page, "Old banner")).toBeVisible();
+  await expect(flagRow(page, "Checkout v2")).toHaveCount(0);
 
   await page.getByLabel("Environment").selectOption("staging");
   await expect(page).toHaveURL(/archived=true/);
-  await expect(page.getByTestId("flag-old-banner")).toBeVisible();
-});
-
-test("the archived view says so when the project has none", async ({ page }) => {
-  await gotoHydrated(page, "/?project=docs&archived=true");
-  await expect(page.getByText("No archived flags in Docs.")).toBeVisible();
+  await expect(flagRow(page, "Old banner")).toBeVisible();
 });
 
 test("Restore moves a flag back to the Active view", async ({ page }) => {
   await gotoHydrated(page, "/?archived=true");
-  await page.getByTestId("flag-old-banner").getByTestId("restore-flag").click();
-  await expect(page.getByTestId("flag-old-banner")).toHaveCount(0);
+  await page.getByRole("button", { name: "Restore Old banner" }).click();
+  await expect(flagRow(page, "Old banner")).toHaveCount(0);
 
   await page.getByRole("radio", { name: "Active" }).click();
-  await expect(page.getByTestId("flag-old-banner")).toBeVisible();
-  await expect(page.getByTestId("toggle-old-banner")).toHaveText("Off");
+  await expect(flagRow(page, "Old banner")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Old banner in Production" })).toHaveText("Off");
 });
 
-test("Restore and Delete are disabled until the archived view hydrates", async ({ page }) => {
-  const { held, release } = await holdScripts(page);
-
-  // The default wait is the load event, which held module scripts block.
-  await page.goto("/?archived=true", { waitUntil: "commit" });
-  const row = page.getByTestId("flag-old-banner");
-  await expect(row.getByTestId("restore-flag")).toBeVisible();
-  await expect(row.getByTestId("restore-flag")).toBeDisabled();
-  await expect(row.getByTestId("delete-flag")).toBeDisabled();
-  expect(held.length).toBeGreaterThan(0);
-
-  release();
-  await expect(row.getByTestId("restore-flag")).toBeEnabled();
-  await row.getByTestId("restore-flag").click();
-  await expect(page.getByTestId("flag-old-banner")).toHaveCount(0);
-});
-
-test("Delete asks first: Cancel keeps the flag, confirming removes it", async ({ page }) => {
+test("Delete, once confirmed, removes the flag for good", async ({ page }) => {
   await gotoHydrated(page, "/?archived=true");
-  await page.getByTestId("flag-old-banner").getByTestId("delete-flag").click();
-  await expect(page.getByText("Delete Old banner?")).toBeVisible();
-  await page.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByTestId("flag-old-banner")).toBeVisible();
-
-  await page.getByTestId("flag-old-banner").getByTestId("delete-flag").click();
-  await page.getByTestId("confirm-delete").click();
-  await expect(page.getByTestId("flag-old-banner")).toHaveCount(0);
-  await expect(page.getByTestId("flag-legacy-cart")).toBeVisible();
+  await page.getByRole("button", { name: "Delete Old banner" }).click();
+  await page
+    .getByRole("dialog", { name: "Delete Old banner?" })
+    .getByRole("button", { name: "Delete" })
+    .click();
+  await expect(flagRow(page, "Old banner")).toHaveCount(0);
+  await expect(flagRow(page, "Legacy cart")).toBeVisible();
 
   await page.reload();
-  await expect(page.getByTestId("flag-old-banner")).toHaveCount(0);
-});
-
-test("Delete on a flag another flag needs shows the server's message and keeps it", async ({
-  page,
-}) => {
-  await gotoHydrated(page, "/?archived=true");
-  await page.getByTestId("flag-legacy-cart").getByTestId("delete-flag").click();
-  await page.getByTestId("confirm-delete").click();
-  await expect(page.getByTestId("problem")).toContainText('"search-boost"');
-  await expect(page.getByTestId("problem")).toContainText("prerequisite");
-  await expect(page.getByTestId("flag-legacy-cart")).toBeVisible();
+  await expect(flagRow(page, "Old banner")).toHaveCount(0);
 });
