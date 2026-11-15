@@ -26,11 +26,11 @@
   "devDependencies": {
     "@moonrepo/cli": "2.6.5",
     "@types/bun": "1.4.4",
-    "oxfmt": "0.75.0",
-    "oxlint": "1.90.0",
-    "oxlint-tsgolint": "7.0.2005",
+    "oxfmt": "0.78.0",
+    "oxlint": "1.93.0",
+    "oxlint-tsgolint": "7.0.2006",
     "typescript": "7.0.2",
-    "vitest": "5.0.5"
+    "vitest": "5.1.0"
   },
   "trustedDependencies": [
     "@moonrepo/cli"

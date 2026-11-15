@@ -1,6 +1,12 @@
 import { expect, test, type Page, type Response } from "@playwright/test";
 import { API_PORT, E2E_OPERATOR_PASSWORD } from "./constants.ts";
 
+/** A section link in the dashboard nav. The nav is also in a phone menu, hidden on desktop, so match by role. */
+const section = (page: Page, label: string) =>
+  page
+    .getByRole("navigation", { name: "Sections" })
+    .getByRole("link", { name: label, exact: true });
+
 const API = `http://127.0.0.1:${API_PORT}`;
 
 test.beforeEach(async ({ request }) => {
@@ -117,7 +123,7 @@ test("a signed-in page, its client assets and a server function carry the header
   // A client-side navigation calls the server functions; the first load rendered them on the server.
   await page.getByTestId("toggle-checkout-v2").click();
   await expect(page.getByTestId("toggle-checkout-v2")).toHaveText("Off");
-  await page.getByTestId("nav-keys").click();
+  await section(page, "SDK keys").click();
   await expect(page).toHaveURL(/\/keys/);
 
   const functions = answers.filter((response) => response.url().includes("/_serverFn/"));

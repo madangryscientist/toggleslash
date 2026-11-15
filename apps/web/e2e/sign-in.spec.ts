@@ -10,6 +10,12 @@ import {
   UNCONFIGURED_PORT,
 } from "./constants.ts";
 
+/** A section link in the dashboard nav. The nav is also in a phone menu, hidden on desktop, so match by role. */
+const section = (page: Page, label: string) =>
+  page
+    .getByRole("navigation", { name: "Sections" })
+    .getByRole("link", { name: label, exact: true });
+
 const API = `http://127.0.0.1:${API_PORT}`;
 const UNCONFIGURED = `http://localhost:${UNCONFIGURED_PORT}`;
 const ORIGIN = `http://localhost:${PORT}`;
@@ -102,9 +108,9 @@ test("a session that ends while a page is open sends the next call to sign-in", 
 }) => {
   await page.goto("/");
   await signIn(page);
-  await expect(page.getByTestId("nav-keys")).toBeVisible();
+  await expect(section(page, "SDK keys")).toBeVisible();
   await page.context().clearCookies();
-  await page.getByTestId("nav-keys").click();
+  await section(page, "SDK keys").click();
   await expect(page).toHaveURL(/\/sign-in\?returnTo=/);
 });
 

@@ -1,6 +1,12 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { API_PORT, E2E_ADMIN_TOKEN } from "./constants.ts";
 import { waitForHydrated } from "./hydrated.ts";
+
+/** A section link in the dashboard nav. The nav is also in a phone menu, hidden on desktop, so match by role. */
+const section = (page: Page, label: string) =>
+  page
+    .getByRole("navigation", { name: "Sections" })
+    .getByRole("link", { name: label, exact: true });
 
 const API = `http://127.0.0.1:${API_PORT}`;
 const AUTH = { authorization: `Bearer ${E2E_ADMIN_TOKEN}` };
@@ -13,19 +19,19 @@ test("the nav moves between the operator pages and keeps the project and environ
   page,
 }) => {
   await page.goto("/?project=shop&env=staging");
-  await page.getByTestId("nav-environments").click();
+  await section(page, "Environments").click();
   await expect(page).toHaveURL(/\/environments\?project=shop&env=staging/);
   await expect(page.getByTestId("environment-staging")).toBeVisible();
-  await page.getByTestId("nav-keys").click();
+  await section(page, "SDK keys").click();
   await expect(page).toHaveURL(/\/keys/);
-  await page.getByTestId("nav-segments").click();
+  await section(page, "Segments").click();
   await expect(page).toHaveURL(/\/segments/);
-  await page.getByTestId("nav-audit").click();
+  await section(page, "Audit log").click();
   await expect(page).toHaveURL(/\/audit/);
   // The audit page has no environment picker, but the nav still opens the others on staging.
-  await page.getByTestId("nav-keys").click();
+  await section(page, "SDK keys").click();
   await expect(page).toHaveURL(/env=staging/);
-  await page.getByTestId("nav-flags").click();
+  await section(page, "Flags").click();
   await expect(page.getByTestId("flag-checkout-v2")).toBeVisible();
 });
 
@@ -86,10 +92,10 @@ test.describe("SDK keys", () => {
     await expect(page.getByTestId("key-3")).not.toContainText("SECRETPART");
 
     // Leave and come back: the prefix stays, the secret does not.
-    await page.getByTestId("nav-segments").click();
+    await section(page, "Segments").click();
     await expect(page).toHaveURL(/\/segments/);
     await expect(page.getByTestId("segments")).toBeVisible();
-    await page.getByTestId("nav-keys").click();
+    await section(page, "SDK keys").click();
     await expect(page.getByTestId("key-3")).toContainText("tgl_srv_00000001");
     await expect(page.getByTestId("new-key")).toHaveCount(0);
     await expect(page.locator("body")).not.toContainText("SECRETPART");
