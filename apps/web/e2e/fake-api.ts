@@ -12,7 +12,7 @@ import { API_PORT, E2E_ADMIN_TOKEN } from "./constants.ts";
 import { db, flag, plain, reset, type Config, type Flag } from "./fake-data.ts";
 import { answer, lifecycleRoute, listed } from "./fake-flags.ts";
 import { createEnvironment, deleteEnvironment, renameEnvironment } from "./fake-environments.ts";
-import { auditPage, onKeys, onSegments, rulesetAt } from "./fake-operator.ts";
+import { auditPage, onKeys, onSegments, resetSecrets, rulesetAt } from "./fake-operator.ts";
 import {
   historyOf,
   patchFlag,
@@ -263,6 +263,7 @@ createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://fake");
   if (url.pathname === "/__reset") {
     reset();
+    resetSecrets();
     return send(res, 200, { ok: true });
   }
   if (url.pathname.startsWith("/__bump/")) return bump(res, url.pathname);

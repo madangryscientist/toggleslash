@@ -7,7 +7,7 @@ import {
   Select,
   Tabs,
 } from "@hackcove/ui-react";
-import { Link } from "@tanstack/react-router";
+import { Link, useHydrated } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { signOut } from "#/api/session";
 import type { Environment, Failure, Project } from "#/api/types";
@@ -56,41 +56,56 @@ interface SwitcherProps {
   onEnvironment: (key: string) => void;
 }
 
+/** The project picker. Disabled until hydrated: before React attaches the handlers a change would do nothing. */
+function ProjectSelect(props: SwitcherProps) {
+  const { projects, project } = props;
+  const hydrated = useHydrated();
+  return (
+    <Select
+      aria-label="Project"
+      width="auto"
+      value={project?.key ?? ""}
+      disabled={!hydrated || props.projectLocked === true || projects.length === 0}
+      onChange={(event) => props.onProject(event.currentTarget.value)}
+    >
+      {projects.length === 0 && <option value="">No projects</option>}
+      {projects.map((p) => (
+        <option key={p.key} value={p.key}>
+          {p.name}
+        </option>
+      ))}
+    </Select>
+  );
+}
+
+/** The environment picker. Disabled until hydrated, as the project picker is. */
+function EnvironmentSelect(props: SwitcherProps) {
+  const { environments, environment } = props;
+  const hydrated = useHydrated();
+  return (
+    <Select
+      aria-label="Environment"
+      width="auto"
+      value={environment?.key ?? ""}
+      disabled={!hydrated || environments.length === 0}
+      onChange={(event) => props.onEnvironment(event.currentTarget.value)}
+    >
+      {environments.length === 0 && <option value="">No environments</option>}
+      {environments.map((e) => (
+        <option key={e.key} value={e.key}>
+          {e.name}
+        </option>
+      ))}
+    </Select>
+  );
+}
+
 /** The project and environment pickers in the shell's header. */
 export function Switchers(props: SwitcherProps) {
-  const { projects, project, environments, environment } = props;
   return (
     <>
-      <Select
-        aria-label="Project"
-        width="auto"
-        value={project?.key ?? ""}
-        disabled={props.projectLocked === true || projects.length === 0}
-        onChange={(event) => props.onProject(event.currentTarget.value)}
-      >
-        {projects.length === 0 && <option value="">No projects</option>}
-        {projects.map((p) => (
-          <option key={p.key} value={p.key}>
-            {p.name}
-          </option>
-        ))}
-      </Select>
-      {props.hideEnvironment !== true && (
-        <Select
-          aria-label="Environment"
-          width="auto"
-          value={environment?.key ?? ""}
-          disabled={environments.length === 0}
-          onChange={(event) => props.onEnvironment(event.currentTarget.value)}
-        >
-          {environments.length === 0 && <option value="">No environments</option>}
-          {environments.map((e) => (
-            <option key={e.key} value={e.key}>
-              {e.name}
-            </option>
-          ))}
-        </Select>
-      )}
+      <ProjectSelect {...props} />
+      {props.hideEnvironment !== true && <EnvironmentSelect {...props} />}
     </>
   );
 }
@@ -153,8 +168,16 @@ async function leave(): Promise<void> {
 }
 
 function SignOut() {
+  // Disabled until hydrated: before React attaches the handlers a click would do nothing, and nothing would say so.
+  const hydrated = useHydrated();
   return (
-    <Button variant="outline" size="sm" data-testid="sign-out" onClick={() => void leave()}>
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={!hydrated}
+      data-testid="sign-out"
+      onClick={() => void leave()}
+    >
       Sign out
     </Button>
   );

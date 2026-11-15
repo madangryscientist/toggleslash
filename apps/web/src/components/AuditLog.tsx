@@ -11,7 +11,7 @@ import {
   Timeline,
   TimelineItem,
 } from "@hackcove/ui-react";
-import { Link } from "@tanstack/react-router";
+import { Link, useHydrated } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import type { AuditFilters, AuditPage, Environment, Project } from "#/api/types";
 import { describeEvent, nonEmpty, stamp } from "./text";
@@ -25,6 +25,8 @@ interface FilterProps {
 /** The three narrowings the server supports. Applying them restarts the log from its newest event. */
 function Filters({ environments, filters, onApply }: FilterProps) {
   const [draft, setDraft] = useState(filters);
+  // Disabled until hydrated: before React attaches the handlers a click would do nothing, and nothing would say so.
+  const hydrated = useHydrated();
   function submit(event: FormEvent) {
     event.preventDefault();
     onApply({ ...draft, flag: draft.flag.trim() });
@@ -37,6 +39,7 @@ function Filters({ environments, filters, onApply }: FilterProps) {
           <Input
             id="audit-flag"
             placeholder="Flag key"
+            disabled={!hydrated}
             value={draft.flag}
             onChange={(e) => setDraft({ ...draft, flag: e.currentTarget.value })}
           />
@@ -44,6 +47,7 @@ function Filters({ environments, filters, onApply }: FilterProps) {
         <Field label="Environment" htmlFor="audit-environment">
           <Select
             id="audit-environment"
+            disabled={!hydrated}
             value={draft.environment}
             onChange={(e) => setDraft({ ...draft, environment: e.currentTarget.value })}
           >
@@ -59,16 +63,18 @@ function Filters({ environments, filters, onApply }: FilterProps) {
           <Input
             id="audit-since"
             type="date"
+            disabled={!hydrated}
             value={draft.since}
             onChange={(e) => setDraft({ ...draft, since: e.currentTarget.value })}
           />
         </Field>
-        <Button type="submit" data-testid="apply-filters">
+        <Button type="submit" disabled={!hydrated} data-testid="apply-filters">
           Apply filters
         </Button>
         {filtered && (
           <Button
             variant="ghost"
+            disabled={!hydrated}
             data-testid="clear-filters"
             onClick={() => {
               const none = { flag: "", environment: "", since: "" };

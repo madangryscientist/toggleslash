@@ -10,6 +10,7 @@ import {
   Text,
   Textarea,
 } from "@hackcove/ui-react";
+import { useHydrated } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { parseTags } from "./text";
 import { saveFlagMeta } from "#/api/dashboard";
@@ -49,6 +50,8 @@ interface FieldsProps {
 }
 
 function MetaFields({ flag, draft, problems, onDraft: edit }: FieldsProps) {
+  // Disabled until hydrated: before React attaches the handlers a click would do nothing, and nothing would say so.
+  const hydrated = useHydrated();
   return (
     <>
       <Field label="Key" htmlFor="meta-key" hint="What code asks for. It cannot change.">
@@ -57,6 +60,7 @@ function MetaFields({ flag, draft, problems, onDraft: edit }: FieldsProps) {
       <Field label="Name" htmlFor="meta-name" error={at(problems, "name")?.message}>
         <Input
           id="meta-name"
+          disabled={!hydrated}
           data-testid="meta-name"
           value={draft.name}
           onChange={(e) => edit({ ...draft, name: e.currentTarget.value })}
@@ -69,6 +73,7 @@ function MetaFields({ flag, draft, problems, onDraft: edit }: FieldsProps) {
       >
         <Textarea
           id="meta-description"
+          disabled={!hydrated}
           data-testid="meta-description"
           rows={2}
           value={draft.description}
@@ -78,6 +83,7 @@ function MetaFields({ flag, draft, problems, onDraft: edit }: FieldsProps) {
       <Field label="Owner" htmlFor="meta-owner" error={at(problems, "owner")?.message}>
         <Input
           id="meta-owner"
+          disabled={!hydrated}
           data-testid="meta-owner"
           value={draft.owner}
           onChange={(e) => edit({ ...draft, owner: e.currentTarget.value })}
@@ -91,6 +97,7 @@ function MetaFields({ flag, draft, problems, onDraft: edit }: FieldsProps) {
       >
         <Input
           id="meta-tags"
+          disabled={!hydrated}
           data-testid="meta-tags"
           value={draft.tags}
           onChange={(e) => edit({ ...draft, tags: e.currentTarget.value })}
@@ -98,6 +105,7 @@ function MetaFields({ flag, draft, problems, onDraft: edit }: FieldsProps) {
       </Field>
       <Checkbox
         label="Temporary"
+        disabled={!hydrated}
         description="A rollout or experiment to remove later, not a permanent switch."
         checked={draft.temporary}
         onChange={(e) => edit({ ...draft, temporary: e.currentTarget.checked })}
@@ -115,6 +123,8 @@ export function MetaForm({ project, flag, onSaved }: Props) {
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const dirty = JSON.stringify(draft) !== JSON.stringify(initial);
+  // Disabled until hydrated: before React attaches the handlers a click would do nothing, and nothing would say so.
+  const hydrated = useHydrated();
 
   function edit(next: Draft) {
     setDraft(next);
@@ -170,7 +180,7 @@ export function MetaForm({ project, flag, onSaved }: Props) {
             <Button
               type="submit"
               data-testid="save-meta"
-              disabled={!dirty}
+              disabled={!hydrated || !dirty}
               busy={saving}
               busyLabel="Saving"
             >

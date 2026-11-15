@@ -12,6 +12,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "@hackcove/ui-react";
+import { useHydrated } from "@tanstack/react-router";
 import { useState } from "react";
 import { deleteEnvironment } from "#/api/environments";
 import type { Environment, ProjectReady } from "#/api/types";
@@ -32,6 +33,8 @@ interface TableProps {
 }
 
 function EnvironmentTable({ projectName, environments, onRename, onDelete }: TableProps) {
+  // Disabled until hydrated: before React attaches the handlers a click would do nothing, and nothing would say so.
+  const hydrated = useHydrated();
   return (
     <Table caption={`Environments in ${projectName}`} data-testid="environments">
       <TableHead>
@@ -53,6 +56,7 @@ function EnvironmentTable({ projectName, environments, onRename, onDelete }: Tab
                 <Button
                   variant="outline"
                   size="sm"
+                  disabled={!hydrated}
                   aria-label={`Rename ${env.key}`}
                   data-testid={`rename-${env.key}`}
                   onClick={() => onRename(env)}
@@ -63,6 +67,7 @@ function EnvironmentTable({ projectName, environments, onRename, onDelete }: Tab
                   variant="ghost"
                   size="sm"
                   tone="danger"
+                  disabled={!hydrated}
                   aria-label={`Delete ${env.key}`}
                   data-testid={`delete-${env.key}`}
                   onClick={() => onDelete(env)}
@@ -129,6 +134,8 @@ export function EnvironmentsPanel({ loaded, onChanged }: Props) {
   const { project, environments } = loaded;
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const { busy, problem, run, clear } = useRunner(onChanged);
+  // Disabled until hydrated: before React attaches the handlers a click would do nothing, and nothing would say so.
+  const hydrated = useHydrated();
   if (project === null) {
     return <NeedsEnvironment project={null} what="Environments" />;
   }
@@ -153,7 +160,7 @@ export function EnvironmentsPanel({ loaded, onChanged }: Props) {
         title="Environments"
         subtitle={project.name}
         actions={
-          <Button onClick={create} data-testid="new-environment">
+          <Button disabled={!hydrated} onClick={create} data-testid="new-environment">
             New environment
           </Button>
         }
@@ -166,7 +173,11 @@ export function EnvironmentsPanel({ loaded, onChanged }: Props) {
       {environments.length === 0 ? (
         <EmptyState
           title="No environments yet"
-          actions={<Button onClick={create}>Create the first environment</Button>}
+          actions={
+            <Button disabled={!hydrated} onClick={create}>
+              Create the first environment
+            </Button>
+          }
         >
           Flags are switched on and off per environment, so a project needs at least one.
         </EmptyState>
