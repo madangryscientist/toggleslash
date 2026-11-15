@@ -7,6 +7,8 @@ interface PageConfig {
   clientKey: string;
   /** The `?flag=` the page was asked for, kept so its refresh asks for it too. */
   extraFlag: string | null;
+  /** The shopper's context signed by this app's server, for secure mode; absent without a signing key. */
+  signature?: string | undefined;
 }
 
 function escapeHtml(text: string): string {
@@ -111,11 +113,14 @@ export function renderPage(state: State, config: PageConfig): string {
     .join("\n");
 
   // `<` is escaped so no value in the document can close the script element.
-  const { serverUrl, clientKey, extraFlag: flag } = config;
-  const data = JSON.stringify({ user: state.user, serverUrl, clientKey, flag }).replaceAll(
-    "<",
-    "\\u003c",
-  );
+  const { serverUrl, clientKey, extraFlag: flag, signature } = config;
+  const data = JSON.stringify({
+    user: state.user,
+    serverUrl,
+    clientKey,
+    flag,
+    signature,
+  }).replaceAll("<", "\\u003c");
 
   return `<!doctype html>
 <html lang="en">

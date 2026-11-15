@@ -32,6 +32,12 @@ export interface Named {
   createdAt: string;
 }
 
+/** An environment as the admin API answers it: a name, plus its secure mode and when its signing key was made. */
+export interface EnvironmentRow extends Named {
+  secureMode: boolean;
+  signingKeyCreatedAt: string | null;
+}
+
 export interface AuditEvent {
   id: number;
   occurredAt: string;
@@ -76,7 +82,7 @@ interface ProjectEvent {
 
 export interface Store {
   projects: Named[];
-  environments: Record<string, Named[]>;
+  environments: Record<string, EnvironmentRow[]>;
   flags: Record<string, Flag[]>;
   /** `project/env/flag` -> config */
   configs: Record<string, Config>;
@@ -123,6 +129,10 @@ export function flag(seed: Seed): Flag {
 
 function named(key: string, name: string): Named {
   return { key, name, createdAt: "2026-11-01T09:00:00Z" };
+}
+
+export function environmentRow(key: string, name: string): EnvironmentRow {
+  return { ...named(key, name), secureMode: false, signingKeyCreatedAt: null };
 }
 
 /** A config that is just on or off, with nothing else set. */
@@ -255,8 +265,8 @@ export function fixture(): Store {
   return {
     projects: [named("shop", "Shop"), named("docs", "Docs")],
     environments: {
-      shop: [named("production", "Production"), named("staging", "Staging")],
-      docs: [named("live", "Live")],
+      shop: [environmentRow("production", "Production"), environmentRow("staging", "Staging")],
+      docs: [environmentRow("live", "Live")],
     },
     flags: {
       shop: shopFlags(),

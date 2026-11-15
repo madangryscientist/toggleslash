@@ -95,6 +95,7 @@ export async function startStack(signal?: AbortSignal): Promise<Stack> {
       serverUrl: server.url,
       sdkKey: keys.serverKey,
       clientKey: keys.clientKey,
+      signingKey: keys.signingKey,
       port: STACK_PORTS.example,
       flushIntervalMs: 2_000, // usage counts show up in the dashboard within seconds
       tmpdir: scratch,

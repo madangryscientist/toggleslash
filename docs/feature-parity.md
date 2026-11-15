@@ -13,8 +13,8 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 
 | Metric | ToggleSlash | LD | Unleash | Flagsmith | GrowthBook | Split | Optimizely | PostHog | ConfigCat |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| ✅ yes | 28 | 64 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
-| 🟡 partial | 13 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
+| ✅ yes | 29 | 64 | 44 | 44 | 42 | 47 | 38 | 38 | 30 |
+| 🟡 partial | 12 | 0 | 13 | 15 | 18 | 12 | 21 | 19 | 19 |
 | ❌ no | 26 | 3 | 10 | 8 | 7 | 8 | 8 | 10 | 18 |
 
 ## Matrix
@@ -71,7 +71,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Scoped API tokens | 🟡 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | SDK keys | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Private attributes | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Secure mode and signed contexts | 🟡 | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Secure mode and signed contexts | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Client-side availability | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 ### Experimentation
@@ -175,7 +175,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Scoped API tokens | 🟡 | `api:/api/v1/projects/{project}/tokens`<br>`api:/api/v1/projects/{project}/tokens/{id}`<br>`cli:tokens create`<br>`cli:tokens list`<br>`cli:tokens revoke`<br>`doc:docs/architecture.md`<br>A token is limited to one project and to read or write, and always expires; there are no per-environment scopes or custom permissions. |
 | SDK keys | ✅ | `api:/api/v1/projects/{project}/environments/{env}/keys`<br>`api:/api/v1/projects/{project}/environments/{env}/keys/{id}`<br>`cli:keys list`<br>`cli:keys create`<br>`cli:keys revoke`<br>`dashboard:/keys` |
 | Private attributes | ❌ | none |
-| Secure mode and signed contexts | 🟡 | `api:/api/v1/projects/{project}/environments/{env}/signing-key`<br>`cli:envs signing-key`<br>`cli:envs secure-mode`<br>`test:apps/server/ToggleSlash.Server.Tests/SecureModeTests.cs`<br>`doc:docs/sdk-browser.md`<br>Per environment: an ECDSA P-256 signature over the context's keys, made with signContext on the application's server; no dashboard control yet. |
+| Secure mode and signed contexts | ✅ | `api:/api/v1/projects/{project}/environments/{env}/signing-key`<br>`cli:envs signing-key`<br>`cli:envs secure-mode`<br>`test:apps/server/ToggleSlash.Server.Tests/SecureModeTests.cs`<br>`doc:docs/sdk-browser.md`<br>`dashboard:/environments`<br>`test:packages/e2e/stack/journey.spec.ts`<br>Per environment: an ECDSA P-256 signature over the context's keys, made with signContext on the application's server; the dashboard makes the key and turns it on. |
 | Client-side availability | ✅ | `api:/api/v1/projects/{project}/flags/{flag}`<br>`cli:flags create`<br>`dashboard:/flags/$flag`<br>`test:apps/server/ToggleSlash.Server.Tests/ClientVisibilityTests.cs` |
 
 ### Experimentation

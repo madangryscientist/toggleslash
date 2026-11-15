@@ -39,6 +39,11 @@ interface AppOptions {
   clientKey: string;
   /** The bundle served at `GET /browser.js` (`src/bundle.ts`), built once at startup. */
   browserJs: string;
+  /**
+   * Signs a shopper's context for secure mode, when the app has a signing key. The key stays in the function:
+   * this module never holds it, and only the signature goes to the page.
+   */
+  sign?: ((user: SingleContext) => string) | undefined;
 }
 
 /** The shape of a flag key (the server's rule), so `?flag=` cannot carry anything else into the page. */
@@ -97,17 +102,23 @@ export function createApp(options: AppOptions): (request: Request) => Response {
     const state = stateFor(options.client, user, extraFlag);
     if (url.pathname === "/state") return json(state, 200);
 
-    const html = renderPage(state, {
-      serverUrl: options.serverUrl,
-      clientKey: options.clientKey,
-      extraFlag,
-    });
-    return new Response(html, {
-      headers: {
-        "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "no-store",
-        "X-Content-Type-Options": "nosniff",
-      },
-    });
+    return page(options, state, extraFlag);
   };
+}
+
+/** The HTML page for one shopper, with the signature for its context when the app can sign. */
+function page(options: AppOptions, state: State, extraFlag: string | null): Response {
+  const html = renderPage(state, {
+    serverUrl: options.serverUrl,
+    clientKey: options.clientKey,
+    extraFlag,
+    signature: options.sign?.(state.user),
+  });
+  return new Response(html, {
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
 }

@@ -74,3 +74,73 @@ test.describe("renaming and deleting environments", () => {
     await expect(page.getByTestId("environment-production")).toBeVisible();
   });
 });
+
+test.describe("secure mode and the signing key", () => {
+  test("Cancel on the confirm makes no key", async ({ page }) => {
+    await page.goto("/environments?project=shop");
+    await page.getByTestId("signing-key-staging").click();
+    await expect(
+      page.getByRole("dialog", { name: "Make a signing key for Staging?" }),
+    ).toContainText("every signature made with the old key stops working");
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByTestId("signing-key-date-staging")).toHaveText("No signing key");
+    await page.reload();
+    await expect(page.getByTestId("signing-key-date-staging")).toHaveText("No signing key");
+  });
+
+  test("a new key is shown once: gone after closing and after a reload", async ({ page }) => {
+    await page.goto("/environments?project=shop");
+    await page.getByTestId("signing-key-staging").click();
+    await page.getByTestId("confirm-signing-key").click();
+    const pem = page.getByTestId("signing-key-pem");
+    await expect(pem).toContainText("-----BEGIN PRIVATE KEY-----");
+    const body = (await pem.textContent()) ?? "";
+    // The PEM's base64 body, without its armour: what must not survive the dialog.
+    const secret = (
+      body.split("\n").find((line) => /^[A-Za-z0-9+/=]{40,}$/.test(line.trim())) ?? ""
+    ).trim();
+    expect(secret.length).toBeGreaterThan(40);
+    await expect(page.getByTestId("signing-key-date-staging")).toHaveText(
+      /^Made \d{4}-\d{2}-\d{2}$/,
+    );
+
+    await page.getByTestId("close-signing-key").click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(await page.content()).not.toContain(secret);
+    await page.reload();
+    await expect(page.getByTestId("signing-key-date-staging")).toHaveText(/^Made /);
+    expect(await page.content()).not.toContain(secret);
+    expect(await page.content()).not.toContain("BEGIN PRIVATE KEY");
+  });
+
+  test("the switch waits for a key, then turns secure mode on, and that survives a reload", async ({
+    page,
+  }) => {
+    await page.goto("/environments?project=shop");
+    const toggle = page.getByTestId("secure-mode-staging");
+    await expect(toggle).toBeDisabled();
+    await expect(page.getByTestId("environment-staging")).toContainText(
+      "Make a signing key first.",
+    );
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+
+    await page.getByTestId("signing-key-staging").click();
+    await page.getByTestId("confirm-signing-key").click();
+    await expect(page.getByTestId("signing-key-pem")).toBeVisible();
+    await page.getByTestId("close-signing-key").click();
+    await expect(toggle).toBeEnabled();
+    await expect(page.getByTestId("environment-staging")).not.toContainText(
+      "Make a signing key first.",
+    );
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByTestId("problem")).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByTestId("secure-mode-staging")).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByTestId("secure-mode-production")).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+  });
+});

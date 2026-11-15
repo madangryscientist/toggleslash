@@ -121,6 +121,16 @@ signature over the context's keys, made by the application's server, which the b
 4. In the page, pass it: `createBrowserClient({ ..., context, signature })`, and `identify(context, signature)` for a new
    context.
 
+**In the dashboard.** On `/environments` each environment's row shows whether secure mode is on and when its signing key
+was made (or "No signing key"). **Signing key** asks first, since a new key replaces any old one at once, then shows the
+private key PEM once with a copy button; close the dialog and it is gone from the page, and nothing can show it again.
+The row's **Secure mode** switch saves at once; it stays disabled, with a line saying why, until the environment has a
+signing key.
+
+**In the example.** `apps/example` takes the PEM as `TOGGLESLASH_SIGNING_KEY`, signs the selected shopper's context on its
+server, and puts only the signature in the page for the browser SDK. `bun run stack` seeds `dev` with a fresh key and
+secure mode on, so the example's browser table works there only because the example signs.
+
 **What is signed.** The context normalised as [`evaluation.md`](evaluation.md) does it (a map from kind to its key and
 attributes; an absent kind is `user`), **keys only**. Take the entries in ordinal (byte) order of the kind, and write
 each as two netstrings, its kind and then its key, where a netstring is `<byte length of the UTF-8>:<UTF-8 bytes>,`

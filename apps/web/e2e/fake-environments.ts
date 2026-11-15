@@ -1,6 +1,10 @@
-/** The fake API's environment routes: create, rename and delete, with the server's statuses and messages. */
+/**
+ * The fake API's environment routes: create, rename, delete, secure mode and the signing key, with the
+ * server's statuses and messages.
+ */
+import { generateKeyPairSync } from "node:crypto";
 import { failure, type Body, type Reply } from "./fake-config.ts";
-import { db } from "./fake-data.ts";
+import { db, environmentRow } from "./fake-data.ts";
 
 const KEY = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const NOW = "2026-11-05T08:00:00Z";
@@ -17,22 +21,60 @@ export function createEnvironment(project: string, body: Body): Reply {
   if (list.some((e) => e.key === key)) {
     return failure(409, "conflict", `An environment with key ${key} already exists.`);
   }
-  const made = { key, name: body["name"], createdAt: NOW };
+  const made = { ...environmentRow(key, body["name"]), createdAt: NOW };
   list.push(made);
   return [201, made];
 }
 
 const notFound = () => failure(404, "not_found", "No such environment.");
 
-/** `PATCH .../environments/<env>`: the name changes, the key never does. */
-export function renameEnvironment(project: string, env: string, body: Body): Reply {
+/** What is wrong with a `PATCH` body, or `null`: both fields are optional, and `null` is as good as absent. */
+function updateProblem(body: Body): string | null {
+  const name = body["name"] ?? undefined;
+  const secureMode = body["secureMode"] ?? undefined;
+  if (name !== undefined && (typeof name !== "string" || name.trim() === "")) {
+    return "name is required.";
+  }
+  if (secureMode !== undefined && typeof secureMode !== "boolean") {
+    return "secureMode must be true or false.";
+  }
+  return null;
+}
+
+/**
+ * `PATCH .../environments/<env>`: the name (the key never changes) and secure mode, each optional. Secure
+ * mode on with no signing key is a 409, as the server answers it.
+ */
+export function updateEnvironment(project: string, env: string, body: Body): Reply {
   const found = (db.data.environments[project] ?? []).find((e) => e.key === env);
   if (found === undefined) return notFound();
-  if (typeof body["name"] !== "string" || body["name"].trim() === "") {
-    return failure(400, "invalid_request", "name is required.");
+  const invalid = updateProblem(body);
+  if (invalid !== null) return failure(400, "invalid_request", invalid);
+  const name = body["name"];
+  const secureMode = body["secureMode"];
+  if (secureMode === true && found.signingKeyCreatedAt === null) {
+    return failure(
+      409,
+      "conflict",
+      `Environment "${env}" has no signing key, so nothing could sign for it. Make one first, then turn secure mode on.`,
+    );
   }
-  found.name = body["name"].trim();
+  if (typeof name === "string") found.name = name.trim();
+  if (typeof secureMode === "boolean") found.secureMode = secureMode;
   return [200, found];
+}
+
+/**
+ * `POST .../environments/<env>/signing-key`: a new P-256 pair, made fresh for every call and kept nowhere;
+ * the fake answers its private half once and keeps only the date, as the server keeps only the public half.
+ */
+export function createSigningKey(project: string, env: string): Reply {
+  const found = (db.data.environments[project] ?? []).find((e) => e.key === env);
+  if (found === undefined) return notFound();
+  const { privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const createdAt = new Date().toISOString();
+  found.signingKeyCreatedAt = createdAt;
+  return [201, { privateKey: privateKey.export({ type: "pkcs8", format: "pem" }), createdAt }];
 }
 
 /** `DELETE .../environments/<env>`: refused while a key is not revoked; otherwise its keys, segments and configs go too. */

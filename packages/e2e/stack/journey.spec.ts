@@ -67,6 +67,21 @@ async function signIn({ info, dashboard }: Journey) {
   await expect(dashboard.getByTestId("toggle-new-checkout")).toHaveText("On");
 }
 
+/**
+ * The seed made dev's signing key and turned secure mode on, so the dashboard shows it, and every client-key evaluate
+ * the browser tables below make is answered only because the example signed its shopper.
+ */
+async function secureModeOn({ info, dashboard }: Journey) {
+  await dashboard.goto(`${info.dashboardUrl}/environments?project=${SEED_PROJECT}`);
+  await expect(dashboard.getByTestId(`secure-mode-${SEED_ENV}`)).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await expect(dashboard.getByTestId(`signing-key-date-${SEED_ENV}`)).toHaveText(/^Made /);
+  await expect(dashboard.getByTestId("signing-key-prod")).toBeEnabled();
+  await expect(dashboard.getByTestId("signing-key-date-prod")).toHaveText("No signing key");
+}
+
 async function shoppersDiffer({ free, pro }: Journey) {
   await expect(cell(free, "new-checkout", "value")).toHaveText("false");
   await expect(cell(free, "new-checkout", "reason")).toHaveText("FALLTHROUGH");
@@ -74,7 +89,7 @@ async function shoppersDiffer({ free, pro }: Journey) {
   await expect(cell(pro, "new-checkout", "reason")).toHaveText("RULE_MATCH");
   // The flag that does not exist yet is the app's fallback, and says so.
   await expect(cell(pro, FLAG, "reason")).toHaveText("ERROR");
-  // The browser SDK's table agrees: the same two shoppers, from a client key.
+  // The browser SDK's table agrees: the same two shoppers, from a client key and the example's signature.
   await expect(browserCell(free, "new-checkout", "value")).toHaveText("false");
   await expect(browserCell(pro, "new-checkout", "value")).toHaveText("true");
   await expect(browserCell(pro, "new-checkout", "reason")).toHaveText("RULE_MATCH");
@@ -235,6 +250,8 @@ test("a flag changed in the dashboard reaches the shop, the CLI and the usage co
   };
 
   await test.step("sign in with the real form and see the seeded flags", () => signIn(journey));
+  await test.step("dev is in secure mode, with the signing key the seed made", () =>
+    secureModeOn(journey));
   await test.step("the free and the pro shopper see different new-checkout values", () =>
     shoppersDiffer(journey));
   await test.step("create a flag in the dashboard with a rule: plan is pro", () =>

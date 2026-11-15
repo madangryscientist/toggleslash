@@ -11,6 +11,17 @@ export interface Environment {
   name: string;
   /** ISO 8601, UTC; empty when the server did not say. */
   createdAt: string;
+  /** A client-key evaluate here must carry a signature over its context's keys. */
+  secureMode: boolean;
+  /** When the current signing key was made (ISO 8601, UTC), or `null` when it has none. */
+  signingKeyCreatedAt: string | null;
+}
+
+/** A new signing key: the private half, answered once. The server keeps only the public half. */
+export interface SigningKey {
+  /** PKCS#8 PEM. */
+  privateKey: string;
+  createdAt: string;
 }
 
 /** Where a flag is in its life, as the server computes it. */

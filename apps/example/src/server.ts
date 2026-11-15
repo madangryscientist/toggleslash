@@ -1,4 +1,4 @@
-import { createClient } from "@hackcove/toggleslash-sdk";
+import { createClient, signContext, type SingleContext } from "@hackcove/toggleslash-sdk";
 import { createApp } from "./app.ts";
 import { buildBrowserBundle } from "./bundle.ts";
 
@@ -36,6 +36,24 @@ const client = createClient({
   onError: (error) => process.stderr.write(`example: sdk: ${String(error)}\n`),
 });
 
+/**
+ * The signer for secure mode, from the optional `TOGGLESLASH_SIGNING_KEY` (an environment's PKCS#8 PEM). The key
+ * stays in this closure: `createApp` gets the function, and the page gets only signatures. A key that cannot sign
+ * stops startup here rather than at the first page.
+ */
+function signer(): ((user: SingleContext) => string) | undefined {
+  const pem = process.env["TOGGLESLASH_SIGNING_KEY"];
+  if (pem === undefined || pem === "") return undefined;
+  const sign = (user: SingleContext) => signContext(pem, user);
+  try {
+    sign({ key: "startup-check" });
+  } catch (error) {
+    process.stderr.write(`example: TOGGLESLASH_SIGNING_KEY cannot sign: ${String(error)}\n`);
+    process.exit(2);
+  }
+  return sign;
+}
+
 // A build failure throws here and stops startup with the bundler's messages.
 const browserJs = await buildBrowserBundle();
 
@@ -48,6 +66,7 @@ const server = Bun.serve({
     serverUrl: url,
     clientKey: required("TOGGLESLASH_CLIENT_KEY"),
     browserJs,
+    sign: signer(),
   }),
 });
 process.stdout.write(`example: listening on http://127.0.0.1:${server.port}\n`);

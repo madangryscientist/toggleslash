@@ -1,6 +1,6 @@
-import { Button, Dialog, Field, Input, Stack } from "@hackcove/ui-react";
+import { Button, Callout, CodeBlock, Dialog, Field, Input, Stack, Text } from "@hackcove/ui-react";
 import { useState, type FormEvent } from "react";
-import { createEnvironment, renameEnvironment } from "#/api/environments";
+import { createEnvironment, createSigningKey, renameEnvironment } from "#/api/environments";
 import type { Environment } from "#/api/types";
 import { KEY } from "./text";
 
@@ -172,5 +172,96 @@ export function DeleteEnvironmentDialog({ environment, busy, onCancel, onConfirm
         </>
       }
     />
+  );
+}
+
+interface SigningKeyProps {
+  project: string;
+  environment: Environment;
+  onClose: () => void;
+  /** A key was made: refresh the row, and keep this dialog open on the key. */
+  onMade: () => Promise<void>;
+}
+
+/**
+ * Makes a signing key after a confirm, then shows its private half. The key lives in this dialog's state
+ * only: close the dialog and it is gone, and the server cannot show it again (it keeps the public half).
+ */
+export function SigningKeyDialog({ project, environment, onClose, onMade }: SigningKeyProps) {
+  const [privateKey, setPrivateKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function make() {
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await createSigningKey({ data: { project, env: environment.key } });
+      if (result.ok) {
+        setPrivateKey(result.saved.privateKey);
+        await onMade();
+      } else setError(result.detail ?? result.failure.message);
+    } catch {
+      setError("The dashboard could not reach its own server. Reload the page.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (privateKey !== null) {
+    return (
+      <Dialog
+        title={`Signing key for ${environment.name}`}
+        description="Your application's server signs each context with this key. Keep it in that server's environment, never in a browser or in your code."
+        onClose={onClose}
+        footer={
+          <Button onClick={onClose} data-testid="close-signing-key">
+            I have copied it
+          </Button>
+        }
+      >
+        <Stack gap="sm">
+          <Callout tone="warn" title="Copy it now">
+            <Text>
+              This is the only time the private key is shown. The server keeps only the public half,
+              so a lost key cannot be recovered: make another.
+            </Text>
+          </Callout>
+          <CodeBlock label="PEM" copy data-testid="signing-key-pem">
+            {privateKey}
+          </CodeBlock>
+        </Stack>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Dialog
+      title={`Make a signing key for ${environment.name}?`}
+      description="A new key replaces any old one at once, so every signature made with the old key stops working."
+      size="sm"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            busy={saving}
+            busyLabel="Making"
+            data-testid="confirm-signing-key"
+            onClick={() => void make()}
+          >
+            Make key
+          </Button>
+        </>
+      }
+    >
+      {error !== null && (
+        <p role="alert" data-testid="signing-key-error">
+          {error}
+        </p>
+      )}
+    </Dialog>
   );
 }

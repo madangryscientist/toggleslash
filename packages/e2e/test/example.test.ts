@@ -63,6 +63,7 @@ describe.skipIf(skip)("the example app, the seed and the real server", () => {
       serverUrl: server.url,
       sdkKey: keys.serverKey,
       clientKey: keys.clientKey,
+      signingKey: keys.signingKey,
       port: 0,
       flushIntervalMs: 200, // usage reaches the server in a fraction of a second
       tmpdir: scratch,
@@ -153,15 +154,28 @@ describe.skipIf(skip)("the example app, the seed and the real server", () => {
     const html = await (await fetch(`${appUrl()}/?user=pro-user`)).text();
     const key = /tgl_client_[A-Za-z0-9_-]+/.exec(html)?.[0];
     expect(key).toBeDefined();
-    const response = await fetch(`${server?.url}/sdk/v1/evaluate`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-        Origin: appUrl(),
-      },
-      body: JSON.stringify({ context: { key: "pro-user", attributes: { plan: "pro" } } }),
-    });
+    // The seed turned secure mode on in dev, so the page carries the signature the app's server made.
+    const signature = /"signature":"([A-Za-z0-9_-]+)"/.exec(html)?.[1];
+    expect(signature).toBeDefined();
+    expect(html).not.toContain("PRIVATE KEY");
+    const clientEvaluate = (body: unknown) =>
+      fetch(`${server?.url}/sdk/v1/evaluate`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${key}`,
+          "Content-Type": "application/json",
+          Origin: appUrl(),
+        },
+        body: JSON.stringify(body),
+      });
+    const context = { key: "pro-user", attributes: { plan: "pro" } };
+
+    // Without the signature the same shopper is refused: the green answer below is the signature at work.
+    const unsigned = await clientEvaluate({ context });
+    expect(unsigned.status).toBe(403);
+    expect(record(record(await unsigned.json())["error"])["code"]).toBe("signature_required");
+
+    const response = await clientEvaluate({ context, signature });
     expect(response.status).toBe(200);
     expect(response.headers.get("Access-Control-Allow-Origin")).not.toBeNull();
     const flags = record(record(await response.json())["flags"]);

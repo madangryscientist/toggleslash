@@ -16,6 +16,8 @@ export async function startExample(options: {
   serverUrl: string;
   sdkKey: string;
   clientKey: string;
+  /** The environment's secure-mode signing key (PEM): the app signs each shopper's context with it. */
+  signingKey?: string | undefined;
   port: number;
   flushIntervalMs?: number;
   tmpdir: string;
@@ -30,6 +32,7 @@ export async function startExample(options: {
       TOGGLESLASH_URL: options.serverUrl,
       TOGGLESLASH_SDK_KEY: options.sdkKey,
       TOGGLESLASH_CLIENT_KEY: options.clientKey,
+      ...(options.signingKey === undefined ? {} : { TOGGLESLASH_SIGNING_KEY: options.signingKey }),
       ...(options.flushIntervalMs === undefined
         ? {}
         : { TOGGLESLASH_FLUSH_INTERVAL_MS: String(options.flushIntervalMs) }),
