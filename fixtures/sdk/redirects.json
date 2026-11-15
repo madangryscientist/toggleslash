@@ -32,7 +32,11 @@
           "status": {
             "lastError": "http_302",
             "etag": null
-          },
+          }
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 2000,
           "errors": 1
         }
       ]
