@@ -4,7 +4,7 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-// The Playwright run keeps its local D1 apart, so it never touches dev data.
+// The Playwright run keeps its local state apart, so it never touches dev data.
 const e2e = process.env["TOGGLESLASH_E2E"] === "1";
 
 export default defineConfig({

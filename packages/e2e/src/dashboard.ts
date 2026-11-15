@@ -22,7 +22,7 @@ interface DashboardOptions {
  * Builds the dashboard and serves it with `vite preview`, as `apps/web/playwright.config.ts` does
  * for its own run, but against a real server instead of the fake API. `TOGGLESLASH_E2E` keeps the
  * local state apart from `vite dev`'s and turns off the debugger port that two runs would fight
- * over. The D1 database is an unused placeholder, so it is not migrated.
+ * over.
  */
 export async function startDashboard(options: DashboardOptions): Promise<ManagedProcess> {
   mkdirSync(options.tmpdir, { recursive: true });

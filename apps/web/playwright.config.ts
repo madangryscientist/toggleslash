@@ -24,7 +24,7 @@ const WORKER_ENV = {
 };
 
 // A local production build, with a fake admin API (`e2e/fake-api.ts`) standing in for the C# server,
-// so the run needs no .NET SDK. The build still gets an empty local D1 (`.wrangler/e2e`).
+// so the run needs no .NET SDK. Its local state stays apart from `vite dev`'s (`.wrangler/e2e`).
 export default defineConfig({
   testDir: "./e2e",
   globalSetup: "../../scripts/test-tmp-scope.ts",
@@ -32,7 +32,7 @@ export default defineConfig({
   // A test that fails is a finding, never retried past.
   retries: 0,
   reporter: "list",
-  // One local D1 holds every spec's rows: concurrent writers fail with SQLITE_BUSY.
+  // Every spec shares one fake API and its state, so they run one at a time.
   workers: 1,
   use: { baseURL: `http://localhost:${PORT}`, trace: "retain-on-failure" },
   projects: [
@@ -60,7 +60,6 @@ export default defineConfig({
         // each preview server sets below.
         "CLOUDFLARE_INCLUDE_PROCESS_ENV=false bun run build",
         "rm -f dist/server/.dev.vars",
-        "wrangler d1 migrations apply DB --local --env e2e --persist-to .wrangler/e2e",
         `vite preview --port ${PORT} --strictPort`,
       ].join(" && "),
       env: {

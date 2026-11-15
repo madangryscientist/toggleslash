@@ -6,29 +6,10 @@
   "main": "src/server.ts",
   "observability": { "enabled": true },
   "upload_source_maps": true,
-  // The id is a placeholder: creating the real D1 database is the first deploy's job (a human
-  // step), not this scaffold's. Local dev and tests use local state. There is no route and no
-  // custom domain either: the product has no domain yet, and
-  // attaching one is part of that first deploy.
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "toggleslash",
-      "database_id": "00000000-0000-0000-0000-000000000000",
-      "migrations_dir": "drizzle",
-    },
-  ],
-  // `CLOUDFLARE_ENV=e2e`: the Playwright build. Bindings are not inherited by an env, so they repeat here.
+  // There is no route and no custom domain: the product has no domain yet, and attaching one is
+  // part of the first deploy.
+  // `CLOUDFLARE_ENV=e2e`: the Playwright build.
   "env": {
-    "e2e": {
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "toggleslash",
-          "database_id": "00000000-0000-0000-0000-000000000000",
-          "migrations_dir": "drizzle",
-        },
-      ],
-    },
+    "e2e": {},
   },
 }
