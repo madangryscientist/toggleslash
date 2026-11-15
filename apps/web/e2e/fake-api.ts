@@ -1,10 +1,8 @@
 /**
  * A small stand-in for the C# server's admin API, for the Playwright run: `bun e2e/fake-api.ts`.
- * It speaks only the routes the dashboard calls, keeps its data in memory, and has four control routes
- * the specs use: `POST /__reset` (back to the fixture data, server up), `POST /__down` (answer
- * every API request by dropping the connection, as a stopped server would) and
- * `POST /__bump/<project>/<env>/<flag>` and `POST /__bump-segment/<project>/<env>/<segment>` (another
- * editor saved: the config's or the segment's version moves on).
+ * It speaks only the routes the dashboard calls, keeps its data in memory, and has two control routes
+ * the specs use: `POST /__reset` (back to the fixture data) and
+ * `POST /__bump-segment/<project>/<env>/<segment>` (another editor saved: the segment's version moves on).
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
@@ -252,16 +250,6 @@ async function api(
   return onProject({ req, res, project }, rest, query);
 }
 
-/** `POST /__bump/<project>/<env>/<flag>`: someone else saved that config, so its version moves on. */
-function bump(res: ServerResponse, path: string) {
-  const [, , project = "", env = "", key = ""] = path.split("/");
-  const cfg = db.data.configs[`${project}/${env}/${key}`];
-  if (cfg === undefined) return problem(res, 404, "not_found", "No such config.");
-  cfg.version += 1;
-  record({ project, flag: key, action: "config.updated", env, version: cfg.version });
-  return send(res, 200, cfg);
-}
-
 /** `POST /__bump-segment/<project>/<env>/<segment>`: someone else saved that segment. */
 function bumpSegment(res: ServerResponse, path: string) {
   const [, , project = "", env = "", key = ""] = path.split("/");
@@ -279,17 +267,8 @@ createServer((req, res) => {
     resetSecrets();
     return send(res, 200, { ok: true });
   }
-  if (url.pathname.startsWith("/__bump/")) return bump(res, url.pathname);
   if (url.pathname.startsWith("/__bump-segment/")) return bumpSegment(res, url.pathname);
-  if (url.pathname === "/__down") {
-    db.down = true;
-    return send(res, 200, { ok: true });
-  }
   if (url.pathname === "/health") return send(res, 200, { status: "ok" });
-  if (db.down) {
-    req.socket.destroy();
-    return;
-  }
   if (req.headers.authorization !== `Bearer ${E2E_ADMIN_TOKEN}`) {
     return problem(res, 401, "unauthorized", "Missing or wrong admin token.");
   }

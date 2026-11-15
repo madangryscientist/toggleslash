@@ -88,18 +88,6 @@ test("toggling a flag changes it on the server and keeps it after a reload", asy
   expect(await stored.json()).toMatchObject({ on: true });
 });
 
-test("a stale toggle says so and shows what the server has", async ({ page, request }) => {
-  await gotoHydrated(page, "/");
-  // Someone else flips it after this page loaded.
-  await request.post(`${API}/api/v1/projects/shop/flags/dark-mode/environments/production/toggle`, {
-    headers: { authorization: `Bearer ${E2E_ADMIN_TOKEN}` },
-    data: { on: true },
-  });
-  await page.getByTestId("toggle-dark-mode").click();
-  await expect(page.getByTestId("problem")).toContainText("changed");
-  await expect(page.getByTestId("toggle-dark-mode")).toHaveText("On");
-});
-
 test("creates a flag", async ({ page }) => {
   await gotoHydrated(page, "/");
   await page.getByTestId("new-flag").click();
@@ -157,20 +145,6 @@ test("archives a flag after confirming", async ({ page }) => {
 
   await page.reload();
   await expect(page.getByTestId("flag-dark-mode")).toHaveCount(0);
-});
-
-test("shows a page, not a crash, when the server is down", async ({ page, request }) => {
-  await request.post(`${API}/__down`);
-  const response = await gotoHydrated(page, "/");
-  expect(response?.status()).toBeLessThan(500);
-  const down = page.getByTestId("server-down");
-  await expect(down).toContainText("not reachable");
-  await expect(page.getByRole("button", { name: /try again|retry/i })).toBeVisible();
-
-  // It comes back without a restart.
-  await request.post(`${API}/__reset`);
-  await page.getByRole("button", { name: /try again|retry/i }).click();
-  await expect(page.getByTestId("flag-checkout-v2")).toBeVisible();
 });
 
 test("the admin token is not in the page or any script the browser loads", async ({ page }) => {

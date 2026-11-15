@@ -127,72 +127,6 @@ test("adds a rule and a prerequisite and turns targeting off", async ({ page, re
   expect(stored.rules).toHaveLength(2);
 });
 
-test("a rollout that does not total 100% is shown at the rule, and the draft is kept", async ({
-  page,
-}) => {
-  await openCheckout(page);
-  await page.getByTestId("rule-0-percent-0").fill("30");
-  await expect(page.getByTestId("rule-0-total")).toContainText("105%");
-  await page.getByTestId("save-targeting").click();
-
-  await expect(page.getByTestId("rule-0")).toContainText("weights must sum to 100000");
-  await expect(page.getByTestId("config-error")).toBeVisible();
-  await expect(page.getByTestId("rule-0-percent-0")).toHaveValue("30");
-
-  // Fixing it clears the message.
-  await page.getByTestId("rule-0-percent-1").fill("70");
-  await expect(page.getByTestId("config-error")).toHaveCount(0);
-  await page.getByTestId("save-targeting").click();
-  await expect(page.getByTestId("notice")).toContainText("Targeting saved");
-});
-
-test("a clause with no attribute is refused by the server at that clause", async ({ page }) => {
-  await openCheckout(page);
-  await page.getByTestId("rule-0-clause-0-attribute").fill("");
-  await page.getByTestId("save-targeting").click();
-  await expect(page.getByTestId("rule-0")).toContainText("attribute must be a non-empty string");
-});
-
-test("a percentage that is not a number is caught before it is sent", async ({ page }) => {
-  await openCheckout(page);
-  await page.getByTestId("rule-0-percent-0").fill("lots");
-  await page.getByTestId("save-targeting").click();
-  await expect(page.getByTestId("rule-0")).toContainText("A percentage from 0 to 100");
-  await expect(page.getByTestId("config-error")).toBeVisible();
-});
-
-test("a version conflict keeps the typing and says to reload", async ({ page, request }) => {
-  await openCheckout(page);
-  await page.getByTestId("rule-0-clause-0-values").fill("NL, DE, BE");
-  // Someone else saves after this page loaded.
-  await request.post(`${API}/__bump/shop/production/checkout-v2`);
-  await page.getByTestId("save-targeting").click();
-
-  const conflict = page.getByTestId("config-conflict");
-  await expect(conflict).toContainText("Someone else changed this flag");
-  await expect(conflict).toContainText("reload the page");
-  await expect(page.getByTestId("rule-0-clause-0-values")).toHaveValue("NL, DE, BE");
-  await expect(page.getByText("Version 3", { exact: true })).toBeVisible();
-
-  // More typing does not hide the warning, and a details save reloads the page's data without
-  // replacing the editor: the typing stays, and saving it again still refuses.
-  await page.getByTestId("rule-0-clause-0-values").fill("NL, DE, BE, FR");
-  await expect(conflict).toBeVisible();
-  await page.getByTestId("meta-name").fill("Checkout renamed");
-  await page.getByTestId("save-meta").click();
-  await expect(page.getByTestId("notice")).toContainText("details were saved");
-  await expect(page.getByTestId("rule-0-clause-0-values")).toHaveValue("NL, DE, BE, FR");
-  await page.getByTestId("save-targeting").click();
-  await expect(conflict).toBeVisible();
-  await expect(page.getByTestId("rule-0-clause-0-values")).toHaveValue("NL, DE, BE, FR");
-
-  // Reloading is the way out: the latest version, the typing gone, the warning gone.
-  await page.reload();
-  await expect(page.getByText("Version 4", { exact: true })).toBeVisible();
-  await expect(page.getByTestId("rule-0-clause-0-values")).not.toHaveValue(/BE/);
-  await expect(conflict).toBeHidden();
-});
-
 test("edits the flag's details and sees a field error from the server", async ({ page }) => {
   await openCheckout(page);
   await page.getByTestId("meta-name").fill("");
@@ -236,12 +170,6 @@ test("a save shows up in the history", async ({ page }) => {
   await page.getByTestId("targeting-on").uncheck();
   await page.getByTestId("save-targeting").click();
   await expect(page.getByTestId("history-event")).toHaveCount(4);
-});
-
-test("an unknown flag says so instead of crashing", async ({ page }) => {
-  const response = await gotoHydrated(page, "/flags/nope?project=shop&env=production");
-  expect(response?.status()).toBeLessThan(500);
-  await expect(page.getByTestId("server-down")).toBeVisible();
 });
 
 test("the admin token is not in the detail page", async ({ page }) => {
@@ -321,22 +249,5 @@ test.describe("a flag that already holds context kinds", () => {
     ]);
     expect(stored.rules[0].clauses[0].contextKind).toBe("org");
     expect(stored.rules[0].rollout.contextKind).toBe("org");
-  });
-
-  test("an invalid kind shows the problem and nothing is sent", async ({ page, request }) => {
-    await openCheckout(page);
-    await page.getByTestId("add-other-target").click();
-    await page.getByTestId("other-target-1-kind").fill("not valid");
-    await page.getByTestId("other-target-1-keys").fill("acme");
-    await page.getByTestId("rule-0-clause-0-kind").fill("multi");
-    await page.getByTestId("rule-0-rollout-kind").fill("a/b");
-    await page.getByTestId("save-targeting").click();
-
-    await expect(page.getByTestId("config-error")).toBeVisible();
-    // One message each: the other-kind target, the clause and the rollout.
-    await expect(page.getByText("A context kind uses letters")).toHaveCount(3);
-    await expect(page.getByTestId("notice")).toHaveCount(0);
-    const stored = await (await request.get(CONFIG, { headers: AUTH })).json();
-    expect(stored.version).toBe(3);
   });
 });

@@ -1,6 +1,15 @@
 import { describe, expect, test } from "vitest";
 import type { AuditEvent, FlagRow } from "#/api/types";
-import { day, describeEvent, matches, parseMembers, parseTags, ruleCount, stamp } from "./text";
+import {
+  KEY,
+  day,
+  describeEvent,
+  matches,
+  parseMembers,
+  parseTags,
+  ruleCount,
+  stamp,
+} from "./text";
 
 const flag: FlagRow = {
   key: "checkout-v2",
@@ -13,6 +22,31 @@ const flag: FlagRow = {
   on: true,
   version: 1,
 };
+
+describe("KEY", () => {
+  test.each([
+    ["a", "one character"],
+    ["checkout-v2", "letters, digits and a hyphen"],
+    ["0day", "a leading digit"],
+    ["dark_mode", "an underscore"],
+    ["a".repeat(64), "64 characters"],
+  ])("accepts %s (%s)", (key) => {
+    expect(KEY.test(key)).toBe(true);
+  });
+  test.each([
+    ["", "empty"],
+    ["Not A Key", "capitals and spaces"],
+    ["Checkout", "a capital"],
+    ["-lead", "a leading hyphen"],
+    ["_lead", "a leading underscore"],
+    ["a.b", "a dot"],
+    ["a/b", "a slash"],
+    ["a".repeat(65), "65 characters"],
+    ["ok\n", "a trailing newline"],
+  ])("refuses %j (%s)", (key) => {
+    expect(KEY.test(key)).toBe(false);
+  });
+});
 
 describe("matches", () => {
   test("an empty search matches everything", () => {
