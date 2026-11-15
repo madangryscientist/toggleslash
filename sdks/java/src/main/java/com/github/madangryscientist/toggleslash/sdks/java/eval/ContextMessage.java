@@ -37,9 +37,13 @@ public final class ContextMessage {
     return out.toByteArray();
   }
 
-  /** {@code <byte length of the UTF-8>:<UTF-8 bytes>,}. */
+  /**
+   * {@code <byte length of the UTF-8>:<UTF-8 bytes>,}, a lone surrogate written as U+FFFD as the
+   * other SDKs and the server write it ({@link Utf8#encode}; the JDK's encoder writes a question
+   * mark).
+   */
   private static void netstring(ByteArrayOutputStream out, String text) {
-    byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+    byte[] bytes = Utf8.encode(text);
     out.writeBytes((bytes.length + ":").getBytes(StandardCharsets.US_ASCII));
     out.writeBytes(bytes);
     out.write(',');

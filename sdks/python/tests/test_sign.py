@@ -97,6 +97,10 @@ class SignContext(unittest.TestCase):
             with self.subTest(context=context), self.assertRaisesRegex(ValueError, "context"):
                 toggleslash.sign_context(self.pem, context)
 
+    def test_a_lone_surrogate_in_a_key_is_signed_as_the_replacement_character(self) -> None:
+        # As TypeScript's Buffer.from(text, "utf8") and the server write it.
+        self.assertEqual(context_message({"key": "\ud800"}), b"4:user,3:\xef\xbf\xbd,")
+
     def test_without_cryptography_it_names_the_extra(self) -> None:
         hidden = {name: None for name in sys.modules if name.split(".")[0] == "cryptography"}
         hidden["cryptography"] = None

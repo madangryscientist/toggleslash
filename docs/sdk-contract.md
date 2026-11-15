@@ -511,8 +511,11 @@ signContext(privateKeyPem, context) -> string
   nothing to them. `fixtures/signing/messages.json` holds the bytes for a set of contexts; a test signs each and
   verifies the signature over them, since a signature is randomised and cannot be pinned.
 - `privateKeyPem` is the PKCS#8 PEM that `POST .../environments/{env}/signing-key` answers. A key that is not an
-  ECDSA P-256 private key in that form is refused, and so is a context that is not valid (section 3). A library
-  that reads the PEM may well read a P-384 or P-521 key without complaint, so the SDK checks the curve itself.
+  ECDSA P-256 private key is refused, and so is a context that is not valid (section 3). A library that reads the
+  PEM may well read a P-384 or P-521 key without complaint, so the SDK checks the curve itself. An SDK whose library
+  also reads a P-256 key in another PEM form (SEC1's `EC PRIVATE KEY`, as Node's does) MAY accept it.
+- A key is written as UTF-8 with each lone surrogate as U+FFFD, as the server writes it; a language whose own
+  encoder does otherwise (Java's writes `?`) encodes by hand.
 - A refusal is reported by the language's own error convention: TypeScript throws a `TypeError`, Go returns an
   `error`, Python raises. This is the one call where that is allowed. It runs on the application's server, at the
   developer's hand, with a key and a context the developer wrote, not in evaluation, so a refusal is a mistake to

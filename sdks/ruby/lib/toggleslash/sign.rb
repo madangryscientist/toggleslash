@@ -9,9 +9,10 @@ module Toggleslash
     CURVE = "prime256v1"
     HALF = 32
 
-    # `<UTF-8 byte length>:<UTF-8 bytes>,`
+    # `<UTF-8 byte length>:<UTF-8 bytes>,`, a lone surrogate written as U+FFFD as the other SDKs and the server
+    # write it.
     def self.netstring(text)
-      bytes = text.b
+      bytes = Text.hash_bytes(text)
       "#{bytes.bytesize}:".b + bytes + ",".b
     end
 

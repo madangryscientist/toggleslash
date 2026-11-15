@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { isRecord, list, record, show, str } from "./json.ts";
 import { REPO_ROOT, type Service } from "./service.ts";
 
-export const SIGN_CONTEXT = "sign-context";
+const SIGN_CONTEXT = "sign-context";
 
 const FILE = join(REPO_ROOT, "fixtures/signing/messages.json");
 /** 64 bytes of P1363 `r || s`, base64url with no padding. */

@@ -90,4 +90,15 @@ class SigningTest {
     assertThrows(IllegalArgumentException.class, () -> Signing.signContext(key, Map.of("key", "")));
     assertThrows(IllegalArgumentException.class, () -> Signing.signContext(key, null));
   }
+
+  @Test
+  void writesALoneSurrogateInAKeyAsTheReplacementCharacter() {
+    // As TypeScript's Buffer.from(text, "utf8") and the server write it; the JDK's encoder writes
+    // "?".
+    byte[] expected =
+        new byte[] {
+          '4', ':', 'u', 's', 'e', 'r', ',', '3', ':', (byte) 0xef, (byte) 0xbf, (byte) 0xbd, ','
+        };
+    assertArrayEquals(expected, ContextMessage.of(Map.of("key", "\ud800")));
+  }
 }

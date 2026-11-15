@@ -13,10 +13,12 @@ import base64
 from typing import Any
 
 from ._context import normalise_context
+from ._text import hashable
 
 
 def _netstring(text: str) -> bytes:
-    data = text.encode("utf-8")
+    # A lone surrogate is written as U+FFFD, as the other SDKs and the server write it.
+    data = hashable(text)
     return str(len(data)).encode("ascii") + b":" + data + b","
 
 

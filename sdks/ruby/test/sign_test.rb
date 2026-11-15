@@ -61,4 +61,10 @@ class SignTest < Minitest::Test
       assert_raises(ArgumentError) { Toggleslash.sign_context(key, context) }
     end
   end
+
+  def test_a_lone_surrogate_in_a_key_is_signed_as_the_replacement_character
+    # The SDK holds a lone surrogate in its three-byte generalised form; TypeScript and the server write U+FFFD.
+    key = Toggleslash::Json.parse('{"key":"\\ud800"}')["key"]
+    assert_equal "4:user,3:\xEF\xBF\xBD,".b, Toggleslash::Sign.message({ "key" => key })
+  end
 end
