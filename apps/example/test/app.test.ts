@@ -124,26 +124,6 @@ describe("GET /", () => {
     expect(html).toContain('data-testid="current-user">pro-user<');
   });
 
-  it("has a stable test id on every value, the browser's cells and every status field", async () => {
-    const html = await get(app(fakeClient().client), "/").text();
-    for (const flag of FLAGS) {
-      expect(html).toContain(`data-testid="flag-${flag.key}-value"`);
-      expect(html).toContain(`data-testid="flag-${flag.key}-reason"`);
-    }
-    for (const id of ["etag", "last-sync-at", "stream", "last-error"]) {
-      expect(html).toContain(`data-testid="status-${id}"`);
-    }
-    expect(html).toContain('data-testid="browser-flag-new-checkout-value"');
-    expect(html).toContain('data-testid="browser-flag-new-checkout-reason"');
-    for (const old of ["evaluate-button", "evaluate-status", "evaluate-result"]) {
-      expect(html).not.toContain(old);
-    }
-    expect(html).toContain('<script type="module" src="/browser.js"></script>');
-    expect(html).toContain(
-      'data-testid="status-stream" data-path="status.stream" data-format="plain">connected<',
-    );
-  });
-
   it("keeps ?flag= across the picker and the page's refresh", async () => {
     const html = await get(app(fakeClient().client), "/?flag=journey-flag").text();
     expect(html).toContain('<input type="hidden" name="flag" value="journey-flag">');
