@@ -66,7 +66,9 @@ still fail: here `/usr/bin/dotnet` is a host with no SDK, and a mise shim fails 
 active. `packages/e2e/src/dotnet.ts` uses the same function, so the two cannot disagree. The four .NET
 projects are one moon project, `server`, tagged `dotnet`: `server:test` runs `dotnet test` on both test
 projects (dotnet restores and builds on its own) and `server:build` builds them without moon's cache,
-since dotnet's incremental build is its own. Two paths:
+since dotnet's incremental build is its own. `server:build`, `server:test`, `e2e:test-e2e` and `e2e:test-stack`
+share the moon mutex `dotnet-server`, so moon never runs two of them at once: two dotnet builds of the same
+projects race on the same `obj/` and `bin/` files, and in a fresh worktree one of them fails. Two paths:
 
 - **With a working `dotnet`** (anywhere on PATH, `/usr/bin/dotnet` first or not): `bun run test`
   runs `server:test` with the TS projects, `bun run build` builds the server, and `bun run test:e2e`

@@ -26,6 +26,9 @@ tasks:
   # environment that changes what runs; the packages and the root files come from .moon/tasks.
   test-e2e:
     command: "bun --bun vitest run"
+    options:
+      # Builds apps/server, so it never runs beside another server build (apps/server/moon.yml).
+      mutex: "dotnet-server"
     inputs:
       - "**/*"
       - "/apps/server/**/*"
@@ -55,6 +58,9 @@ tasks:
       - "$TOGGLESLASH_RULESET_RETENTION_DAYS"
   test-stack:
     command: "bun --bun playwright test"
+    options:
+      # Builds apps/server, so it never runs beside another server build (apps/server/moon.yml).
+      mutex: "dotnet-server"
     inputs:
       - "**/*"
       - "/apps/server/**/*"
