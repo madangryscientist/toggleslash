@@ -279,7 +279,7 @@ Under `/api/v1`, every route behind the `admin` policy, so for the root token an
     or is archived is a `404`.
   - `POST /sdk/v1/events` (server or client key) takes `{ "events": [{ "flag", "variationIndex", "count", "day" }] }`
     (`day` is `yyyy-MM-dd`, UTC) and adds each count to the key's own environment, summing entries that share a
-    flag, variation and day. It answers `{ "accepted", "unknownFlags" }`. See **Usage counts** below. It is for
+    flag, variation and day. For a client key a flag not marked visible to client keys is unknown, as on evaluate. It answers `{ "accepted", "unknownFlags" }`. See **Usage counts** below. It is for
     evaluations the server did not perform (a server SDK evaluating locally): `evaluate` counts its own, so an SDK
     that calls `evaluate` and also reports the result here counts it twice.
   - **CORS is on `evaluate`, `events` and `changes` only**: any origin, `GET` and `POST`, the `Authorization` and `Content-Type` headers, a ten-minute

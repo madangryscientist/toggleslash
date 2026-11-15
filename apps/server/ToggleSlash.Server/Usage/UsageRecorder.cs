@@ -9,7 +9,9 @@ namespace ToggleSlash.Server.Usage;
 internal sealed record UsageEntry(string FlagKey, int Variation, long Count, DateOnly Day);
 
 /// <param name="Accepted">Entries written to a known flag.</param>
-/// <param name="UnknownFlags">Entries ignored because the environment's project has no flag with that key.</param>
+/// <param name="UnknownFlags">
+/// Entries ignored because the environment's project has no flag with that key, or, for a client key, none it may see.
+/// </param>
 /// <param name="OutOfRange">The first entry whose variation is not an index into its flag's variations; when set, nothing was written.</param>
 internal sealed record UsageResult(int Accepted, int UnknownFlags, UsageEntry? OutOfRange = null);
 
@@ -20,7 +22,11 @@ internal sealed record UsageResult(int Accepted, int UnknownFlags, UsageEntry? O
 /// </summary>
 internal sealed class UsageRecorder(ToggleSlashDbContext database, ILogger<UsageRecorder> logger)
 {
-    public async Task<UsageResult> Record(long environmentId, IReadOnlyCollection<UsageEntry> entries, CancellationToken cancellation)
+    /// <param name="clientKey">
+    /// A client key sees only flags marked visible to it, so a hidden flag is unknown to it here too, as on evaluate: it
+    /// can neither count usage on one nor tell one from a key that does not exist.
+    /// </param>
+    public async Task<UsageResult> Record(long environmentId, IReadOnlyCollection<UsageEntry> entries, CancellationToken cancellation, bool clientKey = false)
     {
         if (entries.Count == 0)
         {
@@ -33,7 +39,7 @@ internal sealed class UsageRecorder(ToggleSlashDbContext database, ILogger<Usage
             .SingleAsync(cancellation);
         var keys = entries.Select(e => e.FlagKey).Distinct().ToList();
         var flags = await database.Flags.AsNoTracking()
-            .Where(f => f.ProjectId == projectId && keys.Contains(f.Key))
+            .Where(f => f.ProjectId == projectId && keys.Contains(f.Key) && (!clientKey || f.ClientVisible))
             .Select(f => new { f.Id, f.Key, f.Variations })
             .ToDictionaryAsync(f => f.Key, cancellation);
 

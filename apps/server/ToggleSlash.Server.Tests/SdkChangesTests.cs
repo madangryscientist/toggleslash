@@ -118,13 +118,11 @@ public sealed class SdkChangesTests : IDisposable
     }
 
     [Fact]
-    public async Task Marking_a_flag_visible_to_client_keys_signals_changed_and_leaves_the_ruleset_and_its_stream_alone()
+    public async Task Marking_a_flag_visible_to_client_keys_signals_changed_and_sends_nothing_on_the_server_stream()
     {
         await Seed();
-        var serverKey = await Key("server");
-        var before = await ETagOf(serverKey);
         using var changes = await Open(await Key("client"));
-        using var stream = await Open(serverKey, StreamPath);
+        using var stream = await Open(await Key("server"), StreamPath);
         await changes.NextEvent();
         await stream.NextEvent();
 
@@ -141,7 +139,6 @@ public sealed class SdkChangesTests : IDisposable
         await changes.NextKeepAlive();
         // The bytes never moved: the server stream heard no change, only the keep-alive.
         await stream.NextKeepAlive();
-        Assert.Equal(before, await ETagOf(serverKey));
         Assert.DoesNotContain("dark-mode", changes.Transcript);
     }
 

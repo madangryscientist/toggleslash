@@ -137,7 +137,7 @@ public static class SdkEndpoints
     {
         var environmentId = ServerAuth.EnvironmentId(http.User);
         // A client key ships in a page, so it is answered only the flags marked visible to it.
-        var clientKey = http.User.FindFirst(ServerAuth.PrincipalClaim)?.Value == ServerAuth.ClientKeyPolicy;
+        var clientKey = ServerAuth.IsClientKey(http.User);
         var outcome = await EvaluateAll(
             request,
             () => reader.Read(environmentId, http.RequestAborted),

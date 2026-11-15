@@ -88,7 +88,8 @@ A client key ships in the page, so anyone can read it. The server answers it onl
 keys** (`clientVisible` on the flag, `--client-visible` on `toggleslash flags create`, "Visible to client keys" in the
 dashboard). A new flag is hidden until it is marked. A hidden flag is left out of the evaluate answer, so
 `variation` serves the fallback and `detail` answers `ERROR` with `FLAG_NOT_FOUND`, the same as for a key that does
-not exist; asking for it by `flagKey` is the same `404` as a missing key. A server key sees every flag.
+not exist; asking for it by `flagKey` is the same `404` as a missing key, and a usage count for it is one of
+`unknownFlags`, counted nowhere. A server key sees every flag.
 
 Two things still reach a page, by design:
 

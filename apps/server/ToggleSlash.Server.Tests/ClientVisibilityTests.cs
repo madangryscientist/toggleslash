@@ -118,6 +118,24 @@ public sealed class ClientVisibilityTests : IDisposable
     }
 
     [Fact]
+    public async Task A_client_key_counting_usage_on_a_hidden_flag_is_told_it_is_unknown_and_counts_nothing()
+    {
+        await Seed();
+        var day = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        object Batch(string flag, int variation = 0) => new { events = new[] { new { flag, variationIndex = variation, count = 1, day } } };
+        var client = await Key("client");
+
+        var hidden = await server.Send(HttpMethod.Post, "/sdk/v1/events", $"Bearer {client}", Batch("hidden"));
+        var outOfRange = await server.Send(HttpMethod.Post, "/sdk/v1/events", $"Bearer {client}", Batch("hidden", 99));
+        var missing = await server.Send(HttpMethod.Post, "/sdk/v1/events", $"Bearer {client}", Batch("no-such-flag", 99));
+        var counted = await server.Send(HttpMethod.Post, "/sdk/v1/events", $"Bearer {await Key("server")}", Batch("hidden"));
+
+        Assert.Equal("""{"accepted":0,"unknownFlags":1}""", await hidden.Content.ReadAsStringAsync());
+        Assert.Equal(await missing.Content.ReadAsStringAsync(), await outOfRange.Content.ReadAsStringAsync());
+        Assert.Equal("""{"accepted":1,"unknownFlags":0}""", await counted.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task A_visible_flag_with_a_hidden_prerequisite_still_evaluates_it()
     {
         await Seed();
