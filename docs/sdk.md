@@ -2,8 +2,8 @@
 
 `packages/sdk` (`@hackcove/toggleslash-sdk`, moon project `sdk`) is the server-side SDK for TypeScript: it keeps
 a copy of one environment's ruleset current and evaluates flags **locally** with `@hackcove/toggleslash-engine`,
-to [`evaluation.md`](evaluation.md). It needs a **server** key (`ruleset` and `stream` refuse a client key). The
-package is private and unpublished; publishing waits for the maintainer. Code that runs in a browser uses the
+to [`evaluation.md`](evaluation.md). It needs a **server** key (`ruleset` and `stream` refuse a client key). It
+is packaged for npm by `release.yml` and not yet published; the first publish waits for the maintainer. Code that runs in a browser uses the
 [browser SDK](sdk-browser.md) instead, where the server evaluates.
 
 This page is the TypeScript binding of the language-neutral [SDK contract](sdk-contract.md), which says what
@@ -20,6 +20,10 @@ canonical names are:
 | `url`, `sdkKey`, `stream` | `url`, `sdkKey`, `stream` |
 | `pollInterval`, `flushInterval`, `requestTimeout` | `pollIntervalMs`, `flushIntervalMs`, `requestTimeoutMs` (milliseconds) |
 | `hooks.afterEvaluation`, `onError` | `hooks.afterEvaluation`, `onError` |
+
+```sh
+npm install @hackcove/toggleslash-sdk   # once published; it brings @hackcove/toggleslash-engine with it
+```
 
 ```ts
 import { createClient } from "@hackcove/toggleslash-sdk";
@@ -159,6 +163,22 @@ It signs the context's kinds and keys (not its attributes) with ECDSA P-256 and 
 needs `node:crypto`, so it is on the main entry only and never on `@hackcove/toggleslash-sdk/shared`, which the browser
 SDK imports. Unlike the rest of the SDK it **throws**, on a context that is not valid or a key that is not a P-256
 private key: both are mistakes at the call site. It needs no `Client`.
+
+## Cloudflare Workers
+
+The SDK runs in a Worker, and `signContext` signs there, but the main entry imports `node:crypto` (for
+`signContext`), so **set the `nodejs_compat` compatibility flag**:
+
+```jsonc
+// wrangler.jsonc
+{ "compatibility_date": "2026-11-01", "compatibility_flags": ["nodejs_compat"] }
+```
+
+Without it, a Worker on an older compatibility date does not start (`No such module "node:crypto"`). Checked on
+2026-11-15 with wrangler 4.162.0's local runtime: with no flag the Worker failed to start on every date tried up to
+`2026-06-01`, and from `2026-09-01` it started and signed; with the flag it started, evaluated and signed (the signature verified
+with WebCrypto) on both `2024-09-23` and `2026-11-01`. `wrangler deploy --dry-run` passes either way, because the
+bundler leaves `node:crypto` as an import and only warns, so a green dry run does not prove the Worker starts.
 
 ## OpenFeature
 

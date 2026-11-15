@@ -2,7 +2,11 @@
 
 A server-side [OpenFeature](https://openfeature.dev) provider over the ToggleSlash TypeScript SDK. It is a thin adapter:
 it evaluates nothing itself, makes no network call and caches nothing. Every answer is `client.variationDetail(...)` from
-`@hackcove/toggleslash-sdk`, mapped to OpenFeature's `ResolutionDetails`. Private and unpublished.
+`@hackcove/toggleslash-sdk`, mapped to OpenFeature's `ResolutionDetails`. Packaged for npm by `release.yml`; not yet published.
+
+```sh
+npm install @hackcove/toggleslash-sdk-openfeature @hackcove/toggleslash-sdk @openfeature/server-sdk
+```
 
 ```ts
 import { createClient } from "@hackcove/toggleslash-sdk";
@@ -24,7 +28,7 @@ underneath). The provider calls `ready()` when OpenFeature initialises it and `c
 
 `targetingKey` becomes the SDK context's `key`; every other entry becomes an attribute of the same name. A `Date` becomes
 its ISO 8601 string, because the `before` and `after` operators compare instants given as ISO strings
-([`docs/evaluation.md`](../../docs/evaluation.md)). A missing or empty `targetingKey` answers the default with reason
+([`docs/evaluation.md`](https://github.com/madangryscientist/toggleslash/blob/main/docs/evaluation.md)). A missing or empty `targetingKey` answers the default with reason
 `ERROR` and `TARGETING_KEY_MISSING`, without calling the client.
 
 `variant` is the served variation's index as a string (`"0"`), and is left out when the default was served.
@@ -57,4 +61,4 @@ On an `ERROR` reason the `errorMessage` is the SDK's own code.
 - No provider events: a ruleset change does not emit `ConfigurationChanged`.
 - Server side only. There is no web provider and no provider for another language.
 - No `flagMetadata`, no `track`, no hooks.
-- Private and unpublished.
+- Not yet on npm: packaged by `release.yml`, published by the maintainer.

@@ -9,7 +9,7 @@ yet.
 > and a browser SDK evaluates them in a web page through the server. Server SDKs for Python, Go, Java, C# and Ruby live under
 > [`sdks/`](sdks/README.md). Every admin API write is recorded in an audit trail, and the server counts how often each flag variation is served per day
 > (counts only, never an end user's context). Evaluation follows the spec in
-> [`docs/evaluation.md`](docs/evaluation.md). There is no hosted service and no published package yet.
+> [`docs/evaluation.md`](docs/evaluation.md). There is no hosted service yet. The CLI and the TypeScript SDKs are packaged for npm by `release.yml` and not yet published.
 >
 > The product page is [slashslash.build/toggleslash](https://slashslash.build/toggleslash).
 
@@ -26,7 +26,7 @@ yet.
 | `packages/engine` | flag evaluation |
 | `fixtures/evaluation` | the language-neutral test vectors every implementation must pass |
 | `packages/cli` | the `toggleslash` command: manage projects, environments, flags and SDK keys over the admin API |
-| `packages/sdk` | the TypeScript server SDK (private, not published) |
+| `packages/sdk` | the TypeScript server SDK (packaged for npm by `release.yml`; not yet published) |
 | `apps/web` | the dashboard: TanStack Start on Cloudflare Workers; flag list, toggle, create and archive, a flag detail page (metadata, targeting editor, history, usage), and pages for environments, SDK keys, segments and the audit log, over the server's admin API |
 | `apps/server` | the C# server (ASP.NET Core, .NET 10): owns flag data and the API |
 | `apps/server/ToggleSlash.Evaluation` | flag evaluation in C#, to the same spec and vectors as the engine; the server's `POST /sdk/v1/evaluate` uses it |

@@ -1,6 +1,6 @@
 {
   "name": "@hackcove/toggleslash-sdk-otel",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "An evaluation hook for the ToggleSlash TypeScript SDK that puts the flag result and the ruleset hash on the active OpenTelemetry span.",
   "license": "Elastic-2.0",
@@ -9,13 +9,16 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@hackcove/toggleslash-sdk": "workspace:*",
-    "@opentelemetry/api": "1.10.0"
+    "@hackcove/toggleslash-sdk": "workspace:*"
   },
   "devDependencies": {
+    "@opentelemetry/api": "1.10.0",
     "@opentelemetry/context-async-hooks": "2.12.0",
     "@opentelemetry/sdk-trace-base": "2.12.0",
     "@types/bun": "1.4.4",
     "vitest": "5.1.0"
+  },
+  "peerDependencies": {
+    "@opentelemetry/api": "^1.9.0"
   }
 }

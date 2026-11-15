@@ -1,7 +1,7 @@
 # toggleslash
 
 The ToggleSlash command line: manage projects, environments, flags, SDK keys and scoped API tokens on a ToggleSlash
-server from the terminal, over the admin API (`/api/v1`). It is not published yet; from a checkout, run
+server from the terminal, over the admin API (`/api/v1`). It is packaged for npm (`@hackcove/toggleslash`) by `release.yml` and not yet published; from a checkout, run
 it with `bun run toggleslash <command>`.
 
 ## Connect

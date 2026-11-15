@@ -16,7 +16,7 @@ function netstring(text: string): Buffer {
  * `docs/evaluation.md` does it, keys only, the kinds in byte order, each kind and then its key as a netstring.
  * Attributes are not part of it. Throws when the context is not valid.
  */
-export function contextMessage(context: Context): Buffer {
+export function contextMessage(context: Context): Uint8Array {
   const contexts = normaliseContext(context);
   if (contexts === null)
     throw new TypeError("signContext: the context is not valid; see docs/evaluation.md");
@@ -39,5 +39,8 @@ export function signContext(privateKeyPem: string, context: Context): string {
   const key = createPrivateKey(privateKeyPem);
   if (key.asymmetricKeyType !== "ec" || key.asymmetricKeyDetails?.namedCurve !== "prime256v1")
     throw new TypeError("signContext: the key is not an ECDSA P-256 private key");
-  return sign("sha256", message, { key, dsaEncoding: "ieee-p1363" }).toString("base64url");
+  // The PEM, not the KeyObject: Cloudflare Workers' `node:crypto` refuses a KeyObject as `options.key`.
+  return sign("sha256", message, { key: privateKeyPem, dsaEncoding: "ieee-p1363" }).toString(
+    "base64url",
+  );
 }
