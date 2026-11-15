@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { API_PORT } from "./constants.ts";
+import { gotoHydrated } from "./goto.ts";
 
 const API = `http://127.0.0.1:${API_PORT}`;
 
@@ -21,7 +22,7 @@ const section = (page: Page, label: string) =>
 const openMenu = (page: Page) => page.getByText("Menu", { exact: true }).click();
 
 test("the phone menu switches the environment and stays on the page", async ({ page }) => {
-  await page.goto("/keys?project=shop&env=production");
+  await gotoHydrated(page, "/keys?project=shop&env=production");
   await openMenu(page);
   await page.getByLabel("Environment").selectOption("staging");
   await expect(page).toHaveURL(/\/keys\?.*env=staging/);
@@ -29,7 +30,7 @@ test("the phone menu switches the environment and stays on the page", async ({ p
 });
 
 test("a section link in the phone menu opens its page", async ({ page }) => {
-  await page.goto("/?project=shop&env=staging");
+  await gotoHydrated(page, "/?project=shop&env=staging");
   await openMenu(page);
   await section(page, "Segments").click();
   await expect(page).toHaveURL(/\/segments/);

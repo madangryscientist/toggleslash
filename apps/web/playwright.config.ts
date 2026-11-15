@@ -29,10 +29,12 @@ export default defineConfig({
   testDir: "./e2e",
   globalSetup: "../../scripts/test-tmp-scope.ts",
   forbidOnly: !!process.env["CI"],
+  // A test that fails is a finding, never retried past.
+  retries: 0,
   reporter: "list",
   // One local D1 holds every spec's rows: concurrent writers fail with SQLITE_BUSY.
   workers: 1,
-  use: { baseURL: `http://localhost:${PORT}`, trace: "on-first-retry" },
+  use: { baseURL: `http://localhost:${PORT}`, trace: "retain-on-failure" },
   projects: [
     // Signs in through the real form; every spec starts from the session it saves.
     { name: "setup", testMatch: /sign-in\.setup\.ts/, use: { ...devices["Desktop Chrome"] } },

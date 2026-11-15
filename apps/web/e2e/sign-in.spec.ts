@@ -9,6 +9,7 @@ import {
   PORT,
   UNCONFIGURED_PORT,
 } from "./constants.ts";
+import { gotoHydrated } from "./goto.ts";
 
 /** A section link in the dashboard nav. The nav is also in a phone menu, hidden on desktop, so match by role. */
 const section = (page: Page, label: string) =>
@@ -72,7 +73,7 @@ async function expectRefused(request: APIRequestContext, base: string, name: str
 }
 
 test("a signed-out page redirects to sign-in, and returns there afterwards", async ({ page }) => {
-  await page.goto("/keys?project=shop&env=staging");
+  await gotoHydrated(page, "/keys?project=shop&env=staging");
   await expect(page).toHaveURL(/\/sign-in\?returnTo=%2Fkeys%3Fproject%3Dshop%26env%3Dstaging/);
   await signIn(page);
   await expect(page).toHaveURL(/\/keys\?project=shop&env=staging$/);
@@ -80,7 +81,7 @@ test("a signed-out page redirects to sign-in, and returns there afterwards", asy
 });
 
 test("a wrong password stays signed out, and says only that it failed", async ({ page }) => {
-  await page.goto("/");
+  await gotoHydrated(page, "/");
   await signIn(page, "not the password at all");
   await expect(page).toHaveURL(/\/sign-in\?failed=true/);
   await expect(page.getByTestId("sign-in-failed")).toHaveText(
@@ -88,25 +89,25 @@ test("a wrong password stays signed out, and says only that it failed", async ({
   );
   expect(page.url()).not.toContain("password");
   expect((await page.context().cookies()).filter((c) => c.name === COOKIE)).toEqual([]);
-  await page.goto("/");
+  await gotoHydrated(page, "/");
   await expect(page).toHaveURL(/\/sign-in/);
 });
 
 test("sign-out ends access", async ({ page }) => {
-  await page.goto("/");
+  await gotoHydrated(page, "/");
   await signIn(page);
   await expect(page.getByRole("heading", { name: "Flags" })).toBeVisible();
   await page.getByTestId("sign-out").click();
   await expect(page).toHaveURL(/\/sign-in/);
   expect((await page.context().cookies()).filter((c) => c.name === COOKIE)).toEqual([]);
-  await page.goto("/keys");
+  await gotoHydrated(page, "/keys");
   await expect(page).toHaveURL(/\/sign-in/);
 });
 
 test("a session that ends while a page is open sends the next call to sign-in", async ({
   page,
 }) => {
-  await page.goto("/");
+  await gotoHydrated(page, "/");
   await signIn(page);
   await expect(section(page, "SDK keys")).toBeVisible();
   await page.context().clearCookies();
@@ -123,7 +124,7 @@ test("signed-out direct requests to every server function return no data", async
 });
 
 test("the same request with a real session gets its data", async ({ page }) => {
-  await page.goto("/");
+  await gotoHydrated(page, "/");
   await signIn(page);
   await expect(page.getByRole("heading", { name: "Flags" })).toBeVisible();
   const url = builtServerFunctions().get("loadEnvironments") ?? "";
@@ -135,7 +136,7 @@ test("the same request with a real session gets its data", async ({ page }) => {
 });
 
 test("a tampered cookie is refused by pages and by server functions", async ({ page }) => {
-  await page.goto("/");
+  await gotoHydrated(page, "/");
   await signIn(page);
   await expect(page.getByRole("heading", { name: "Flags" })).toBeVisible();
   const context = page.context();
@@ -146,7 +147,7 @@ test("a tampered cookie is refused by pages and by server functions", async ({ p
   const flipped = `${signature.startsWith("0") ? "1" : "0"}${signature.slice(1)}`;
   await context.clearCookies();
   await context.addCookies([{ ...real, value: `${expiry ?? ""}.${flipped}` }]);
-  await page.goto("/");
+  await gotoHydrated(page, "/");
   await expect(page).toHaveURL(/\/sign-in/);
 
   const url = builtServerFunctions().get("loadEnvironments") ?? "";
@@ -156,7 +157,7 @@ test("a tampered cookie is refused by pages and by server functions", async ({ p
 
 test.describe("with neither secret set", () => {
   test("the sign-in page names the variables and nobody gets in", async ({ page, request }) => {
-    await page.goto(`${UNCONFIGURED}/`);
+    await gotoHydrated(page, `${UNCONFIGURED}/`);
     await expect(page).toHaveURL(/\/sign-in/);
     const message = page.getByTestId("sign-in-unconfigured");
     await expect(message).toContainText("TOGGLESLASH_OPERATOR_PASSWORD");

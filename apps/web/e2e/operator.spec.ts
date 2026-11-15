@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { API_PORT, E2E_ADMIN_TOKEN } from "./constants.ts";
-import { waitForHydrated } from "./hydrated.ts";
+import { gotoHydrated } from "./goto.ts";
 
 /** A section link in the dashboard nav. The nav is also in a phone menu, hidden on desktop, so match by role. */
 const section = (page: Page, label: string) =>
@@ -18,7 +18,7 @@ test.beforeEach(async ({ request }) => {
 test("the nav moves between the operator pages and keeps the project and environment", async ({
   page,
 }) => {
-  await page.goto("/?project=shop&env=staging");
+  await gotoHydrated(page, "/?project=shop&env=staging");
   await section(page, "Environments").click();
   await expect(page).toHaveURL(/\/environments\?project=shop&env=staging/);
   await expect(page.getByTestId("environment-staging")).toBeVisible();
@@ -37,13 +37,13 @@ test("the nav moves between the operator pages and keeps the project and environ
 
 test.describe("environments", () => {
   test("lists a project's environments", async ({ page }) => {
-    await page.goto("/environments?project=shop");
+    await gotoHydrated(page, "/environments?project=shop");
     await expect(page.getByTestId("environment-production")).toContainText("Production");
     await expect(page.getByTestId("environment-staging")).toContainText("Staging");
   });
 
   test("creates one and shows it in the list and in the server", async ({ page, request }) => {
-    await page.goto("/environments?project=shop");
+    await gotoHydrated(page, "/environments?project=shop");
     await page.getByTestId("new-environment").click();
     await page.locator("#env-name").fill("QA");
     await page.locator("#env-key").fill("qa");
@@ -56,7 +56,7 @@ test.describe("environments", () => {
   test("refuses a bad key before asking, and shows the server's refusal of a duplicate", async ({
     page,
   }) => {
-    await page.goto("/environments?project=shop");
+    await gotoHydrated(page, "/environments?project=shop");
     await page.getByTestId("new-environment").click();
     await page.locator("#env-name").fill("Prod again");
     await page.locator("#env-key").fill("Bad Key");
@@ -71,7 +71,7 @@ test.describe("environments", () => {
 
 test.describe("SDK keys", () => {
   test("lists keys with their prefix, active and revoked", async ({ page }) => {
-    await page.goto("/keys?project=shop&env=production");
+    await gotoHydrated(page, "/keys?project=shop&env=production");
     await expect(page.getByTestId("key-1")).toContainText("tgl_srv_a1b2c3d4");
     await expect(page.getByTestId("key-1")).toContainText("Backend");
     await expect(page.getByTestId("revoke-1")).toBeVisible();
@@ -80,7 +80,7 @@ test.describe("SDK keys", () => {
   });
 
   test("shows a new key's plaintext once: gone after leaving the page", async ({ page }) => {
-    await page.goto("/keys?project=shop&env=production");
+    await gotoHydrated(page, "/keys?project=shop&env=production");
     await page.getByTestId("new-key-button").click();
     await page.locator("#key-name").fill("Worker");
     await page.getByRole("button", { name: "Create key" }).click();
@@ -107,7 +107,7 @@ test.describe("SDK keys", () => {
   });
 
   test("dismissing the secret removes it", async ({ page }) => {
-    await page.goto("/keys?project=shop&env=production");
+    await gotoHydrated(page, "/keys?project=shop&env=production");
     await page.getByTestId("new-key-button").click();
     await page.locator("#key-name").fill("Browser");
     await page.locator("#key-kind").selectOption("client");
@@ -119,7 +119,7 @@ test.describe("SDK keys", () => {
   });
 
   test("needs a name to create", async ({ page }) => {
-    await page.goto("/keys?project=shop&env=production");
+    await gotoHydrated(page, "/keys?project=shop&env=production");
     await page.getByTestId("new-key-button").click();
     await page.getByRole("button", { name: "Create key" }).click();
     await expect(page.getByTestId("create-error")).toBeVisible();
@@ -129,7 +129,7 @@ test.describe("SDK keys", () => {
     page,
     request,
   }) => {
-    await page.goto("/keys?project=shop&env=production");
+    await gotoHydrated(page, "/keys?project=shop&env=production");
     await page.getByTestId("revoke-1").click();
     await page.getByRole("button", { name: "Cancel" }).click();
     await expect(page.getByTestId("revoke-1")).toBeVisible();
@@ -148,9 +148,8 @@ test.describe("SDK keys", () => {
 
 test.describe("segments", () => {
   test("a version conflict keeps the typing and says to reload", async ({ page, request }) => {
-    await page.goto("/segments?project=shop&env=production");
+    await gotoHydrated(page, "/segments?project=shop&env=production");
     await page.getByTestId("edit-beta-testers").click();
-    await waitForHydrated(page, "#segment-included");
     await expect(page.locator("#segment-included")).toHaveValue("alice\nbob");
     await page.locator("#segment-included").fill("alice\ncarol");
     // Someone else saves after this page loaded.
@@ -168,19 +167,19 @@ test.describe("segments", () => {
   });
 
   test("lists segments with counts", async ({ page }) => {
-    await page.goto("/segments?project=shop&env=production");
+    await gotoHydrated(page, "/segments?project=shop&env=production");
     await expect(page.getByTestId("segment-beta-testers")).toContainText("2 contexts");
     await expect(page.getByTestId("segment-beta-testers")).toContainText("1 rule");
     await expect(page.getByTestId("segment-staff")).toContainText("0 rules");
   });
 
   test("an environment with none says so", async ({ page }) => {
-    await page.goto("/segments?project=shop&env=staging");
+    await gotoHydrated(page, "/segments?project=shop&env=staging");
     await expect(page.getByText("No segments yet")).toBeVisible();
   });
 
   test("edits members, saves and sees them after a reload", async ({ page }) => {
-    await page.goto("/segments?project=shop&env=production");
+    await gotoHydrated(page, "/segments?project=shop&env=production");
     await page.getByTestId("edit-beta-testers").click();
     await expect(page.locator("#segment-included")).toHaveValue("alice\nbob");
     await page.locator("#segment-included").fill("alice\nbob\ncarol");
@@ -195,7 +194,7 @@ test.describe("segments", () => {
   test("shows the server's refusal of a bad rule, and a JSON error before asking", async ({
     page,
   }) => {
-    await page.goto("/segments?project=shop&env=production");
+    await gotoHydrated(page, "/segments?project=shop&env=production");
     await page.getByTestId("edit-staff").click();
     await page.locator("#segment-rules").fill("not json");
     await page.getByTestId("save-segment").click();
@@ -209,7 +208,7 @@ test.describe("segments", () => {
 
 test.describe("audit log", () => {
   test("lists the newest events and pages back to older ones", async ({ page }) => {
-    await page.goto("/audit?project=shop");
+    await gotoHydrated(page, "/audit?project=shop");
     await expect(page.getByTestId("audit-event")).toHaveCount(25);
     await expect(page.getByTestId("audit-newest")).toHaveCount(0);
     await page.getByTestId("audit-older").click();
@@ -221,7 +220,7 @@ test.describe("audit log", () => {
   });
 
   test("filters by flag, environment and date", async ({ page }) => {
-    await page.goto("/audit?project=shop");
+    await gotoHydrated(page, "/audit?project=shop");
     await page.locator("#audit-flag").fill("checkout-v2");
     await page.getByTestId("apply-filters").click();
     await expect(page).toHaveURL(/flag=checkout-v2/);
@@ -242,7 +241,7 @@ test.describe("audit log", () => {
   });
 
   test("says when nothing matches", async ({ page }) => {
-    await page.goto("/audit?project=shop&flag=no-such-flag");
+    await gotoHydrated(page, "/audit?project=shop&flag=no-such-flag");
     await expect(page.getByText("No event matches these filters.")).toBeVisible();
   });
 });

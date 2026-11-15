@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
 import { API_PORT, E2E_ADMIN_TOKEN } from "./constants.ts";
+import { gotoHydrated } from "./goto.ts";
 
 const api = `http://127.0.0.1:${API_PORT}`;
 
@@ -22,7 +23,7 @@ test.describe("renaming and deleting environments", () => {
     page,
     request,
   }) => {
-    await page.goto("/environments?project=shop");
+    await gotoHydrated(page, "/environments?project=shop");
     await page.getByTestId("rename-staging").click();
     await expect(page.getByRole("dialog", { name: "Rename Staging" })).toBeVisible();
     await page.locator("#env-rename").fill("Pre-production");
@@ -37,7 +38,7 @@ test.describe("renaming and deleting environments", () => {
   });
 
   test("a blank name is refused before any request", async ({ page }) => {
-    await page.goto("/environments?project=shop");
+    await gotoHydrated(page, "/environments?project=shop");
     await page.getByTestId("rename-staging").click();
     await page.locator("#env-rename").fill("   ");
     await page.getByRole("button", { name: "Rename", exact: true }).click();
@@ -50,7 +51,7 @@ test.describe("renaming and deleting environments", () => {
     page,
     request,
   }) => {
-    await page.goto("/environments?project=shop");
+    await gotoHydrated(page, "/environments?project=shop");
     await page.getByTestId("delete-staging").click();
     await expect(page.getByRole("dialog", { name: "Delete staging?" })).toBeVisible();
     await page.getByRole("button", { name: "Cancel" }).click();
@@ -66,7 +67,7 @@ test.describe("renaming and deleting environments", () => {
   test("an environment with a live key cannot be deleted, and the server says so", async ({
     page,
   }) => {
-    await page.goto("/environments?project=shop");
+    await gotoHydrated(page, "/environments?project=shop");
     await page.getByTestId("delete-production").click();
     await page.getByTestId("confirm-delete-environment").click();
     await expect(page.getByTestId("problem")).toContainText('Environment "production" still has');
@@ -77,7 +78,7 @@ test.describe("renaming and deleting environments", () => {
 
 test.describe("secure mode and the signing key", () => {
   test("Cancel on the confirm makes no key", async ({ page }) => {
-    await page.goto("/environments?project=shop");
+    await gotoHydrated(page, "/environments?project=shop");
     await page.getByTestId("signing-key-staging").click();
     await expect(
       page.getByRole("dialog", { name: "Make a signing key for Staging?" }),
@@ -89,7 +90,7 @@ test.describe("secure mode and the signing key", () => {
   });
 
   test("a new key is shown once: gone after closing and after a reload", async ({ page }) => {
-    await page.goto("/environments?project=shop");
+    await gotoHydrated(page, "/environments?project=shop");
     await page.getByTestId("signing-key-staging").click();
     await page.getByTestId("confirm-signing-key").click();
     const pem = page.getByTestId("signing-key-pem");
@@ -117,7 +118,7 @@ test.describe("secure mode and the signing key", () => {
   test("the switch waits for a key, then turns secure mode on, and that survives a reload", async ({
     page,
   }) => {
-    await page.goto("/environments?project=shop");
+    await gotoHydrated(page, "/environments?project=shop");
     const toggle = page.getByTestId("secure-mode-staging");
     await expect(toggle).toBeDisabled();
     await expect(page.getByTestId("environment-staging")).toContainText(
@@ -150,7 +151,7 @@ test.describe("a signing key on a slow server", () => {
   test("the confirm cannot be closed while the key is being made, so the new key is not lost", async ({
     page,
   }) => {
-    await page.goto("/environments?project=shop");
+    await gotoHydrated(page, "/environments?project=shop");
     await page.getByTestId("signing-key-staging").click();
     // Hold the dashboard's server call, as a slow server would, until the closes below have been tried.
     let release: (() => void) | undefined;

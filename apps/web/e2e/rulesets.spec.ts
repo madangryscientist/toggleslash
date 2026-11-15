@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { API_PORT, E2E_OPERATOR_PASSWORD, PAST_RULESET_HASH, PLANTED_SALT } from "./constants.ts";
+import { gotoHydrated } from "./goto.ts";
 
 const API = `http://127.0.0.1:${API_PORT}`;
 const PAGE = `/rulesets/${PAST_RULESET_HASH}?project=shop&env=production`;
@@ -9,7 +10,7 @@ test.beforeEach(async ({ request }) => {
 });
 
 test("shows the flags as they were under the hash, not as they are now", async ({ page }) => {
-  await page.goto(PAGE);
+  await gotoHydrated(page, PAGE);
   await expect(page.getByRole("heading", { name: "Flags under a past ruleset" })).toBeVisible();
   await expect(page.getByTestId("ruleset-hash")).toContainText(PAST_RULESET_HASH);
   // checkout-v2 was off with a country rule, dark-mode was on: the fake's current configs say otherwise.
@@ -23,7 +24,7 @@ test("shows the flags as they were under the hash, not as they are now", async (
 });
 
 test("shows no salt, and no token is in the page or its address", async ({ page }) => {
-  const response = await page.goto(PAGE);
+  const response = await gotoHydrated(page, PAGE);
   await expect(page.getByTestId("past-flag-checkout-v2")).toBeVisible();
   // The server render is the document the browser was sent, and it is where a leaked loader value would show up.
   // The DOM after hydration is checked too; the loader data is not in it, so it is the weaker of the two.
@@ -43,7 +44,7 @@ test("shows no salt, and no token is in the page or its address", async ({ page 
 });
 
 test("?flag= narrows it to that flag", async ({ page }) => {
-  await page.goto(`${PAGE}&flag=dark-mode`);
+  await gotoHydrated(page, `${PAGE}&flag=dark-mode`);
   await expect(page.getByTestId("past-flag-dark-mode")).toBeVisible();
   await expect(page.getByTestId("past-flag-checkout-v2")).toHaveCount(0);
 });
@@ -51,7 +52,7 @@ test("?flag= narrows it to that flag", async ({ page }) => {
 test("a hash the environment never served is a clear not-found, not an error page", async ({
   page,
 }) => {
-  await page.goto(`/rulesets/${"0".repeat(64)}?project=shop&env=production`);
+  await gotoHydrated(page, `/rulesets/${"0".repeat(64)}?project=shop&env=production`);
   await expect(page.getByTestId("ruleset-not-found")).toContainText(
     "No ruleset found for that hash",
   );
@@ -62,14 +63,14 @@ test("a hash the environment never served is a clear not-found, not an error pag
 test("a flag the hash's ruleset lacks says so, not that the hash was never served", async ({
   page,
 }) => {
-  await page.goto(`${PAGE}&flag=nope`);
+  await gotoHydrated(page, `${PAGE}&flag=nope`);
   const notFound = page.getByTestId("ruleset-not-found");
   await expect(notFound).toContainText("That ruleset has no such flag.");
   await expect(notFound).not.toContainText("never served");
 });
 
 test("without a project and an environment it says what is missing", async ({ page }) => {
-  await page.goto(`/rulesets/${PAST_RULESET_HASH}`);
+  await gotoHydrated(page, `/rulesets/${PAST_RULESET_HASH}`);
   await expect(page.getByTestId("ruleset-needs-scope")).toBeVisible();
   await expect(page.getByTestId("past-flag-checkout-v2")).toHaveCount(0);
 });
@@ -88,7 +89,7 @@ test.describe("signed out", () => {
       expect(body).not.toContain(leak);
     }
 
-    await page.goto(PAGE);
+    await gotoHydrated(page, PAGE);
     await expect(page).toHaveURL(/\/sign-in\?returnTo=/);
     await expect(page.getByTestId("past-flag-checkout-v2")).toHaveCount(0);
     await page.getByLabel("Password").fill(E2E_OPERATOR_PASSWORD);

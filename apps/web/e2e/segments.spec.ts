@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { API_PORT, E2E_ADMIN_TOKEN } from "./constants.ts";
-import { waitForHydrated } from "./hydrated.ts";
+import { gotoHydrated } from "./goto.ts";
 
 test.beforeEach(async ({ request }) => {
   await request.post(`http://127.0.0.1:${API_PORT}/__reset`);
@@ -8,7 +8,7 @@ test.beforeEach(async ({ request }) => {
 
 test.describe("creating and deleting segments", () => {
   test("a new segment is created, listed and opened for editing", async ({ page }) => {
-    await page.goto("/segments?project=shop&env=production");
+    await gotoHydrated(page, "/segments?project=shop&env=production");
     await page.getByTestId("new-segment").click();
     await page.getByLabel("Key").fill("vip");
     await page.getByRole("button", { name: "Create segment" }).click();
@@ -19,7 +19,7 @@ test.describe("creating and deleting segments", () => {
   test("a bad key is refused before asking, and a taken key shows the server's message", async ({
     page,
   }) => {
-    await page.goto("/segments?project=shop&env=production");
+    await gotoHydrated(page, "/segments?project=shop&env=production");
     await page.getByTestId("new-segment").click();
     await page.getByRole("button", { name: "Create segment" }).click();
     await expect(page.getByTestId("create-error")).toContainText("Give the segment a key");
@@ -34,7 +34,7 @@ test.describe("creating and deleting segments", () => {
   });
 
   test("the empty state offers to create the first segment", async ({ page }) => {
-    await page.goto("/segments?project=shop&env=staging");
+    await gotoHydrated(page, "/segments?project=shop&env=staging");
     await page.getByRole("button", { name: "Create the first segment" }).click();
     await page.getByLabel("Key").fill("first");
     await page.getByRole("button", { name: "Create segment" }).click();
@@ -42,7 +42,7 @@ test.describe("creating and deleting segments", () => {
   });
 
   test("Delete asks first, Cancel keeps the segment, confirming removes it", async ({ page }) => {
-    await page.goto("/segments?project=shop&env=production");
+    await gotoHydrated(page, "/segments?project=shop&env=production");
     await page.getByTestId("delete-staff").click();
     await expect(page.getByRole("dialog", { name: "Delete staff?" })).toBeVisible();
     await page.getByRole("button", { name: "Cancel" }).click();
@@ -57,7 +57,7 @@ test.describe("creating and deleting segments", () => {
   test("a segment a flag rule names cannot be deleted, and the server says which flag", async ({
     page,
   }) => {
-    await page.goto("/segments?project=shop&env=production");
+    await gotoHydrated(page, "/segments?project=shop&env=production");
     await page.getByTestId("delete-beta-testers").click();
     await page.getByTestId("confirm-delete-segment").click();
     await expect(page.getByTestId("problem")).toContainText(
@@ -72,7 +72,7 @@ test.describe("members of other context kinds", () => {
     page,
     request,
   }) => {
-    await page.goto("/segments?project=shop&env=production");
+    await gotoHydrated(page, "/segments?project=shop&env=production");
     await page.getByTestId("edit-beta-testers").click();
     await page.locator("#segment-included-kinds").fill("org:acme\ndevice:d1\norg:globex");
     await page.locator("#segment-excluded-kinds").fill("org:evil");
@@ -103,9 +103,8 @@ test.describe("members of other context kinds", () => {
   });
 
   test("an invalid line names itself and nothing is sent", async ({ page }) => {
-    await page.goto("/segments?project=shop&env=production");
+    await gotoHydrated(page, "/segments?project=shop&env=production");
     await page.getByTestId("edit-beta-testers").click();
-    await waitForHydrated(page, "#segment-included");
     await expect(page.locator("#segment-included")).toHaveValue("alice\nbob");
     await page.locator("#segment-included-kinds").fill("org:acme\nacme");
     await page.getByTestId("save-segment").click();
