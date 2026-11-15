@@ -57,7 +57,46 @@ describe("environments", () => {
       key: "staging",
       name: "Pre-production",
       createdAt: "2026-11-05T08:00:00Z",
+      secureMode: false,
+      signingKeyCreatedAt: null,
     });
+  });
+
+  test("secure mode is a PATCH with only secureMode, and the answer keeps the key's date", async () => {
+    let sent: unknown;
+    const doFetch: Fetch = (input, init) => {
+      expect(init.method).toBe("PATCH");
+      expect(new URL(input).pathname).toBe(path);
+      sent = typeof init.body === "string" ? JSON.parse(init.body) : undefined;
+      return Promise.resolve(
+        json({
+          key: "staging",
+          name: "Staging",
+          createdAt: "2026-11-05T08:00:00Z",
+          secureMode: true,
+          signingKeyCreatedAt: "2026-11-15T10:00:00Z",
+        }),
+      );
+    };
+    const saved = await createAdminApi(connection, doFetch).setSecureMode("shop", "staging", true);
+    expect(sent).toEqual({ secureMode: true });
+    expect(saved.secureMode).toBe(true);
+    expect(saved.signingKeyCreatedAt).toBe("2026-11-15T10:00:00Z");
+  });
+
+  test("a signing key is a POST to its route, and an answer with no private key is a failure", async () => {
+    const good = fakeFetch({
+      [`POST ${path}/signing-key`]: () =>
+        json({ privateKey: "pem", createdAt: "2026-11-15T10:00:00Z" }, 201),
+    });
+    expect(await good.api.createSigningKey("shop", "staging")).toEqual({
+      privateKey: "pem",
+      createdAt: "2026-11-15T10:00:00Z",
+    });
+    const bad = fakeFetch({
+      [`POST ${path}/signing-key`]: () => json({ createdAt: "2026-11-15T10:00:00Z" }, 201),
+    });
+    await expect(bad.api.createSigningKey("shop", "staging")).rejects.toBeInstanceOf(ApiFailure);
   });
 
   test("an answer that is not an environment is a failure", async () => {

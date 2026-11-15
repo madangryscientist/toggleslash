@@ -8,6 +8,8 @@ interface PageConfig {
   /** A client key: the only key the page and this bundle ever hold. */
   clientKey: string;
   user: SingleContext;
+  /** The user's context signed by the example's server, when its environment is in secure mode. */
+  signature?: string;
 }
 
 const element = document.getElementById("config");
@@ -18,6 +20,7 @@ const client = createBrowserClient({
   url: config.serverUrl,
   clientKey: config.clientKey,
   context: config.user,
+  ...(config.signature === undefined ? {} : { signature: config.signature }),
 });
 
 /** Writes the cache into every cell the page marked with a flag and a field. It only uses `textContent`. */

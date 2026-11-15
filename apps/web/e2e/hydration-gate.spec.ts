@@ -38,6 +38,7 @@ const PAGES: {
     controls: (page) => [
       page.getByTestId("new-environment"),
       page.getByTestId("rename-production"),
+      page.getByTestId("signing-key-production"),
     ],
   },
   {

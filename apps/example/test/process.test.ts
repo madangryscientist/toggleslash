@@ -1,3 +1,4 @@
+import { generateKeyPairSync, verify } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 
 /**
@@ -122,4 +123,78 @@ describe("src/server.ts", () => {
     expect(await child.exited).toBe(0);
     expect(fake.seen.filter((s) => s.path === "/sdk/v1/events")).toHaveLength(1);
   });
+
+  it("with TOGGLESLASH_SIGNING_KEY, signs the shopper's context and never puts the key in the page", async () => {
+    const fake = fakeToggleSlash();
+    cleanups.push(fake.stop);
+    const pair = generateKeyPairSync("ec", { namedCurve: "P-256" });
+    const pem = pair.privateKey.export({ type: "pkcs8", format: "pem" });
+    const { url } = await startExample({
+      TOGGLESLASH_URL: fake.url,
+      TOGGLESLASH_SDK_KEY: SERVER_KEY,
+      TOGGLESLASH_CLIENT_KEY: CLIENT_KEY,
+      TOGGLESLASH_SIGNING_KEY: pem,
+    });
+
+    const page = await (await fetch(`${url}/?user=pro-user`)).text();
+    const config = pageConfig(page);
+    expect(config.user.key).toBe("pro-user");
+    // The signed bytes for a user context are its kind and key as netstrings (docs/sdk-browser.md).
+    const message = Buffer.from("4:user,8:pro-user,");
+    const signature = Buffer.from(config.signature ?? "", "base64url");
+    const options = { key: pair.publicKey, dsaEncoding: "ieee-p1363" } as const;
+    expect(verify("sha256", message, options, signature)).toBe(true);
+    expect(verify("sha256", Buffer.from("4:user,9:free-user,"), options, signature)).toBe(false);
+
+    const bundle = await (await fetch(`${url}/browser.js`)).text();
+    const state = await (await fetch(`${url}/state?user=pro-user`)).text();
+    // Every line of the PEM's base64 body, as well as the armour: no piece of the key may leak.
+    const pieces = pem.split("\n").filter((line) => line !== "");
+    for (const body of [page, bundle, state]) {
+      for (const piece of pieces) expect(body).not.toContain(piece);
+      expect(body).not.toContain("PRIVATE KEY");
+    }
+  });
+
+  it("without TOGGLESLASH_SIGNING_KEY, the page carries no signature", async () => {
+    const fake = fakeToggleSlash();
+    cleanups.push(fake.stop);
+    const { url } = await startExample({
+      TOGGLESLASH_URL: fake.url,
+      TOGGLESLASH_SDK_KEY: SERVER_KEY,
+      TOGGLESLASH_CLIENT_KEY: CLIENT_KEY,
+    });
+    const config = pageConfig(await (await fetch(`${url}/?user=pro-user`)).text());
+    expect(config.user.key).toBe("pro-user");
+    expect("signature" in config).toBe(false);
+  });
+
+  it("a TOGGLESLASH_SIGNING_KEY that cannot sign stops startup with exit 2", async () => {
+    const child = Bun.spawn(["bun", "src/server.ts"], {
+      cwd: import.meta.dirname + "/..",
+      env: {
+        ...process.env,
+        PORT: "0",
+        TOGGLESLASH_URL: "http://127.0.0.1:9",
+        TOGGLESLASH_SDK_KEY: SERVER_KEY,
+        TOGGLESLASH_CLIENT_KEY: CLIENT_KEY,
+        TOGGLESLASH_SIGNING_KEY: "not a pem",
+      },
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    cleanups.push(() => child.kill("SIGKILL"));
+    expect(await child.exited).toBe(2);
+    expect(await new Response(child.stderr).text()).toContain(
+      "TOGGLESLASH_SIGNING_KEY cannot sign",
+    );
+  });
 });
+
+/** The page's `#config` JSON. */
+function pageConfig(page: string): { user: { key: string }; signature?: string } {
+  const match = /<script type="application\/json" id="config">([^<]*)<\/script>/.exec(page);
+  if (match === null) throw new Error("the page has no #config element");
+  return JSON.parse(match[1] ?? "");
+}

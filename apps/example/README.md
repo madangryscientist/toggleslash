@@ -35,6 +35,15 @@ The page is plain semantic HTML with no stylesheet and no component library, so 
 | `TOGGLESLASH_CLIENT_KEY` | a client key (`tgl_client_...`), sent to the browser |
 | `PORT` | default `4441`, bound to `127.0.0.1` |
 | `TOGGLESLASH_FLUSH_INTERVAL_MS` | how often usage counts are sent (optional) |
+| `TOGGLESLASH_SIGNING_KEY` | the environment's secure-mode signing key, a PKCS#8 PEM (optional; see below) |
+
+**Secure mode.** When `TOGGLESLASH_SIGNING_KEY` is set, `src/server.ts` signs the selected shopper's context with
+`signContext` from the server SDK, and the page's config carries only that `signature`, which `src/browser.ts` passes to
+`createBrowserClient`. The key stays in the server process: it is never in the page, `/state` or `/browser.js`, and
+`test/process.test.ts` holds that. A key that cannot sign stops startup with exit 2. Without it the page carries no
+signature, which is what an environment with secure mode off needs. Make the key with
+`toggleslash envs signing-key <env> --project <p>` or the **Signing key** button on the dashboard's `/environments`
+page; it is shown once.
 
 ## Run it with the whole product
 
@@ -45,7 +54,7 @@ bun run stack
 This needs the .NET SDK (`mise install`; if another `dotnet` (say `/usr/bin/dotnet`) comes first on your PATH
 and cannot run `global.json`'s SDK, put the mise one first:
 `PATH="$(dirname "$(mise which dotnet)"):$PATH" bun run stack`). It builds and starts the real server on a port the OS picks, seeds
-a project `shop` (environments `dev` and `prod`, a `pro-customers` segment and five flags), builds
+a project `shop` (environments `dev` and `prod`, a `pro-customers` segment, five flags, and secure mode on in `dev` with a signing key made for the run and handed to this app as `TOGGLESLASH_SIGNING_KEY`), builds
 the dashboard, and starts this app. Then it prints:
 
 - the dashboard on <http://127.0.0.1:4440> with its sign-in password,

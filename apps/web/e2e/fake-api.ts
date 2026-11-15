@@ -11,7 +11,12 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { API_PORT, E2E_ADMIN_TOKEN } from "./constants.ts";
 import { db, flag, plain, reset, type Config, type Flag } from "./fake-data.ts";
 import { answer, lifecycleRoute, listed } from "./fake-flags.ts";
-import { createEnvironment, deleteEnvironment, renameEnvironment } from "./fake-environments.ts";
+import {
+  createEnvironment,
+  createSigningKey,
+  deleteEnvironment,
+  updateEnvironment,
+} from "./fake-environments.ts";
 import { auditPage, onKeys, onSegments, resetSecrets, rulesetAt } from "./fake-operator.ts";
 import {
   historyOf,
@@ -206,13 +211,20 @@ async function onEnvironments(ctx: Ctx, rest: string[], query: URLSearchParams) 
     }
     return send(res, 200, db.data.environments[project] ?? []);
   }
-  if (more.length === 0 && req.method === "PATCH") {
-    return reply(res, renameEnvironment(project, env, await readBody(req)));
-  }
-  if (more.length === 0 && req.method === "DELETE") {
-    return reply(res, deleteEnvironment(project, env));
-  }
+  const own = await onEnvironmentVerb(ctx, env, more);
+  if (own !== null) return reply(res, own);
   return onEnvironmentRoute(ctx, rest, query);
+}
+
+/** One environment's own verbs (update, delete, a new signing key), or `null` for a route under it. */
+async function onEnvironmentVerb({ req, project }: Ctx, env: string, more: string[]) {
+  const path = more.join("/");
+  if (path === "" && req.method === "PATCH") {
+    return updateEnvironment(project, env, await readBody(req));
+  }
+  if (path === "" && req.method === "DELETE") return deleteEnvironment(project, env);
+  if (path === "signing-key" && req.method === "POST") return createSigningKey(project, env);
+  return null;
 }
 
 async function onProject(ctx: Ctx, rest: string[], query: URLSearchParams) {

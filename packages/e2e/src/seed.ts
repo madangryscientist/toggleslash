@@ -8,6 +8,8 @@ export const SEED_ENV = "dev";
 interface Seeded {
   serverKey: string;
   clientKey: string;
+  /** `dev`'s secure-mode signing key (PKCS#8 PEM), made for this run; the example signs its shoppers with it. */
+  signingKey: string;
 }
 
 /** The five flags; only `new-checkout`, the one the example's browser section shows, is visible to client keys. */
@@ -35,7 +37,8 @@ async function createFlags(cli: Cli, project: string[]): Promise<void> {
 /**
  * Fills a fresh server with the shop the example app (`apps/example`) reads: project `shop` with
  * environments `dev` and `prod`, a `pro-customers` segment, five flags across the value types, and
- * a server key and a client key for `dev`. It makes no attempt to be run twice: every create would
+ * a server key and a client key for `dev`, and secure mode on in `dev` with a fresh signing key, so a
+ * client-key evaluate there needs a signature the example's server made. It makes no attempt to be run twice: every create would
  * answer 409 on a database that already has it.
  */
 export async function seed(tools: { cli: Cli; admin: Admin }): Promise<Seeded> {
@@ -107,5 +110,10 @@ export async function seed(tools: { cli: Cli; admin: Admin }): Promise<Seeded> {
         ]),
       )["key"],
     );
-  return { serverKey: await key("server"), clientKey: await key("client") };
+  const serverKey = await key("server");
+  const clientKey = await key("client");
+
+  const made = record(await cli.json(["envs", "signing-key", SEED_ENV, ...project]));
+  await cli.json(["envs", "secure-mode", SEED_ENV, "on", ...project]);
+  return { serverKey, clientKey, signingKey: text(made["privateKey"]) };
 }

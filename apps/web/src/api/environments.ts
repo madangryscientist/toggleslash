@@ -1,10 +1,10 @@
 /**
- * The server functions of the environments page: create, rename and delete. Their handlers run in the
- * Worker, with the admin token.
+ * The server functions of the environments page: create, rename, delete, secure mode and the signing key.
+ * Their handlers run in the Worker, with the admin token.
  */
 import { createServerFn } from "@tanstack/react-start";
 import { recordOf, str } from "./json.ts";
-import type { Environment, MutationResult, SaveResult } from "./types.ts";
+import type { Environment, MutationResult, SaveResult, SigningKey } from "./types.ts";
 import { mutate, save } from "./result.server.ts";
 
 interface NewEnvironmentInput {
@@ -42,19 +42,49 @@ export const renameEnvironment = createServerFn({ method: "POST" })
     save((api) => api.renameEnvironment(data.project, data.env, data.name)),
   );
 
-interface DeleteEnvironmentInput {
+interface EnvironmentInput {
   project: string;
   env: string;
 }
 
-function deleteEnvironmentInput(data: unknown): DeleteEnvironmentInput {
+function environmentInput(data: unknown): EnvironmentInput {
   const d = recordOf(data);
   return { project: str(d["project"]), env: str(d["env"]) };
 }
 
 /** Deletes an environment with its targeting, segments and keys; the server refuses while a key is not revoked. */
 export const deleteEnvironment = createServerFn({ method: "POST" })
-  .validator(deleteEnvironmentInput)
+  .validator(environmentInput)
   .handler(({ data }): Promise<MutationResult> =>
     mutate((api) => api.deleteEnvironment(data.project, data.env)),
+  );
+
+interface SecureModeInput {
+  project: string;
+  env: string;
+  secureMode: boolean;
+}
+
+function secureModeInput(data: unknown): SecureModeInput {
+  const d = recordOf(data);
+  return { project: str(d["project"]), env: str(d["env"]), secureMode: d["secureMode"] === true };
+}
+
+/** Turns secure mode on or off. The server refuses on while the environment has no signing key. */
+export const setSecureMode = createServerFn({ method: "POST" })
+  .validator(secureModeInput)
+  .handler(({ data }): Promise<MutationResult> =>
+    mutate(async (api) => {
+      await api.setSecureMode(data.project, data.env, data.secureMode);
+    }),
+  );
+
+/**
+ * Makes a new signing key, which replaces any old one at once. The private half is in this answer only:
+ * the caller shows it once and drops it.
+ */
+export const createSigningKey = createServerFn({ method: "POST" })
+  .validator(environmentInput)
+  .handler(({ data }): Promise<SaveResult<SigningKey>> =>
+    save((api) => api.createSigningKey(data.project, data.env)),
   );
