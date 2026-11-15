@@ -1,15 +1,23 @@
 # Changelog
 
-All notable changes to the `@hackcove/toggleslash` npm package (`packages/cli`) are listed here. The
-format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
-[Semantic Versioning](https://semver.org/). The version is `packages/cli/package.json`'s.
+All notable changes to the six ToggleSlash npm packages are listed here. They ship together at one version
+(`packages/*/package.json`): `@hackcove/toggleslash` (the CLI, `packages/cli`), `@hackcove/toggleslash-engine`
+(`packages/engine`), `@hackcove/toggleslash-sdk` (`packages/sdk`), `@hackcove/toggleslash-sdk-browser`
+(`packages/sdk-browser`), `@hackcove/toggleslash-sdk-otel` (`packages/sdk-otel`) and
+`@hackcove/toggleslash-sdk-openfeature` (`packages/sdk-openfeature`). The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## 0.1.0 (unreleased)
 
 Renamed from FeatureSlash to ToggleSlash.
 
 ### Added
 
+- The five TypeScript libraries are packaged for npm with the CLI: the engine, the server SDK, the browser SDK, the
+  OpenTelemetry hook and the OpenFeature provider, each as JavaScript with type declarations. `bun scripts/pack.ts`
+  builds and packs all six, and `release.yml` publishes them on a `v*` tag. A Cloudflare Worker that imports the
+  server SDK should set the `nodejs_compat` flag (before compatibility date 2026-09-01 it does not start without
+  it); see `docs/sdk.md`.
 - Secure mode, per environment: a client-key `POST /sdk/v1/evaluate` must carry a signature over the context's keys,
   made by the application's server with the environment's ECDSA P-256 signing key, or it is refused with `403`
   `signature_required` or `bad_signature`. `POST .../environments/{env}/signing-key` makes the key and answers its
@@ -28,7 +36,7 @@ Renamed from FeatureSlash to ToggleSlash.
   `flags list|show|create|archive|on|off|history`, `keys create|list|revoke`, with `--json` on reads. The
   admin token comes from `TOGGLESLASH_TOKEN` or a mode-600 file under the XDG config dir and never appears in
   output. Exit 0 on success, 1 on a server or network failure, 2 on a usage error.
-- The TypeScript server SDK (`packages/sdk`, private): `createClient` with `variation` and `variationDetail`, the
+- The TypeScript server SDK (`packages/sdk`): `createClient` with `variation` and `variationDetail`, the
   ruleset with ETags, the stream with reconnect and a polling fallback, local evaluation, batched usage counts
   flushed on `close()`; it never throws at a caller. See `docs/sdk.md`.
 - The repository skeleton: an engine stub, the `toggleslash` CLI (`--version`, `--help`), a

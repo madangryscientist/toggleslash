@@ -20,13 +20,17 @@ function pair(namedCurve = "prime256v1") {
 
 describe("contextMessage", () => {
   it("writes the two vectors' bytes", () => {
-    expect(contextMessage(single).toString("utf8")).toBe("4:user,6:user-1,");
-    expect(contextMessage(multi).toString("utf8")).toBe("3:org,4:acme,4:user,1:u,");
+    expect(Buffer.from(contextMessage(single)).toString("utf8")).toBe("4:user,6:user-1,");
+    expect(Buffer.from(contextMessage(multi)).toString("utf8")).toBe("3:org,4:acme,4:user,1:u,");
   });
 
   it("counts bytes, not characters, and leaves attributes out", () => {
-    expect(contextMessage({ key: "é", attributes: { a: 1 } }).toString("utf8")).toBe("4:user,2:é,");
-    expect(contextMessage({ kind: "org", key: "acme" }).toString("utf8")).toBe("3:org,4:acme,");
+    expect(Buffer.from(contextMessage({ key: "é", attributes: { a: 1 } })).toString("utf8")).toBe(
+      "4:user,2:é,",
+    );
+    expect(Buffer.from(contextMessage({ kind: "org", key: "acme" })).toString("utf8")).toBe(
+      "3:org,4:acme,",
+    );
   });
 });
 

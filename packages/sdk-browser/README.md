@@ -2,7 +2,11 @@
 
 The ToggleSlash browser SDK. The server evaluates: the client sends its context to `POST /sdk/v1/evaluate`, caches the
 answer, serves it synchronously, and re-evaluates when `GET /sdk/v1/changes` signals a change. It holds no ruleset and
-imports no engine. Private and unpublished; the full description is in [`docs/sdk-browser.md`](../../docs/sdk-browser.md).
+imports no engine. Packaged for npm by `release.yml`; not yet published; the full description is in [`docs/sdk-browser.md`](https://github.com/madangryscientist/toggleslash/blob/main/docs/sdk-browser.md).
+
+```sh
+npm install @hackcove/toggleslash-sdk-browser
+```
 
 ```ts
 import { createBrowserClient } from "@hackcove/toggleslash-sdk-browser";

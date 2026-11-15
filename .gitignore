@@ -1,8 +1,8 @@
 node_modules/
 .moon/cache/
 
-# the toggleslash npm package's build output
-packages/cli/dist/
+# the npm packages' build output (scripts/pack.ts, cli:build)
+packages/*/dist/
 packages/cli/LICENSE
 packages/cli/NOTICE
 packages/cli/*.tgz

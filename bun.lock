@@ -56,7 +56,7 @@
     },
     "packages/cli": {
       "name": "@hackcove/toggleslash",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "bin": {
         "toggleslash": "dist/index.js",
       },
@@ -84,7 +84,7 @@
     },
     "packages/engine": {
       "name": "@hackcove/toggleslash-engine",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "devDependencies": {
         "@types/bun": "1.4.4",
         "vitest": "5.1.0",
@@ -92,7 +92,7 @@
     },
     "packages/sdk": {
       "name": "@hackcove/toggleslash-sdk",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@hackcove/toggleslash-engine": "workspace:*",
       },
@@ -103,7 +103,7 @@
     },
     "packages/sdk-browser": {
       "name": "@hackcove/toggleslash-sdk-browser",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@hackcove/toggleslash-sdk": "workspace:*",
       },
@@ -122,29 +122,34 @@
     },
     "packages/sdk-openfeature": {
       "name": "@hackcove/toggleslash-sdk-openfeature",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@hackcove/toggleslash-sdk": "workspace:*",
-        "@openfeature/core": "1.12.0",
-        "@openfeature/server-sdk": "1.23.0",
       },
       "devDependencies": {
+        "@openfeature/server-sdk": "1.23.0",
         "@types/bun": "1.4.4",
         "vitest": "5.1.0",
+      },
+      "peerDependencies": {
+        "@openfeature/server-sdk": "^1.23.0",
       },
     },
     "packages/sdk-otel": {
       "name": "@hackcove/toggleslash-sdk-otel",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@hackcove/toggleslash-sdk": "workspace:*",
-        "@opentelemetry/api": "1.10.0",
       },
       "devDependencies": {
+        "@opentelemetry/api": "1.10.0",
         "@opentelemetry/context-async-hooks": "2.12.0",
         "@opentelemetry/sdk-trace-base": "2.12.0",
         "@types/bun": "1.4.4",
         "vitest": "5.1.0",
+      },
+      "peerDependencies": {
+        "@opentelemetry/api": "^1.9.0",
       },
     },
   },

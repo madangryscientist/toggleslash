@@ -1,12 +1,15 @@
 name: Release
 
-# Publishes the `@hackcove/toggleslash` npm package (packages/cli) when a `v*` tag is pushed: ci.yml's
-# gate first (a reusable workflow call, not a copy), then `npm publish --provenance`. There is no NPM_TOKEN
-# anywhere: npm trusted publishing (OIDC) lets this workflow publish with a short-lived token that
-# npm checks against the trusted publisher set on the package's npm settings page (repository,
-# workflow file `release.yml`, environment `npm`). That page, the `npm` environment and the tag are
-# the maintainer's steps; nothing here runs until a tag is pushed. Actions are pinned to a commit;
-# the tag is in the comment.
+# Publishes the six ToggleSlash npm packages when a `v*` tag is pushed: `@hackcove/toggleslash` (the CLI,
+# packages/cli), `@hackcove/toggleslash-engine`, `@hackcove/toggleslash-sdk`, `@hackcove/toggleslash-sdk-browser`,
+# `@hackcove/toggleslash-sdk-otel` and `@hackcove/toggleslash-sdk-openfeature`, all at the tag's version. ci.yml's
+# gate runs first (a reusable workflow call, not a copy), then `bun scripts/pack.ts` builds and packs the six, and
+# `npm publish --provenance` sends each tarball, in dependency order. There is no NPM_TOKEN anywhere: npm trusted
+# publishing (OIDC) lets this workflow publish with a short-lived token that npm checks against the trusted
+# publisher set on each package's npm settings page (repository, workflow file `release.yml`, environment `npm`).
+# A trusted publisher can only be set on a package that exists, so the first version of each package is published
+# by the maintainer by hand. Those pages, the `npm` environment and the tag are the maintainer's steps; nothing here
+# runs until a tag is pushed. Actions are pinned to a commit; the tag is in the comment.
 
 on:
   push:
@@ -52,22 +55,36 @@ jobs:
         with:
           node-version: "24"
           registry-url: https://registry.npmjs.org
-      - name: The tag is the package's version
+      - name: The tag is every package's version
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          version="$(node -p "require('./packages/cli/package.json').version")"
-          if [ "$TAG" != "v$version" ]; then
-            echo "tag $TAG does not match packages/cli version $version" >&2
-            exit 1
-          fi
+          for package in engine sdk sdk-browser sdk-otel sdk-openfeature cli; do
+            version="$(node -p "require('./packages/$package/package.json').version")"
+            if [ "$TAG" != "v$version" ]; then
+              echo "tag $TAG does not match packages/$package version $version" >&2
+              exit 1
+            fi
+          done
       - run: bun install --frozen-lockfile
-      # The package is TypeScript only: moon's graph needs no SDK, and `cli:build` does not touch apps/server.
-      # Always a fresh build, never a cache hit, in case the cache was poisoned: what npm publishes with
-      # provenance is built from this tag on this runner. `--force` skips every cache, and there is no
-      # cache token here either.
-      - run: bunx moon run cli:build --force
-      - name: Ship the licence files
-        run: cp LICENSE NOTICE packages/cli/
+      # The packages are TypeScript only: moon's graph needs no SDK, and neither `tsc` nor `cli:build` touches
+      # apps/server. pack.ts always builds fresh: each library's `tsc` emit, and `cli:build --force`, never a cache
+      # hit, in case the cache was poisoned: what npm publishes with provenance is built from this tag on this
+      # runner. There is no cache token here either.
+      - name: Build and pack
+        run: bun scripts/pack.ts --out "$RUNNER_TEMP/pack"
+      # Dependency order: each package after the packages it depends on, so a later one never names a version
+      # npm does not have yet. A version npm already has is skipped, so a rerun after a publish that stopped
+      # partway sends the rest instead of failing on the first.
       - name: Publish
-        run: npm publish ./packages/cli --provenance --access public
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          for name in toggleslash-engine toggleslash-sdk toggleslash-sdk-browser toggleslash-sdk-otel toggleslash-sdk-openfeature toggleslash; do
+            if [ "$(npm view "@hackcove/$name@$version" version 2>/dev/null)" = "$version" ]; then
+              echo "@hackcove/$name@$version is already on npm; skipped"
+              continue
+            fi
+            npm publish "$RUNNER_TEMP/pack/hackcove-$name-$version.tgz" --provenance --access public
+          done
