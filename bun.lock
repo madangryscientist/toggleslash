@@ -29,7 +29,7 @@
     "apps/web": {
       "name": "@toggleslash/web",
       "dependencies": {
-        "@hackcove/theme-catppuccin-mocha": "0.3.1",
+        "@hackcove/themes": "0.2.3",
         "@hackcove/toggleslash-engine": "workspace:*",
         "@hackcove/ui-react": "^0.10.9",
         "@tailwindcss/vite": "^4.3.5",
@@ -266,7 +266,7 @@
 
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.25.12", "", { "os": "win32", "cpu": "x64" }, "sha512-alJC0uCZpTFrSL0CCDjcgleBXPnCrEAhTBILpeAp7M/OFgoqtAetfBzX0xM00MUsVVPpVjlPuMbREqnZCXaTnA=="],
 
-    "@hackcove/theme-catppuccin-mocha": ["@hackcove/theme-catppuccin-mocha@0.3.1", "", { "peerDependencies": { "tailwindcss": "^4" } }, "sha512-Ubxvct4uA2/DNvheErGnjIGBzOIfdwZoDQxPdI5RaCnQO5UqN4Os58+UeMydFg6j1In1Csg0GxjrGXvj7TS/wQ=="],
+    "@hackcove/themes": ["@hackcove/themes@0.2.3", "", { "peerDependencies": { "tailwindcss": "^4" } }, "sha512-WFprxtjBMfCuHtjsZ4Qc6VLZuvgGAwiktnq988BRAg7EfJ9SOG3XlO2wf//1+RSli63HoSK1tV1No0UQ9XBCew=="],
 
     "@hackcove/toggleslash": ["@hackcove/toggleslash@workspace:packages/cli"],
 
