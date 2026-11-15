@@ -1,7 +1,8 @@
 """The Python SDK's conformance test service: an HTTP server that wraps `toggleslash.create` so the harness in
 `packages/sdk-conformance` can drive it. The protocol is docs/sdk-test-service.md; the accessor mapping is in
 this directory's README. It absorbs nothing the SDK raises: a call that raises answers 500 with the error text,
-and the harness fails the scenario. It uses the standard library only, as the SDK does."""
+and the harness fails the scenario. It uses the standard library only, as the SDK does, but for `POST /sign`, whose `sign_context` needs the
+`signing` extra; bin/test-service runs it on the venv bin/venv makes."""
 
 from __future__ import annotations
 
@@ -107,9 +108,14 @@ class Service:
     def handle(self, method: str, path: str, body: bytes) -> tuple[int, Any]:
         path = path.split("?", 1)[0]
         if method == "GET" and path == "/":
-            return 200, {"name": "toggleslash-sdk (Python)", "capabilities": ["integer-accessor"]}
+            return 200, {
+                "name": "toggleslash-sdk (Python)",
+                "capabilities": ["integer-accessor", "sign-context"],
+            }
         if method == "POST" and path == "/clients":
             return 201, self.create(self.parse(body))
+        if method == "POST" and path == "/sign":
+            return self.sign(self.parse(body))
         match = ROUTE.match(path)
         entry = None
         if match:
@@ -118,6 +124,18 @@ class Service:
         if entry is None or entry.client is None or match is None:
             return 404, "no such client"
         return self.act(entry, entry.client, f"{method} {match.group(2)}", body)
+
+    @staticmethod
+    def sign(body: dict[str, Any]) -> tuple[int, Any]:
+        """Contract 14 lets `sign_context` raise, so a refusal is a 400 here, not the 500 of a raise."""
+        try:
+            return 200, {
+                "signature": toggleslash.sign_context(
+                    body.get("privateKeyPem"), body.get("context")
+                )
+            }
+        except (ValueError, ImportError) as error:
+            return 400, {"error": str(error)}
 
     @staticmethod
     def parse(body: bytes) -> dict[str, Any]:

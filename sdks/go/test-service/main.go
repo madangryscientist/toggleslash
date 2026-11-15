@@ -129,6 +129,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", root)
 	mux.HandleFunc("POST /clients", createClient)
+	mux.HandleFunc("POST /sign", sign)
 	mux.HandleFunc("POST /clients/{id}/ready", ready)
 	mux.HandleFunc("POST /clients/{id}/evaluate", evaluate)
 	mux.HandleFunc("GET /clients/{id}/status", status)
@@ -171,8 +172,25 @@ func recover500(next http.Handler) http.Handler {
 func root(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, jsonval.Object{
 		"name":         jsonval.String("toggleslash-sdk (Go)"),
-		"capabilities": jsonval.Array{jsonval.String("integer-accessor")},
+		"capabilities": jsonval.Array{jsonval.String("integer-accessor"), jsonval.String("sign-context")},
 	})
+}
+
+// sign answers SignContext for the key and context sent. Contract 14 lets
+// SignContext return an error, so that is a 400 with its text, not a 500.
+func sign(w http.ResponseWriter, r *http.Request) {
+	body, err := readBody(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	key, _ := body["privateKeyPem"].(jsonval.String)
+	signature, err := toggleslash.SignContext(string(key), body["context"])
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, jsonval.Object{"error": jsonval.String(err.Error())})
+		return
+	}
+	writeJSON(w, http.StatusOK, jsonval.Object{"signature": jsonval.String(signature)})
 }
 
 func createClient(w http.ResponseWriter, r *http.Request) {

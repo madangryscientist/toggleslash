@@ -1,0 +1,38 @@
+#!/bin/sh
+# Makes sdks/python/.venv when it is missing, with the Python mise.toml pins, and installs the `signing` extra's
+# pinned packages into it (pyproject.toml, `[project.optional-dependencies]`) when they are not there yet. The
+# SDK itself needs nothing; the tests and the test service call `sign_context`, which needs `cryptography`.
+# Prints the venv's python on stdout, and whatever pip says on stderr.
+set -eu
+cd "$(dirname "$0")/.."
+
+if [ ! -x .venv/bin/python ]; then
+  if command -v mise >/dev/null 2>&1; then
+    mise exec -- python -m venv .venv >&2
+  else
+    python -m venv .venv >&2
+  fi
+fi
+
+python=.venv/bin/python
+pins=$("$python" -c '
+import tomllib
+with open("pyproject.toml", "rb") as handle:
+    print(" ".join(tomllib.load(handle)["project"]["optional-dependencies"]["signing"]))
+')
+# shellcheck disable=SC2086
+if ! "$python" -c '
+import sys
+from importlib.metadata import PackageNotFoundError, version
+for pin in sys.argv[1:]:
+    name, wanted = pin.split("==")
+    try:
+        if version(name) != wanted:
+            sys.exit(1)
+    except PackageNotFoundError:
+        sys.exit(1)
+' $pins; then
+  # shellcheck disable=SC2086
+  "$python" -m pip install --quiet --disable-pip-version-check --only-binary=:all: $pins >&2
+fi
+printf '%s\n' "$PWD/$python"

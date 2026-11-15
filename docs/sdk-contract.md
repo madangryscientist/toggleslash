@@ -493,3 +493,27 @@ An SDK MAY add idiomatic extras that change none of the above:
 
 An extra MUST NOT make a guarantee of [section 5](#5-guarantees) weaker, and MUST NOT send anything the
 contract says the SDK does not send.
+
+## 14. Secure mode signing
+
+An environment with secure mode on answers a client key's evaluate only for a context that the application's
+server signed ([`sdk-browser.md`](sdk-browser.md#secure-mode)). A server SDK runs on that server, so it MUST
+offer a pure function equivalent to:
+
+```
+signContext(privateKeyPem, context) -> string
+```
+
+- It needs no client: it does no I/O, reads no option and works before, after and without `create`.
+- The bytes it signs and the signature it answers are the ones `sdk-browser.md`, "Secure mode", defines: the
+  normalised context's kinds in byte order, each kind and then its key as a netstring, keys only; ECDSA P-256 with
+  SHA-256, as the 64-byte IEEE P1363 `r || s`, base64url with no padding (86 characters). This section adds
+  nothing to them. `fixtures/signing/messages.json` holds the bytes for a set of contexts; a test signs each and
+  verifies the signature over them, since a signature is randomised and cannot be pinned.
+- `privateKeyPem` is the PKCS#8 PEM that `POST .../environments/{env}/signing-key` answers. A key that is not an
+  ECDSA P-256 private key in that form is refused, and so is a context that is not valid (section 3). A library
+  that reads the PEM may well read a P-384 or P-521 key without complaint, so the SDK checks the curve itself.
+- A refusal is reported by the language's own error convention: TypeScript throws a `TypeError`, Go returns an
+  `error`, Python raises. This is the one call where that is allowed. It runs on the application's server, at the
+  developer's hand, with a key and a context the developer wrote, not in evaluation, so a refusal is a mistake to
+  fix and not a condition to absorb. Section 5.1 stays as it is for every other operation.

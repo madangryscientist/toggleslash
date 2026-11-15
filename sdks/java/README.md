@@ -44,6 +44,11 @@ twins never wait for the network: before the first load they answer your fallbac
 options are `url`, `sdkKey`, `stream`, `pollInterval`, `flushInterval`, `requestTimeout`, `afterEvaluation` and
 `onError`.
 
+For an environment with secure mode on, sign each user's context on your server with
+`Signing.signContext(System.getenv("TOGGLESLASH_SIGNING_KEY"), user)` and hand the signature to the page for the
+browser SDK; it needs no client, and unlike the rest of the SDK it throws `IllegalArgumentException` on a bad key or
+context.
+
 `onError` and a hook run on the SDK's own threads or the caller's (see `DESIGN.md`). Calling `close()` inside
 `onError` is fine: it starts the shutdown and returns without waiting for itself.
 

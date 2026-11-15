@@ -22,6 +22,7 @@ Durations are `int` or `float` seconds. `create` is a module function, `togglesl
 | `variationDetail` | `client.variation_detail(flag_key, context, fallback) -> Detail` | `Detail` is a frozen dataclass: `value`, `variation_index` (`int` or `None`) and `reason`. Also `client.int_variation_detail`. |
 | `status` | `client.status() -> Status` | A frozen dataclass: `etag` (`str` or `None`), `last_sync_at` (a timezone-aware UTC `datetime` or `None`), `stream` (a `StreamState`), `last_error` (a `LastError` string or `None`). One snapshot. |
 | `close` | `client.close()` | Stops, joins (bounded), sends the final usage flush. Safe twice and from many threads. Returns within about twice `request_timeout`. The client is also a context manager (`with toggleslash.create(...) as client:`). |
+| `signContext` (contract 14) | `toggleslash.sign_context(private_key_pem, context) -> str` | A module function; needs no client and the `signing` extra. Returns 86 base64url characters. The one call that raises: `ValueError` for a key that is not an ECDSA P-256 PKCS#8 PEM or an invalid context, `ImportError` without `cryptography`. |
 | `url` | `url=` (required, `str`) | The server's base URL. Trailing `/` are removed. |
 | `sdkKey` | `sdk_key=` (required, `str`) | A server key. |
 | `stream` | `stream=True` | `True` or `False`. Off means poll only. |
@@ -124,9 +125,10 @@ value `False` turns the stream off; `None` means the default (on).
 
 | Dependency | Kind | Why |
 | --- | --- | --- |
-| none | runtime | `socket`, `ssl`, `select`, `threading`, `hashlib` (SHA-256) and `json` ship with Python and cover everything. |
+| none | runtime | `socket`, `ssl`, `select`, `threading`, `hashlib` (SHA-256) and `json` ship with Python and cover the client and the evaluator. |
+| `cryptography` 50.0.2 | optional extra `signing` (`toggleslash[signing]`), exact pin | `sign_context` only (contract 14): the standard library cannot read a PKCS#8 EC private key or sign with ECDSA. It is imported inside `sign_context`, so the client and the evaluator never load it (`tests/test_source.py` holds that), and without it `sign_context` raises an `ImportError` naming the extra. `bin/venv` installs it into `sdks/python/.venv` (gitignored) for `bin/test` and `bin/test-service`. |
 | `ruff` 0.17.4 | lint | One tool for lint and for the format check, pinned in `mise.toml`. |
-| `unittest` | test | Ships with Python, so the tests need nothing installed. |
+| `unittest` | test | Ships with Python. The tests need only the `signing` extra, for the `sign_context` tests, which `bin/test` installs through `bin/venv`. |
 | `python` 3.15.2 | toolchain | Pinned in `mise.toml` for the checks; the package itself supports 3.11 and later. |
 
 ## 5. JSON
@@ -187,9 +189,10 @@ JSON reader combines them, so only a hand-built dict can differ, and the SDK doe
 ```
 sdks/python/
   mise.toml  pyproject.toml  .gitignore  README.md  DESIGN.md  RUN.md
-  bin/lint  bin/test  bin/test-service
+  bin/lint  bin/test  bin/test-service  bin/venv
   src/toggleslash/
-    __init__.py    the public API: create and the types
+    __init__.py    the public API: create, sign_context and the types
+    _sign.py       sign_context and the bytes it signs (contract 14; imports cryptography inside the function)
     _types.py      Reason, Detail, Status, EvaluationEvent, Hooks, ToggleSlashError, the closed sets
     _client.py     Client: options, evaluation, the loops, usage, close
     _http.py       the HTTP/1.1 client: whole-request deadline, stream open and read, wake socket
@@ -204,7 +207,8 @@ sdks/python/
   test-service/    main.py and README.md (byte-compiled by bin/test with the tests)
 ```
 
-`bin/test` runs `python -X dev -W error -m unittest discover -s tests -t tests` with `src` on `PYTHONPATH`.
+`bin/test` runs `python -X dev -W error -m unittest discover -s tests -t tests` with `src` on `PYTHONPATH`, on the
+venv `bin/venv` makes with the mise Python and the `signing` extra.
 
 ## 8. Evaluator decisions (phase 2)
 

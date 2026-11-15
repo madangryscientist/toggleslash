@@ -1,6 +1,7 @@
-/** One whole run: every scenario, then every vector, against one service. */
+/** One whole run: every scenario, then every vector, then the signing checks, against one service. */
 import { type Outcome, loadScenarios, runScenario, type Scenario } from "./scenarios.ts";
 import { Service } from "./service.ts";
+import { runSigning, type SigningOutcome } from "./signing.ts";
 import { runVectors, type VectorOutcome } from "./vectors.ts";
 
 /** Scenarios run this many at a time; their windows are wide enough for it. */
@@ -10,6 +11,7 @@ export interface Summary {
   service: string;
   outcomes: Outcome[];
   vectors: VectorOutcome;
+  signing: SigningOutcome;
 }
 
 interface RunOptions {
@@ -62,22 +64,28 @@ export async function runAll(options: RunOptions): Promise<Summary> {
   const outcomes = await runScenarios(scenarios, service, described.capabilities, options.print);
   const vectors = await runVectors(service, only);
   for (const failure of vectors.failures) options.print(`FAIL  vector ${failure}`);
-  return { service: described.name, outcomes, vectors };
+  const signing = await runSigning(service, described.capabilities, only);
+  for (const failure of signing.failures) options.print(`FAIL  signing ${failure}`);
+  if (signing.skipped > 0)
+    options.print(`signing: ${signing.skipped} checks skipped (needs sign-context)`);
+  return { service: described.name, outcomes, vectors, signing };
 }
 
 export function summaryLine(summary: Summary): string {
   const count = (result: Outcome["result"]): number =>
     summary.outcomes.filter((outcome) => outcome.result === result).length;
-  const { vectors } = summary;
+  const { vectors, signing } = summary;
   return (
     `scenarios: ${count("pass")} passed, ${count("fail")} failed, ${count("skip")} skipped; ` +
-    `vectors: ${vectors.passed} passed, ${vectors.failures.length} failed, ${vectors.skipped} skipped`
+    `vectors: ${vectors.passed} passed, ${vectors.failures.length} failed, ${vectors.skipped} skipped; ` +
+    `signing: ${signing.passed} passed, ${signing.failures.length} failed, ${signing.skipped} skipped`
   );
 }
 
 export function failed(summary: Summary): boolean {
   return (
     summary.outcomes.some((outcome) => outcome.result === "fail") ||
-    summary.vectors.failures.length > 0
+    summary.vectors.failures.length > 0 ||
+    summary.signing.failures.length > 0
   );
 }

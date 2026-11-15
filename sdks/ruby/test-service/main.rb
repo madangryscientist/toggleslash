@@ -2,9 +2,10 @@
 
 # The Ruby SDK's conformance test service: an HTTP server that wraps `Toggleslash.create` so the harness in
 # `packages/sdk-conformance` can drive it. The protocol is docs/sdk-test-service.md; the accessor mapping is
-# in this directory's README. It rescues nothing the SDK raises: a call that raises answers 500 with the
-# error text, and the harness fails the scenario. The server is a few lines over `TCPServer` because the
-# SDK has no runtime dependency and neither does its service.
+# in this directory's README. It rescues nothing the SDK raises (but the ArgumentError of `POST /sign`, which
+# contract 14 allows): a call that raises answers 500 with the error text, and the harness fails the scenario.
+# The server is a few lines over `TCPServer` because the SDK has no runtime dependency and neither does its
+# service.
 
 $LOAD_PATH.unshift(File.expand_path("../lib", __dir__))
 require "socket"
@@ -65,9 +66,10 @@ class Service
     if method == "GET" && path == "/"
       return [200,
               { "name" => "toggleslash-sdk (Ruby)",
-                "capabilities" => ["integer-accessor"] }]
+                "capabilities" => %w[integer-accessor sign-context] }]
     end
     return [201, create(parse(body))] if method == "POST" && path == "/clients"
+    return sign(parse(body)) if method == "POST" && path == "/sign"
 
     match = %r{\A/clients/([^/]+)/([a-z-]+)\z}.match(path)
     entry = match && @lock.synchronize { @clients[match[1]] }
@@ -77,6 +79,13 @@ class Service
   end
 
   private
+
+  # Contract 14 lets sign_context raise, so a refusal is the protocol's 400, not the 500 of a raise.
+  def sign(body)
+    [200, { "signature" => Toggleslash.sign_context(body["privateKeyPem"], body["context"]) }]
+  rescue ArgumentError => e
+    [400, { "error" => e.message }]
+  end
 
   def parse(body)
     return {} if body.nil? || body.empty?

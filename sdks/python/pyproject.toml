@@ -6,6 +6,10 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
 
+[project.optional-dependencies]
+# `sign_context` only (secure mode): the standard library cannot read a PKCS#8 EC key or sign with ECDSA.
+signing = ["cryptography==50.0.2"]
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
@@ -39,5 +43,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Tests assert, build sockets on loopback, read private modules and bind to 127.0.0.1 deliberately.
 "tests/*" = ["S101", "S104", "S105", "S106", "S108", "S311", "S603", "S607", "PLC0415", "PLW0603"]
+# `cryptography` is the optional `signing` extra, so it is imported inside `sign_context` and nowhere else
+# (tests/test_source.py holds that): importing the package must not need it.
+"src/toggleslash/_sign.py" = ["PLC0415"]
 # The test service prints the line the harness waits for and answers whatever a test asks.
 "test-service/*" = ["T201", "S104"]

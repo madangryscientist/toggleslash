@@ -68,6 +68,7 @@ counts it still holds.
 | `hooks.afterEvaluation` | `Options.Hooks.AfterEvaluation func(Event)` |
 | `onError` | `Options.OnError func(error)` |
 | `accessor shape` | five typed accessors with a `...Detail` sibling, no generic method |
+| `signContext` | `SignContext(privateKeyPEM string, context Context) (string, error)`: signs a context for secure mode with the environment's PKCS#8 PEM, needs no client, and returns an error for a key that is not P-256 or an invalid context (contract 14) |
 
 The full mapping table, with the reason for each row and the closed sets (`ReasonKind`, `ErrorCode`,
 `StreamState`, `LastError`), is section 1 of [`DESIGN.md`](DESIGN.md). A `Reason` is

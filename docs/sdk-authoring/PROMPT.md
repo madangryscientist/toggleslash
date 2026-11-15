@@ -306,8 +306,9 @@ builds on, and the `$L/DESIGN.md` items phase 3b must read again (none, unless i
 
 **Reads.**
 
-- [`docs/sdk-contract.md`](../sdk-contract.md), sections 9 to 12 and the note on additions in section 13, one
-  section at a time as you build it.
+- [`docs/sdk-contract.md`](../sdk-contract.md), sections 9 to 12, the note on additions in section 13 and
+  section 14 (secure mode signing), one section at a time as you build it.
+- [`docs/sdk-browser.md`](../sdk-browser.md), "Secure mode", "What is signed" only, for the bytes `signContext` signs.
 - [`docs/api.md`](../api.md), "SDK read API (`/sdk/v1`)" only, for the events route.
 - [`CHECKLIST.md`](CHECKLIST.md), "Native tests", and under "Code and documents" the header audit and the test
   seams lines (`grep -ni 'header\|test seams'`).
@@ -315,7 +316,10 @@ builds on, and the `$L/DESIGN.md` items phase 3b must read again (none, unless i
 
 
 Continue the client from phase 3a's entry, using its seams and its fake server: usage counts (9), hooks and
-`onError` (10), close (11) and privacy (12). Contract section 13 says what you may add. Any new test seam (an
+`onError` (10), close (11) and privacy (12). Contract section 13 says what you may add. Then `signContext` (14), a
+pure function beside the client: check the key's curve yourself (every common library also reads a P-384 key), and
+test it on every entry of `fixtures/signing/messages.json` (read at test time: the message for each context) and with
+a sign-then-verify round trip on a key the test makes. No private key goes in the tree. Any new test seam (an
 evaluator that raises, for `onError`) is an option on `create`, as in phase 3a.
 
 Write native unit tests for what the harness cannot reach in sections 9 to 13: the "Native tests" lines of
@@ -363,9 +367,11 @@ What the protocol page says and a cold reader misses:
   floating type: Python's `int` and Ruby's `Integer` count, as do Go, Java and C#. The fractional-part rule
   of contract section 4 then applies. The range rule applies to every SDK that
   advertises it, including Python and Ruby, whose integers are unbounded: bound the accessor to signed 64
-  bits, because the `huge` scenario in `evaluation.json` (1e20) expects `TYPE_MISMATCH`.
+  bits, because the `huge` scenario in `evaluation.json` (1e20) expects `TYPE_MISMATCH`. Always advertise
+  `sign-context`, and answer `POST /sign` with your `signContext`: the one route where the service catches what the
+  SDK raises, as a `400 { "error": "<text>" }`.
 
-**Check.** The harness exits 0. Its summary line reads `0 failed` twice, the only skipped scenarios are
+**Check.** The harness exits 0. Its summary line reads `0 failed` three times and `signing: 8 passed`, the only skipped scenarios are
 those a capability you do not advertise rules out (none if you advertise `integer-accessor`, otherwise 2),
 and the vectors show exactly the 2 named skips:
 

@@ -1,8 +1,8 @@
 #!/bin/sh
 # Starts the conformance test service on a port the OS picks and prints `listening http://127.0.0.1:<port>`.
+# It runs on the venv bin/venv makes (the `signing` extra, for `POST /sign`); bin/venv writes only to stderr
+# but the path it prints.
 set -eu
 cd "$(dirname "$0")/.."
-if command -v mise >/dev/null 2>&1; then
-  exec mise exec -- python -X dev -W error test-service/main.py
-fi
-exec python -X dev -W error test-service/main.py
+python="$(bin/venv)"
+exec "$python" -X dev -W error test-service/main.py

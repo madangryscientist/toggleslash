@@ -15,7 +15,8 @@ The service listens on `127.0.0.1`, on a port the OS picks, and prints `listenin
 a line of its own.
 
 It advertises `integer-accessor`: Go's `int64` is an integer type distinct from `float64`, and
-`IntVariation` is the integer accessor.
+`IntVariation` is the integer accessor. It also advertises `sign-context`: `POST /sign` calls
+`toggleslash.SignContext`, and an error it returns is a `400 { "error" }`.
 
 | Protocol | Go SDK |
 | --- | --- |

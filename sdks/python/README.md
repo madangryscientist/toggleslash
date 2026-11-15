@@ -39,6 +39,12 @@ client.close()  # flushes usage counts and stops the background threads
 
 `with toggleslash.create(...) as client:` closes it for you.
 
+**Secure mode.** `toggleslash.sign_context(private_key_pem, context)` signs a context with an environment's signing
+key (the PKCS#8 PEM `toggleslash envs signing-key` printed once) for the browser SDK; it needs no client. It needs
+`cryptography`, the optional extra: `pip install "path/to/checkout/sdks/python[signing]"` (from a registry it would
+be `toggleslash[signing]`). Unlike the rest of the SDK it raises: `ValueError` for a key that is not P-256 or an
+invalid context.
+
 ## Mapping from the contract
 
 The full table (every name, option and default, and what is a `Detail`, a `Status` and a `StreamState`) is
@@ -70,6 +76,8 @@ sdks/python/bin/test                                            # unittest under
 bun run conformance -- --service sdks/python/bin/test-service   # the shared conformance harness
 ```
 
-`mise.toml` pins Python and Ruff; with `mise` installed the scripts use those versions. See
+`mise.toml` pins Python and Ruff; with `mise` installed the scripts use those versions. `bin/test` and
+`bin/test-service` run on `sdks/python/.venv`, which `bin/venv` makes (and installs the `signing` extra into) the
+first time, so that first run needs the network. See
 [`test-service/README.md`](test-service/README.md) for the conformance service, [`DESIGN.md`](DESIGN.md) for the
 design decisions and [`RUN.md`](RUN.md) for the report of the run that wrote this SDK.

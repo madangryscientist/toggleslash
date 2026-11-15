@@ -43,6 +43,10 @@ section 1 of [`DESIGN.md`](DESIGN.md). In short: `Toggleslash.create`, `client.r
 integer accessor, `client.status`, `client.close`; keyword options `stream`, `poll_interval`, `flush_interval`,
 `request_timeout` (seconds), `hooks` (`Toggleslash::Hooks.new(after_evaluation: callable)`) and `on_error`.
 
+**Secure mode.** `Toggleslash.sign_context(private_key_pem, context)` signs a context with an environment's signing key
+(the PKCS#8 PEM the server answered once) and returns the 86-character signature the browser SDK sends; it needs no
+client, and it is the one call that raises (`ArgumentError`, for a key that is not P-256 or an invalid context).
+
 ## Guarantees
 
 - Nothing raises at a caller: a failure becomes your fallback with an `ERROR` reason, goes to `on_error`, or both.

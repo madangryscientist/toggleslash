@@ -26,12 +26,16 @@ EVALUATOR = {
 
 
 def imports(path: Path) -> set[str]:
+    return imports_in(ast.parse(path.read_text(encoding="utf-8")))
+
+
+def imports_in(node: ast.AST) -> set[str]:
     names: set[str] = set()
-    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-        if isinstance(node, ast.Import):
-            names.update(alias.name.split(".")[0] for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-            names.add(node.module.split(".")[0])
+    for child in ast.walk(node):
+        if isinstance(child, ast.Import):
+            names.update(alias.name.split(".")[0] for alias in child.names)
+        elif isinstance(child, ast.ImportFrom) and child.level == 0 and child.module:
+            names.add(child.module.split(".")[0])
     return names
 
 
@@ -49,8 +53,21 @@ class SourceSearches(unittest.TestCase):
     def test_no_dependency_beyond_the_standard_library(self) -> None:
         allowed = set(sys.stdlib_module_names) | {"toggleslash"}
         for path in FILES:
+            extra = {"cryptography"} if path.name == "_sign.py" else set()
             with self.subTest(file=path.name):
-                self.assertLessEqual(imports(path), allowed)
+                self.assertLessEqual(imports(path), allowed | extra)
+
+    def test_cryptography_is_imported_inside_sign_context_only(self) -> None:
+        # The `signing` extra is optional: importing the package, the client or the evaluator never loads it.
+        tree = ast.parse((SOURCE / "_sign.py").read_text(encoding="utf-8"))
+        owners = [
+            node.name
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and "cryptography" in imports_in(node)
+        ]
+        self.assertEqual(owners, ["sign_context"])
+        statements = [node for node in tree.body if not isinstance(node, ast.FunctionDef)]
+        self.assertNotIn("cryptography", set().union(*map(imports_in, statements)))
 
     def test_the_sdk_writes_no_log_line_and_prints_nothing(self) -> None:
         for path in FILES:

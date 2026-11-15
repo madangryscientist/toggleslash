@@ -54,7 +54,13 @@ async Task Route(HttpContext context)
     {
         await Reply(context, Obj(
             ("name", JsonValue.From("toggleslash-sdk (C#)")),
-            ("capabilities", new JsonArray([JsonValue.From("integer-accessor")]))), 200);
+            ("capabilities", new JsonArray([JsonValue.From("integer-accessor"), JsonValue.From("sign-context")]))), 200);
+        return;
+    }
+
+    if (method == "POST" && path == "/sign")
+    {
+        await Sign(context);
         return;
     }
 
@@ -115,6 +121,27 @@ async Task Route(HttpContext context)
             await context.Response.WriteAsync("no such route");
             break;
     }
+}
+
+// POST /sign: contract 14 lets SignContext throw on a bad key or context, so that refusal is a 400 here, the one
+// route that catches what the SDK raises.
+async Task Sign(HttpContext context)
+{
+    var body = await ReadBody(context);
+    var pem = Text(body, "privateKeyPem") ?? "";
+    body.Properties.TryGetValue("context", out var signed);
+    string signature;
+    try
+    {
+        signature = Signing.SignContext(pem, signed);
+    }
+    catch (ArgumentException error)
+    {
+        await Reply(context, Obj(("error", JsonValue.From(error.Message))), 400);
+        return;
+    }
+
+    await Reply(context, Obj(("signature", JsonValue.From(signature))), 200);
 }
 
 async Task Create(HttpContext context)

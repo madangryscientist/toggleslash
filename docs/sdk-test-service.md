@@ -37,7 +37,7 @@ the harness read, all with their times on the server's clock, so a failure on a 
 then a summary:
 
 ```
-scenarios: 79 passed, 0 failed, 2 skipped; vectors: 1369 passed, 0 failed, 2 skipped
+scenarios: 87 passed, 0 failed, 2 skipped; vectors: 1369 passed, 0 failed, 2 skipped; signing: 8 passed, 0 failed, 0 skipped
 ```
 
 It exits 0 when nothing failed, 1 when something did, and 2 on a usage error. `bunx moon run
@@ -62,6 +62,7 @@ status is whole epoch milliseconds, or null.
 | `GET /clients/{id}/errors` | | `{ "count": number, "messages": string[] }`, every `onError` call so far |
 | `POST /clients/{id}/close` | | `{}` once `close` has finished |
 | `GET /clients/{id}/callback-close` | | `{ "calls": number, "threw": number, "maxMs": number }`, the `close` made from a callback (below) |
+| `POST /sign` | `{ privateKeyPem, context }` | `{ "signature": string }`, the SDK's `signContext` (contract 14); `400 { "error": string }` when the SDK refuses the key or the context. Only with `sign-context` |
 
 **Options** for `POST /clients`: `url`, `sdkKey`, `stream` (boolean), `pollIntervalMs`,
 `flushIntervalMs`, `requestTimeoutMs`, each passed to the SDK when present. Then five switches the service
@@ -82,9 +83,20 @@ Each of the last two times its `close` call and catches anything it throws, and 
 and `maxMs` (how long the call took to return, 0 before one). An async SDK's `close` (TypeScript's promise)
 is not awaited inside the callback: the time is how long the call took to return.
 
-**Capabilities.** The only one is `integer-accessor`: the language has an integer type and an integer
+**Capabilities.** There are two. `integer-accessor`: the language has an integer type and an integer
 accessor (contract section 4, "Typed languages"). A scenario that `requires` a capability the service does
-not list is skipped and reported as skipped.
+not list is skipped and reported as skipped. `sign-context`: the service answers `POST /sign` with the SDK's
+`signContext` (contract 14). Contract 14 makes the function a MUST, so every service lists it; a service that does
+not has its signing checks skipped and counted as skipped.
+
+**Signing.** After the vectors the harness makes one P-256 key pair for the run with `node:crypto` (never written
+to disk or printed), and for each entry in `fixtures/signing/messages.json` sends `POST /sign` with the private PEM
+and the entry's `context`. The answer must be 86 base64url characters, and must verify, decoded, as an IEEE P1363
+ECDSA SHA-256 signature over the entry's `message` (its UTF-8 bytes) with the public half. One more check sends a
+P-384 PKCS#8 PEM, which must answer 400 with an `error` string. That is 8 checks, counted in the summary's
+`signing` part and not in `vectors`. `POST /sign` is the one route where the service catches what the SDK
+raises: contract 14 lets `signContext` report a refusal by the language's error convention, and the service turns
+that into the 400, never a 500.
 
 **Accessors.** `evaluate` names the accessor the service calls: `bool`, `string`, `number`, `int` (only
 with `integer-accessor`), `json` or `any` (the generic method, or the closest the language has). Each
@@ -98,7 +110,8 @@ that is not finite (a `1e999` read as Infinity) is written back as JSON `null`, 
 **Hook events** are `{ flagKey, context, value, variationIndex, reason, etag, flagVersion }`, in the
 language's own field names mapped back to these.
 
-**Anything the SDK throws** (it MUST NOT, contract 5.1) is the service's to report, not to absorb: it answers
+**Anything the SDK throws** (it MUST NOT, contract 5.1) is the service's to report, not to absorb (`POST /sign`
+above is the one exception): it answers
 500 with the error text, and the harness fails the scenario. A request the service does not know answers
 404.
 

@@ -1,0 +1,42 @@
+{
+  "messages": [
+    {
+      "name": "a context with no kind is a user",
+      "context": { "key": "user-1" },
+      "message": "4:user,6:user-1,"
+    },
+    {
+      "name": "a multi-context signs its kinds in byte order",
+      "context": {
+        "kind": "multi",
+        "contexts": { "user": { "key": "u" }, "org": { "key": "acme" } }
+      },
+      "message": "3:org,4:acme,4:user,1:u,"
+    },
+    {
+      "name": "a key is counted in UTF-8 bytes",
+      "context": { "key": "é" },
+      "message": "4:user,2:é,"
+    },
+    {
+      "name": "a kind given as user signs as one left out",
+      "context": { "kind": "user", "key": "u" },
+      "message": "4:user,1:u,"
+    },
+    {
+      "name": "an uppercase kind sorts first by byte",
+      "context": { "kind": "multi", "contexts": { "org": { "key": "a" }, "Org": { "key": "b" } } },
+      "message": "3:Org,1:b,3:org,1:a,"
+    },
+    {
+      "name": "a comma and a colon in a key are bytes like any other",
+      "context": { "key": "a,b:c" },
+      "message": "4:user,5:a,b:c,"
+    },
+    {
+      "name": "attributes are not signed",
+      "context": { "key": "u", "name": "Ann", "plan": "pro" },
+      "message": "4:user,1:u,"
+    }
+  ]
+}
