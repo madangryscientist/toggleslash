@@ -10,6 +10,12 @@ Renamed from FeatureSlash to ToggleSlash.
 
 ### Added
 
+- Secure mode, per environment: a client-key `POST /sdk/v1/evaluate` must carry a signature over the context's keys,
+  made by the application's server with the environment's ECDSA P-256 signing key, or it is refused with `403`
+  `signature_required` or `bad_signature`. `POST .../environments/{env}/signing-key` makes the key and answers its
+  private half once (the server keeps only the public half); `PATCH .../environments/{env}` takes `secureMode`. The
+  server SDK signs with `signContext`, the browser SDK sends the signature (`signature`, `identify(context, signature)`),
+  and the CLI has `toggleslash envs signing-key` and `toggleslash envs secure-mode on|off`. See `docs/sdk-browser.md`.
 - `toggleslash flags create --client-visible`: the flag is answered to client keys (the browser SDK). Every other flag,
   including each one that existed before, is hidden from client keys until marked; `flags show` and `flags list` print
   `client visible`.

@@ -276,7 +276,12 @@ Under `/api/v1`, every route behind the `admin` policy, so for the root token an
     context key but the caller's own. A flag that cannot be evaluated is reported in its own entry
     (`kind: ERROR`, `value: null`) and does not fail the request. An invalid context or body is a `400`
     (checked first, so it is a `400` even for an environment with no flags), and a `flagKey` that does not exist
-    or is archived is a `404`.
+    or is archived is a `404`. In an environment with **secure mode** on, a client key must also send `signature`: an
+    ECDSA P-256 signature over the context's kinds and keys, made by the application's server with the environment's
+    signing key (`signContext` in the server SDK; the format is in `docs/sdk-browser.md`, "Secure mode"). After the
+    context check, none is a `403` `signature_required` and one that does not verify a `403` `bad_signature`. The server
+    stores only the signing key's public half; `POST .../environments/{env}/signing-key` answers the private half once.
+    A server key and the diagnostic route ignore secure mode.
   - `POST /sdk/v1/events` (server or client key) takes `{ "events": [{ "flag", "variationIndex", "count", "day" }] }`
     (`day` is `yyyy-MM-dd`, UTC) and adds each count to the key's own environment, summing entries that share a
     flag, variation and day. For a client key a flag not marked visible to client keys is unknown, as on evaluate. It answers `{ "accepted", "unknownFlags" }`. See **Usage counts** below. It is for

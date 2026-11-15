@@ -37,7 +37,7 @@ export const cases: Case[] = [
     routes: { [`GET ${P}/shop/environments`]: json(200, [environment]) },
     method: "GET",
     path: `${P}/shop/environments`,
-    shows: ["production", "Production"],
+    shows: ["production", "Production", "SECURE MODE", "on"],
     reply: [environment],
   },
   {

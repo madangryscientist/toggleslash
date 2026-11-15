@@ -2,7 +2,14 @@ import type { Case } from "./case.ts";
 import { P } from "./case.ts";
 import { json } from "./fake-server.ts";
 
-const environment = { key: "production", name: "Production", createdAt: "2026-11-01T10:05:00Z" };
+const environment = {
+  key: "production",
+  name: "Production",
+  createdAt: "2026-11-01T10:05:00Z",
+  secureMode: false,
+  signingKeyCreatedAt: null,
+};
+const pem = "-----BEGIN PRIVATE KEY-----\nPLAINPRIVATEKEY\n-----END PRIVATE KEY-----\n";
 
 export const envCases: Case[] = [
   {
@@ -19,6 +26,36 @@ export const envCases: Case[] = [
     body: { name: "Production EU" },
     shows: ["renamed environment production in shop to Production EU"],
     reply: { ...environment, name: "Production EU" },
+  },
+  {
+    command: "envs signing-key",
+    args: ["envs", "signing-key", "production", "-p", "shop"],
+    routes: {
+      [`POST ${P}/shop/environments/production/signing-key`]: json(201, {
+        privateKey: pem,
+        createdAt: "2026-11-15T08:00:00Z",
+      }),
+    },
+    method: "POST",
+    path: `${P}/shop/environments/production/signing-key`,
+    shows: [pem],
+    reply: { privateKey: pem, createdAt: "2026-11-15T08:00:00Z" },
+  },
+  {
+    command: "envs secure-mode",
+    args: ["envs", "secure-mode", "production", "on", "-p", "shop"],
+    routes: {
+      [`PATCH ${P}/shop/environments/production`]: json(200, {
+        ...environment,
+        secureMode: true,
+        signingKeyCreatedAt: "2026-11-15T08:00:00Z",
+      }),
+    },
+    method: "PATCH",
+    path: `${P}/shop/environments/production`,
+    body: { secureMode: true },
+    shows: ["secure mode is on for environment production in shop"],
+    reply: { ...environment, secureMode: true, signingKeyCreatedAt: "2026-11-15T08:00:00Z" },
   },
   {
     command: "envs delete",

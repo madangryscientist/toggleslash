@@ -909,8 +909,15 @@
       "name": "Secure mode and signed contexts",
       "description": "Sign client-side contexts so a user cannot evaluate as another user.",
       "toggleslash": {
-        "status": "no",
-        "evidence": []
+        "status": "partial",
+        "evidence": [
+          "api:/api/v1/projects/{project}/environments/{env}/signing-key",
+          "cli:envs signing-key",
+          "cli:envs secure-mode",
+          "test:apps/server/ToggleSlash.Server.Tests/SecureModeTests.cs",
+          "doc:docs/sdk-browser.md"
+        ],
+        "note": "Per environment: an ECDSA P-256 signature over the context's keys, made with signContext on the application's server; no dashboard control yet."
       },
       "competitors": {
         "launchdarkly": "yes"
@@ -1049,7 +1056,7 @@
           "path:apps/example/src/browser.ts",
           "test:packages/e2e/stack/journey.spec.ts"
         ],
-        "note": "One JavaScript SDK, server-evaluated, unpublished, shown live in the example app and the stack journey; no React binding, no secure mode."
+        "note": "One JavaScript SDK, server-evaluated, unpublished, shown live in the example app and the stack journey; no React binding."
       },
       "competitors": {
         "launchdarkly": "yes",

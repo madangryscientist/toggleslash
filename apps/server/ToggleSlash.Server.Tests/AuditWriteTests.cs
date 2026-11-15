@@ -42,6 +42,7 @@ public sealed class AuditWriteTests : IDisposable
         yield return new("POST /api/v1/projects", () => server.Post("/api/v1/projects", new { key = "other", name = "Other" }), HttpStatusCode.Created, "project", "created");
         yield return new("POST /api/v1/projects/{project}/environments", () => server.Post($"{Shop}/environments", new { key = "staging", name = "Staging" }), HttpStatusCode.Created, "environment", "created");
         yield return new("PATCH /api/v1/projects/{project}/environments/{env}", () => server.Patch($"{Shop}/environments/staging", new { name = "Pre-production" }), HttpStatusCode.OK, "environment", "updated");
+        yield return new("POST /api/v1/projects/{project}/environments/{env}/signing-key", () => server.Post($"{Shop}/environments/staging/signing-key"), HttpStatusCode.Created, "environment", "updated");
         yield return new("POST /api/v1/projects/{project}/flags", () => server.Post($"{Shop}/flags", new { key = "banner", name = "Banner", variations = new[] { true, false } }), HttpStatusCode.Created, "flag", "created");
         yield return new("PATCH /api/v1/projects/{project}/flags/{flag}", () => server.Patch(Flag, new { name = "Checkout v2" }), HttpStatusCode.OK, "flag", "updated");
         yield return new("POST /api/v1/projects/{project}/flags/{flag}/archive", () => server.Post($"{Flag}/archive"), HttpStatusCode.OK, "flag", "archived");

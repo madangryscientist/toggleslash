@@ -84,3 +84,19 @@ export function changedKeys(
   for (const key of before.keys()) if (!after.has(key)) changed.push(key);
   return changed.toSorted();
 }
+
+/**
+ * The error code of a secure-mode 403 body (`signature_required` or `bad_signature`), or null for any other: those two
+ * are about the context's signature, not the key.
+ */
+export function readSignatureRefusal(text: string): string | null {
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  const error = isRecord(body) ? body["error"] : undefined;
+  const code = isRecord(error) ? error["code"] : undefined;
+  return code === "signature_required" || code === "bad_signature" ? code : null;
+}

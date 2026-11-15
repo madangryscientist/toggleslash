@@ -395,6 +395,18 @@ namespace ToggleSlash.Server.Data.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("project_id");
 
+                    b.Property<bool>("SecureMode")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("secure_mode");
+
+                    b.Property<DateTime?>("SigningKeyCreatedAt")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("signing_key_created_at");
+
+                    b.Property<byte[]>("SigningPublicKey")
+                        .HasColumnType("BLOB")
+                        .HasColumnName("signing_public_key");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ProjectId", "Key")

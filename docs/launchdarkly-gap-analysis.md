@@ -260,7 +260,7 @@ SDK means one kind of buyer.
 | Persistent store | Redis, DynamoDB, Consul | No |
 | Daemon mode / Relay Proxy | Yes, open source Go service | No; the server is the only source |
 | Data saving mode | Yes, streaming deltas | No |
-| Secure mode | Signed contexts for client-side | No |
+| Secure mode | Signed contexts for client-side | Yes, per environment: a P-256 signature over the context's keys; no dashboard control yet |
 | Private attributes | Yes | No (no context storage) |
 | Hooks | Yes | No |
 | OpenTelemetry | Yes | No |
@@ -284,7 +284,9 @@ The client key exists, and `POST /sdk/v1/evaluate` works from any origin. That i
 browser SDK that calls the server per evaluation. It is not enough for a good one:
 
 - per-context result caching and a change stream (otherwise every flag read is a network round trip);
-- secure mode / signed contexts (otherwise anyone can evaluate as any context key);
+- secure mode / signed contexts: **built**. Per environment, a client-key evaluate must carry an ECDSA P-256 signature
+  over the context's kinds and keys, made by the application's server with `signContext`; the server keeps only the
+  public half of the key. Attributes are not signed. See `docs/sdk-browser.md`, "Secure mode";
 - flag-level client availability controls: **built**. A flag reaches a client key only when marked visible to client
   keys (`clientVisible`, false for a new flag); a server key sees every flag. See `docs/sdk-browser.md`;
 - private-attribute handling and event policy;
@@ -590,7 +592,7 @@ Legend: **Yes** = shipped; **Partial** = some of it; **No** = absent.
 | Bootstrap / offline mode | Yes | No |
 | Persistent store | Redis/DynamoDB/Consul | No |
 | Relay proxy / daemon mode | Yes | No |
-| Secure mode | Yes | No |
+| Secure mode | Yes | Partial (no dashboard control yet) |
 | Private attributes | Yes | No |
 | Hooks / OpenTelemetry | Yes | No |
 | Rate limiting | Yes | Yes, in memory |
