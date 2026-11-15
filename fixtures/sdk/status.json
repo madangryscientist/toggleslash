@@ -385,7 +385,11 @@
           "errors": {
             "since": "m",
             "min": 7
-          },
+          }
+        },
+        {
+          "do": "waitUntil",
+          "withinMs": 2000,
           "status": {
             "etag": "{{etag}}",
             "lastError": null
