@@ -15,10 +15,18 @@ interface Draft {
   name: string;
   description: string;
   temporary: boolean;
+  clientVisible: boolean;
   tags: string;
 }
 
-const EMPTY: Draft = { key: "", name: "", description: "", temporary: false, tags: "" };
+const EMPTY: Draft = {
+  key: "",
+  name: "",
+  description: "",
+  temporary: false,
+  clientVisible: false,
+  tags: "",
+};
 
 interface FieldsProps {
   draft: Draft;
@@ -74,6 +82,12 @@ function Fields({ draft, onDraft, error, onSubmit }: FieldsProps) {
           checked={draft.temporary}
           onChange={(e) => onDraft({ ...draft, temporary: e.currentTarget.checked })}
         />
+        <Checkbox
+          label="Visible to client keys"
+          description="A client key ships in a page, so it is answered only flags marked visible. Server keys see every flag."
+          checked={draft.clientVisible}
+          onChange={(e) => onDraft({ ...draft, clientVisible: e.currentTarget.checked })}
+        />
         {error !== null && (
           <p role="alert" data-testid="create-error">
             {error}
@@ -111,6 +125,7 @@ export function NewFlagDialog({ project, onClose, onCreated }: Props) {
             name: draft.name.trim(),
             description: draft.description,
             temporary: draft.temporary,
+            clientVisible: draft.clientVisible,
             tags: parseTags(draft.tags),
           },
         },

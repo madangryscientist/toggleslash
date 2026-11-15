@@ -3545,6 +3545,12 @@
               "type": "string"
             }
           },
+          "clientVisible": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
           "offVariation": {
             "type": [
               "null",
@@ -3852,6 +3858,7 @@
           "temporary",
           "owner",
           "tags",
+          "clientVisible",
           "createdAt",
           "archivedAt",
           "lastEvaluated",
@@ -3885,6 +3892,9 @@
             "items": {
               "type": "string"
             }
+          },
+          "clientVisible": {
+            "type": "boolean"
           },
           "createdAt": {
             "type": "string",
@@ -4602,6 +4612,12 @@
             "items": {
               "type": "string"
             }
+          },
+          "clientVisible": {
+            "type": [
+              "null",
+              "boolean"
+            ]
           }
         }
       },

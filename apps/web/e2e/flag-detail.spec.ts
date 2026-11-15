@@ -203,6 +203,8 @@ test("edits the flag's details and sees a field error from the server", async ({
   await page.getByTestId("meta-name").fill("Checkout v2 (new)");
   await page.getByTestId("meta-owner").fill("payments");
   await page.getByTestId("meta-tags").fill("checkout, money");
+  await expect(page.getByLabel("Visible to client keys")).not.toBeChecked();
+  await page.getByLabel("Visible to client keys").check();
   await page.getByTestId("save-meta").click();
   await expect(page.getByTestId("notice")).toContainText("Details saved");
 
@@ -210,6 +212,15 @@ test("edits the flag's details and sees a field error from the server", async ({
   await expect(page.getByTestId("meta-name")).toHaveValue("Checkout v2 (new)");
   await expect(page.getByTestId("meta-owner")).toHaveValue("payments");
   await expect(page.getByTestId("meta-tags")).toHaveValue("checkout, money");
+  await expect(page.getByLabel("Visible to client keys")).toBeChecked();
+
+  // And back: unticking it is saved too.
+  await page.getByLabel("Visible to client keys").uncheck();
+  await page.getByTestId("save-meta").click();
+  await expect(page.getByTestId("notice")).toContainText("Details saved");
+  await page.reload();
+  await expect(page.getByTestId("meta-name")).toBeEnabled();
+  await expect(page.getByLabel("Visible to client keys")).not.toBeChecked();
 });
 
 test("shows the flag's history and usage", async ({ page }) => {

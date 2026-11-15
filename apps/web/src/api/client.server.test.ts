@@ -254,9 +254,11 @@ describe("writes", () => {
       name: "K",
       description: "",
       temporary: false,
+      clientVisible: true,
       tags: ["t"],
     });
     expect(seen[0]?.body).toMatchObject({ key: "k", variations: [true, false], tags: ["t"] });
+    expect(seen[0]?.body).toMatchObject({ clientVisible: true });
   });
 
   test("archive posts to the flag's archive route", async () => {

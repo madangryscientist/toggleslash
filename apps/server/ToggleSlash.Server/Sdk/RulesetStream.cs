@@ -17,8 +17,8 @@ public class StreamHeartbeat
 /// <summary>
 /// <c>GET /sdk/v1/stream</c>: Server-Sent Events saying what the environment's ruleset's ETag is, on connect
 /// and on every change. <c>GET /sdk/v1/changes</c> is the same stream for a client key, with the same events and
-/// <c>{}</c> for data: it still compares ETags inside the server, so it says "changed" only when the served bytes did,
-/// but it tells the client nothing about the ruleset. Written by hand because a keep-alive is a comment, which
+/// <c>{}</c> for data: it compares the ETag and the keys a client key may evaluate inside the server, so it says
+/// "changed" when the served bytes or that set did, but it tells the client nothing about either. Written by hand because a keep-alive is a comment, which
 /// <c>TypedResults.ServerSentEvents</c> cannot send. A stream outlives any one read, so it holds no database context:
 /// each read gets its own scope.
 /// </summary>
@@ -83,7 +83,7 @@ internal static class RulesetStream
             http.Response.ContentType = "text/event-stream";
             http.Response.Headers.CacheControl = "no-cache";
 
-            var sent = await CurrentETag(scopes, environmentId, cancellation);
+            var sent = await Current(scopes, environmentId, carriesETag, cancellation);
             await Write(http, Event(Connected, carriesETag ? sent : NoData), cancellation);
 
             var change = subscription.Next(cancellation);
@@ -105,7 +105,7 @@ internal static class RulesetStream
                 }
 
                 change = subscription.Next(cancellation);
-                var current = await CurrentETag(scopes, environmentId, cancellation);
+                var current = await Current(scopes, environmentId, carriesETag, cancellation);
                 // A write can leave the served bytes as they were (archiving an archived flag). The client has them.
                 if (current != sent)
                 {
@@ -129,11 +129,15 @@ internal static class RulesetStream
         await http.Response.Body.FlushAsync(cancellation);
     }
 
-    private static async Task<string> CurrentETag(IServiceScopeFactory scopes, long environmentId, CancellationToken cancellation)
+    /// <summary>
+    /// What a stream compares. The server stream: the ETag, which is what it sends. The client signal: the ETag and
+    /// the keys a client key may evaluate, since marking a flag visible changes what <c>evaluate</c> answers and not the bytes.
+    /// </summary>
+    private static async Task<string> Current(IServiceScopeFactory scopes, long environmentId, bool etagOnly, CancellationToken cancellation)
     {
         await using var scope = scopes.CreateAsyncScope();
         var snapshot = await scope.ServiceProvider.GetRequiredService<RulesetReader>().Read(environmentId, cancellation);
-        return snapshot.ETag;
+        return etagOnly ? snapshot.ETag : $"{snapshot.ETag} {string.Join(',', snapshot.ClientFlagKeys!)}";
     }
 
     private static async Task<bool> KeyIsLive(IServiceScopeFactory scopes, long keyId, CancellationToken cancellation)

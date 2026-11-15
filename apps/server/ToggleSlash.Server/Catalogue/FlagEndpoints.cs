@@ -12,6 +12,7 @@ namespace ToggleSlash.Server.Catalogue;
 public static class FlagEndpoints
 {
     /// <param name="Variations">At least 2 JSON values of one type. Fixed once the flag exists.</param>
+    /// <param name="ClientVisible">Whether a client key may evaluate the flag. Defaults to false.</param>
     /// <param name="OffVariation">Index served when the flag is off, in every environment. Defaults to 1.</param>
     /// <param name="FallthroughVariation">Index served when the flag is on and nothing else matches, in every environment. Defaults to 0.</param>
     public sealed record CreateFlagRequest(
@@ -22,6 +23,7 @@ public static class FlagEndpoints
         bool? Temporary = null,
         string? Owner = null,
         List<string>? Tags = null,
+        bool? ClientVisible = null,
         int? OffVariation = null,
         int? FallthroughVariation = null);
 
@@ -31,7 +33,8 @@ public static class FlagEndpoints
         string? Description = null,
         bool? Temporary = null,
         string? Owner = null,
-        List<string>? Tags = null);
+        List<string>? Tags = null,
+        bool? ClientVisible = null);
 
     /// <summary>A flag as the audit trail records it: the settings, not the usage counted around them.</summary>
     private sealed record FlagSnapshot(
@@ -42,6 +45,7 @@ public static class FlagEndpoints
         bool Temporary,
         string? Owner,
         List<string> Tags,
+        bool ClientVisible,
         DateTime CreatedAt,
         DateTime? ArchivedAt);
 
@@ -53,6 +57,7 @@ public static class FlagEndpoints
     /// Computed on every read, never stored: <c>archived</c> if archived; else <c>active</c> if any environment counted an
     /// evaluation in the last 7 UTC days (today included); else <c>new</c> if created less than 7 days ago; else <c>inactive</c>.
     /// </param>
+    /// <param name="ClientVisible">Whether a client key may evaluate the flag; a server key always may.</param>
     public sealed record FlagResponse(
         string Key,
         string Name,
@@ -61,6 +66,7 @@ public static class FlagEndpoints
         bool Temporary,
         string? Owner,
         List<string> Tags,
+        bool ClientVisible,
         DateTime CreatedAt,
         DateTime? ArchivedAt,
         DateOnly? LastEvaluated,
@@ -146,6 +152,7 @@ public static class FlagEndpoints
             Variations = JsonSerializer.Serialize(request.Variations),
             Salt = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16)),
             Temporary = request.Temporary ?? false,
+            ClientVisible = request.ClientVisible ?? false,
             Owner = string.IsNullOrWhiteSpace(request.Owner) ? null : request.Owner.Trim(),
             Tags = JsonSerializer.Serialize(Validation.DistinctTags(request.Tags ?? [])),
             CreatedAt = DateTime.UtcNow,
@@ -207,7 +214,11 @@ public static class FlagEndpoints
         return found is not null ? Results.Json(await Detail(database, found, cancellation)) : NotFound(owner);
     }
 
-    private static async Task<IResult> Update(string project, string flag, UpdateFlagRequest request, ToggleSlashDbContext database, TargetingLock targetingLock, CancellationToken cancellation)
+    /// <summary>
+    /// A change to <c>clientVisible</c> leaves every ruleset's bytes as they were, but changes what a client key is
+    /// answered, so it signals every environment of the project.
+    /// </summary>
+    private static async Task<IResult> Update(string project, string flag, UpdateFlagRequest request, ToggleSlashDbContext database, TargetingLock targetingLock, RulesetNotifier notifier, CancellationToken cancellation)
     {
         var problem = (request.Name is null ? null : Validation.Name(request.Name))
             ?? Validation.Tags(request.Tags)
@@ -229,6 +240,8 @@ public static class FlagEndpoints
         found.Name = request.Name?.Trim() ?? found.Name;
         found.Description = request.Description ?? found.Description;
         found.Temporary = request.Temporary ?? found.Temporary;
+        var visibilityChanged = request.ClientVisible is { } visible && visible != found.ClientVisible;
+        found.ClientVisible = request.ClientVisible ?? found.ClientVisible;
         if (request.Owner is not null)
         {
             found.Owner = string.IsNullOrWhiteSpace(request.Owner) ? null : request.Owner.Trim();
@@ -238,7 +251,12 @@ public static class FlagEndpoints
             found.Tags = JsonSerializer.Serialize(Validation.DistinctTags(request.Tags));
         }
         database.Record(AuditEntity.Flag, found.Key, AuditAction.Updated, new AuditScope(owner!.Key, Flag: found.Key), before, Describe(found));
+        // Read before the save, as SetArchived does.
+        var environmentIds = visibilityChanged
+            ? await database.Environments.Where(e => e.ProjectId == owner.Id).Select(e => e.Id).ToListAsync(cancellation)
+            : [];
         await database.SaveChangesAsync(cancellation);
+        environmentIds.ForEach(notifier.Changed);
         return Results.Json(await Detail(database, found, cancellation));
     }
 
@@ -355,6 +373,7 @@ public static class FlagEndpoints
         flag.Temporary,
         flag.Owner,
         ReadStrings(flag.Tags),
+        flag.ClientVisible,
         flag.CreatedAt,
         flag.ArchivedAt);
 
@@ -369,6 +388,7 @@ public static class FlagEndpoints
             settings.Temporary,
             settings.Owner,
             settings.Tags,
+            settings.ClientVisible,
             settings.CreatedAt,
             settings.ArchivedAt,
             lastEvaluated,

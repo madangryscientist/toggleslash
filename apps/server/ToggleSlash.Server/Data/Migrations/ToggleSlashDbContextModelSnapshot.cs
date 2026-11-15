@@ -197,6 +197,10 @@ namespace ToggleSlash.Server.Data.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("archived_at");
 
+                    b.Property<bool>("ClientVisible")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("client_visible");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("created_at");

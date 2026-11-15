@@ -119,6 +119,7 @@ export function createAdminApi(connection: Connection, doFetch: Fetch) {
         name: flag.name,
         description: flag.description,
         temporary: flag.temporary,
+        clientVisible: flag.clientVisible,
         tags: flag.tags,
         variations: [true, false],
       });

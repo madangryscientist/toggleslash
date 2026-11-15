@@ -21,9 +21,10 @@ public sealed class SdkApiTests : IDisposable
         await server.SeedProject();
         await server.SeedEnvironment("shop", "prod");
         await server.SeedEnvironment("shop", "staging");
+        // Visible to client keys, so these tests are about evaluation; ClientVisibilityTests is about who sees what.
         foreach (var flag in flags)
         {
-            await server.SeedFlag("shop", flag);
+            await server.SeedFlag("shop", flag, clientVisible: true);
         }
     }
 

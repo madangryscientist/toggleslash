@@ -30,6 +30,7 @@ interface Draft {
   owner: string;
   tags: string;
   temporary: boolean;
+  clientVisible: boolean;
 }
 
 function draftOf(flag: FlagDetail): Draft {
@@ -39,6 +40,7 @@ function draftOf(flag: FlagDetail): Draft {
     owner: flag.owner,
     tags: flag.tags.join(", "),
     temporary: flag.temporary,
+    clientVisible: flag.clientVisible,
   };
 }
 
@@ -110,6 +112,13 @@ function MetaFields({ flag, draft, problems, onDraft: edit }: FieldsProps) {
         checked={draft.temporary}
         onChange={(e) => edit({ ...draft, temporary: e.currentTarget.checked })}
       />
+      <Checkbox
+        label="Visible to client keys"
+        disabled={!hydrated}
+        description="A client key ships in a page, so it is answered only flags marked visible. Server keys see every flag."
+        checked={draft.clientVisible}
+        onChange={(e) => edit({ ...draft, clientVisible: e.currentTarget.checked })}
+      />
       <Text tone="muted">Variations: {flag.variations.map((v, i) => `${i}: ${v}`).join(", ")}</Text>
     </>
   );
@@ -147,6 +156,7 @@ export function MetaForm({ project, flag, onSaved }: Props) {
             description: draft.description,
             owner: draft.owner,
             temporary: draft.temporary,
+            clientVisible: draft.clientVisible,
             tags: parseTags(draft.tags),
           },
         },

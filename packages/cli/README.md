@@ -51,7 +51,7 @@ toggleslash envs delete <key> --project <project> --yes            delete an env
 toggleslash flags list --project <project> [--tag <tag>] [--archived false|true|all]
 toggleslash flags show <flag> --project <project> [--env <env>]    with --env, also its targeting there
 toggleslash flags create <key> --project <project> [--name <name>] [--variations <json>] [--description <text>]
-                          [--temporary] [--owner <owner>] [--tag <tag>]... [--off-variation <n>] [--fallthrough-variation <n>]
+                          [--temporary] [--client-visible] [--owner <owner>] [--tag <tag>]... [--off-variation <n>] [--fallthrough-variation <n>]
 toggleslash flags archive <flag> --project <project>
 toggleslash flags delete <flag> --project <project>                delete an archived flag for good (refused while another flag lists it as a prerequisite)
 toggleslash flags on <flag> --project <project> --env <env>        turn a flag on in one environment

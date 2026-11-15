@@ -10,6 +10,9 @@ Renamed from FeatureSlash to ToggleSlash.
 
 ### Added
 
+- `toggleslash flags create --client-visible`: the flag is answered to client keys (the browser SDK). Every other flag,
+  including each one that existed before, is hidden from client keys until marked; `flags show` and `flags list` print
+  `client visible`.
 - Rate limits on the server: evaluate and events per key, wrong credentials per IP and open streams per key, in memory,
   with `429` and `Retry-After`; the SDK waits out `Retry-After` on the ruleset, the stream and events. See
   `docs/self-hosting.md`.

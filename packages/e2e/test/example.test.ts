@@ -33,6 +33,7 @@ describe.skipIf(skip)("the example app, the seed and the real server", () => {
   let app: RunningExample | null = null;
   let cli: Cli;
   let admin: Admin;
+  let serverKey = "";
 
   const appUrl = (): string => app?.url ?? "";
   async function state(user: string): Promise<State> {
@@ -57,6 +58,7 @@ describe.skipIf(skip)("the example app, the seed and the real server", () => {
     cli = createCli({ url: server.url, token: ADMIN_TOKEN, home: join(scratch, "home") });
     admin = createAdmin({ url: server.url, token: ADMIN_TOKEN });
     const keys = await seed({ cli, admin });
+    serverKey = keys.serverKey;
     app = await startExample({
       serverUrl: server.url,
       sdkKey: keys.serverKey,
@@ -164,6 +166,17 @@ describe.skipIf(skip)("the example app, the seed and the real server", () => {
     expect(response.headers.get("Access-Control-Allow-Origin")).not.toBeNull();
     const flags = record(record(await response.json())["flags"]);
     expect(record(flags["new-checkout"])["value"]).toBe(true);
+    // legacy-cart is not marked visible to client keys: the client key is not answered it, the server key is.
+    expect(Object.keys(flags)).toEqual(["new-checkout"]);
+    const serverAnswer = await fetch(`${server?.url}/sdk/v1/evaluate`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${serverKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ context: { key: "pro-user", attributes: { plan: "pro" } } }),
+    });
+    expect(serverAnswer.status).toBe(200);
+    expect(Object.keys(record(record(await serverAnswer.json())["flags"]))).toContain(
+      "legacy-cart",
+    );
     expect(html).not.toContain("tgl_server_");
 
     const bundle = await fetch(`${appUrl()}/browser.js`);

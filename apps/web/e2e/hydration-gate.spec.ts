@@ -94,6 +94,7 @@ test("the flag page's name field and save button are disabled until React hydrat
   const gated = [
     page.getByTestId("meta-name"),
     page.getByTestId("meta-owner"),
+    page.getByLabel("Visible to client keys"),
     page.getByTestId("sign-out"),
     page.getByLabel("Environment"),
   ];

@@ -10,6 +10,28 @@ interface Seeded {
   clientKey: string;
 }
 
+/** The five flags; only `new-checkout`, the one the example's browser section shows, is visible to client keys. */
+async function createFlags(cli: Cli, project: string[]): Promise<void> {
+  const flag = (key: string, variations: unknown[], ...more: string[]) =>
+    cli.json([
+      "flags",
+      "create",
+      key,
+      ...project,
+      "--variations",
+      JSON.stringify(variations),
+      ...more,
+    ]);
+  await flag("new-checkout", [true, false], "--client-visible");
+  await flag("banner-text", ["Free shipping over $50", "Welcome to the beta!"]);
+  await flag("discount-percent", [0, 10, 20]);
+  await flag("checkout-config", [
+    { layout: "single-page", payment: ["card"] },
+    { layout: "multi-step", payment: ["card", "wallet"] },
+  ]);
+  await flag("legacy-cart", [true, false]); // stays off: a new flag is off in every environment
+}
+
 /**
  * Fills a fresh server with the shop the example app (`apps/example`) reads: project `shop` with
  * environments `dev` and `prod`, a `pro-customers` segment, five flags across the value types, and
@@ -24,16 +46,7 @@ export async function seed(tools: { cli: Cli; admin: Admin }): Promise<Seeded> {
   await cli.json(["envs", "create", SEED_ENV, ...project, "--name", "Development"]);
   await cli.json(["envs", "create", "prod", ...project, "--name", "Production"]);
 
-  const flag = (key: string, variations: unknown[]) =>
-    cli.json(["flags", "create", key, ...project, "--variations", JSON.stringify(variations)]);
-  await flag("new-checkout", [true, false]);
-  await flag("banner-text", ["Free shipping over $50", "Welcome to the beta!"]);
-  await flag("discount-percent", [0, 10, 20]);
-  await flag("checkout-config", [
-    { layout: "single-page", payment: ["card"] },
-    { layout: "multi-step", payment: ["card", "wallet"] },
-  ]);
-  await flag("legacy-cart", [true, false]); // stays off: a new flag is off in every environment
+  await createFlags(cli, project);
 
   await admin.send("POST", `/api/v1/projects/${SEED_PROJECT}/environments/${SEED_ENV}/segments`, {
     key: "pro-customers",

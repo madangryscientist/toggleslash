@@ -136,7 +136,12 @@ public static class SdkEndpoints
     private static async Task<IResult> Evaluate(EvaluateRequest request, HttpContext http, RulesetReader reader, UsageRecorder usage)
     {
         var environmentId = ServerAuth.EnvironmentId(http.User);
-        var outcome = await EvaluateAll(request, () => reader.Read(environmentId, http.RequestAborted));
+        // A client key ships in a page, so it is answered only the flags marked visible to it.
+        var clientKey = http.User.FindFirst(ServerAuth.PrincipalClaim)?.Value == ServerAuth.ClientKeyPolicy;
+        var outcome = await EvaluateAll(
+            request,
+            () => reader.Read(environmentId, http.RequestAborted),
+            snapshot => clientKey ? snapshot.ClientFlagKeys! : snapshot.FlagKeys);
         if (outcome.Failure is not null)
         {
             return outcome.Failure;
@@ -154,9 +159,12 @@ public static class SdkEndpoints
     /// <summary>
     /// Validates the request and evaluates one flag, or every flag that is not archived, against the ruleset.
     /// Both <c>POST /sdk/v1/evaluate</c> and the admin diagnostic route call it. It records nothing: the ruleset is
-    /// read only after the context is known to be present, so a bad request costs no read.
+    /// read only after the context is known to be present, so a bad request costs no read. <paramref name="answerable"/>
+    /// picks the keys the caller may be answered; a <c>flagKey</c> outside them is the same 404 as a key that does not
+    /// exist. Every flag stays in the ruleset the evaluator loads, so a prerequisite outside them still evaluates.
     /// </summary>
-    internal static async Task<EvaluationOutcome> EvaluateAll(EvaluateRequest request, Func<Task<RulesetSnapshot>> readSnapshot)
+    internal static async Task<EvaluationOutcome> EvaluateAll(
+        EvaluateRequest request, Func<Task<RulesetSnapshot>> readSnapshot, Func<RulesetSnapshot, IReadOnlyList<string>> answerable)
     {
         if (request.Context is not { } context)
         {
@@ -171,7 +179,7 @@ public static class SdkEndpoints
             return Rejected(Failures.BadRequest($"The context is not valid. {ContextShapes}"));
         }
 
-        IReadOnlyList<string> keys = snapshot.FlagKeys;
+        var keys = answerable(snapshot);
         if (request.FlagKey is not null)
         {
             if (!keys.Contains(request.FlagKey))

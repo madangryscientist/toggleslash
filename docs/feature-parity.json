@@ -917,6 +917,24 @@
       }
     },
     {
+      "id": "client-availability",
+      "category": "Release",
+      "name": "Client-side availability",
+      "description": "Mark which flags a public client key may evaluate; the rest stay server-only.",
+      "toggleslash": {
+        "status": "yes",
+        "evidence": [
+          "api:/api/v1/projects/{project}/flags/{flag}",
+          "cli:flags create",
+          "dashboard:/flags/$flag",
+          "test:apps/server/ToggleSlash.Server.Tests/ClientVisibilityTests.cs"
+        ]
+      },
+      "competitors": {
+        "launchdarkly": "yes"
+      }
+    },
+    {
       "id": "experiments",
       "category": "Experimentation",
       "name": "Experiments",

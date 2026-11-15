@@ -82,6 +82,23 @@ that is closed without `close()` loses up to 30 s of counts.
 The client uses no `localStorage`, cookie or IndexedDB. The context is sent only in the evaluate body. It uses only
 `fetch`, `TextDecoder`, `AbortController` and the clock, so it runs in a browser and in Bun.
 
+## Which flags a client key sees
+
+A client key ships in the page, so anyone can read it. The server answers it only the flags marked **visible to client
+keys** (`clientVisible` on the flag, `--client-visible` on `toggleslash flags create`, "Visible to client keys" in the
+dashboard). A new flag is hidden until it is marked. A hidden flag is left out of the evaluate answer, so
+`variation` serves the fallback and `detail` answers `ERROR` with `FLAG_NOT_FOUND`, the same as for a key that does
+not exist; asking for it by `flagKey` is the same `404` as a missing key. A server key sees every flag.
+
+Two things still reach a page, by design:
+
+- **A hidden prerequisite's key.** Hidden flags stay in the ruleset the server evaluates with, so a visible flag
+  with a hidden prerequisite evaluates as it should. When that prerequisite fails, the visible flag's reason is
+  `PREREQUISITE_FAILED` with `flagKey` naming it.
+- **That something changed.** The change signal fires on any change to the environment's ruleset, hidden flags
+  included, and on a flag being marked visible or hidden. A page can tell that something changed, not what. Firing
+  only for visible flags would miss a change that reaches one through a hidden prerequisite or a segment.
+
 ## Shared code
 
 The signal parser, the usage reporter, the clock and the HTTP helpers are the server SDK's own modules, exported as
@@ -91,5 +108,4 @@ The signal parser, the usage reporter, the clock and the HTTP helpers are the se
 ## Not yet
 
 - **No secure mode.** A client key is public by design, so anyone who has it can evaluate as any context.
-- **No per-flag client availability.** Every flag that is not archived is visible to a client key.
 - No React binding, no persistence between page loads, no flush on page hide, no published package.
