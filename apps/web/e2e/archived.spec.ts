@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { API_PORT } from "./constants.ts";
+import { holdScripts } from "./hold-scripts.ts";
 
 const API = `http://127.0.0.1:${API_PORT}`;
 
@@ -52,6 +53,23 @@ test("Restore moves a flag back to the Active view", async ({ page }) => {
   await page.getByRole("radio", { name: "Active" }).click();
   await expect(page.getByTestId("flag-old-banner")).toBeVisible();
   await expect(page.getByTestId("toggle-old-banner")).toHaveText("Off");
+});
+
+test("Restore and Delete are disabled until the archived view hydrates", async ({ page }) => {
+  const { held, release } = await holdScripts(page);
+
+  // The default wait is the load event, which held module scripts block.
+  await page.goto("/?archived=true", { waitUntil: "commit" });
+  const row = page.getByTestId("flag-old-banner");
+  await expect(row.getByTestId("restore-flag")).toBeVisible();
+  await expect(row.getByTestId("restore-flag")).toBeDisabled();
+  await expect(row.getByTestId("delete-flag")).toBeDisabled();
+  expect(held.length).toBeGreaterThan(0);
+
+  release();
+  await expect(row.getByTestId("restore-flag")).toBeEnabled();
+  await row.getByTestId("restore-flag").click();
+  await expect(page.getByTestId("flag-old-banner")).toHaveCount(0);
 });
 
 test("Delete asks first: Cancel keeps the flag, confirming removes it", async ({ page }) => {
