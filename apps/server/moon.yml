@@ -12,8 +12,11 @@ tasks:
     options:
       cache: false
       mutex: "dotnet-server"
+  # `--blame` (sequence only) makes a crashed test host name the test that was running, in the output
+  # and in TestResults/**/Sequence_*.xml (gitignored). No `--blame-crash`: a Linux crash dump is
+  # hundreds of MB.
   test:
-    script: "dotnet test ToggleSlash.Evaluation.Tests/ToggleSlash.Evaluation.Tests.csproj && dotnet test ToggleSlash.Server.Tests/ToggleSlash.Server.Tests.csproj"
+    script: "dotnet test ToggleSlash.Evaluation.Tests/ToggleSlash.Evaluation.Tests.csproj --blame && dotnet test ToggleSlash.Server.Tests/ToggleSlash.Server.Tests.csproj --blame"
     inputs:
       - "**/*"
       - "/fixtures/**/*"
