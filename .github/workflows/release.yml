@@ -16,11 +16,12 @@ permissions:
   contents: read
 
 jobs:
-  # ci.yml's own `gate` job, called rather than copied, so the release gate cannot drift from it.
+  # ci.yml itself, called rather than copied, so the release gate cannot drift from it. Its `checks`
+  # job runs the gate and its last job, `gate`, waits for it.
   # In the called workflow the event is this tag push: ci.yml's guards keep its cache-write
-  # environment and token to `refs/heads/main` and skip its other jobs on a tag (a tag is cut from
-  # `main`, where they already ran). Its moon steps read the remote cache with the read token, a
-  # repository secret passed on by `secrets: inherit`. The check shows as `gate / gate`.
+  # environment and token to `refs/heads/main` and skip every job but `checks` and `gate` on a tag
+  # (a tag is cut from `main`, where they already ran). Its moon steps read the remote cache with the
+  # read token, a repository secret passed on by `secrets: inherit`. The check shows as `gate / gate`.
   gate:
     uses: ./.github/workflows/ci.yml
     secrets: inherit
@@ -36,7 +37,7 @@ jobs:
       # The OIDC token npm trusted publishing and the provenance statement are signed with.
       id-token: write
     env:
-      # moon diffs the head against the base branch before any task runs; see ci.yml's gate job.
+      # moon diffs the head against the base branch before any task runs; see ci.yml's checks job.
       MOON_BASE: origin/main
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

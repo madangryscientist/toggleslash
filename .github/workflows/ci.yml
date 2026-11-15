@@ -8,7 +8,7 @@ name: CI
 # its environment on, so the tasks it runs (our code and its dependencies, pinned by bun.lock) do:
 # - MOON_CACHE_READ_TOKEN, a repository secret: may read the cache, and its uploads are refused.
 # - MOON_CACHE_WRITE_TOKEN: lives only in the `moon-cache-write` environment, which GitHub lets only
-#   `main` use. Only the `gate`, `apps`, `e2e` and `stack` jobs on a push to main enter it, so only
+#   `main` use. Only the `checks`, `apps`, `e2e` and `stack` jobs on a push to main enter it, so only
 #   main writes the cache, and a pull request cannot poison it. A tag push (release.yml calling this
 #   workflow) is a push too, so each guard also names `refs/heads/main`. Never make it a plain
 #   repository secret: a same-repo pull request can read those.
@@ -17,14 +17,18 @@ name: CI
 #
 # Runs on GitHub-hosted `ubuntu-latest`. A pull request from a fork runs with a read-only token.
 # Never add `pull_request_target`, `workflow_run` or a comment trigger here; scripts/check-workflows.ts,
-# run by `gate`, refuses them, and any runner of our own.
+# run by `checks`, refuses them, and any runner of our own.
 #
-# release.yml reuses this workflow through `workflow_call`, so the release gate is this `gate` job and
+# release.yml reuses this workflow through `workflow_call`, so the release gate is this workflow and
 # never a copy of it. In a called workflow `github.event_name` and `github.ref` are the caller's (a
-# `push` of `refs/tags/v*`), so every job but `gate` carries `if: github.ref_type != 'tag'`: a tag is
-# cut from main, where they already ran.
+# `push` of `refs/tags/v*`), so every job but `checks` and `gate` carries
+# `if: github.ref_type != 'tag'`: a tag is cut from main, where they already ran.
 #
-# Check names are the job ids (no `name:` on a job): branch protection requires `gate`.
+# Check names are the job ids (no `name:` on a job). Branch protection requires one check, `gate`, the
+# last job: it waits for `checks` (typecheck, lint, format, parity, test), `changes`, `apps` (web
+# build, deploy dry run and web e2e), `e2e` (cross-language), `stack` (browser journey) and
+# `container` (self-hosting), and fails when any of them failed or was cancelled. A skipped job
+# passes: `apps` skips when nothing it covers changed, and on a tag every job but `checks` skips.
 
 on:
   pull_request:
@@ -42,7 +46,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  gate:
+  checks:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # A push to main enters the environment that holds the cache's write token; anything else enters
@@ -117,11 +121,11 @@ jobs:
     if: github.ref_type != 'tag' && needs.changes.outputs.apps == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Writes the cache on a push to main, like the gate job; see the header.
+    # Writes the cache on a push to main, like the checks job; see the header.
     environment: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'moon-cache-write' || '' }}
     env:
-      # The web tasks do not touch apps/server (the gate job covers it), and moon's graph
-      # needs no SDK, so none is installed here. MOON_BASE and the full history: see the gate job.
+      # The web tasks do not touch apps/server (the checks job covers it), and moon's graph
+      # needs no SDK, so none is installed here. MOON_BASE and the full history: see the checks job.
       MOON_BASE: origin/main
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -158,7 +162,7 @@ jobs:
     if: github.ref_type != 'tag'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # Writes the cache on a push to main, like the gate job; see the header.
+    # Writes the cache on a push to main, like the checks job; see the header.
     environment: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'moon-cache-write' || '' }}
     env:
       MOON_BASE: origin/main
@@ -187,7 +191,7 @@ jobs:
     if: github.ref_type != 'tag'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # Writes the cache on a push to main, like the gate job; see the header.
+    # Writes the cache on a push to main, like the checks job; see the header.
     environment: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'moon-cache-write' || '' }}
     env:
       MOON_BASE: origin/main
@@ -271,3 +275,23 @@ jobs:
       - name: Stop the stack and remove its volume
         if: always()
         run: docker compose down -v
+
+  # The one required check. It needs every job above and runs even when one failed (`always()`), so a
+  # red job turns it red; a job GitHub skipped by its `if:` is `skipped`, which passes. It checks out
+  # nothing and reads no secret.
+  gate:
+    needs: [checks, changes, apps, e2e, stack, container]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every needed job passed or was skipped
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          echo "results: $RESULTS"
+          if [ "$FAILED" = "true" ]; then
+            echo "a needed job failed or was cancelled" >&2
+            exit 1
+          fi
