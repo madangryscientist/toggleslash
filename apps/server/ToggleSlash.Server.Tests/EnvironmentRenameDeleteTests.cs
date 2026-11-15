@@ -20,7 +20,8 @@ public sealed class EnvironmentRenameDeleteTests : IDisposable
         await server.SeedProject();
         await server.SeedEnvironment("shop", "prod");
         await server.SeedEnvironment("shop", "staging");
-        await server.SeedFlag("shop", "checkout");
+        // Visible to client keys: a test counts usage on it with a client key.
+        await server.SeedFlag("shop", "checkout", clientVisible: true);
     }
 
     private async Task<(long Id, string Key)> Key(string env, string kind = "server")

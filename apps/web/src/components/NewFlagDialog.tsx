@@ -84,7 +84,6 @@ function Fields({ draft, onDraft, error, onSubmit }: FieldsProps) {
         />
         <Checkbox
           label="Visible to client keys"
-          description="A client key ships in a page, so it is answered only flags marked visible. Server keys see every flag."
           checked={draft.clientVisible}
           onChange={(e) => onDraft({ ...draft, clientVisible: e.currentTarget.checked })}
         />
@@ -142,6 +141,7 @@ export function NewFlagDialog({ project, onClose, onCreated }: Props) {
   return (
     <Dialog
       title="New flag"
+      size="lg"
       description={`A boolean flag in ${project.name}: off serves false, on serves true. It starts off in every environment.`}
       onClose={onClose}
       footer={
