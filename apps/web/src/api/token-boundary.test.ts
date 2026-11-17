@@ -25,6 +25,8 @@ describe("the admin token stays on the server", () => {
       "api/operator.ts",
       "api/session-middleware.ts",
       "server.ts",
+      // Build time only (vite.config.ts): reads BUILD_COMMIT, a commit sha, never a secret or the Worker's env.
+      "build-commit.ts",
     ]);
     const touching = files.filter((file) => {
       if (!/\.(ts|tsx)$/.test(file) || /\.test\.|routeTree\.gen/.test(file)) return false;

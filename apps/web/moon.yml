@@ -16,6 +16,18 @@ tasks:
       runFromWorkspaceRoot: true
   build:
     command: "bun run vite build"
+    # A task's inputs replace the default project glob, so `**/*` is restated with the negations for what
+    # a build writes. `$BUILD_COMMIT` is the commit the meta names: CI sets it to github.sha (ci.yml), so a
+    # cache hit cannot serve another commit's dist/. A local `moon run web:build` (or the root `bun run build`)
+    # does not set it, so it can still restore a dist/ built at an older commit; check the meta with
+    # `(cd apps/web && bun run build)`, which skips moon.
+    inputs:
+      - "**/*"
+      - "!/**/node_modules/**"
+      - "!/**/dist/**"
+      - "!/**/.wrangler/**"
+      - "!/**/.tanstack/**"
+      - "$BUILD_COMMIT"
     # The Cloudflare vite plugin writes .wrangler/deploy/config.json, which wrangler and vite preview
     # read, so a cache hit has to restore it with dist.
     outputs:

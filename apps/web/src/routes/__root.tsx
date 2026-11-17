@@ -9,6 +9,8 @@ export const Route = createRootRoute({
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { name: "color-scheme", content: "dark" },
+      // The commit this build was made from, so a deploy can be checked against it (docs/dashboard-hosting.md).
+      { name: "build-commit", content: APP_BUILD_COMMIT },
       { title: "ToggleSlash" },
     ],
     links: [{ rel: "stylesheet", href: appCss }],
