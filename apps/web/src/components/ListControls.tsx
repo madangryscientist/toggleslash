@@ -15,7 +15,7 @@ export function ListControls({ archived, onView, query, onQuery, summary }: Prop
   // Disabled until hydrated: before React attaches the handlers a click would do nothing, and nothing would say so.
   const hydrated = useHydrated();
   return (
-    <Cluster>
+    <Cluster gap="xs">
       <SegmentedControl
         label="Flags to show"
         disabled={!hydrated}
@@ -36,7 +36,7 @@ export function ListControls({ archived, onView, query, onQuery, summary }: Prop
           onChange={(event) => onQuery(event.currentTarget.value)}
         />
       </ClusterGrow>
-      <Text tone="muted" numeric>
+      <Text as="span" tone="muted" numeric>
         {summary}
       </Text>
     </Cluster>

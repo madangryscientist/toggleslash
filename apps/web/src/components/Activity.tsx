@@ -64,7 +64,7 @@ export function UsagePanel({
             hint="Counts only: no context or end-user data is stored."
             data-testid={`usage-total-${env.environment}`}
           />
-          <Table caption={`Daily evaluations in ${env.environment}`}>
+          <Table label={`Daily evaluations in ${env.environment}`}>
             <TableHead>
               <tr>
                 <TableHeaderCell>Day</TableHeaderCell>
@@ -76,9 +76,7 @@ export function UsagePanel({
               {env.days.map((day) => (
                 <TableRow key={day.day}>
                   <TableCell mono>{day.day}</TableCell>
-                  <TableCell numeric align="end">
-                    {day.count}
-                  </TableCell>
+                  <TableCell numeric>{day.count}</TableCell>
                   <TableCell>
                     {day.variations
                       .map(

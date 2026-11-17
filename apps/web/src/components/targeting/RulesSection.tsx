@@ -36,7 +36,7 @@ function RuleActions({
   onRemove: () => void;
 }) {
   return (
-    <Cluster>
+    <Cluster gap="xs">
       <Button variant="ghost" size="sm" disabled={disabled || first} onClick={() => onMove(-1)}>
         Move up
       </Button>
@@ -87,7 +87,7 @@ function RuleCard({
         />
       }
     >
-      <Stack gap="md">
+      <Stack>
         <Text tone="muted">If all of these clauses match:</Text>
         {clausesProblem !== undefined && <Text tone="danger">{clausesProblem.message}</Text>}
         {rule.clauses.map((clause, j) => (

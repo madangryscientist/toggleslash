@@ -91,12 +91,12 @@ function ClauseFooter({
   onRemove,
 }: Pick<ClauseProps, "disabled" | "onChange" | "onRemove"> & { clause: ClauseDraft }) {
   return (
-    <Cluster>
+    <Cluster gap="xs">
       <Checkbox
         label="Negate"
         disabled={disabled}
         checked={clause.negate}
-        onChange={(e) => onChange({ ...clause, negate: e.currentTarget.checked })}
+        onChange={(checked) => onChange({ ...clause, negate: checked })}
       />
       <Button variant="ghost" size="sm" tone="danger" disabled={disabled} onClick={onRemove}>
         Remove clause
@@ -124,7 +124,7 @@ export function ClauseRow({
   );
   return (
     <Stack gap="xs" data-testid={id}>
-      <Cluster wrap align="start">
+      <Cluster gap="xs" align="start">
         <Field label="Operator" htmlFor={`${id}-op`} error={opProblem?.message}>
           <Select
             id={`${id}-op`}
@@ -133,14 +133,11 @@ export function ClauseRow({
             width="auto"
             value={clause.op}
             onChange={(e) => onChange({ ...clause, op: e.currentTarget.value })}
-          >
-            {ATTRIBUTE_OPS.map((op) => (
-              <option key={op} value={op}>
-                {op}
-              </option>
-            ))}
-            <option value={SEGMENT_OP}>in segment</option>
-          </Select>
+            items={[
+              ...ATTRIBUTE_OPS.map((op) => ({ value: op, label: op })),
+              { value: SEGMENT_OP, label: "in segment" },
+            ]}
+          />
         </Field>
         {!segment && (
           <Field

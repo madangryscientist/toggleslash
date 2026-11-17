@@ -41,13 +41,8 @@ function VariationPicker({
         width="auto"
         value={String(serve.variation)}
         onChange={(e) => onChange({ kind: "variation", variation: Number(e.currentTarget.value) })}
-      >
-        {variations.map((v, i) => (
-          <option key={i} value={String(i)}>
-            {i}: {v}
-          </option>
-        ))}
-      </Select>
+        items={variations.map((v, i) => ({ value: String(i), label: `${i}: ${v}` }))}
+      />
     </Field>
   );
 }
@@ -170,13 +165,11 @@ export function ServeEditor({
               ),
             )
           }
-        >
-          {(["variation", "rollout"] as const).map((kind) => (
-            <option key={kind} value={kind}>
-              {KIND_LABELS[kind]}
-            </option>
-          ))}
-        </Select>
+          items={(["variation", "rollout"] as const).map((kind) => ({
+            value: kind,
+            label: KIND_LABELS[kind],
+          }))}
+        />
       </Field>
       {serve.kind === "variation" ? (
         <VariationPicker

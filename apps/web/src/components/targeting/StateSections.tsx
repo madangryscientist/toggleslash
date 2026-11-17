@@ -21,19 +21,14 @@ export function StateSection({ draft, onDraft, problems, flag, disabled }: Secti
     <Section title="State">
       <Checkbox
         label="Targeting is on"
-        description="When off, the flag serves its off variation to everyone."
+        hint="When off, the flag serves its off variation to everyone."
         data-testid="targeting-on"
         disabled={disabled}
         checked={draft.on}
-        onChange={(e) => onDraft({ ...draft, on: e.currentTarget.checked })}
+        onChange={(checked) => onDraft({ ...draft, on: checked })}
       />
-      <Field
-        label="Off variation"
-        htmlFor="off-variation"
-        error={at(problems, "offVariation")?.message}
-      >
+      <Field label="Off variation" error={at(problems, "offVariation")?.message}>
         <Select
-          id="off-variation"
           data-testid="off-variation"
           disabled={disabled}
           width="auto"
@@ -44,14 +39,11 @@ export function StateSection({ draft, onDraft, problems, flag, disabled }: Secti
               offVariation: e.currentTarget.value === "" ? null : Number(e.currentTarget.value),
             })
           }
-        >
-          <option value="">None (serves null)</option>
-          {flag.variations.map((v, i) => (
-            <option key={i} value={String(i)}>
-              {VARIATION_LABEL(v, i)}
-            </option>
-          ))}
-        </Select>
+          items={[
+            { value: "", label: "None (serves null)" },
+            ...flag.variations.map((v, i) => ({ value: String(i), label: VARIATION_LABEL(v, i) })),
+          ]}
+        />
       </Field>
     </Section>
   );
@@ -144,7 +136,7 @@ function OtherKindTargets({ draft, onDraft, problems, flag, disabled }: SectionP
           onDraft({ ...draft, targets: replaceAt(draft.targets, index, { ...target, ...next }) });
         return (
           <Stack key={index} gap="xs">
-            <Cluster wrap align="start">
+            <Cluster gap="xs" align="start">
               <Field label="Serve" htmlFor={`${id}-variation`}>
                 <Select
                   id={`${id}-variation`}
@@ -153,13 +145,11 @@ function OtherKindTargets({ draft, onDraft, problems, flag, disabled }: SectionP
                   width="auto"
                   value={String(target.variation)}
                   onChange={(e) => change({ variation: Number(e.currentTarget.value) })}
-                >
-                  {flag.variations.map((v, i) => (
-                    <option key={i} value={String(i)}>
-                      {VARIATION_LABEL(v, i)}
-                    </option>
-                  ))}
-                </Select>
+                  items={flag.variations.map((v, i) => ({
+                    value: String(i),
+                    label: VARIATION_LABEL(v, i),
+                  }))}
+                />
               </Field>
               <Field label="Context kind" htmlFor={`${id}-kind`}>
                 <Input

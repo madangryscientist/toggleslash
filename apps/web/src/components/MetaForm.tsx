@@ -56,25 +56,19 @@ function MetaFields({ flag, draft, problems, onDraft: edit }: FieldsProps) {
   const hydrated = useHydrated();
   return (
     <>
-      <Field label="Key" htmlFor="meta-key" hint="What code asks for. It cannot change.">
-        <Input id="meta-key" value={flag.key} readOnly />
+      <Field label="Key" hint="What code asks for. It cannot change.">
+        <Input value={flag.key} readOnly />
       </Field>
-      <Field label="Name" htmlFor="meta-name" error={at(problems, "name")?.message}>
+      <Field label="Name" error={at(problems, "name")?.message}>
         <Input
-          id="meta-name"
           disabled={!hydrated}
           data-testid="meta-name"
           value={draft.name}
           onChange={(e) => edit({ ...draft, name: e.currentTarget.value })}
         />
       </Field>
-      <Field
-        label="Description"
-        htmlFor="meta-description"
-        error={at(problems, "description")?.message}
-      >
+      <Field label="Description" error={at(problems, "description")?.message}>
         <Textarea
-          id="meta-description"
           disabled={!hydrated}
           data-testid="meta-description"
           rows={2}
@@ -82,9 +76,8 @@ function MetaFields({ flag, draft, problems, onDraft: edit }: FieldsProps) {
           onChange={(e) => edit({ ...draft, description: e.currentTarget.value })}
         />
       </Field>
-      <Field label="Owner" htmlFor="meta-owner" error={at(problems, "owner")?.message}>
+      <Field label="Owner" error={at(problems, "owner")?.message}>
         <Input
-          id="meta-owner"
           disabled={!hydrated}
           data-testid="meta-owner"
           value={draft.owner}
@@ -93,12 +86,10 @@ function MetaFields({ flag, draft, problems, onDraft: edit }: FieldsProps) {
       </Field>
       <Field
         label="Tags"
-        htmlFor="meta-tags"
         hint="Separated by commas or spaces."
         error={at(problems, "tags")?.message}
       >
         <Input
-          id="meta-tags"
           disabled={!hydrated}
           data-testid="meta-tags"
           value={draft.tags}
@@ -108,16 +99,16 @@ function MetaFields({ flag, draft, problems, onDraft: edit }: FieldsProps) {
       <Checkbox
         label="Temporary"
         disabled={!hydrated}
-        description="A rollout or experiment to remove later, not a permanent switch."
+        hint="A rollout or experiment to remove later, not a permanent switch."
         checked={draft.temporary}
-        onChange={(e) => edit({ ...draft, temporary: e.currentTarget.checked })}
+        onChange={(checked) => edit({ ...draft, temporary: checked })}
       />
       <Checkbox
         label="Visible to client keys"
         disabled={!hydrated}
-        description="A client key ships in a page, so it is answered only flags marked visible. Server keys see every flag."
+        hint="A client key ships in a page, so it is answered only flags marked visible. Server keys see every flag."
         checked={draft.clientVisible}
-        onChange={(e) => edit({ ...draft, clientVisible: e.currentTarget.checked })}
+        onChange={(checked) => edit({ ...draft, clientVisible: checked })}
       />
       <Text tone="muted">Variations: {flag.variations.map((v, i) => `${i}: ${v}`).join(", ")}</Text>
     </>
@@ -182,17 +173,16 @@ export function MetaForm({ project, flag, onSaved }: Props) {
         <Stack gap="sm">
           <MetaFields flag={flag} draft={draft} problems={problems} onDraft={edit} />
           {formError !== null && (
-            <Callout tone="danger" title="Not saved" data-testid="meta-error" role="alert">
+            <Callout tone="danger" title="Not saved" data-testid="meta-error">
               {formError}
             </Callout>
           )}
-          <Cluster>
+          <Cluster gap="xs">
             <Button
               type="submit"
               data-testid="save-meta"
               disabled={!hydrated || !dirty}
-              busy={saving}
-              busyLabel="Saving"
+              busy={saving && "Saving"}
             >
               Save details
             </Button>

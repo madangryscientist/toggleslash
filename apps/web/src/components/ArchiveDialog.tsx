@@ -12,7 +12,7 @@ export function ArchiveDialog({ flag, onCancel, onConfirm }: ArchiveProps) {
     <Dialog
       title={`Archive ${flag.name}?`}
       description="An archived flag is hidden from this list and from the SDK ruleset. Its key stays reserved."
-      size="sm"
+      width="sm"
       onClose={onCancel}
       footer={
         <>

@@ -28,7 +28,7 @@ function KeyTable({ keys, onRevoke }: TableProps) {
   // Disabled until hydrated: before React attaches the handlers a click would do nothing, and nothing would say so.
   const hydrated = useHydrated();
   return (
-    <Table caption="SDK keys" data-testid="keys">
+    <Table label="SDK keys" data-testid="keys">
       <TableHead>
         <TableRow>
           <TableHeaderCell>Name</TableHeaderCell>
@@ -36,7 +36,7 @@ function KeyTable({ keys, onRevoke }: TableProps) {
           <TableHeaderCell>Prefix</TableHeaderCell>
           <TableHeaderCell>Created</TableHeaderCell>
           <TableHeaderCell>Status</TableHeaderCell>
-          <TableHeaderCell srLabel="Actions" />
+          <TableHeaderCell label="Actions" />
         </TableRow>
       </TableHead>
       <TableBody>
@@ -44,22 +44,21 @@ function KeyTable({ keys, onRevoke }: TableProps) {
           <TableRow key={key.id} data-testid={`key-${key.id}`}>
             <TableCell tone="strong">{key.name}</TableCell>
             <TableCell>
-              <Pill tone={key.kind === "server" ? "slate" : "blue"}>{key.kind}</Pill>
+              <Pill tone={key.kind === "server" ? "neutral" : "info"}>{key.kind}</Pill>
             </TableCell>
             <TableCell mono>{key.prefix}</TableCell>
             <TableCell tone="muted">{day(key.createdAt)}</TableCell>
             <TableCell>
               {key.revokedAt === null ? (
-                <Pill tone="emerald">active</Pill>
+                <Pill tone="positive">active</Pill>
               ) : (
-                <Pill tone="amber">revoked {day(key.revokedAt)}</Pill>
+                <Pill tone="warn">revoked {day(key.revokedAt)}</Pill>
               )}
             </TableCell>
             <TableCell align="end">
               {key.revokedAt === null && (
                 <Button
                   variant="ghost"
-                  size="sm"
                   tone="danger"
                   disabled={!hydrated}
                   aria-label={`Revoke ${key.name}`}
@@ -114,7 +113,7 @@ export function KeysPanel({ project, environment, keys, onChanged }: Props) {
     <Stack width="full">
       <PageHeader
         title="SDK keys"
-        subtitle={`${project.name} · ${environment.name}`}
+        description={`${project.name} · ${environment.name}`}
         actions={
           <Button disabled={!hydrated} onClick={startCreating} data-testid="new-key-button">
             New key

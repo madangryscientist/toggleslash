@@ -51,9 +51,8 @@ function SignIn() {
             </Callout>
           )}
           <input type="hidden" name="returnTo" value={returnTo} />
-          <Field label="Password" htmlFor="sign-in-password">
+          <Field label="Password">
             <Input
-              id="sign-in-password"
               name="password"
               type="password"
               autoComplete="current-password"

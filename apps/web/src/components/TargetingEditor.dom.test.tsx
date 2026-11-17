@@ -128,7 +128,7 @@ test("a version conflict keeps the typing, says to reload, and refuses again", a
   save.mockResolvedValue(conflict);
   await user.click(saveButton);
 
-  const warning = await page.findByRole("alert");
+  const warning = await page.findByRole("status");
   expect(warning.textContent).toContain("Someone else changed this flag");
   expect(warning.textContent).toContain("reload the page");
   expect(valueOf(values)).toBe("NL, DE, BE");

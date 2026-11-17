@@ -23,7 +23,7 @@ export function SecureModeSwitch({
       checked={env.secureMode}
       busy={saving}
       disabled={!hydrated || noKey}
-      description={noKey ? "Make a signing key first." : undefined}
+      hint={noKey ? "Make a signing key first." : undefined}
       data-testid={`secure-mode-${env.key}`}
       onChange={onChange}
     />
@@ -47,10 +47,9 @@ export function RowActions({
   // Disabled until hydrated: before React attaches the handlers a click would do nothing, and nothing would say so.
   const hydrated = useHydrated();
   return (
-    <Cluster justify="end">
+    <Cluster gap="xs" wrap={false} justify="end">
       <Button
         variant="outline"
-        size="sm"
         disabled={!hydrated}
         aria-label={`Signing key for ${env.key}`}
         data-testid={`signing-key-${env.key}`}
@@ -60,7 +59,6 @@ export function RowActions({
       </Button>
       <Button
         variant="outline"
-        size="sm"
         disabled={!hydrated}
         aria-label={`Rename ${env.key}`}
         data-testid={`rename-${env.key}`}
@@ -70,7 +68,6 @@ export function RowActions({
       </Button>
       <Button
         variant="ghost"
-        size="sm"
         tone="danger"
         disabled={!hydrated}
         aria-label={`Delete ${env.key}`}

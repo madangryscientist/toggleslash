@@ -47,7 +47,7 @@ function EnvironmentTable({
   onDelete,
 }: TableProps) {
   return (
-    <Table caption={`Environments in ${projectName}`} data-testid="environments">
+    <Table label={`Environments in ${projectName}`} data-testid="environments">
       <TableHead>
         <TableRow>
           <TableHeaderCell>Name</TableHeaderCell>
@@ -55,7 +55,7 @@ function EnvironmentTable({
           <TableHeaderCell>Created</TableHeaderCell>
           <TableHeaderCell>Secure mode</TableHeaderCell>
           <TableHeaderCell>Signing key</TableHeaderCell>
-          <TableHeaderCell srLabel="Actions" />
+          <TableHeaderCell label="Actions" />
         </TableRow>
       </TableHead>
       <TableBody>
@@ -196,7 +196,7 @@ export function EnvironmentsPanel({ loaded, onChanged }: Props) {
     <Stack width="full">
       <PageHeader
         title="Environments"
-        subtitle={project.name}
+        description={project.name}
         actions={
           <Button disabled={!hydrated} onClick={create} data-testid="new-environment">
             New environment

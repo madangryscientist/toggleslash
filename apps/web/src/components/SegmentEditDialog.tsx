@@ -31,15 +31,10 @@ interface FieldsProps {
 function SegmentFields({ draft, onChange, rulesError }: FieldsProps) {
   return (
     <>
-      <Cluster align="start">
+      <Cluster gap="xs" align="start">
         <ClusterGrow>
-          <Field
-            label="Always included"
-            htmlFor="segment-included"
-            hint="One context key per line."
-          >
+          <Field label="Always included" hint="One context key per line.">
             <Textarea
-              id="segment-included"
               rows={3}
               value={draft.included}
               onChange={(e) => onChange({ ...draft, included: e.currentTarget.value })}
@@ -47,9 +42,8 @@ function SegmentFields({ draft, onChange, rulesError }: FieldsProps) {
           </Field>
         </ClusterGrow>
         <ClusterGrow>
-          <Field label="Always excluded" htmlFor="segment-excluded" hint="Wins over included.">
+          <Field label="Always excluded" hint="Wins over included.">
             <Textarea
-              id="segment-excluded"
               rows={3}
               value={draft.excluded}
               onChange={(e) => onChange({ ...draft, excluded: e.currentTarget.value })}
@@ -57,15 +51,10 @@ function SegmentFields({ draft, onChange, rulesError }: FieldsProps) {
           </Field>
         </ClusterGrow>
       </Cluster>
-      <Cluster align="start">
+      <Cluster gap="xs" align="start">
         <ClusterGrow>
-          <Field
-            label="Included, other kinds"
-            htmlFor="segment-included-kinds"
-            hint="One kind:key per line, such as org:acme."
-          >
+          <Field label="Included, other kinds" hint="One kind:key per line, such as org:acme.">
             <Textarea
-              id="segment-included-kinds"
               rows={2}
               value={draft.includedKinds}
               onChange={(e) => onChange({ ...draft, includedKinds: e.currentTarget.value })}
@@ -73,13 +62,8 @@ function SegmentFields({ draft, onChange, rulesError }: FieldsProps) {
           </Field>
         </ClusterGrow>
         <ClusterGrow>
-          <Field
-            label="Excluded, other kinds"
-            htmlFor="segment-excluded-kinds"
-            hint="One kind:key per line. Wins over included."
-          >
+          <Field label="Excluded, other kinds" hint="One kind:key per line. Wins over included.">
             <Textarea
-              id="segment-excluded-kinds"
               rows={2}
               value={draft.excludedKinds}
               onChange={(e) => onChange({ ...draft, excludedKinds: e.currentTarget.value })}
@@ -87,14 +71,8 @@ function SegmentFields({ draft, onChange, rulesError }: FieldsProps) {
           </Field>
         </ClusterGrow>
       </Cluster>
-      <Field
-        label="Rules"
-        htmlFor="segment-rules"
-        hint="A JSON array, as docs/evaluation.md describes."
-        error={rulesError}
-      >
+      <Field label="Rules" hint="A JSON array, as docs/evaluation.md describes." error={rulesError}>
         <Textarea
-          id="segment-rules"
           rows={5}
           value={draft.rules}
           onChange={(e) => onChange({ ...draft, rules: e.currentTarget.value })}
@@ -176,7 +154,7 @@ export function EditSegmentDialog({ project, environment, segment, onClose, onSa
     <Dialog
       title={`Edit ${segment.key}`}
       description={`Saving replaces its members and rules in ${environment.name}.`}
-      size="lg"
+      width="lg"
       onClose={onClose}
       footer={
         <>
@@ -186,8 +164,7 @@ export function EditSegmentDialog({ project, environment, segment, onClose, onSa
           <Button
             type="submit"
             form="segment-form"
-            busy={saving}
-            busyLabel="Saving"
+            busy={saving && "Saving"}
             data-testid="save-segment"
           >
             Save segment

@@ -8,6 +8,7 @@ import {
   type AnyRoute,
 } from "@tanstack/react-router";
 import { isValidElement, type ReactElement } from "react";
+import { LinkThroughRouter } from "#/link";
 
 /**
  * Renders a page inside a real TanStack Router on a memory history, so `Link`, `useRouter` and
@@ -41,6 +42,8 @@ export async function render(
   const router = createRouter({
     routeTree: rootRoute,
     history: createMemoryHistory({ initialEntries: [url] }),
+    // The app's own link adapter, so a hackcove link renders as it does in the app.
+    InnerWrap: LinkThroughRouter,
   });
   const user = userEvent.setup();
   const view = renderDom(<RouterProvider router={router} />);
