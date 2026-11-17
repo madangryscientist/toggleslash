@@ -192,9 +192,10 @@ tag that equals the version, in dependency order, with provenance, and skips a v
 has is published through trusted publishing (OIDC), with no token. A package npm does not have yet (its only version,
 if any, is npm's `0.0.0-stage` placeholder) cannot have a trusted publisher, so its first version is staged
 (`npm stage publish`) with the `NPM_TOKEN` secret on the `npm` environment, a granular token that does not bypass 2FA;
-a version already staged and waiting for approval is skipped on a rerun. The maintainer then approves the staged
-version with 2FA under Staged Packages on npmjs.com, sets the package's trusted publisher (`release.yml`, environment
-`npm`), and every later tag publishes it through OIDC. A bump changes all six versions, `ENGINE_VERSION` and
+a package that depends on one being staged is staged with it, and a version already staged and waiting for
+approval is skipped on a rerun. The maintainer then approves the staged version with 2FA under Staged Packages on
+npmjs.com, sets the package's trusted publisher (`release.yml`, environment `npm`), and every later tag publishes it
+through OIDC. A bump changes all six versions, `ENGINE_VERSION` and
 `bun.lock` together.
 
 ## Landing
