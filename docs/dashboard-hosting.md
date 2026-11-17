@@ -1,7 +1,7 @@
 # Hosting the dashboard
 
 The dashboard (`apps/web`) runs as a Cloudflare Worker at `flags.madangryscientist.com`, a hostname the
-maintainer chose. No hosted service runs until the maintainer deploys it: this page is how, and the
+maintainer chose. The maintainer has deployed it there, for the maintainer only: this page is how, and the
 deploy is the maintainer's step, never a contributor's or a CI job's.
 
 ## What is in front

@@ -5,7 +5,7 @@ in a browser. **The server evaluates.** The browser never receives a ruleset and
 `POST /sdk/v1/evaluate`, keeps the whole answer in memory, serves it synchronously, and asks again when
 `GET /sdk/v1/changes` says something changed (see [`api.md`](api.md), and section 13 of
 [`launchdarkly-gap-analysis.md`](launchdarkly-gap-analysis.md) for why). It needs a **client** key. It is packaged for npm by
-`release.yml` and not yet published; the first publish waits for the maintainer. The server-side SDK is in [`sdk.md`](sdk.md).
+`release.yml` and published on npm at 0.1.0. The server-side SDK is in [`sdk.md`](sdk.md).
 
 ```ts
 import { createBrowserClient } from "@hackcove/toggleslash-sdk-browser";
@@ -169,4 +169,4 @@ The signal parser, the usage reporter, the clock and the HTTP helpers are the se
 
 ## Not yet
 
-- No React binding, no persistence between page loads, no flush on page hide, and not yet on npm.
+- No React binding, no persistence between page loads, and no flush on page hide.

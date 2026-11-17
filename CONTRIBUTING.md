@@ -43,4 +43,7 @@ Lint rules are errors: fix the code, do not disable a rule.
   `style`, `revert`). The scope is the area (`cli`, `engine`, `sdk`, `web`, `server`, `ci`) and the issue goes
   at the end: `fix(engine): handle an empty rule list (#12)`. The squash keeps your subject.
 - Stage files by name. Never commit straight to `main`.
+- A change to what ToggleSlash does, where it runs or its licence updates [`FACTS.md`](FACTS.md) in the same pull
+  request, and moves its "Checked against" line to the current `origin/main` sha and date. Sites that describe ToggleSlash
+  cite its fact ids, so never reuse an id for a different fact: remove a line that stops being true, or move it to Planned.
 - No AI attribution trailers are required or expected.

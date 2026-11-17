@@ -2,7 +2,7 @@
 
 A server-side [OpenFeature](https://openfeature.dev) provider over the ToggleSlash TypeScript SDK. It is a thin adapter:
 it evaluates nothing itself, makes no network call and caches nothing. Every answer is `client.variationDetail(...)` from
-`@hackcove/toggleslash-sdk`, mapped to OpenFeature's `ResolutionDetails`. Packaged for npm by `release.yml`; not yet published.
+`@hackcove/toggleslash-sdk`, mapped to OpenFeature's `ResolutionDetails`. Published on npm by `release.yml`.
 
 ```sh
 npm install @hackcove/toggleslash-sdk-openfeature @hackcove/toggleslash-sdk @openfeature/server-sdk
@@ -61,4 +61,3 @@ On an `ERROR` reason the `errorMessage` is the SDK's own code.
 - No provider events: a ruleset change does not emit `ConfigurationChanged`.
 - Server side only. There is no web provider and no provider for another language.
 - No `flagMetadata`, no `track`, no hooks.
-- Not yet on npm: packaged by `release.yml`, published by the maintainer.

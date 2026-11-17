@@ -3,7 +3,7 @@
 `packages/sdk` (`@hackcove/toggleslash-sdk`, moon project `sdk`) is the server-side SDK for TypeScript: it keeps
 a copy of one environment's ruleset current and evaluates flags **locally** with `@hackcove/toggleslash-engine`,
 to [`evaluation.md`](evaluation.md). It needs a **server** key (`ruleset` and `stream` refuse a client key). It
-is packaged for npm by `release.yml` and not yet published; the first publish waits for the maintainer. Code that runs in a browser uses the
+is published on npm at 0.1.0 by `release.yml`. Code that runs in a browser uses the
 [browser SDK](sdk-browser.md) instead, where the server evaluates.
 
 This page is the TypeScript binding of the language-neutral [SDK contract](sdk-contract.md), which says what
@@ -22,7 +22,7 @@ canonical names are:
 | `hooks.afterEvaluation`, `onError` | `hooks.afterEvaluation`, `onError` |
 
 ```sh
-npm install @hackcove/toggleslash-sdk   # once published; it brings @hackcove/toggleslash-engine with it
+npm install @hackcove/toggleslash-sdk   # it brings @hackcove/toggleslash-engine with it
 ```
 
 ```ts

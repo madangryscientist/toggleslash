@@ -5,7 +5,7 @@
 **active OpenTelemetry span**, with the flag's result and the **hash of the ruleset the SDK held**. Later, anyone
 holding a trace can ask the server what the flags were under that hash ([below](#from-a-trace-to-the-flags)).
 
-It is packaged for npm by `release.yml` and not yet published. It depends on `@opentelemetry/api` only: it bundles no exporter and
+It is published on npm at 0.1.0 by `release.yml`. It depends on `@opentelemetry/api` only: it bundles no exporter and
 starts no tracer provider, so the application owns both. The SDK itself has no OpenTelemetry dependency; it only
 offers [`hooks.afterEvaluation`](sdk.md#hooks).
 

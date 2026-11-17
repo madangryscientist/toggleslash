@@ -4,7 +4,7 @@ The ToggleSlash flag evaluator for TypeScript: pure functions over a ruleset, wi
 dependencies. It implements [`docs/evaluation.md`](https://github.com/madangryscientist/toggleslash/blob/main/docs/evaluation.md), and every shared vector in
 `fixtures/evaluation/` runs against it. Most applications want the
 [server SDK](https://github.com/madangryscientist/toggleslash/blob/main/docs/sdk.md) (`@hackcove/toggleslash-sdk`), which keeps a ruleset current and calls this for you.
-Packaged for npm by `release.yml`; not yet published.
+Published on npm by `release.yml`.
 
 ```sh
 npm install @hackcove/toggleslash-engine
