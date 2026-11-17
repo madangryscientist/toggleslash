@@ -3,13 +3,21 @@ name: Release
 # Publishes the six ToggleSlash npm packages when a `v*` tag is pushed: `@hackcove/toggleslash` (the CLI,
 # packages/cli), `@hackcove/toggleslash-engine`, `@hackcove/toggleslash-sdk`, `@hackcove/toggleslash-sdk-browser`,
 # `@hackcove/toggleslash-sdk-otel` and `@hackcove/toggleslash-sdk-openfeature`, all at the tag's version. ci.yml's
-# gate runs first (a reusable workflow call, not a copy), then `bun scripts/pack.ts` builds and packs the six, and
-# `npm publish --provenance` sends each tarball, in dependency order. There is no NPM_TOKEN anywhere: npm trusted
-# publishing (OIDC) lets this workflow publish with a short-lived token that npm checks against the trusted
-# publisher set on each package's npm settings page (repository, workflow file `release.yml`, environment `npm`).
-# A trusted publisher can only be set on a package that exists, so the first version of each package is published
-# by the maintainer by hand. Those pages, the `npm` environment and the tag are the maintainer's steps; nothing here
-# runs until a tag is pushed. Actions are pinned to a commit; the tag is in the comment.
+# gate runs first (a reusable workflow call, not a copy), then `bun scripts/pack.ts` builds and packs the six.
+#
+# Each package takes one of two paths, decided by asking npm whether it has the package:
+# - npm has it (any version but the `0.0.0-stage` placeholder below): `npm publish --provenance` through npm trusted
+#   publishing (OIDC), with a short-lived token npm checks against the trusted publisher set on the package's npm
+#   settings page (repository, workflow file `release.yml`, environment `npm`). No token is in that step.
+# - npm does not have it: a trusted publisher can only be set on a package that exists, so its first version is
+#   staged instead (`npm stage publish`, npm 11.15.0 or newer) with `NPM_TOKEN`, a granular token on the `npm`
+#   environment that does not bypass 2FA. Staging a new package makes npm publish a public `0.0.0-stage`
+#   placeholder; the staged version itself stays private until the maintainer approves it with 2FA under Staged
+#   Packages on npmjs.com. The maintainer then sets the package's trusted publisher, and every later tag publishes
+#   it through OIDC. A package that depends on one being staged in the same run is staged too, so nothing public
+#   names a version that still waits for approval.
+# The `npm` environment, its secret, the approvals, the trusted publishers and the tag are the maintainer's steps;
+# nothing here runs until a tag is pushed. Actions are pinned to a commit; the tag is in the comment.
 
 on:
   push:
@@ -73,18 +81,96 @@ jobs:
       # runner. There is no cache token here either.
       - name: Build and pack
         run: bun scripts/pack.ts --out "$RUNNER_TEMP/pack"
-      # Dependency order: each package after the packages it depends on, so a later one never names a version
-      # npm does not have yet. A version npm already has is skipped, so a rerun after a publish that stopped
-      # partway sends the rest instead of failing on the first.
-      - name: Publish
+      # Staging needs npm 11.15.0 or newer; Node 24 may ship an older 11.x. Pinned, so the release runs a known npm.
+      - name: npm for staged publishing
+        run: npm install --global npm@11.15.0
+      # Which packages go which way, in dependency order (each package after the packages it depends on). A package
+      # is staged when npm does not have it (no versions, or only the `0.0.0-stage` placeholder of a first version
+      # staged and not yet approved: it has no trusted publisher yet), and so is every package that depends on a
+      # staged one, so nothing public ever names a version that is still waiting for approval. The rest publish
+      # through OIDC.
+      - name: Which packages npm has
+        id: packages
+        run: |
+          published=""
+          staged=""
+          for name in toggleslash-engine toggleslash-sdk toggleslash-sdk-browser toggleslash-sdk-otel toggleslash-sdk-openfeature toggleslash; do
+            if out="$(npm view "@hackcove/$name" versions --json 2>"$RUNNER_TEMP/npm-view.err")"; then
+              kind="$(node -e 'const v = [].concat(JSON.parse(process.argv[1])); console.log(v.some((x) => x !== "0.0.0-stage") ? "on-npm" : "placeholder")' "$out")" || {
+                echo "::error::Could not read npm's versions of @hackcove/$name: $out"
+                exit 1
+              }
+            elif grep -q E404 <<<"$out"; then
+              kind="new"
+            else
+              echo "::error::Could not ask npm whether @hackcove/$name exists: $out $(cat "$RUNNER_TEMP/npm-view.err")"
+              exit 1
+            fi
+            dir="${name#toggleslash-}"
+            if [ "$name" = toggleslash ]; then dir=cli; fi
+            for dependency in $(node -p 'Object.keys(require(process.argv[1]).dependencies ?? {}).filter((d) => d.startsWith("@hackcove/toggleslash")).map((d) => d.slice("@hackcove/".length)).join(" ")' "./packages/$dir/package.json"); do
+              if [[ " $staged " == *" $dependency "* ]]; then kind="depends on a staged package"; fi
+            done
+            if [ "$kind" = on-npm ]; then
+              published="$published $name"
+            else
+              staged="$staged $name"
+              echo "@hackcove/$name is staged: $kind"
+            fi
+          done
+          echo "published=${published# }" >> "$GITHUB_OUTPUT"
+          echo "staged=${staged# }" >> "$GITHUB_OUTPUT"
+          echo "through OIDC:${published:- none}; staged:${staged:- none}"
+      # Packages npm has, through OIDC. No token is in this step's environment. They go before the staged ones, which
+      # may depend on them (never the other way round). A version npm already has is skipped, so a rerun after a
+      # publish that stopped partway sends the rest instead of failing on the first.
+      - name: Publish (trusted publishing)
+        if: steps.packages.outputs.published != ''
         env:
+          PUBLISHED: ${{ steps.packages.outputs.published }}
           TAG: ${{ github.ref_name }}
         run: |
           version="${TAG#v}"
-          for name in toggleslash-engine toggleslash-sdk toggleslash-sdk-browser toggleslash-sdk-otel toggleslash-sdk-openfeature toggleslash; do
+          for name in $PUBLISHED; do
             if [ "$(npm view "@hackcove/$name@$version" version 2>/dev/null)" = "$version" ]; then
               echo "@hackcove/$name@$version is already on npm; skipped"
               continue
             fi
             npm publish "$RUNNER_TEMP/pack/hackcove-$name-$version.tgz" --provenance --access public
           done
+      # Staged for the maintainer's approval, in dependency order. This is the only step that sees NPM_TOKEN; it is
+      # written to a private userconfig outside the checkout that the step removes on exit. npm refuses to stage a
+      # version that is already staged, so a version staged by an earlier run and still waiting (any status but
+      # rejected) is skipped: a rerun leaves it for approval instead of failing.
+      - name: Stage (NPM_TOKEN)
+        if: steps.packages.outputs.staged != ''
+        env:
+          STAGED: ${{ steps.packages.outputs.staged }}
+          TAG: ${{ github.ref_name }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "::error::@hackcove/{${STAGED// /,}} are to be staged, which needs the NPM_TOKEN secret on the npm environment."
+            exit 1
+          fi
+          version="${TAG#v}"
+          export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/stage.npmrc"
+          trap 'rm -f "$NPM_CONFIG_USERCONFIG"' EXIT
+          (umask 077 && printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > "$NPM_CONFIG_USERCONFIG")
+          for name in $STAGED; do
+            if [ "$(npm view "@hackcove/$name@$version" version 2>/dev/null)" = "$version" ]; then
+              echo "@hackcove/$name@$version is already on npm; skipped"
+              continue
+            fi
+            waiting="$(npm stage list "@hackcove/$name" --json)"
+            already="$(node -e 'const v = process.argv[2]; console.log(JSON.parse(process.argv[1]).some((i) => i.version === v && !/reject/i.test(String(i.status))))' "$waiting" "$version")" || {
+              echo "::error::Could not read the staged versions of @hackcove/$name: $waiting"
+              exit 1
+            }
+            if [ "$already" = true ]; then
+              echo "@hackcove/$name@$version is already staged and waits for approval on npmjs.com; skipped"
+              continue
+            fi
+            npm stage publish "$RUNNER_TEMP/pack/hackcove-$name-$version.tgz" --provenance --access public
+          done
+          echo "Staged versions wait for the maintainer's 2FA approval under Staged Packages on npmjs.com."

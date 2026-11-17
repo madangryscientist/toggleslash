@@ -15,7 +15,8 @@ Renamed from FeatureSlash to ToggleSlash.
 
 - The five TypeScript libraries are packaged for npm with the CLI: the engine, the server SDK, the browser SDK, the
   OpenTelemetry hook and the OpenFeature provider, each as JavaScript with type declarations. `bun scripts/pack.ts`
-  builds and packs all six, and `release.yml` publishes them on a `v*` tag. A Cloudflare Worker that imports the
+  builds and packs all six, and `release.yml` publishes them on a `v*` tag: a package's first version is staged for
+  the maintainer's approval on npmjs.com, and later versions publish through npm trusted publishing. A Cloudflare Worker that imports the
   server SDK should set the `nodejs_compat` flag (before compatibility date 2026-09-01 it does not start without
   it); see `docs/sdk.md`.
 - Secure mode, per environment: a client-key `POST /sdk/v1/evaluate` must carry a signature over the context's keys,

@@ -187,9 +187,16 @@ library's `exports` stay on `./src/*.ts`; `bun scripts/pack.ts` is what makes th
 `tsc -p tsconfig.build.json` (emits `dist/`: JavaScript with `.js` import paths, and `.d.ts`), stages a copy under
 `$TMPDIR/toggleslash-pack` (or `--out`) with `exports` into `dist`, `workspace:*` pinned to the version and no
 `devDependencies`, rebuilds the CLI bundle with `--force`, and runs `npm pack` on each. It refuses to run unless the
-six `package.json` versions and the engine's `ENGINE_VERSION` agree. `release.yml` publishes those tarballs on a `v*`
-tag that equals the version, in dependency order, with provenance. A bump changes all six versions, `ENGINE_VERSION`
-and `bun.lock` together.
+six `package.json` versions and the engine's `ENGINE_VERSION` agree. `release.yml` sends those tarballs on a `v*`
+tag that equals the version, in dependency order, with provenance, and skips a version npm already has. A package npm
+has is published through trusted publishing (OIDC), with no token. A package npm does not have yet (its only version,
+if any, is npm's `0.0.0-stage` placeholder) cannot have a trusted publisher, so its first version is staged
+(`npm stage publish`) with the `NPM_TOKEN` secret on the `npm` environment, a granular token that does not bypass 2FA;
+a package that depends on one being staged is staged with it, and a version already staged and waiting for
+approval is skipped on a rerun. The maintainer then approves the staged version with 2FA under Staged Packages on
+npmjs.com, sets the package's trusted publisher (`release.yml`, environment `npm`), and every later tag publishes it
+through OIDC. A bump changes all six versions, `ENGINE_VERSION` and
+`bun.lock` together.
 
 ## Landing
 
