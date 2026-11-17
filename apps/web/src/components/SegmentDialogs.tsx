@@ -50,7 +50,7 @@ export function NewSegmentDialog({ project, environment, onClose, onCreated }: N
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" form="new-segment-form" busy={saving} busyLabel="Creating">
+          <Button type="submit" form="new-segment-form" busy={saving && "Creating"}>
             Create segment
           </Button>
         </>
@@ -58,8 +58,8 @@ export function NewSegmentDialog({ project, environment, onClose, onCreated }: N
     >
       <form id="new-segment-form" onSubmit={(e) => void submit(e)} noValidate>
         <Stack gap="sm">
-          <Field label="Key" htmlFor="segment-key" hint="What flag rules name." error={keyError}>
-            <Input id="segment-key" value={key} onChange={(e) => setKey(e.currentTarget.value)} />
+          <Field label="Key" hint="What flag rules name." error={keyError}>
+            <Input value={key} onChange={(e) => setKey(e.currentTarget.value)} />
           </Field>
           {error !== null && (
             <p role="alert" data-testid="create-error">
@@ -84,7 +84,7 @@ export function DeleteSegmentDialog({ segment, busy, onCancel, onConfirm }: Dele
     <Dialog
       title={`Delete ${segment.key}?`}
       description="Flag rules can no longer name it. A segment a flag still uses cannot be deleted."
-      size="sm"
+      width="sm"
       onClose={onCancel}
       footer={
         <>
@@ -93,8 +93,7 @@ export function DeleteSegmentDialog({ segment, busy, onCancel, onConfirm }: Dele
           </Button>
           <Button
             tone="danger"
-            busy={busy}
-            busyLabel="Deleting"
+            busy={busy && "Deleting"}
             data-testid="confirm-delete-segment"
             onClick={() => onConfirm(segment)}
           >

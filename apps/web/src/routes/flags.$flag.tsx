@@ -1,10 +1,11 @@
 import { Breadcrumbs, Callout, PageHeader, Stack, Text } from "@hackcove/ui-react";
-import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { loadFlagDetail } from "#/api/dashboard";
 import type { DetailLoaded } from "#/api/types";
 import { History, UsagePanel } from "#/components/Activity";
 import { MetaForm } from "#/components/MetaForm";
+import { appHref } from "#/components/href";
 import { StagePill } from "#/components/StagePill";
 import { ServerDown, Shell, Switchers } from "#/components/Shell";
 import { TargetingEditor } from "#/components/TargetingEditor";
@@ -33,7 +34,6 @@ export const Route = createFileRoute("/flags/$flag")({
 type Ready = Extract<DetailLoaded, { ok: true }>;
 
 interface Notice {
-  tone: "info" | "warn";
   title: string;
   text: string;
 }
@@ -46,26 +46,14 @@ function Header({ loaded, search }: { loaded: Ready; search: Search }) {
     <PageHeader
       breadcrumbs={
         <Breadcrumbs
-          crumbs={[
-            {
-              label: project.name,
-              render: ({ className, children }) => (
-                <Link
-                  to="/"
-                  search={{ project: project.key, env: search.env }}
-                  className={className}
-                  data-testid="back-to-flags"
-                >
-                  {children}
-                </Link>
-              ),
-            },
+          items={[
+            { label: project.name, href: appHref("/", { project: project.key, env: search.env }) },
             flag.name,
           ]}
         />
       }
       title={flag.name}
-      subtitle={flag.description === "" ? flag.key : `${flag.key}: ${flag.description}`}
+      description={flag.description === "" ? flag.key : `${flag.key}: ${flag.description}`}
       actions={stage === null ? undefined : <StagePill stage={stage} />}
     />
   );
@@ -105,9 +93,7 @@ function Targeting({ loaded, reload }: { loaded: Ready; reload: Reload }) {
       flag={flag}
       config={config}
       siblings={siblings}
-      onSaved={() =>
-        reload({ tone: "info", title: "Targeting saved", text: `Saved in ${environment.name}.` })
-      }
+      onSaved={() => reload({ title: "Targeting saved", text: `Saved in ${environment.name}.` })}
       onConflict={() => setHeld(config)}
     />
   );
@@ -127,18 +113,19 @@ function Body({ loaded, search }: { loaded: Ready; search: Search }) {
     <Stack gap="lg">
       <Header loaded={loaded} search={search} />
       {notice !== null && (
-        <Callout tone={notice.tone} title={notice.title} data-testid="notice" role="status">
-          {notice.text}
-        </Callout>
+        // An info Callout has no role of its own, so this live region announces it.
+        <div role="status">
+          <Callout tone="info" title={notice.title} data-testid="notice">
+            {notice.text}
+          </Callout>
+        </div>
       )}
       <MetaForm
         // A saved or reloaded flag starts a fresh form.
         key={JSON.stringify(flag)}
         project={project}
         flag={flag}
-        onSaved={() =>
-          reload({ tone: "info", title: "Details saved", text: "The flag's details were saved." })
-        }
+        onSaved={() => reload({ title: "Details saved", text: "The flag's details were saved." })}
       />
       <Targeting key={flag.key} loaded={loaded} reload={reload} />
       <History events={history} />

@@ -27,7 +27,7 @@ function PrerequisiteRow({
   const sibling = siblings.find((s) => s.key === prerequisite.flagKey);
   return (
     <Field label={`Prerequisite ${index + 1}`} htmlFor={`prerequisite-${index}`} error={error}>
-      <Cluster wrap>
+      <Cluster gap="xs">
         <Select
           id={`prerequisite-${index}`}
           data-testid={`prerequisite-${index}-flag`}
@@ -35,16 +35,13 @@ function PrerequisiteRow({
           width="auto"
           value={prerequisite.flagKey}
           onChange={(e) => onChange({ flagKey: e.currentTarget.value, variation: 0 })}
-        >
-          {sibling === undefined && (
-            <option value={prerequisite.flagKey}>{prerequisite.flagKey || "Choose a flag"}</option>
-          )}
-          {siblings.map((s) => (
-            <option key={s.key} value={s.key}>
-              {s.name} ({s.key})
-            </option>
-          ))}
-        </Select>
+          items={[
+            ...(sibling === undefined
+              ? [{ value: prerequisite.flagKey, label: prerequisite.flagKey || "Choose a flag" }]
+              : []),
+            ...siblings.map((s) => ({ value: s.key, label: `${s.name} (${s.key})` })),
+          ]}
+        />
         <Select
           aria-label={`Prerequisite ${index + 1} variation`}
           data-testid={`prerequisite-${index}-variation`}
@@ -52,13 +49,11 @@ function PrerequisiteRow({
           width="auto"
           value={String(prerequisite.variation)}
           onChange={(e) => onChange({ ...prerequisite, variation: Number(e.currentTarget.value) })}
-        >
-          {(sibling?.variations ?? []).map((v, j) => (
-            <option key={j} value={String(j)}>
-              {VARIATION_LABEL(v, j)}
-            </option>
-          ))}
-        </Select>
+          items={(sibling?.variations ?? []).map((v, j) => ({
+            value: String(j),
+            label: VARIATION_LABEL(v, j),
+          }))}
+        />
         <Button
           variant="ghost"
           size="sm"

@@ -42,14 +42,14 @@ function SegmentTable({ project, environment, segments, onEdit, onDelete }: Tabl
   // Disabled until hydrated: before React attaches the handlers a click would do nothing, and nothing would say so.
   const hydrated = useHydrated();
   return (
-    <Table caption={`Segments in ${project.name}, ${environment.name}`} data-testid="segments">
+    <Table label={`Segments in ${project.name}, ${environment.name}`} data-testid="segments">
       <TableHead>
         <TableRow>
           <TableHeaderCell>Key</TableHeaderCell>
           <TableHeaderCell>Included</TableHeaderCell>
           <TableHeaderCell>Excluded</TableHeaderCell>
           <TableHeaderCell>Rules</TableHeaderCell>
-          <TableHeaderCell srLabel="Actions" />
+          <TableHeaderCell label="Actions" />
         </TableRow>
       </TableHead>
       <TableBody>
@@ -74,10 +74,9 @@ function SegmentTable({ project, environment, segments, onEdit, onDelete }: Tabl
             </TableCell>
             <TableCell>{plural(ruleCount(segment.rules) ?? 0, "rule", "rules")}</TableCell>
             <TableCell align="end">
-              <Cluster justify="end">
+              <Cluster gap="xs" wrap={false} justify="end">
                 <Button
                   variant="outline"
-                  size="sm"
                   disabled={!hydrated}
                   aria-label={`Edit ${segment.key}`}
                   data-testid={`edit-${segment.key}`}
@@ -87,7 +86,6 @@ function SegmentTable({ project, environment, segments, onEdit, onDelete }: Tabl
                 </Button>
                 <Button
                   variant="ghost"
-                  size="sm"
                   tone="danger"
                   disabled={!hydrated}
                   aria-label={`Delete ${segment.key}`}
@@ -157,7 +155,7 @@ export function SegmentsPanel({ project, environment, segments, onChanged }: Pro
     <Stack width="full">
       <PageHeader
         title="Segments"
-        subtitle={`${project.name} · ${environment.name}`}
+        description={`${project.name} · ${environment.name}`}
         actions={
           <Button disabled={!hydrated} onClick={create} data-testid="new-segment">
             New segment

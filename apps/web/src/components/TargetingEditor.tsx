@@ -110,27 +110,21 @@ export function TargetingEditor(props: Props) {
       <RulesSection {...shared} />
       <FallthroughSection {...shared} />
       {conflict && (
-        <Callout
-          tone="warn"
-          title="Someone else changed this flag"
-          data-testid="config-conflict"
-          role="alert"
-        >
+        <Callout tone="warn" title="Someone else changed this flag" data-testid="config-conflict">
           This was not saved. Your edits are still here: copy what you need, then reload the page to
           get the latest version.
         </Callout>
       )}
       {formError !== null && (
-        <Callout tone="danger" title="Not saved" data-testid="config-error" role="alert">
+        <Callout tone="danger" title="Not saved" data-testid="config-error">
           {formError}
         </Callout>
       )}
-      <Cluster>
+      <Cluster gap="xs">
         <Button
           data-testid="save-targeting"
           disabled={!editable}
-          busy={saving}
-          busyLabel="Saving"
+          busy={saving && "Saving"}
           onClick={() => void save()}
         >
           Save targeting
@@ -138,7 +132,9 @@ export function TargetingEditor(props: Props) {
         <Button variant="ghost" disabled={!editable || saving} onClick={() => edit(initial)}>
           Discard changes
         </Button>
-        <Text tone="muted">Version {config.version}</Text>
+        <Text as="span" tone="muted">
+          Version {config.version}
+        </Text>
       </Cluster>
     </Stack>
   );

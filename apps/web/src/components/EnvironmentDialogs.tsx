@@ -51,7 +51,7 @@ export function NewEnvironmentDialog({ project, onClose, onCreated }: DialogProp
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" form="new-env-form" busy={saving} busyLabel="Creating">
+          <Button type="submit" form="new-env-form" busy={saving && "Creating"}>
             Create environment
           </Button>
         </>
@@ -59,11 +59,11 @@ export function NewEnvironmentDialog({ project, onClose, onCreated }: DialogProp
     >
       <form id="new-env-form" onSubmit={(e) => void submit(e)} noValidate>
         <Stack gap="sm">
-          <Field label="Name" htmlFor="env-name">
-            <Input id="env-name" value={name} onChange={(e) => setName(e.currentTarget.value)} />
+          <Field label="Name">
+            <Input value={name} onChange={(e) => setName(e.currentTarget.value)} />
           </Field>
-          <Field label="Key" htmlFor="env-key" hint="What code and URLs use." error={keyError}>
-            <Input id="env-key" value={key} onChange={(e) => setKey(e.currentTarget.value)} />
+          <Field label="Key" hint="What code and URLs use." error={keyError}>
+            <Input value={key} onChange={(e) => setKey(e.currentTarget.value)} />
           </Field>
           {error !== null && (
             <p role="alert" data-testid="create-error">
@@ -119,7 +119,7 @@ export function RenameEnvironmentDialog({ project, environment, onClose, onChang
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" form="rename-env-form" busy={saving} busyLabel="Saving">
+          <Button type="submit" form="rename-env-form" busy={saving && "Saving"}>
             Rename
           </Button>
         </>
@@ -127,8 +127,8 @@ export function RenameEnvironmentDialog({ project, environment, onClose, onChang
     >
       <form id="rename-env-form" onSubmit={(e) => void submit(e)} noValidate>
         <Stack gap="sm">
-          <Field label="Name" htmlFor="env-rename">
-            <Input id="env-rename" value={name} onChange={(e) => setName(e.currentTarget.value)} />
+          <Field label="Name">
+            <Input value={name} onChange={(e) => setName(e.currentTarget.value)} />
           </Field>
           {error !== null && (
             <p role="alert" data-testid="rename-error">
@@ -153,7 +153,7 @@ export function DeleteEnvironmentDialog({ environment, busy, onCancel, onConfirm
     <Dialog
       title={`Delete ${environment.key}?`}
       description="Its targeting, segments and SDK keys go with it. An environment with a key that is not revoked cannot be deleted."
-      size="sm"
+      width="sm"
       onClose={onCancel}
       footer={
         <>
@@ -162,8 +162,7 @@ export function DeleteEnvironmentDialog({ environment, busy, onCancel, onConfirm
           </Button>
           <Button
             tone="danger"
-            busy={busy}
-            busyLabel="Deleting"
+            busy={busy && "Deleting"}
             data-testid="confirm-delete-environment"
             onClick={() => onConfirm(environment)}
           >
@@ -244,7 +243,7 @@ export function SigningKeyDialog({ project, environment, onClose, onMade }: Sign
     <Dialog
       title={`Make a signing key for ${environment.name}?`}
       description="A new key replaces any old one at once, so every signature made with the old key stops working."
-      size="sm"
+      width="sm"
       onClose={closeUnlessSaving}
       footer={
         <>
@@ -252,8 +251,7 @@ export function SigningKeyDialog({ project, environment, onClose, onMade }: Sign
             Cancel
           </Button>
           <Button
-            busy={saving}
-            busyLabel="Making"
+            busy={saving && "Making"}
             data-testid="confirm-signing-key"
             onClick={() => void make()}
           >

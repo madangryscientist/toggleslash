@@ -43,49 +43,40 @@ function Fields({ draft, onDraft, error, onSubmit }: FieldsProps) {
   return (
     <form id="new-flag-form" onSubmit={onSubmit} noValidate>
       <Stack gap="sm">
-        <Field label="Name" htmlFor="flag-name">
+        <Field label="Name">
           <Input
-            id="flag-name"
             value={draft.name}
             onChange={(e) => onDraft({ ...draft, name: e.currentTarget.value })}
           />
         </Field>
-        <Field
-          label="Key"
-          htmlFor="flag-key"
-          hint="What code asks for. It cannot change."
-          error={keyError}
-        >
+        <Field label="Key" hint="What code asks for. It cannot change." error={keyError}>
           <Input
-            id="flag-key"
             value={draft.key}
             onChange={(e) => onDraft({ ...draft, key: e.currentTarget.value })}
           />
         </Field>
-        <Field label="Description" htmlFor="flag-description">
+        <Field label="Description">
           <Input
-            id="flag-description"
             value={draft.description}
             onChange={(e) => onDraft({ ...draft, description: e.currentTarget.value })}
           />
         </Field>
-        <Field label="Tags" htmlFor="flag-tags" hint="Separated by commas or spaces.">
+        <Field label="Tags" hint="Separated by commas or spaces.">
           <Input
-            id="flag-tags"
             value={draft.tags}
             onChange={(e) => onDraft({ ...draft, tags: e.currentTarget.value })}
           />
         </Field>
         <Checkbox
           label="Temporary"
-          description="A rollout or experiment to remove later, not a permanent switch."
+          hint="A rollout or experiment to remove later, not a permanent switch."
           checked={draft.temporary}
-          onChange={(e) => onDraft({ ...draft, temporary: e.currentTarget.checked })}
+          onChange={(checked) => onDraft({ ...draft, temporary: checked })}
         />
         <Checkbox
           label="Visible to client keys"
           checked={draft.clientVisible}
-          onChange={(e) => onDraft({ ...draft, clientVisible: e.currentTarget.checked })}
+          onChange={(checked) => onDraft({ ...draft, clientVisible: checked })}
         />
         {error !== null && (
           <p role="alert" data-testid="create-error">
@@ -141,7 +132,7 @@ export function NewFlagDialog({ project, onClose, onCreated }: Props) {
   return (
     <Dialog
       title="New flag"
-      size="lg"
+      width="lg"
       description={`A boolean flag in ${project.name}: off serves false, on serves true. It starts off in every environment.`}
       onClose={onClose}
       footer={
@@ -149,7 +140,7 @@ export function NewFlagDialog({ project, onClose, onCreated }: Props) {
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" form="new-flag-form" busy={saving} busyLabel="Creating">
+          <Button type="submit" form="new-flag-form" busy={saving && "Creating"}>
             Create flag
           </Button>
         </>

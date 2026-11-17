@@ -13,10 +13,11 @@ import {
   Text,
   TextLink,
 } from "@hackcove/ui-react";
-import { Link, useHydrated } from "@tanstack/react-router";
+import { useHydrated } from "@tanstack/react-router";
 import { useState } from "react";
 import { deleteFlag, restoreFlag } from "#/api/dashboard";
 import type { Environment, FlagRow, Project } from "#/api/types";
+import { flagHref } from "./href";
 import { StagePill } from "./StagePill";
 import type { Run } from "./useRunner";
 
@@ -31,7 +32,7 @@ function DeleteDialog({ flag, onCancel, onConfirm }: DeleteProps) {
     <Dialog
       title={`Delete ${flag.name}?`}
       description="This removes the flag and its targeting in every environment. Its audit history stays, and the key can be used again."
-      size="sm"
+      width="sm"
       onClose={onCancel}
       footer={
         <>
@@ -64,42 +65,30 @@ function ArchivedRow({ project, environment, flag, busy, run, onDelete }: RowPro
       <TableCell
         tone="strong"
         secondary={
-          <Text mono tone="muted">
+          <Text as="span" mono tone="muted">
             {flag.key}
           </Text>
         }
       >
         <TextLink
-          render={({ className, children }) => (
-            <Link
-              to="/flags/$flag"
-              params={{ flag: flag.key }}
-              search={{ project: project.key, env: environment.key }}
-              className={className}
-              data-testid={`open-${flag.key}`}
-            >
-              {children}
-            </Link>
-          )}
+          href={flagHref(flag.key, { project: project.key, env: environment.key })}
+          data-testid={`open-${flag.key}`}
         >
           {flag.name}
         </TextLink>
       </TableCell>
       <TableCell>{flag.lifecycle !== null && <StagePill stage={flag.lifecycle} />}</TableCell>
       <TableCell>
-        <Cluster wrap>
+        <Cluster gap="xs">
           {flag.tags.map((tag) => (
-            <Pill key={tag} tone="slate">
-              {tag}
-            </Pill>
+            <Pill key={tag}>{tag}</Pill>
           ))}
         </Cluster>
       </TableCell>
       <TableCell align="end">
-        <Cluster justify="end">
+        <Cluster gap="xs" wrap={false} justify="end">
           <Button
             variant="ghost"
-            size="sm"
             aria-label={`Restore ${flag.name}`}
             data-testid="restore-flag"
             disabled={!hydrated || busy !== null}
@@ -113,7 +102,6 @@ function ArchivedRow({ project, environment, flag, busy, run, onDelete }: RowPro
           </Button>
           <Button
             variant="ghost"
-            size="sm"
             tone="danger"
             aria-label={`Delete ${flag.name}`}
             data-testid="delete-flag"
@@ -154,13 +142,13 @@ export function ArchivedFlags({ project, environment, flags, total, query, busy,
   }
   return (
     <>
-      <Table caption={`Archived flags in ${project.name}`}>
+      <Table label={`Archived flags in ${project.name}`}>
         <TableHead>
           <TableRow>
             <TableHeaderCell>Flag</TableHeaderCell>
             <TableHeaderCell>Stage</TableHeaderCell>
             <TableHeaderCell>Tags</TableHeaderCell>
-            <TableHeaderCell srLabel="Actions" />
+            <TableHeaderCell label="Actions" />
           </TableRow>
         </TableHead>
         <TableBody>

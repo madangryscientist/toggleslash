@@ -46,7 +46,7 @@ test.describe("secure mode and the signing key", () => {
     const dialog = page.getByRole("dialog", { name: "Signing key for Staging" });
     const pem = dialog.getByRole("figure", { name: "PEM" });
     await expect(pem).toContainText("-----BEGIN PRIVATE KEY-----");
-    await expect(pem.getByRole("button", { name: "copy" })).toBeVisible();
+    await expect(pem.getByRole("button", { name: "Copy" })).toBeVisible();
     const body = (await pem.textContent()) ?? "";
     // The PEM's base64 body, without its armour: what must not survive the dialog.
     const secret = (

@@ -34,34 +34,28 @@ function Filters({ environments, filters, onApply }: FilterProps) {
   const filtered = filters.flag !== "" || filters.environment !== "" || filters.since !== "";
   return (
     <form onSubmit={submit} aria-label="Filter the audit log" data-testid="audit-filters">
-      <Cluster wrap align="end">
-        <Field label="Flag" htmlFor="audit-flag">
+      <Cluster gap="xs" align="end">
+        <Field label="Flag">
           <Input
-            id="audit-flag"
             placeholder="Flag key"
             disabled={!hydrated}
             value={draft.flag}
             onChange={(e) => setDraft({ ...draft, flag: e.currentTarget.value })}
           />
         </Field>
-        <Field label="Environment" htmlFor="audit-environment">
+        <Field label="Environment">
           <Select
-            id="audit-environment"
             disabled={!hydrated}
             value={draft.environment}
             onChange={(e) => setDraft({ ...draft, environment: e.currentTarget.value })}
-          >
-            <option value="">Any environment</option>
-            {environments.map((env) => (
-              <option key={env.key} value={env.key}>
-                {env.name}
-              </option>
-            ))}
-          </Select>
+            items={[
+              { value: "", label: "Any environment" },
+              ...environments.map((env) => ({ value: env.key, label: env.name })),
+            ]}
+          />
         </Field>
-        <Field label="Since" htmlFor="audit-since">
+        <Field label="Since">
           <Input
-            id="audit-since"
             type="date"
             disabled={!hydrated}
             value={draft.since}
@@ -106,7 +100,7 @@ export function AuditLog({ project, env, environments, filters, cursor, page, on
     <Stack width="full">
       <PageHeader
         title="Audit log"
-        subtitle={`${project.name}: every change made through the admin API, newest first`}
+        description={`${project.name}: every change made through the admin API, newest first`}
       />
       <Filters
         // Applying filters (or clearing them) remounts the form on what was applied.
@@ -136,7 +130,7 @@ export function AuditLog({ project, env, environments, filters, cursor, page, on
           ))}
         </Timeline>
       )}
-      <Cluster>
+      <Cluster gap="xs">
         {cursor !== null && (
           <Link
             to="/audit"
@@ -155,7 +149,7 @@ export function AuditLog({ project, env, environments, filters, cursor, page, on
             Older events
           </Link>
         )}
-        <Text tone="muted" numeric>
+        <Text as="span" tone="muted" numeric>
           {page.events.length} shown
         </Text>
       </Cluster>

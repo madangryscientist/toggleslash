@@ -4,10 +4,11 @@ import {
   type ErrorComponentProps,
 } from "@tanstack/react-router";
 import { getGlobalStartContext } from "@tanstack/react-start";
+import { LinkThroughRouter } from "./link";
 import { routeTree } from "./routeTree.gen";
 
 function RouteError({ reset }: ErrorComponentProps) {
-  return <ErrorPage onRetry={reset} renderHome={(props) => <a href="/" {...props} />} />;
+  return <ErrorPage onRetry={reset} />;
 }
 
 export function getRouter() {
@@ -17,8 +18,9 @@ export function getRouter() {
     routeTree,
     ...(nonce === undefined ? {} : { ssr: { nonce } }),
     scrollRestoration: true,
-    defaultNotFoundComponent: () => <NotFound renderHome={(props) => <a href="/" {...props} />} />,
+    defaultNotFoundComponent: () => <NotFound />,
     defaultErrorComponent: RouteError,
+    InnerWrap: LinkThroughRouter,
   });
 }
 

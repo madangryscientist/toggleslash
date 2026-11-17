@@ -1,4 +1,5 @@
 import {
+  BulletItem,
   BulletList,
   Callout,
   Card,
@@ -26,7 +27,7 @@ function FlagCard({ flag, scope }: { flag: PastFlag; scope: Scope }) {
     <Card
       title={flag.key}
       status={
-        <Pill tone={config.on ? "emerald" : "slate"} dot data-testid={`past-on-${flag.key}`}>
+        <Pill tone={config.on ? "positive" : "neutral"} dot data-testid={`past-on-${flag.key}`}>
           {config.on ? "On" : "Off"}
         </Pill>
       }
@@ -50,27 +51,27 @@ function FlagCard({ flag, scope }: { flag: PastFlag; scope: Scope }) {
         </Text>
         <BulletList>
           {config.prerequisites.map((p) => (
-            <li key={`pre-${p.flagKey}-${p.variation}`}>
+            <BulletItem key={`pre-${p.flagKey}-${p.variation}`}>
               Prerequisite: {p.flagKey} must serve variation {p.variation}
-            </li>
+            </BulletItem>
           ))}
           {config.targets.map((t, i) => (
             // One variation can hold several targets (one per context kind), so the position is the key.
-            <li key={`target-${i}`}>
+            <BulletItem key={`target-${i}`}>
               Targets
               {t.contextKind === undefined || t.contextKind === "user" ? "" : ` (${t.contextKind})`}
               : {t.contextKeys.join(", ") || "no contexts"} get{" "}
               {variationLabel(t.variation, variations)}
-            </li>
+            </BulletItem>
           ))}
           {config.rules.map((rule, i) => (
             // A rule has no id; its position is its identity, and that is how the evaluator reads it.
-            <li key={`rule-${i}`} data-testid={`past-rule-${flag.key}-${i}`}>
+            <BulletItem key={`rule-${i}`} data-testid={`past-rule-${flag.key}-${i}`}>
               Rule {i + 1}: {rule.clauses.map(describeClause).join(" and ") || "always"} →{" "}
               {describeServe(rule.serve, variations)}
-            </li>
+            </BulletItem>
           ))}
-          <li>Otherwise: {describeServe(config.fallthrough, variations)}</li>
+          <BulletItem>Otherwise: {describeServe(config.fallthrough, variations)}</BulletItem>
         </BulletList>
         <MetaList>
           <span>Version {config.version}</span>
@@ -112,7 +113,7 @@ export function RulesetView({ project, env, hash, flag, ruleset }: Props) {
     <Stack width="full">
       <PageHeader
         title="Flags under a past ruleset"
-        subtitle={`${project} · ${env} · first served ${stamp(ruleset.firstServedAt)}`}
+        description={`${project} · ${env} · first served ${stamp(ruleset.firstServedAt)}`}
       />
       <Text data-testid="ruleset-hash">
         Hash <code>{hash}</code>

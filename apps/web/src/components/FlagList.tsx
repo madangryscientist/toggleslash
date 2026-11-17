@@ -15,13 +15,14 @@ import {
   Text,
   TextLink,
 } from "@hackcove/ui-react";
-import { Link, useHydrated } from "@tanstack/react-router";
+import { useHydrated } from "@tanstack/react-router";
 import { useState } from "react";
 import { archiveFlag, toggleFlag } from "#/api/dashboard";
 import type { Environment, FlagRow, Project } from "#/api/types";
 import { ArchiveDialog } from "./ArchiveDialog";
 import { ArchivedFlags } from "./ArchivedFlags";
 import { NewFlagDialog } from "./NewFlagDialog";
+import { flagHref } from "./href";
 import { StagePill } from "./StagePill";
 import { ListControls } from "./ListControls";
 import { matches } from "./text";
@@ -49,16 +50,19 @@ interface RowProps {
 function ToggleCell({ project, environment, flag, busy, run }: Omit<RowProps, "onArchive">) {
   // Disabled until hydrated: before React attaches the handlers a click would do nothing, and nothing would say so.
   const hydrated = useHydrated();
-  if (flag.on === null) return <Text tone="muted">unknown</Text>;
+  if (flag.on === null)
+    return (
+      <Text as="span" tone="muted">
+        unknown
+      </Text>
+    );
   return (
     <Button
       variant="outline"
-      size="sm"
       tone={flag.on ? "positive" : undefined}
       pressed={flag.on}
       disabled={!hydrated}
-      busy={busy === flag.key}
-      busyLabel="Saving"
+      busy={busy === flag.key && "Saving"}
       aria-label={`${flag.name} in ${environment.name}`}
       data-testid={`toggle-${flag.key}`}
       onClick={() =>
@@ -89,35 +93,24 @@ function FlagRowView(props: RowProps) {
       <TableCell
         tone="strong"
         secondary={
-          <Text mono tone="muted">
+          <Text as="span" mono tone="muted">
             {flag.key}
           </Text>
         }
       >
         <TextLink
-          render={({ className, children }) => (
-            <Link
-              to="/flags/$flag"
-              params={{ flag: flag.key }}
-              search={{ project: props.project.key, env: props.environment.key }}
-              className={className}
-              data-testid={`open-${flag.key}`}
-            >
-              {children}
-            </Link>
-          )}
+          href={flagHref(flag.key, { project: props.project.key, env: props.environment.key })}
+          data-testid={`open-${flag.key}`}
         >
           {flag.name}
         </TextLink>
       </TableCell>
       <TableCell>{flag.lifecycle !== null && <StagePill stage={flag.lifecycle} />}</TableCell>
       <TableCell>
-        <Cluster wrap>
-          {flag.temporary && <Pill tone="amber">temporary</Pill>}
+        <Cluster gap="xs">
+          {flag.temporary && <Pill tone="warn">temporary</Pill>}
           {flag.tags.map((tag) => (
-            <Pill key={tag} tone="slate">
-              {tag}
-            </Pill>
+            <Pill key={tag}>{tag}</Pill>
           ))}
         </Cluster>
       </TableCell>
@@ -128,7 +121,6 @@ function FlagRowView(props: RowProps) {
       <TableCell align="end">
         <Button
           variant="ghost"
-          size="sm"
           tone="danger"
           aria-label={`Archive ${flag.name}`}
           disabled={!hydrated || busy !== null}
@@ -148,7 +140,7 @@ interface TableProps extends Omit<RowProps, "flag"> {
 function FlagTable({ flags, ...row }: TableProps) {
   const { project, environment } = row;
   return (
-    <Table caption={`Flags in ${project.name}, ${environment.name}`}>
+    <Table label={`Flags in ${project.name}, ${environment.name}`}>
       <TableHead>
         <TableRow>
           <TableHeaderCell>Flag</TableHeaderCell>
@@ -156,7 +148,7 @@ function FlagTable({ flags, ...row }: TableProps) {
           <TableHeaderCell>Tags</TableHeaderCell>
           <TableHeaderCell>{environment.name}</TableHeaderCell>
           <TableHeaderCell>Last evaluated</TableHeaderCell>
-          <TableHeaderCell srLabel="Actions" />
+          <TableHeaderCell label="Actions" />
         </TableRow>
       </TableHead>
       <TableBody>
@@ -222,7 +214,7 @@ export function FlagList({ project, environment, flags, archived, onView, onChan
     <Stack width="full">
       <PageHeader
         title="Flags"
-        subtitle={`${project.name} · ${environment.name}`}
+        description={`${project.name} · ${environment.name}`}
         actions={
           archived ? undefined : (
             <Button disabled={!hydrated} onClick={() => setCreating(true)} data-testid="new-flag">

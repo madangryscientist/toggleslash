@@ -7,10 +7,11 @@ import {
   Select,
   Tabs,
 } from "@hackcove/ui-react";
-import { Link, useHydrated } from "@tanstack/react-router";
+import { useHydrated } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { signOut } from "#/api/session";
 import type { Environment, Failure, Project } from "#/api/types";
+import { appHref } from "./href";
 
 const FAILURE_TITLES: Record<Failure["kind"], string> = {
   unreachable: "The ToggleSlash server is not reachable",
@@ -67,14 +68,12 @@ function ProjectSelect(props: SwitcherProps) {
       value={project?.key ?? ""}
       disabled={!hydrated || props.projectLocked === true || projects.length === 0}
       onChange={(event) => props.onProject(event.currentTarget.value)}
-    >
-      {projects.length === 0 && <option value="">No projects</option>}
-      {projects.map((p) => (
-        <option key={p.key} value={p.key}>
-          {p.name}
-        </option>
-      ))}
-    </Select>
+      items={
+        projects.length === 0
+          ? [{ value: "", label: "No projects" }]
+          : projects.map((p) => ({ value: p.key, label: p.name }))
+      }
+    />
   );
 }
 
@@ -89,14 +88,12 @@ function EnvironmentSelect(props: SwitcherProps) {
       value={environment?.key ?? ""}
       disabled={!hydrated || environments.length === 0}
       onChange={(event) => props.onEnvironment(event.currentTarget.value)}
-    >
-      {environments.length === 0 && <option value="">No environments</option>}
-      {environments.map((e) => (
-        <option key={e.key} value={e.key}>
-          {e.name}
-        </option>
-      ))}
-    </Select>
+      items={
+        environments.length === 0
+          ? [{ value: "", label: "No environments" }]
+          : environments.map((e) => ({ value: e.key, label: e.name }))
+      }
+    />
   );
 }
 
@@ -125,36 +122,37 @@ function Nav({ active, project, env }: NavScope) {
   const scope = { project, env };
   return (
     <Tabs
-      variant="pill"
-      size="sm"
       label="Sections"
       items={[
         {
           label: "Flags",
-          active: active === "flags",
-          render: (p) => <Link to="/" search={scope} {...p} data-testid="nav-flags" />,
+          selected: active === "flags",
+          href: appHref("/", scope),
+          "data-testid": "nav-flags",
         },
         {
           label: "Environments",
-          active: active === "environments",
-          render: (p) => (
-            <Link to="/environments" search={scope} {...p} data-testid="nav-environments" />
-          ),
+          selected: active === "environments",
+          href: appHref("/environments", scope),
+          "data-testid": "nav-environments",
         },
         {
           label: "SDK keys",
-          active: active === "keys",
-          render: (p) => <Link to="/keys" search={scope} {...p} data-testid="nav-keys" />,
+          selected: active === "keys",
+          href: appHref("/keys", scope),
+          "data-testid": "nav-keys",
         },
         {
           label: "Segments",
-          active: active === "segments",
-          render: (p) => <Link to="/segments" search={scope} {...p} data-testid="nav-segments" />,
+          selected: active === "segments",
+          href: appHref("/segments", scope),
+          "data-testid": "nav-segments",
         },
         {
           label: "Audit log",
-          active: active === "audit",
-          render: (p) => <Link to="/audit" search={scope} {...p} data-testid="nav-audit" />,
+          selected: active === "audit",
+          href: appHref("/audit", scope),
+          "data-testid": "nav-audit",
         },
       ]}
     />
@@ -190,7 +188,10 @@ interface ShellProps extends NavScope {
 
 export function Shell({ controls, children, ...nav }: ShellProps) {
   return (
+    // Compact: the dashboard is tables and forms, and running text matches the cells' size. A text
+    // field is still 16px on a touch screen, so iOS does not zoom on focus.
     <AppShell
+      density="compact"
       brand={
         <AppShellBrand
           logo={<Avatar name="ToggleSlash" size="sm" />}

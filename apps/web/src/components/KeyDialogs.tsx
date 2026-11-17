@@ -58,7 +58,7 @@ export function NewKeyDialog({ project, environment, onClose, onCreated }: NewKe
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" form="new-key-form" busy={saving} busyLabel="Creating">
+          <Button type="submit" form="new-key-form" busy={saving && "Creating"}>
             Create key
           </Button>
         </>
@@ -66,22 +66,21 @@ export function NewKeyDialog({ project, environment, onClose, onCreated }: NewKe
     >
       <form id="new-key-form" onSubmit={(e) => void submit(e)} noValidate>
         <Stack gap="sm">
-          <Field label="Name" htmlFor="key-name">
-            <Input id="key-name" value={name} onChange={(e) => setName(e.currentTarget.value)} />
+          <Field label="Name">
+            <Input value={name} onChange={(e) => setName(e.currentTarget.value)} />
           </Field>
           <Field
             label="Kind"
-            htmlFor="key-kind"
             hint="A server key reads the ruleset and evaluates locally. A client key can only ask the server to evaluate."
           >
             <Select
-              id="key-kind"
               value={kind}
               onChange={(e) => setKind(e.currentTarget.value === "client" ? "client" : "server")}
-            >
-              <option value="server">Server</option>
-              <option value="client">Client</option>
-            </Select>
+              items={[
+                { value: "server", label: "Server" },
+                { value: "client", label: "Client" },
+              ]}
+            />
           </Field>
           {error !== null && (
             <p role="alert" data-testid="create-error">
@@ -136,7 +135,7 @@ export function RevokeDialog({
     <Dialog
       title={`Revoke ${keyRow.name}?`}
       description={`Anything using ${keyRow.prefix}… stops working at once. A revoked key cannot be restored.`}
-      size="sm"
+      width="sm"
       onClose={onCancel}
       footer={
         <>
@@ -145,8 +144,7 @@ export function RevokeDialog({
           </Button>
           <Button
             tone="danger"
-            busy={busy}
-            busyLabel="Revoking"
+            busy={busy && "Revoking"}
             data-testid="confirm-revoke"
             onClick={() => onConfirm(keyRow)}
           >
