@@ -26,6 +26,21 @@ const WORKER_ENV = {
   TOGGLESLASH_ACCESS_CLIENT_SECRET: "",
 };
 
+// The smoke check against a live host (`e2e/smoke.spec.ts`), run after a deploy with SMOKE_BASE_URL set. It
+// is the only project then, with no server started, and the local projects below never run it.
+const SMOKE_BASE_URL = process.env["SMOKE_BASE_URL"];
+const SMOKE_ACCESS_CLIENT_ID = process.env["SMOKE_ACCESS_CLIENT_ID"];
+const SMOKE_ACCESS_CLIENT_SECRET = process.env["SMOKE_ACCESS_CLIENT_SECRET"];
+// The live dashboard sits behind Cloudflare Access: a service token passes it, and without one the page is a 302.
+const smokeAccessHeaders =
+  SMOKE_ACCESS_CLIENT_ID && SMOKE_ACCESS_CLIENT_SECRET
+    ? {
+        "CF-Access-Client-Id": SMOKE_ACCESS_CLIENT_ID,
+        "CF-Access-Client-Secret": SMOKE_ACCESS_CLIENT_SECRET,
+      }
+    : undefined;
+const notSmoke = { testIgnore: /smoke\.spec\.ts/ };
+
 // A local production build, with a fake admin API (`e2e/fake-api.ts`) standing in for the C# server,
 // so the run needs no .NET SDK.
 export default defineConfig({
@@ -38,54 +53,69 @@ export default defineConfig({
   // Every spec shares one fake API and its state, so they run one at a time.
   workers: 1,
   use: { baseURL: `http://localhost:${PORT}`, trace: "retain-on-failure" },
-  projects: [
-    // Signs in through the real form; every spec starts from the session it saves.
-    { name: "setup", testMatch: /sign-in\.setup\.ts/, use: { ...devices["Desktop Chrome"] } },
-    {
-      name: "chromium",
-      dependencies: ["setup"],
-      use: { ...devices["Desktop Chrome"], storageState: SIGNED_IN_STATE },
-    },
-  ],
-  webServer: [
-    {
-      command: "bun e2e/fake-api.ts",
-      url: `http://127.0.0.1:${API_PORT}/health`,
-      reuseExistingServer: false,
-      timeout: 60_000,
-    },
-    {
-      command: [
-        "rm -rf .wrangler/e2e",
-        "mkdir -p .wrangler/e2e/tmp",
-        // Bound at preview, not at build. The build copies its variables to dist/server/.dev.vars (the
-        // whole environment with this on, or a local apps/web/.dev.vars), and that file would beat what
-        // each preview server sets below.
-        "CLOUDFLARE_INCLUDE_PROCESS_ENV=false bun run build",
-        "rm -f dist/server/.dev.vars",
-        `vite preview --port ${PORT} --strictPort`,
-      ].join(" && "),
-      env: {
-        ...WORKER_ENV,
-        TOGGLESLASH_OPERATOR_PASSWORD: E2E_OPERATOR_PASSWORD,
-        TOGGLESLASH_SESSION_SECRET: E2E_SESSION_SECRET,
-      },
-      url: `http://localhost:${PORT}`,
-      reuseExistingServer: false,
-      timeout: 300_000,
-    },
-    {
-      // The same build with neither secret set, but with the API and its token: if anything fell open,
-      // this is where it would show flags. Playwright starts servers in order, so the build is done.
-      command: `vite preview --port ${UNCONFIGURED_PORT} --strictPort`,
-      env: {
-        ...WORKER_ENV,
-        TOGGLESLASH_OPERATOR_PASSWORD: "",
-        TOGGLESLASH_SESSION_SECRET: "",
-      },
-      url: `http://localhost:${UNCONFIGURED_PORT}`,
-      reuseExistingServer: false,
-      timeout: 60_000,
-    },
-  ],
+  projects: SMOKE_BASE_URL
+    ? [
+        {
+          name: "smoke",
+          testMatch: /smoke\.spec\.ts/,
+          use: { baseURL: SMOKE_BASE_URL, extraHTTPHeaders: smokeAccessHeaders },
+        },
+      ]
+    : [
+        // Signs in through the real form; every spec starts from the session it saves.
+        {
+          name: "setup",
+          testMatch: /sign-in\.setup\.ts/,
+          use: { ...devices["Desktop Chrome"] },
+        },
+        {
+          name: "chromium",
+          dependencies: ["setup"],
+          use: { ...devices["Desktop Chrome"], storageState: SIGNED_IN_STATE },
+          ...notSmoke,
+        },
+      ],
+  webServer: SMOKE_BASE_URL
+    ? []
+    : [
+        {
+          command: "bun e2e/fake-api.ts",
+          url: `http://127.0.0.1:${API_PORT}/health`,
+          reuseExistingServer: false,
+          timeout: 60_000,
+        },
+        {
+          command: [
+            "rm -rf .wrangler/e2e",
+            "mkdir -p .wrangler/e2e/tmp",
+            // Bound at preview, not at build. The build copies its variables to dist/server/.dev.vars (the
+            // whole environment with this on, or a local apps/web/.dev.vars), and that file would beat what
+            // each preview server sets below.
+            "CLOUDFLARE_INCLUDE_PROCESS_ENV=false bun run build",
+            "rm -f dist/server/.dev.vars",
+            `vite preview --port ${PORT} --strictPort`,
+          ].join(" && "),
+          env: {
+            ...WORKER_ENV,
+            TOGGLESLASH_OPERATOR_PASSWORD: E2E_OPERATOR_PASSWORD,
+            TOGGLESLASH_SESSION_SECRET: E2E_SESSION_SECRET,
+          },
+          url: `http://localhost:${PORT}`,
+          reuseExistingServer: false,
+          timeout: 300_000,
+        },
+        {
+          // The same build with neither secret set, but with the API and its token: if anything fell open,
+          // this is where it would show flags. Playwright starts servers in order, so the build is done.
+          command: `vite preview --port ${UNCONFIGURED_PORT} --strictPort`,
+          env: {
+            ...WORKER_ENV,
+            TOGGLESLASH_OPERATOR_PASSWORD: "",
+            TOGGLESLASH_SESSION_SECRET: "",
+          },
+          url: `http://localhost:${UNCONFIGURED_PORT}`,
+          reuseExistingServer: false,
+          timeout: 60_000,
+        },
+      ],
 });

@@ -85,4 +85,28 @@ Access login, and that after the operator sign-in the flag list loads. Later dep
 To check a change without deploying anything, `bunx wrangler deploy --dry-run --outdir "$TMPDIR/web-dry"`
 builds the bundle and stops; it needs no credential, and CI runs it.
 
+## Checking what is live
+
+Every page's head carries `<meta name="build-commit" content="<sha>">`, the commit the Worker was built
+from (`-dirty` when the tree had uncommitted changes). It is not shown on the page. To read the live commit:
+
+```bash
+curl -s https://flags.madangryscientist.com/ | grep -o '<meta name="build-commit"[^>]*>'
+```
+
+After each production deploy, from a clean checkout of the commit you deployed, run the smoke check. It
+retries for up to two minutes while the edge catches up, and fails if the live page names another commit:
+
+```bash
+cd apps/web
+SMOKE_BASE_URL=https://flags.madangryscientist.com SMOKE_EXPECT_COMMIT=$(git rev-parse HEAD) \
+  bun run playwright test --project smoke
+```
+
+The live hostname is behind Cloudflare Access, so the smoke needs a service token in
+`SMOKE_ACCESS_CLIENT_ID` and `SMOKE_ACCESS_CLIENT_SECRET` (read them from the secret store, never print them).
+The token must be added to the dashboard's Access policy first; a request without it is answered with the
+Access login, not the page. Without `SMOKE_EXPECT_COMMIT` the smoke only checks that the meta is present
+and well formed.
+
 Any other route or domain, and every real deploy, waits for the maintainer's yes.

@@ -147,8 +147,11 @@ jobs:
       # The build and its dry run go before web:test-e2e, which leaves its own e2e build in dist and
       # .wrangler/deploy: a web:build cache hit leaves outputs that are there as they are, so after
       # the e2e run the dry run would check the e2e build.
+      # BUILD_COMMIT is an input of web:build (apps/web/moon.yml), so each commit's build has its own cache key
+      # and a cache hit never serves an older commit's sha in the build-commit meta.
       - run: bunx moon run web:build
         env:
+          BUILD_COMMIT: ${{ github.sha }}
           MOON_REMOTE_TOKEN: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.MOON_CACHE_WRITE_TOKEN || secrets.MOON_CACHE_READ_TOKEN }}
       - name: Web deploy dry run
         working-directory: apps/web
