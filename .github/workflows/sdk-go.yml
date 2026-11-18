@@ -37,7 +37,7 @@ jobs:
       # bin/test gives cgo zig as its C compiler for -race, so all three tools come from the one
       # file that names their versions. install_args limits it to those three, so the root
       # .tool-versions (.NET, a second Bun) is not installed here.
-      - uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
+      - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
         with:
           working_directory: sdks/go
           install_args: go golangci-lint zig
