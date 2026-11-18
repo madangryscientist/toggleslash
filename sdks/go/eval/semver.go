@@ -1,6 +1,6 @@
 package eval
 
-import "github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+import "github.com/slashsuite/toggleslash/sdks/go/jsonval"
 
 // Semantic versions, to docs/evaluation.md "Semantic versions". A hand written
 // walk over the bytes: no regular expression and no library, and no numeric

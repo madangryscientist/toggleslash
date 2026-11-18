@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/eval"
-	"github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+	"github.com/slashsuite/toggleslash/sdks/go/eval"
+	"github.com/slashsuite/toggleslash/sdks/go/jsonval"
 )
 
 // snapshot is the ruleset held and the ETag the server gave it. One Store

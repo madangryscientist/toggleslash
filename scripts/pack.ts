@@ -29,7 +29,7 @@ import { parseArgs } from "node:util";
 import { ENGINE_VERSION } from "../packages/engine/src/index.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
-const REPOSITORY = "git+https://github.com/madangryscientist/toggleslash.git";
+const REPOSITORY = "git+https://github.com/slashsuite/toggleslash.git";
 
 /** Publish order: every package comes after the packages it depends on. */
 const LIBRARIES = ["engine", "sdk", "sdk-browser", "sdk-otel", "sdk-openfeature"] as const;

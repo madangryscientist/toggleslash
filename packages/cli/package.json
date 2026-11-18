@@ -10,7 +10,7 @@
   "license": "Elastic-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/madangryscientist/toggleslash.git",
+    "url": "git+https://github.com/slashsuite/toggleslash.git",
     "directory": "packages/cli"
   },
   "bin": {

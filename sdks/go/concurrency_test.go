@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+	"github.com/slashsuite/toggleslash/sdks/go/jsonval"
 )
 
 // TestConcurrentOperations is the contract 6.1 race: every operation called

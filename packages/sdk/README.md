@@ -24,4 +24,4 @@ await client.close(); // stops the loops and sends the last usage counts
 `signContext(privateKeyPem, context)` signs a context for an environment in secure mode. It uses `node:crypto`, which
 the main entry imports, so a Cloudflare Worker that imports this package should set the `nodejs_compat` compatibility flag (on a
 compatibility date before 2026-09-01 it does not start without it). The options, the guarantees and Workers are in
-[`docs/sdk.md`](https://github.com/madangryscientist/toggleslash/blob/main/docs/sdk.md); what evaluation does is [`docs/evaluation.md`](https://github.com/madangryscientist/toggleslash/blob/main/docs/evaluation.md).
+[`docs/sdk.md`](https://github.com/slashsuite/toggleslash/blob/main/docs/sdk.md); what evaluation does is [`docs/evaluation.md`](https://github.com/slashsuite/toggleslash/blob/main/docs/evaluation.md).

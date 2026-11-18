@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/eval"
-	"github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+	"github.com/slashsuite/toggleslash/sdks/go/eval"
+	"github.com/slashsuite/toggleslash/sdks/go/jsonval"
 )
 
 // ReasonKind is a reason's kind, spelled as docs/evaluation.md spells it.

@@ -7,7 +7,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+	"github.com/slashsuite/toggleslash/sdks/go/jsonval"
 )
 
 // DefaultKind is what a kind that is read and absent means.

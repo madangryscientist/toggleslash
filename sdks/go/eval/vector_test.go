@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+	"github.com/slashsuite/toggleslash/sdks/go/jsonval"
 )
 
 // TestVectors runs every vector in fixtures/evaluation and every bucket pin. The

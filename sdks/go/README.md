@@ -11,14 +11,14 @@ The module has no release tag, so a consumer points at a checkout of this reposi
 add a `replace` to your own module (or a `go.work` entry) beside the `require`.
 
 ```sh
-git clone https://github.com/madangryscientist/toggleslash
+git clone https://github.com/slashsuite/toggleslash
 ```
 
 In your module:
 
 ```sh
-go mod edit -require=github.com/madangryscientist/toggleslash/sdks/go@v0.0.0
-go mod edit -replace=github.com/madangryscientist/toggleslash/sdks/go=/path/to/toggleslash/sdks/go
+go mod edit -require=github.com/slashsuite/toggleslash/sdks/go@v0.0.0
+go mod edit -replace=github.com/slashsuite/toggleslash/sdks/go=/path/to/toggleslash/sdks/go
 ```
 
 Then create a client, read a flag, and close it:
@@ -30,8 +30,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/madangryscientist/toggleslash/sdks/go"
-	"github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+	"github.com/slashsuite/toggleslash/sdks/go"
+	"github.com/slashsuite/toggleslash/sdks/go/jsonval"
 )
 
 func main() {

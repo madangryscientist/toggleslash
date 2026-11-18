@@ -3,7 +3,7 @@ package eval
 import (
 	"math"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+	"github.com/slashsuite/toggleslash/sdks/go/jsonval"
 )
 
 // attributeMatches reports whether one attribute clause holds. A missing

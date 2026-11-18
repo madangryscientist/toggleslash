@@ -14,7 +14,7 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+	"github.com/slashsuite/toggleslash/sdks/go/jsonval"
 )
 
 var signatureShape = regexp.MustCompile(`^[A-Za-z0-9_-]{86}$`)

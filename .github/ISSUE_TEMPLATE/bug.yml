@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Thanks for the report. A security problem does not go here: use
-        [private reporting](https://github.com/madangryscientist/toggleslash/security/advisories/new),
+        [private reporting](https://github.com/slashsuite/toggleslash/security/advisories/new),
         as SECURITY.md says.
   - type: input
     id: version
