@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+	"github.com/slashsuite/toggleslash/sdks/go/jsonval"
 )
 
 // TestSubstringOpsUseUTF16CodeUnits is docs/evaluation.md, "String equality and

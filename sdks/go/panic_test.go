@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/eval"
-	"github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+	"github.com/slashsuite/toggleslash/sdks/go/eval"
+	"github.com/slashsuite/toggleslash/sdks/go/jsonval"
 )
 
 // closesWithin fails the test when Close does not return: the loops must end

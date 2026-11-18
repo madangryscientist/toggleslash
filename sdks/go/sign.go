@@ -11,8 +11,8 @@ import (
 	"errors"
 	"strconv"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/eval"
-	"github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+	"github.com/slashsuite/toggleslash/sdks/go/eval"
+	"github.com/slashsuite/toggleslash/sdks/go/jsonval"
 )
 
 // SignContext signs a context for secure mode (docs/sdk-contract.md section 14)

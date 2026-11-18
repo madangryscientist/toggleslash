@@ -14,8 +14,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/eval"
-	"github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+	"github.com/slashsuite/toggleslash/sdks/go/eval"
+	"github.com/slashsuite/toggleslash/sdks/go/jsonval"
 )
 
 // Client is one ToggleSlash server SDK client. Every operation is safe to call

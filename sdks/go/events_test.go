@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+	"github.com/slashsuite/toggleslash/sdks/go/jsonval"
 )
 
 func TestUsageCountsAcrossUTCMidnight(t *testing.T) {

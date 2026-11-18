@@ -1,6 +1,6 @@
 package eval
 
-import "github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+import "github.com/slashsuite/toggleslash/sdks/go/jsonval"
 
 // Reason kinds, as docs/evaluation.md "Result" spells them.
 const (

@@ -3,7 +3,7 @@ package eval
 import (
 	"sort"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+	"github.com/slashsuite/toggleslash/sdks/go/jsonval"
 )
 
 // Patterns, to docs/evaluation.md "Patterns": a small dialect parsed to a

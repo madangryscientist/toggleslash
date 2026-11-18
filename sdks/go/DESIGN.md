@@ -269,7 +269,7 @@ integer a test can serve exactly is `2^63 - 1024`. `IntVariation` therefore has 
 
 ## 7. Package layout
 
-One module, `github.com/madangryscientist/toggleslash/sdks/go`, in `sdks/go/`:
+One module, `github.com/slashsuite/toggleslash/sdks/go`, in `sdks/go/`:
 
 ```
 sdks/go/
@@ -297,7 +297,7 @@ Why these three packages and no `internal`:
 
 - The root `toggleslash` is the public API, and its package name is `toggleslash` rather than `go`,
   because `go` is a keyword; the import path ends in `/sdks/go`, which keeps the repository's convention
-  of `github.com/madangryscientist/toggleslash/sdks/<lang>` (item 7). Nothing is registered under it.
+  of `github.com/slashsuite/toggleslash/sdks/<lang>` (item 7). Nothing is registered under it.
 - `jsonval` is separate because the public API's `Context` is its `Value`: an `internal` package cannot
   appear in a public signature, so it is a normal subpackage.
 - `eval` is separate because the evaluator is a self-contained function of a ruleset, a flag key and a

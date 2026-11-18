@@ -199,7 +199,7 @@ Write `$L/DESIGN.md` before any code. It holds:
 7. **The package layout**: the directories under `$L`, and where the evaluator, the client, the tests and
    the test service live. The package or module name follows the language's convention for a package
    inside a repository; where that convention puts a host in the name, use this repository's
-   `github.com/madangryscientist/toggleslash/sdks/<lang>`. Where the convention is reverse-domain (Maven,
+   `github.com/slashsuite/toggleslash/sdks/<lang>`. Where the convention is reverse-domain (Maven,
    and similar), use the reverse-domain form of that repository path. Nothing is registered under it.
    Where `<lang>` is not a valid package name (Go's `go` is a keyword), name the package `toggleslash`.
 

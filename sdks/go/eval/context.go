@@ -3,7 +3,7 @@ package eval
 import (
 	"sort"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+	"github.com/slashsuite/toggleslash/sdks/go/jsonval"
 )
 
 // kindContext is one kind's key and attributes, after normalising.

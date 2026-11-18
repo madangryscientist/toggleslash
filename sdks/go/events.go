@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"sort"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+	"github.com/slashsuite/toggleslash/sdks/go/jsonval"
 )
 
 // usageKey is one count: a flag key, a variation index and a UTC day

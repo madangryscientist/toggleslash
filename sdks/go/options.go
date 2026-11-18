@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/eval"
-	"github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+	"github.com/slashsuite/toggleslash/sdks/go/eval"
+	"github.com/slashsuite/toggleslash/sdks/go/jsonval"
 )
 
 // The defaults of docs/sdk-contract.md section 2.

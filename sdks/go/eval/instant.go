@@ -3,7 +3,7 @@ package eval
 import (
 	"math"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+	"github.com/slashsuite/toggleslash/sdks/go/jsonval"
 )
 
 // Instants, to docs/evaluation.md "Dates". A hand written walk over the bytes:

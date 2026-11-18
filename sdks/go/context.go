@@ -1,6 +1,6 @@
 package toggleslash
 
-import "github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+import "github.com/slashsuite/toggleslash/sdks/go/jsonval"
 
 // Context is a single context or a multi context, exactly as
 // docs/evaluation.md "Context" defines them, as the JSON value the evaluator

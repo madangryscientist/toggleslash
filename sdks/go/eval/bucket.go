@@ -4,7 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 
-	"github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+	"github.com/slashsuite/toggleslash/sdks/go/jsonval"
 )
 
 // bucketOf is the bucket the context lands in for a flag or a segment rule. A

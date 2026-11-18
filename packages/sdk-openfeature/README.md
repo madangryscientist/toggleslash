@@ -28,7 +28,7 @@ underneath). The provider calls `ready()` when OpenFeature initialises it and `c
 
 `targetingKey` becomes the SDK context's `key`; every other entry becomes an attribute of the same name. A `Date` becomes
 its ISO 8601 string, because the `before` and `after` operators compare instants given as ISO strings
-([`docs/evaluation.md`](https://github.com/madangryscientist/toggleslash/blob/main/docs/evaluation.md)). A missing or empty `targetingKey` answers the default with reason
+([`docs/evaluation.md`](https://github.com/slashsuite/toggleslash/blob/main/docs/evaluation.md)). A missing or empty `targetingKey` answers the default with reason
 `ERROR` and `TARGETING_KEY_MISSING`, without calling the client.
 
 `variant` is the served variation's index as a string (`"0"`), and is left out when the default was served.

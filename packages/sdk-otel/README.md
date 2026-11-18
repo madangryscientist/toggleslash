@@ -14,4 +14,4 @@ createClient({ url, sdkKey, hooks: createTracingHooks({ project: "shop", environ
 ```
 
 `includeContextId` and `includeValue` are off by default. The attributes, how to go from a trace to the flags, and
-what was and was not checked are in [`docs/tracing.md`](https://github.com/madangryscientist/toggleslash/blob/main/docs/tracing.md).
+what was and was not checked are in [`docs/tracing.md`](https://github.com/slashsuite/toggleslash/blob/main/docs/tracing.md).

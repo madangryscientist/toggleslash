@@ -20,8 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/madangryscientist/toggleslash/sdks/go"
-	"github.com/madangryscientist/toggleslash/sdks/go/jsonval"
+	"github.com/slashsuite/toggleslash/sdks/go"
+	"github.com/slashsuite/toggleslash/sdks/go/jsonval"
 )
 
 // maxBodyDepth is how deep a request body may nest. The harness sends flat
