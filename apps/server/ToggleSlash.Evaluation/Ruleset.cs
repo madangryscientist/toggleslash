@@ -70,15 +70,15 @@ public sealed class Ruleset
     private static ErrorCode? SegmentProblem(Flag flag, Dictionary<string, Segment?> segments)
     {
         foreach (var rule in flag.Rules)
-        foreach (var clause in rule.Clauses)
-        {
-            if (clause.Op != Op.SegmentMatch) continue;
-            foreach (var key in clause.SegmentKeys)
+            foreach (var clause in rule.Clauses)
             {
-                if (!segments.TryGetValue(key, out var segment)) return ErrorCode.SegmentNotFound;
-                if (segment is null) return ErrorCode.MalformedSegment;
+                if (clause.Op != Op.SegmentMatch) continue;
+                foreach (var key in clause.SegmentKeys)
+                {
+                    if (!segments.TryGetValue(key, out var segment)) return ErrorCode.SegmentNotFound;
+                    if (segment is null) return ErrorCode.MalformedSegment;
+                }
             }
-        }
         return null;
     }
 }

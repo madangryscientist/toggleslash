@@ -1,7 +1,7 @@
 using System.Globalization;
-using ToggleSlash.Server.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using ToggleSlash.Server.Data;
 
 namespace ToggleSlash.Server.Sdk;
 

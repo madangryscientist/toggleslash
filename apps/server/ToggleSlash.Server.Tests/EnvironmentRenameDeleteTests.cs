@@ -70,7 +70,10 @@ public sealed class EnvironmentRenameDeleteTests : IDisposable
     {
         await ApiServer.Expect(HttpStatusCode.Created, await server.Post($"{Shop}/environments/{env}/segments", new
         {
-            key = "beta", included = new[] { "u1" }, excluded = Array.Empty<string>(), rules = Array.Empty<object>(),
+            key = "beta",
+            included = new[] { "u1" },
+            excluded = Array.Empty<string>(),
+            rules = Array.Empty<object>(),
         }));
         var (serverId, serverKey) = await Key(env);
         var (clientId, clientKey) = await Key(env, "client");

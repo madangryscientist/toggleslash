@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
-using ToggleSlash.Server.Data;
 using Microsoft.EntityFrameworkCore;
+using ToggleSlash.Server.Data;
 
 namespace ToggleSlash.Server.Usage;
 

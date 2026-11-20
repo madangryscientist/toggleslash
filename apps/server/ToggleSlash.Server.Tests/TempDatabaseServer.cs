@@ -1,7 +1,7 @@
-using ToggleSlash.Server.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
+using ToggleSlash.Server.Data;
 
 /// <summary>A directory under <c>$TMPDIR</c> holding one test's database file, removed afterwards.</summary>
 public sealed class TempDatabase : IDisposable

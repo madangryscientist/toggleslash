@@ -1,6 +1,6 @@
-using ToggleSlash.Server.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.OpenApi;
+using ToggleSlash.Server.Auth;
 
 namespace ToggleSlash.Server.Catalogue;
 

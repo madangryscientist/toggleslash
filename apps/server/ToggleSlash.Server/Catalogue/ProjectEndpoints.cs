@@ -1,8 +1,8 @@
 using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
 using ToggleSlash.Server.Audit;
 using ToggleSlash.Server.Auth;
 using ToggleSlash.Server.Data;
-using Microsoft.EntityFrameworkCore;
 
 namespace ToggleSlash.Server.Catalogue;
 

@@ -1,12 +1,12 @@
 using System.Collections.Concurrent;
 using System.Net.Http.Json;
-using ToggleSlash.Server.Auth;
-using ToggleSlash.Server.Data;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using ToggleSlash.Server.Auth;
+using ToggleSlash.Server.Data;
 
 /// <summary>
 /// The real server on a temp database, with one environment seeded and two extra routes, each gated on

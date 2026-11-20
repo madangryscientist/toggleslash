@@ -45,7 +45,7 @@ A change is green when all of these pass **from the worktree**:
 ```bash
 bun install                       # FIRST: a fresh worktree has no node_modules
 bun run typecheck                 # moon run :typecheck  (tsc, strict)
-bun run lint                      # moon run :lint  (oxlint --type-aware --deny-warnings + check-slop), then check-dashes over every tracked file
+bun run lint                      # moon run :lint  (oxlint --type-aware --deny-warnings + check-slop; server:lint: dotnet format --verify-no-changes), then check-dashes over every tracked file
 bun run format:check              # oxfmt --check  (`bun run format` fixes)
 bun run parity:check              # the feature parity matrix matches this tree
 bun run test                      # moon run :test  (Vitest under the Bun runtime, and xunit for the server)

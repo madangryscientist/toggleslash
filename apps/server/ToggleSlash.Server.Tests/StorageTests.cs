@@ -1,7 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using ToggleSlash.Server.Auth;
-using ToggleSlash.Server.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
@@ -9,6 +7,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
+using ToggleSlash.Server.Auth;
+using ToggleSlash.Server.Data;
 
 public sealed class StorageTests : IDisposable
 {

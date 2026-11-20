@@ -1,5 +1,5 @@
-using ToggleSlash.Server.Auth;
 using Microsoft.AspNetCore.Http.Timeouts;
+using ToggleSlash.Server.Auth;
 
 namespace ToggleSlash.Server.Hardening;
 

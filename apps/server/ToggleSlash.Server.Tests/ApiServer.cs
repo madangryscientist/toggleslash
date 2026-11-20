@@ -1,8 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using ToggleSlash.Server.Auth;
 using Microsoft.AspNetCore.Hosting;
+using ToggleSlash.Server.Auth;
 
 /// <summary>The real server on a temp database, driven through its own admin API.</summary>
 public sealed class ApiServer : IDisposable

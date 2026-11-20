@@ -1,0 +1,26 @@
+# Style and analyzer rules for `dotnet format` (server:lint) and the compiler. The rule set is the .NET analyzers at
+# AnalysisMode Recommended (Directory.Build.props) with code style enforced in the build (EnforceCodeStyleInBuild),
+# plus the style rules below. Every rule turned off has its reason directly above it. Every csproj treats warnings
+# as errors, so a rule left on is enforced.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+
+[*.{csproj,props,slnx,json,yml,yaml,toml}]
+indent_size = 2
+
+[*.cs]
+csharp_style_namespace_declarations = file_scoped:warning
+dotnet_style_qualification_for_field = false:warning
+dotnet_sort_system_directives_first = true
+csharp_new_line_before_open_brace = all
+
+# EF Core writes the migrations (`dotnet ef migrations add`); they are regenerated, never hand-edited.
+[ToggleSlash.Server/Data/Migrations/**.cs]
+generated_code = true

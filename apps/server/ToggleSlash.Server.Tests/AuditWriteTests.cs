@@ -184,7 +184,13 @@ public sealed class AuditWriteTests : IDisposable
         var rule = new[] { new { clauses = new[] { new { op = "segmentMatch", values = new[] { "beta" } } }, variation = 0 } };
         await ApiServer.Expect(HttpStatusCode.OK, await server.Put(Config, new
         {
-            on = true, offVariation = 1, targets = Array.Empty<object>(), prerequisites = Array.Empty<object>(), rules = rule, fallthrough = new { variation = 0 }, version = 1,
+            on = true,
+            offVariation = 1,
+            targets = Array.Empty<object>(),
+            prerequisites = Array.Empty<object>(),
+            rules = rule,
+            fallthrough = new { variation = 0 },
+            version = 1,
         }));
         var before = server.AuditRows().Count;
 

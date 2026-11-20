@@ -6,7 +6,16 @@ tags: ["dotnet"]
 # builds on its own, and its incremental build is its own cache, so `build` is never cached by moon.
 # Every task that builds the server holds the `dotnet-server` mutex (here and in packages/e2e): two
 # dotnet builds of the same projects at once race on the same obj/ and bin/ files and one fails.
+# `lint` runs `dotnet format --verify-no-changes` over ToggleSlash.Server.slnx (the four projects), against the
+# rules in .editorconfig; `dotnet format ToggleSlash.Server.slnx` from here fixes what it reports. It loads the
+# projects through MSBuild and writes obj/, so it holds the same mutex.
 tasks:
+  lint:
+    script: "dotnet format whitespace ToggleSlash.Server.slnx --verify-no-changes && dotnet format style ToggleSlash.Server.slnx --verify-no-changes"
+    inputs:
+      - "**/*"
+    options:
+      mutex: "dotnet-server"
   build:
     script: "dotnet build ToggleSlash.Evaluation.Tests/ToggleSlash.Evaluation.Tests.csproj && dotnet build ToggleSlash.Server.Tests/ToggleSlash.Server.Tests.csproj"
     options:

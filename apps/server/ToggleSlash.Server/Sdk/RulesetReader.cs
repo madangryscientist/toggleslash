@@ -2,10 +2,10 @@ using System.Data;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using ToggleSlash.Evaluation;
-using ToggleSlash.Server.Data;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using ToggleSlash.Evaluation;
+using ToggleSlash.Server.Data;
 
 namespace ToggleSlash.Server.Sdk;
 

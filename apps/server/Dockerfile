@@ -15,7 +15,7 @@ WORKDIR /src
 
 # Restore first, from the project files alone, so a source-only change reuses this layer.
 COPY global.json ./
-COPY apps/server/Directory.Build.props apps/server/Directory.Build.rsp apps/server/
+COPY apps/server/Directory.Build.props apps/server/Directory.Build.rsp apps/server/.editorconfig apps/server/
 COPY apps/server/ToggleSlash.Evaluation/ToggleSlash.Evaluation.csproj apps/server/ToggleSlash.Evaluation/
 COPY apps/server/ToggleSlash.Server/ToggleSlash.Server.csproj apps/server/ToggleSlash.Server/
 RUN dotnet restore apps/server/ToggleSlash.Server/ToggleSlash.Server.csproj

@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text.Json;
-using ToggleSlash.Server.Data;
 using Microsoft.Extensions.DependencyInjection;
+using ToggleSlash.Server.Data;
 
 /// <summary>
 /// The shared vectors in <c>fixtures/evaluation/</c>, run through the server: each vector's ruleset is stored in

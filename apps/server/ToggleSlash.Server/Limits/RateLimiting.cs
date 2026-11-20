@@ -1,10 +1,10 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
-using ToggleSlash.Server.Auth;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Net.Http.Headers;
+using ToggleSlash.Server.Auth;
 
 namespace ToggleSlash.Server.Limits;
 

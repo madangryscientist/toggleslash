@@ -1,10 +1,10 @@
 using System.Net;
-using ToggleSlash.Server.Auth;
-using ToggleSlash.Server.Limits;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using ToggleSlash.Server.Auth;
+using ToggleSlash.Server.Limits;
 
 /// <summary>Scoped admin tokens: what one may reach, what it cannot, and what is kept of it.</summary>
 public sealed class AdminTokenTests : IDisposable

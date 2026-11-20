@@ -2,5 +2,7 @@
   <!-- No compiler server left running after a build: the gate runs in many worktrees on one desktop. -->
   <PropertyGroup>
     <UseSharedCompilation>false</UseSharedCompilation>
+    <!-- IDE style rules set to warning in .editorconfig fail the build (warnings are errors in every csproj). -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 </Project>

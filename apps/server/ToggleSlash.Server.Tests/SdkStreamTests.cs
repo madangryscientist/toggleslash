@@ -2,8 +2,6 @@ using System.Data.Common;
 using System.Net;
 using System.Text.Json;
 using System.Threading.Channels;
-using ToggleSlash.Server.Data;
-using ToggleSlash.Server.Sdk;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -13,6 +11,8 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ToggleSlash.Server.Data;
+using ToggleSlash.Server.Sdk;
 
 /// <summary>
 /// <c>GET /sdk/v1/stream</c>. Nothing here waits for time to pass: the heartbeat is ticked by hand, and

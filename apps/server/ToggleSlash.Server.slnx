@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="ToggleSlash.Evaluation/ToggleSlash.Evaluation.csproj" />
+  <Project Path="ToggleSlash.Evaluation.Tests/ToggleSlash.Evaluation.Tests.csproj" />
+  <Project Path="ToggleSlash.Server/ToggleSlash.Server.csproj" />
+  <Project Path="ToggleSlash.Server.Tests/ToggleSlash.Server.Tests.csproj" />
+</Solution>

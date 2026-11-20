@@ -1,11 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
-using ToggleSlash.Server.Auth;
-using ToggleSlash.Server.Sdk;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using ToggleSlash.Server.Auth;
+using ToggleSlash.Server.Sdk;
 
 /// <summary>A clock stuck at one moment, for the retention window.</summary>
 public sealed class FixedClock(DateTime now) : TimeProvider
