@@ -15,12 +15,15 @@ export const Route = createFileRoute("/sign-in")({
   }),
   // Whole-page loads reach this page, with the Worker's answer. A client-side navigation has none and
   // shows the form, which is no weaker: the POST is what checks, and it lands back here on a full load.
-  loader: () => ({ problems: getGlobalStartContext()?.configProblems ?? [] }),
+  loader: () => {
+    const ctx = getGlobalStartContext();
+    return { problems: ctx?.configProblems ?? [], insecure: ctx?.insecureOrigin ?? false };
+  },
   component: SignIn,
 });
 
 function SignIn() {
-  const { problems } = Route.useLoaderData();
+  const { problems, insecure } = Route.useLoaderData();
   const { returnTo, failed } = Route.useSearch();
   if (problems.length > 0) {
     return (
@@ -35,6 +38,28 @@ function SignIn() {
                 <code>{problem.variable}</code>, at least {problem.minimumLength} characters.
               </Text>
             ))}
+          </Stack>
+        </Callout>
+      </CenteredLayout>
+    );
+  }
+  if (insecure) {
+    return (
+      <CenteredLayout title="Sign-in needs a secure address">
+        <Callout
+          tone="warn"
+          title="Signing in cannot work over plain http"
+          data-testid="sign-in-insecure"
+        >
+          <Stack gap="xs">
+            <Text>
+              This page was opened over plain http on a host that is not this machine, so your
+              browser would drop the session cookie and send you straight back here.
+            </Text>
+            <Text>
+              Open the dashboard over <code>https</code>, or at <code>localhost</code> on the
+              machine that runs it.
+            </Text>
           </Stack>
         </Callout>
       </CenteredLayout>

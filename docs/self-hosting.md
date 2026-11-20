@@ -130,7 +130,9 @@ openssl rand -hex 32 | bunx wrangler secret put TOGGLESLASH_SESSION_SECRET
 variable (never its value), every other page redirects to it, and every server function answers 401.
 
 **A session lasts 12 hours**, then you sign in again. The cookie holds an expiry and a signature, is
-`HttpOnly` and `SameSite=Lax`, and is `Secure` everywhere except a loopback host.
+`HttpOnly` and `SameSite=Lax`, and is `Secure` everywhere except a loopback host. Over plain http on any other
+host a browser drops a `Secure` cookie, so there the sign-in page says to open the dashboard over https or on
+localhost, and shows no form.
 
 - **Signing out** clears the cookie in that browser. A copy of the cookie taken earlier stays valid until
   it expires, because the server keeps no list of sessions.
