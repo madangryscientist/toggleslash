@@ -2,6 +2,8 @@ using System.Net;
 using ToggleSlash.Server.Auth;
 using ToggleSlash.Server.Data;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>Sets a process-wide variable, so these do not run alongside anything else.</summary>
 [CollectionDefinition(nameof(AdminTokenSettingTests), DisableParallelization = true)]
 public sealed class AdminTokenSettingCollection;

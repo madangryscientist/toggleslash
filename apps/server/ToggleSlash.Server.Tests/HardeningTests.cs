@@ -14,6 +14,8 @@ using ToggleSlash.Server.Hardening;
 using ToggleSlash.Server.Limits;
 using ToggleSlash.Server.Sdk;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>
 /// The response headers, the body limits and the timeouts. A test that needs Kestrel itself (its limits are not
 /// TestServer's) starts it with <c>UseKestrel</c> on a loopback port. Nothing here waits for a real 30 seconds.

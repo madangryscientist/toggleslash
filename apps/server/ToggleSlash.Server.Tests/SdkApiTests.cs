@@ -4,6 +4,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>The SDK read API: the ruleset with its ETag, evaluate, and the CORS that only evaluate has.</summary>
 public sealed class SdkApiTests : IDisposable
 {

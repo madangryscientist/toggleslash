@@ -91,6 +91,7 @@ public static class RateLimiting
 }
 
 /// <summary>Endpoint metadata: this route takes from the key's bucket for <see cref="Limit"/>.</summary>
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class LimitedPerKeyAttribute(KeyLimit limit) : Attribute
 {
     public KeyLimit Limit { get; } = limit;

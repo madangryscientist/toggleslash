@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text.Json;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>
 /// <c>PATCH</c> and <c>DELETE</c> on <c>/api/v1/projects/{project}/environments/{env}</c>. The stream ending after a delete
 /// is in <c>SdkStreamTests</c>, which owns the heartbeat seam; the token policy is in <c>AdminTokenTests</c>.

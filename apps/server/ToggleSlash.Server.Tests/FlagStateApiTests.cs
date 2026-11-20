@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text.Json;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary><c>GET .../environments/{env}/flag-states</c>: every flag's on/off, version and last usage day in one environment, in one read.</summary>
 public sealed class FlagStateApiTests : IDisposable
 {

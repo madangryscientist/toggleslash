@@ -3,6 +3,8 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using ToggleSlash.Server.Data;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>
 /// The shared vectors in <c>fixtures/evaluation/</c>, run through the server: each vector's ruleset is stored in
 /// the database as the admin API would store it, and <c>POST /sdk/v1/evaluate</c> must answer what the vector

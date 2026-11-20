@@ -150,7 +150,7 @@ public sealed class Pattern
             return new AltNode(sides, Saturate(sides.Sum(side => side.Size) + sides.Count - 1));
         }
 
-        private Node Concat()
+        private ConcatNode Concat()
         {
             var parts = new List<Node>();
             for (var c = Peek(); c != -1 && c != '|' && c != ')'; c = Peek())

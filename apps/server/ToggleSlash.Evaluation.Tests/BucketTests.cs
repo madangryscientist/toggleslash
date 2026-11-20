@@ -1,5 +1,7 @@
 using ToggleSlash.Evaluation;
 
+namespace ToggleSlash.Evaluation.Tests;
+
 /// <summary>The pins in <c>fixtures/evaluation/buckets.json</c>, written from an independent SHA-256.</summary>
 public sealed class BucketTests
 {

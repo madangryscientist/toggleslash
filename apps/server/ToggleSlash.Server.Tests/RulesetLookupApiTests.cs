@@ -3,6 +3,8 @@ using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>
 /// <c>GET /api/v1/projects/{project}/environments/{env}/rulesets/{hash}</c>: what the flags were under a hash this
 /// environment served, from the bytes kept when <c>GET /sdk/v1/ruleset</c> first answered 200 with them.
@@ -46,7 +48,7 @@ public sealed class RulesetLookupApiTests : IDisposable
         return response.Headers.ETag!.Tag.Trim('"');
     }
 
-    private Task Toggle(string flag, bool on) =>
+    private Task<HttpResponseMessage> Toggle(string flag, bool on) =>
         server.Post($"/api/v1/projects/shop/flags/{flag}/environments/prod/toggle", new { on });
 
     private async Task Save(string flag, string configJson)

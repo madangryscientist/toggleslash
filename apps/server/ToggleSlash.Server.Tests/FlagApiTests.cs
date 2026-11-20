@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text.Json;
 
+namespace ToggleSlash.Server.Tests;
+
 public sealed class FlagApiTests : IDisposable
 {
     private const string Flags = "/api/v1/projects/shop/flags";

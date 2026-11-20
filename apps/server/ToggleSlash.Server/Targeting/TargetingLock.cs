@@ -6,7 +6,7 @@ namespace ToggleSlash.Server.Targeting;
 /// of those both pass and then both write, so they take turns. One self-hosted process owns one file
 /// (docs/architecture.md), so a lock in the process is enough. Reads never take it.
 /// </summary>
-public sealed class TargetingLock
+public sealed class TargetingLock : IDisposable
 {
     private readonly SemaphoreSlim gate = new(1, 1);
 
@@ -15,6 +15,9 @@ public sealed class TargetingLock
         await gate.WaitAsync(cancellation);
         return new Releaser(gate);
     }
+
+    /// <summary>A DI singleton: the host disposes it at shutdown.</summary>
+    public void Dispose() => gate.Dispose();
 
     private sealed class Releaser(SemaphoreSlim gate) : IDisposable
     {

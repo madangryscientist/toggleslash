@@ -4,5 +4,7 @@
     <UseSharedCompilation>false</UseSharedCompilation>
     <!-- IDE style rules set to warning in .editorconfig fail the build (warnings are errors in every csproj). -->
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- The .NET CA analyzers at the C# SDK's level; .editorconfig turns off the few that do not fit, with a reason. -->
+    <AnalysisMode>Recommended</AnalysisMode>
   </PropertyGroup>
 </Project>

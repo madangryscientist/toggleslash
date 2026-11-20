@@ -82,7 +82,7 @@ internal sealed class RulesetSnapshot(RulesetResponse ruleset, byte[] body, IRea
 }
 
 /// <summary>Builds <see cref="RulesetSnapshot"/>s from the database. Nothing is cached: a write is visible to the next read.</summary>
-internal sealed class RulesetReader(ToggleSlashDbContext database, ILogger<RulesetReader> logger)
+internal sealed partial class RulesetReader(ToggleSlashDbContext database, ILogger<RulesetReader> logger)
 {
     /// <summary>The caller has already found the environment. A delete landing in the instant between that and this read makes it throw: a sweep logs it, a request answers 500.</summary>
     public async Task<RulesetSnapshot> Read(long environmentId, CancellationToken cancellation)
@@ -154,7 +154,7 @@ internal sealed class RulesetReader(ToggleSlashDbContext database, ILogger<Rules
         }
         catch (SqliteException exception)
         {
-            logger.LogWarning(exception, "Could not keep a served ruleset; it was served, and its hash cannot be looked up yet.");
+            LogSnapshotNotKept(logger, exception);
         }
     }
 
@@ -166,4 +166,7 @@ internal sealed class RulesetReader(ToggleSlashDbContext database, ILogger<Rules
         using var document = JsonDocument.Parse(text);
         return document.RootElement.Clone();
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not keep a served ruleset; it was served, and its hash cannot be looked up yet.")]
+    private static partial void LogSnapshotNotKept(ILogger logger, Exception exception);
 }

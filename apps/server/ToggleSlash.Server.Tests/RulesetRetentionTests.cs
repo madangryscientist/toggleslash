@@ -7,6 +7,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using ToggleSlash.Server.Auth;
 using ToggleSlash.Server.Sdk;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>A clock stuck at one moment, for the retention window.</summary>
 public sealed class FixedClock(DateTime now) : TimeProvider
 {
@@ -20,7 +22,7 @@ public sealed class FixedClock(DateTime now) : TimeProvider
 /// </summary>
 public sealed class RulesetRetentionTests : IDisposable
 {
-    private const string Rulesets = "/api/v1/projects/shop/environments/{0}/rulesets/{1}";
+    private static string RulesetPath(string env, string hash) => $"/api/v1/projects/shop/environments/{env}/rulesets/{hash}";
 
     private const string EmptyRuleset = """{"flags":[],"segments":[]}""";
 
@@ -98,7 +100,7 @@ public sealed class RulesetRetentionTests : IDisposable
     }
 
     private async Task<HttpStatusCode> Lookup(string env, string hash) =>
-        (await server.Get(string.Format(Rulesets, env, hash))).StatusCode;
+        (await server.Get(RulesetPath(env, hash))).StatusCode;
 
     // --- the rule -----------------------------------------------------------------------------------------
 
@@ -115,7 +117,7 @@ public sealed class RulesetRetentionTests : IDisposable
 
         Assert.Equal(1, removed);
         Assert.Equal(HttpStatusCode.NotFound, await Lookup("prod", Hash('a')));
-        var error = await ApiServer.Json(await server.Get(string.Format(Rulesets, "prod", Hash('a'))));
+        var error = await ApiServer.Json(await server.Get(RulesetPath("prod", Hash('a'))));
         Assert.Contains("no longer keeps it", error.GetProperty("error").GetProperty("message").GetString());
         Assert.Equal(Sorted(Hash('b'), current), Kept("prod"));
     }

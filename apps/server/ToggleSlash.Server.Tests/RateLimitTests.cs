@@ -12,6 +12,8 @@ using ToggleSlash.Server.Auth;
 using ToggleSlash.Server.Limits;
 using ToggleSlash.Server.Sdk;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>A clock that moves only when told to, for the limiter's <see cref="TimeProvider"/>.</summary>
 public sealed class ManualClock : TimeProvider
 {

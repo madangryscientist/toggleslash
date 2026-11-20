@@ -20,7 +20,7 @@ internal sealed record UsageResult(int Accepted, int UnknownFlags, UsageEntry? O
 /// something the request names, so a batch cannot write to another environment, and a flag is looked up in that
 /// environment's project only.
 /// </summary>
-internal sealed class UsageRecorder(ToggleSlashDbContext database, ILogger<UsageRecorder> logger)
+internal sealed partial class UsageRecorder(ToggleSlashDbContext database, ILogger<UsageRecorder> logger)
 {
     /// <param name="clientKey">
     /// A client key sees only flags marked visible to it, so a hidden flag is unknown to it here too, as on evaluate: it
@@ -84,7 +84,7 @@ internal sealed class UsageRecorder(ToggleSlashDbContext database, ILogger<Usage
         }
         catch (Exception exception) when (exception is DbUpdateException or Microsoft.Data.Sqlite.SqliteException)
         {
-            logger.LogWarning(exception, "Could not record the usage of an evaluation; the evaluation itself was served.");
+            LogUsageNotRecorded(logger, exception);
         }
     }
 
@@ -93,4 +93,7 @@ internal sealed class UsageRecorder(ToggleSlashDbContext database, ILogger<Usage
         using var document = JsonDocument.Parse(variations);
         return document.RootElement.GetArrayLength();
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not record the usage of an evaluation; the evaluation itself was served.")]
+    private static partial void LogUsageNotRecorded(ILogger logger, Exception exception);
 }

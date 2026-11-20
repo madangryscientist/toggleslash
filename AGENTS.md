@@ -94,6 +94,12 @@ command works without one for the TS projects. Both
 `.csproj` files set `Nullable`, `TreatWarningsAsErrors` and `InvariantGlobalization`;
 `apps/server/Directory.Build.props` and `.rsp` leave no compiler server or MSBuild node running after a
 build. `bin/` and `obj/` are ignored, and so are they in the `server` project's inputs.
+`apps/server/Directory.Build.props` also sets `AnalysisMode=Recommended` (the .NET CA analyzers) and
+`EnforceCodeStyleInBuild`, so with warnings as errors a rule that fires fails `server:build` and `server:test`.
+`apps/server/.editorconfig` holds the style rules and the reason for every rule turned off, and marks the EF
+migrations `generated_code`. `server:lint` runs `dotnet format --verify-no-changes` (whitespace, style and
+analyzers) over `apps/server/ToggleSlash.Server.slnx`, the four projects; `dotnet format ToggleSlash.Server.slnx`
+from `apps/server` fixes what it reports.
 
 One project: `bunx moon run engine:test`, `bunx moon run cli:lint`, `bunx moon run server:test`. moon
 caches in `.moon/cache` (gitignored; it cannot be moved); add `--force` to rerun a cached task. The root

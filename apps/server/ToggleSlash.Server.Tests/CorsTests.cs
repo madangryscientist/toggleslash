@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>
 /// AGENTS.md invariant 7: the ruleset holds salts and every rule, so no browser may read it. Exactly three routes carry
 /// a CORS policy (evaluate, events and the change signal), and a fourth one fails here.

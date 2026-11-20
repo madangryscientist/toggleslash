@@ -8,6 +8,8 @@ using Microsoft.Extensions.Logging;
 using ToggleSlash.Server.Auth;
 using ToggleSlash.Server.Data;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>
 /// The real server on a temp database, with one environment seeded and two extra routes, each gated on
 /// one SDK policy and nothing else, so the policies are tested on their own. The real SDK routes are in

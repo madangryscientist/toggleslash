@@ -11,7 +11,7 @@ tags: ["dotnet"]
 # projects through MSBuild and writes obj/, so it holds the same mutex.
 tasks:
   lint:
-    script: "dotnet format whitespace ToggleSlash.Server.slnx --verify-no-changes && dotnet format style ToggleSlash.Server.slnx --verify-no-changes"
+    script: "dotnet format whitespace ToggleSlash.Server.slnx --verify-no-changes && dotnet format style ToggleSlash.Server.slnx --verify-no-changes && dotnet format analyzers ToggleSlash.Server.slnx --verify-no-changes"
     inputs:
       - "**/*"
     options:

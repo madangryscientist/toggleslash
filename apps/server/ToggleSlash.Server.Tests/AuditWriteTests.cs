@@ -3,6 +3,8 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>Every admin write records exactly one audit event in its own transaction; a failed write records none.</summary>
 public sealed class AuditWriteTests : IDisposable
 {

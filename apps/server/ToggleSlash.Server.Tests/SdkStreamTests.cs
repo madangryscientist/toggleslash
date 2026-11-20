@@ -14,6 +14,8 @@ using Microsoft.Extensions.Logging;
 using ToggleSlash.Server.Data;
 using ToggleSlash.Server.Sdk;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>
 /// <c>GET /sdk/v1/stream</c>. Nothing here waits for time to pass: the heartbeat is ticked by hand, and
 /// <see cref="Guard"/> only bounds a wait so that a broken stream fails instead of hanging.
@@ -41,7 +43,11 @@ public sealed class SdkStreamTests : IDisposable
             services.ConfigureDbContext<ToggleSlashDbContext>(options => options.AddInterceptors(commits));
         }));
 
-    public void Dispose() => server.Dispose();
+    public void Dispose()
+    {
+        server.Dispose();
+        probe.Dispose();
+    }
 
     private RulesetNotifier Notifier => server.Server.Services.GetRequiredService<RulesetNotifier>();
 
@@ -488,7 +494,7 @@ public sealed class SdkStreamTests : IDisposable
     /// Sits around the stream route: reports when a stream's request has finished, by which point its
     /// subscriber must be gone, and can stop its writes reaching the client, as a client that stopped reading would.
     /// </summary>
-    private sealed class StreamProbe : IStartupFilter
+    private sealed class StreamProbe : IStartupFilter, IDisposable
     {
         private readonly TaskCompletionSource open = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly SemaphoreSlim stuck = new(0);
@@ -507,6 +513,12 @@ public sealed class SdkStreamTests : IDisposable
         {
             stopped = false;
             open.TrySetResult();
+        }
+
+        public void Dispose()
+        {
+            stuck.Dispose();
+            finished.Dispose();
         }
 
         public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>

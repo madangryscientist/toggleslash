@@ -4,6 +4,8 @@ using System.Text.Json;
 using ToggleSlash.Server.Auth;
 using ToggleSlash.Server.Data;
 
+namespace ToggleSlash.Server.Tests;
+
 public sealed class AuthTests : IDisposable
 {
     private const string WrongToken = "wrong-token-that-must-not-be-logged";

@@ -6,6 +6,8 @@ using Microsoft.Extensions.DependencyInjection;
 using ToggleSlash.Server.Auth;
 using ToggleSlash.Server.Limits;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>Scoped admin tokens: what one may reach, what it cannot, and what is kept of it.</summary>
 public sealed class AdminTokenTests : IDisposable
 {

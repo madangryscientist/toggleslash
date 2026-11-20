@@ -3,6 +3,8 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>A flag's targeting in one environment: read, replace under a version, toggle, and the validation of what a save points at.</summary>
 public sealed class ConfigApiTests : IDisposable
 {

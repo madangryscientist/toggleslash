@@ -3,6 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using ToggleSlash.Server.Auth;
 using ToggleSlash.Server.Data;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>
 /// Keys and tokens made before the <c>tgl_</c> prefix start with <c>fs_</c>. Authentication looks a credential up by the
 /// hash of the whole text and never reads its prefix, so they keep working. These tests store rows the way an older

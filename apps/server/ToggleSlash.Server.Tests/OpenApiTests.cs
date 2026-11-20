@@ -2,6 +2,8 @@ using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
+namespace ToggleSlash.Server.Tests;
+
 public sealed class OpenApiTests : IDisposable
 {
     private const string UpdateVariable = "TOGGLESLASH_UPDATE_OPENAPI";

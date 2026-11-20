@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text.Json;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>
 /// <c>GET /api/v1/projects/{project}/environments/{env}/runtime</c>: the tag and flag count of the ruleset the server
 /// would serve, and the last write that could have changed it. Nothing about what an SDK has loaded.
@@ -137,7 +139,7 @@ public sealed class RuntimeApiTests : IDisposable
         await Seed();
         await ApiServer.Expect(
             HttpStatusCode.Created,
-            await server.Post("/api/v1/projects/shop/environments/staging/segments", new { key = "beta", included = new string[0], excluded = new string[0], rules = new object[0] }));
+            await server.Post("/api/v1/projects/shop/environments/staging/segments", new { key = "beta", included = Array.Empty<string>(), excluded = Array.Empty<string>(), rules = Array.Empty<object>() }));
 
         Assert.Null(await LastChange(Prod));
         await ExpectChange(LastChange(Staging), "segment", "beta", "created");

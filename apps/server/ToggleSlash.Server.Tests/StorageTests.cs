@@ -10,6 +10,8 @@ using Microsoft.Extensions.DependencyInjection;
 using ToggleSlash.Server.Auth;
 using ToggleSlash.Server.Data;
 
+namespace ToggleSlash.Server.Tests;
+
 public sealed class StorageTests : IDisposable
 {
     private static readonly DateTime Now = new(2026, 11, 5, 12, 0, 0, DateTimeKind.Utc);
@@ -225,7 +227,7 @@ public sealed class StorageTests : IDisposable
         Assert.Contains("projects", Tables());
     }
 
-    private (long, long) TwoProjects(ServerOn server)
+    private static (long, long) TwoProjects(ServerOn server)
     {
         var shop = new Project { Key = "shop", Name = "Shop", CreatedAt = Now };
         var blog = new Project { Key = "blog", Name = "Blog", CreatedAt = Now };
