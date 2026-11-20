@@ -53,7 +53,7 @@ function SignIn() {
         >
           <Stack gap="xs">
             <Text>
-              This page was opened over plain http on a host that is not this machine, so your
+              This page was opened over plain http at an address other than localhost, so your
               browser would drop the session cookie and send you straight back here.
             </Text>
             <Text>
