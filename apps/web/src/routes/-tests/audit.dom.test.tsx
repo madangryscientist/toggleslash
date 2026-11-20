@@ -24,7 +24,7 @@ test("says when nothing matches the filters", async () => {
     { url: "/audit?project=shop&flag=no-such-flag" },
   );
   expect(page.getByText("No event matches these filters.")).toBeTruthy();
-  expect(page.queryByRole("list", { name: "Audit log" })).toBeNull();
+  expect(page.queryByRole("list", { name: "Audit trail" })).toBeNull();
   expect(loadAudit).toHaveBeenCalledWith({
     data: expect.objectContaining({ project: "shop", flag: "no-such-flag" }),
   });

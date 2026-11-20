@@ -9,11 +9,11 @@ using static ToggleSlash.Server.Sdk.SdkEndpoints;
 namespace ToggleSlash.Server.Sdk;
 
 /// <summary>
-/// "Why is this flag on for this user?" for an admin, without an SDK key. It answers what
+/// "Why is this flag on for this context?" for an admin, without an SDK key. It answers what
 /// <c>POST /sdk/v1/evaluate</c> answers, for any environment, and records nothing: no usage count, no audit
 /// event, and the context is neither stored nor logged. No CORS, so no browser reads it.
 /// With <c>etag</c> it answers for the ruleset this environment served under that hash, from the bytes kept then,
-/// through the same evaluator: "why was this flag on for this user, back then".
+/// through the same evaluator: "why was this flag on for this context, back then".
 /// </summary>
 public static class DiagnoseEndpoint
 {

@@ -1,5 +1,5 @@
 /**
- * The admin API calls the operator pages make: SDK keys, segments and the audit log.
+ * The admin API calls the operator pages make: SDK keys, segments and the audit trail.
  * Worker only. A key's plaintext appears in exactly one answer (`createKey`) and is never cached here.
  */
 import { ApiFailure, apiPath, list, type Call } from "./http.server.ts";

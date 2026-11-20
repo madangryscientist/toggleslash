@@ -1,5 +1,5 @@
 /**
- * The server functions of the operator pages: SDK keys, segments and the audit log.
+ * The server functions of the operator pages: SDK keys, segments and the audit trail.
  * Their handlers run in the Worker, with the admin token. The one answer that carries a key's
  * plaintext is `createKey`'s; no loader returns it.
  */

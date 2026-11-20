@@ -747,7 +747,7 @@
     {
       "id": "audit-log",
       "category": "Release",
-      "name": "Audit log",
+      "name": "Audit trail",
       "description": "Record every write with an actor and the before and after state.",
       "toggleslash": {
         "status": "yes",
@@ -1438,7 +1438,7 @@
       "toggleslash": {
         "status": "partial",
         "evidence": ["path:packages/cli", "cli:config set-url", "cli:config set-token"],
-        "note": "Projects, environments, flags with their targeting, segments, keys, tokens, diagnose and runtime; no audit log or usage commands."
+        "note": "Projects, environments, flags with their targeting, segments, keys, tokens, diagnose and runtime; no audit trail or usage commands."
       },
       "competitors": {
         "launchdarkly": "yes",

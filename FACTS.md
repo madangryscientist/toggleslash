@@ -28,7 +28,7 @@ ToggleSlash is a feature flag service you run yourself: it decides which users s
 - `live-updates`: SDKs get changes through a stream from the server, with polling when the stream is down; the stream works within one server process.
 - `rate-limits`: the server limits requests per key and per IP address in memory, and sets security headers, a body size limit and request timeouts.
 - `cli`: the `toggleslash` command manages projects, environments, flags and their targeting, segments, SDK keys and scoped tokens over the admin API, and has `diagnose`, `runtime` and `rulesets` commands.
-- `dashboard`: a web dashboard lists, searches, creates, toggles and archives flags, edits targeting, shows each flag's history and usage, and has pages for environments, SDK keys, segments, the audit log and the flags as they were under a past ruleset hash.
+- `dashboard`: a web dashboard lists, searches, creates, toggles and archives flags, edits targeting, shows each flag's history and usage, and has pages for environments, SDK keys, segments, the audit trail and the flags as they were under a past ruleset hash.
 - `dashboard-sign-in`: the dashboard has one operator sign-in, a password and a signed session cookie; there are no user accounts or roles.
 - `typescript-server-sdk`: the TypeScript server SDK keeps a copy of an environment's ruleset current and evaluates flags in the application's own process.
 - `browser-sdk`: the browser SDK asks the server to evaluate flags for one context, caches the answer and updates it when flags change.

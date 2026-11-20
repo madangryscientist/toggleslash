@@ -59,7 +59,7 @@ function Audit() {
       }
     >
       {project === null ? (
-        <NeedsEnvironment project={null} what="The audit log" />
+        <NeedsEnvironment project={null} what="The audit trail" />
       ) : (
         <AuditLog
           project={project}

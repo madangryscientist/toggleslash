@@ -1,7 +1,7 @@
 # Run report template
 
 Copy this to `sdks/<lang>/RUN.md` and fill every section. Keep the headings as they are: the phase 6b
-check and the planner read them. A section with nothing in it says "None." rather than disappearing.
+check and the architect read them. A section with nothing in it says "None." rather than disappearing.
 
 ```markdown
 # <Language> SDK: run report

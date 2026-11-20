@@ -38,7 +38,7 @@ await client.close(); // stops the loops and sends the last usage counts
 ```
 
 A context is one of two shapes, as [`evaluation.md`](evaluation.md) defines them. A single context is
-`{ kind?, key, attributes? }`, and no `kind` is `"user"`, so the calls above evaluate a user. A multi context
+`{ kind?, key, attributes? }`, and no `kind` is `"user"`, so the calls above evaluate a context of kind `user`. A multi context
 carries several kinds at once, each keyed by its kind; a clause, target or rollout with a `contextKind`
 reads that kind:
 
