@@ -1,4 +1,4 @@
-/** The fake API's operator routes: SDK keys, segments and the project audit log. */
+/** The fake API's operator routes: SDK keys, segments and the project audit trail. */
 import { PAST_RULESET_HASH, PLANTED_SALT } from "./constants.ts";
 import { asBody, failure, type Body, type Reply } from "./fake-config.ts";
 import { db, type KeyRow, type SegmentRow } from "./fake-data.ts";

@@ -41,12 +41,12 @@ test("every section link carries the project and environment along", async () =>
     ["Environments", "/environments"],
     ["SDK keys", "/keys"],
     ["Segments", "/segments"],
-    ["Audit log", "/audit"],
+    ["Audit trail", "/audit"],
   ] as const) {
     const href = nav.getByRole("link", { name: label }).getAttribute("href");
     expect(href).toBe(`${path}?project=shop&env=staging`);
   }
-  expect(nav.getByRole("link", { name: "Audit log" }).getAttribute("aria-current")).toBe("page");
+  expect(nav.getByRole("link", { name: "Audit trail" }).getAttribute("aria-current")).toBe("page");
 });
 
 test("only the current section is marked current, on that section's own URL", async () => {
@@ -61,5 +61,5 @@ test("only the current section is marked current, on that section's own URL", as
     .getAllByRole("link")
     .filter((link) => link.getAttribute("aria-current") === "page")
     .map((link) => link.textContent);
-  expect(current).toEqual(["Audit log"]);
+  expect(current).toEqual(["Audit trail"]);
 });

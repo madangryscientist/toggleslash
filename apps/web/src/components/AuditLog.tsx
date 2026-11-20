@@ -33,7 +33,7 @@ function Filters({ environments, filters, onApply }: FilterProps) {
   }
   const filtered = filters.flag !== "" || filters.environment !== "" || filters.since !== "";
   return (
-    <form onSubmit={submit} aria-label="Filter the audit log" data-testid="audit-filters">
+    <form onSubmit={submit} aria-label="Filter the audit trail" data-testid="audit-filters">
       <Cluster gap="xs" align="end">
         <Field label="Flag">
           <Input
@@ -99,7 +99,7 @@ export function AuditLog({ project, env, environments, filters, cursor, page, on
   return (
     <Stack width="full">
       <PageHeader
-        title="Audit log"
+        title="Audit trail"
         description={`${project.name}: every change made through the admin API, newest first`}
       />
       <Filters
@@ -119,7 +119,7 @@ export function AuditLog({ project, env, environments, filters, cursor, page, on
             : "No event matches these filters."}
         </EmptyState>
       ) : (
-        <Timeline label="Audit log" data-testid="audit-events">
+        <Timeline label="Audit trail" data-testid="audit-events">
           {page.events.map((event) => (
             <TimelineItem
               key={event.id}

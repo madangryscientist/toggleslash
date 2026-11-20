@@ -51,7 +51,7 @@ interface SwitcherProps {
   environment: Environment | null;
   /** A page about one project's flag fixes the project: the picker shows it and is disabled. */
   projectLocked?: boolean;
-  /** The audit log filters by environment itself, so it has no environment picker. */
+  /** The audit trail filters by environment itself, so it has no environment picker. */
   hideEnvironment?: boolean;
   onProject: (key: string) => void;
   onEnvironment: (key: string) => void;
@@ -149,7 +149,7 @@ function Nav({ active, project, env }: NavScope) {
           "data-testid": "nav-segments",
         },
         {
-          label: "Audit log",
+          label: "Audit trail",
           selected: active === "audit",
           href: appHref("/audit", scope),
           "data-testid": "nav-audit",

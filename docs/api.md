@@ -55,9 +55,9 @@ kind matches `[A-Za-z0-9._-]+` and is not `kind` or `multi`. Any other context i
 
 All of these take the admin token. They cover projects, environments, flags (including archive and
 restore, per-environment targeting and toggling, history and usage), SDK keys, segments and the project's
-audit log. The `toggleslash` CLI ([`packages/cli/README.md`](../packages/cli/README.md)) calls the routes
+audit trail. The `toggleslash` CLI ([`packages/cli/README.md`](../packages/cli/README.md)) calls the routes
 for projects, environments, flags and SDK keys; the dashboard (`apps/web`) calls them for the flag list and
-detail page, environments, keys, segments and the audit log. The OpenAPI document lists every route.
+detail page, environments, keys, segments and the audit trail. The OpenAPI document lists every route.
 
 A flag's targets, attribute clauses and rollouts take an optional `contextKind`, and a segment rule an optional
 `rolloutContextKind`. A segment has `included` and `excluded` (user keys) and `includedContexts` and
@@ -65,6 +65,6 @@ A flag's targets, attribute clauses and rollouts take an optional `contextKind`,
 without the two lists leaves them empty; a `PUT` without them keeps what is stored, and a `PUT` with them
 replaces them. The ruleset carries each list only when it is not empty.
 
-Every write is recorded in the audit log, newest first, with the actor, the entity, the action and the
+Every write is recorded in the audit trail, newest first, with the actor, the entity, the action and the
 `before` and `after` state.
 

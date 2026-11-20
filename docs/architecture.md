@@ -417,7 +417,7 @@ server function has to be exempt from the middleware. Signing out is a server fu
 session. A unit test fails if the middleware is not registered on the one Start instance; e2e calls every
 server function in the built manifest, signed out, and expects a 401.
 
-### Environments, SDK keys, segments and the audit log
+### Environments, SDK keys, segments and the audit trail
 
 Four more routes take `?project=&env=` like the list; their server functions are in `src/api/operator.ts`
 and their client calls in `src/api/operator.server.ts`. The nav in the shell moves between them and keeps
@@ -435,7 +435,7 @@ the project and environment.
   The save carries the version the page read; a stale one (409) keeps the dialog open with the typing in it
   and says to copy what is needed and reload. There is no merge.
   The ticket asked for list and edit, so the page has no create or delete; the admin API has both.
-- **`/audit`**: the project's audit log, newest first, 25 events a page, filtered by flag, environment and
+- **`/audit`**: the project's audit trail, newest first, 25 events a page, filtered by flag, environment and
   a day (sent as midnight UTC). Paging is by the server's cursor ("Older events", "Back to the newest"),
   kept in the URL so a view can be linked.
 

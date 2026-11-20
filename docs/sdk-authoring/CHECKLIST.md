@@ -1,4 +1,4 @@
-# SDK checklist: the definition of done
+# SDK checklist: done when
 
 Every line is a check you can run or point at. Each names where its rule comes from. "Contract" is
 [`docs/sdk-contract.md`](../sdk-contract.md); "the harness" is `bun run conformance -- --service

@@ -55,7 +55,7 @@ These hold for every file you write, code, comments, docs, commit messages and t
 5. **Commits are Conventional Commits** (`<type>(<scope>): <subject>`). Use the subject your brief gives. If
    it gives none, use `chore(sdk-<lang>): a <Language> server SDK built from the authoring prompt`. Never
    `feat`: CI fails a `feat` commit that does not change `docs/feature-parity.json`, which rule 2 keeps you
-   out of. The planner updates that file.
+   out of. The architect updates that file.
 6. **No `Co-Authored-By` trailer and no AI attribution line** in a commit, the PR or any file.
 7. **Secrets come from the environment, never the tree.** The SDK and its tests need none: the harness
    makes up its own keys.

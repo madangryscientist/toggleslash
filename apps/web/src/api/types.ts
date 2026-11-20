@@ -195,7 +195,7 @@ export interface AuditPage {
   nextCursor: string | null;
 }
 
-/** What the audit log is narrowed to: an empty string is no filter. `since` is `yyyy-mm-dd`. */
+/** What the audit trail is narrowed to: an empty string is no filter. `since` is `yyyy-mm-dd`. */
 export interface AuditFilters {
   flag: string;
   environment: string;

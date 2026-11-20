@@ -64,7 +64,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | --- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | Approvals and change requests | ❌ | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ | 🟡 | 🟡 |
 | Required comments and confirmation | ❌ | ✅ | 🟡 | 🟡 | 🟡 | ✅ | 🟡 | 🟡 | 🟡 |
-| Audit log | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Audit trail | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Dashboard sign-in and sessions | 🟡 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Role-based access control | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | SSO and SCIM | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ |
@@ -168,7 +168,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | --- | :---: | --- |
 | Approvals and change requests | ❌ | none |
 | Required comments and confirmation | ❌ | none |
-| Audit log | ✅ | `api:/api/v1/projects/{project}/audit`<br>`api:/api/v1/projects/{project}/flags/{flag}/history`<br>`cli:flags history`<br>`dashboard:/audit` |
+| Audit trail | ✅ | `api:/api/v1/projects/{project}/audit`<br>`api:/api/v1/projects/{project}/flags/{flag}/history`<br>`cli:flags history`<br>`dashboard:/audit` |
 | Dashboard sign-in and sessions | 🟡 | `dashboard:/sign-in`<br>`path:apps/web/src/api/auth.server.ts`<br>`path:apps/web/src/api/session-middleware.ts`<br>`test:apps/web/e2e/sign-in.spec.ts`<br>`doc:docs/self-hosting.md` |
 | Role-based access control | ❌ | none |
 | SSO and SCIM | ❌ | none |
@@ -214,7 +214,7 @@ capability it does not need, and a narrow one can be `yes` on the few it does.
 | Security headers, body limits and timeouts | ✅ | `path:apps/server/ToggleSlash.Server/Hardening/SecurityHeaders.cs`<br>`path:apps/server/ToggleSlash.Server/Hardening/RequestLimits.cs`<br>`path:apps/web/src/api/security-headers.server.ts`<br>`test:apps/server/ToggleSlash.Server.Tests/HardeningTests.cs`<br>`test:apps/server/ToggleSlash.Server.Tests/CorsTests.cs`<br>`test:apps/web/e2e/security-headers.spec.ts`<br>`doc:docs/self-hosting.md`<br>No HSTS from either: terminate TLS in front and set it there. Request timeouts are cooperative: a handler that ignores its cancellation token runs to completion. Not compared with other vendors. |
 | Terraform provider | ❌ | none |
 | MCP server | ❌ | none |
-| CLI | 🟡 | `path:packages/cli`<br>`cli:config set-url`<br>`cli:config set-token`<br>Projects, environments, flags with their targeting, segments, keys, tokens, diagnose and runtime; no audit log or usage commands. |
+| CLI | 🟡 | `path:packages/cli`<br>`cli:config set-url`<br>`cli:config set-token`<br>Projects, environments, flags with their targeting, segments, keys, tokens, diagnose and runtime; no audit trail or usage commands. |
 
 ### Platform
 

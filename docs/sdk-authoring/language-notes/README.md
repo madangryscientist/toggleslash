@@ -2,7 +2,7 @@
 
 A language note is what a run of [`PROMPT.md`](../PROMPT.md) learned about one language that the prompt
 cannot say in general. Each SDK run proposes its note under "Proposed prompt changes"
-in its `RUN.md`, and the planner writes or edits the note in a separate pull request before the next run.
+in its `RUN.md`, and the architect writes or edits the note in a separate pull request before the next run.
 
 ## What a note is
 

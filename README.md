@@ -27,7 +27,7 @@ hostname behind Cloudflare Access and a documented deploy ([`docs/dashboard-host
 | `fixtures/evaluation` | the language-neutral test vectors every implementation must pass |
 | `packages/cli` | the `toggleslash` command: manage projects, environments, flags and SDK keys over the admin API |
 | `packages/sdk` | the TypeScript server SDK (`@hackcove/toggleslash-sdk` on npm, published by `release.yml`) |
-| `apps/web` | the dashboard: TanStack Start on Cloudflare Workers; flag list, toggle, create and archive, a flag detail page (metadata, targeting editor, history, usage), and pages for environments, SDK keys, segments and the audit log, over the server's admin API |
+| `apps/web` | the dashboard: TanStack Start on Cloudflare Workers; flag list, toggle, create and archive, a flag detail page (metadata, targeting editor, history, usage), and pages for environments, SDK keys, segments and the audit trail, over the server's admin API |
 | `apps/server` | the C# server (ASP.NET Core, .NET 10): owns flag data and the API |
 | `apps/server/ToggleSlash.Evaluation` | flag evaluation in C#, to the same spec and vectors as the engine; the server's `POST /sdk/v1/evaluate` uses it |
 | `packages/e2e` | the cross-language end-to-end test: the real server, CLI and SDK on localhost (`bun scripts/moon.ts run e2e:test-e2e`; needs the .NET SDK) |

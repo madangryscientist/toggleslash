@@ -10,8 +10,9 @@ const section = (page: Page, label: string) =>
 
 const API = `http://127.0.0.1:${API_PORT}`;
 
-/** The audit log's events, each an item of its list. */
-const events = (page: Page) => page.getByRole("list", { name: "Audit log" }).getByRole("listitem");
+/** The audit trail's events, each an item of its list. */
+const events = (page: Page) =>
+  page.getByRole("list", { name: "Audit trail" }).getByRole("listitem");
 
 test.beforeEach(async ({ request }) => {
   await request.post(`${API}/__reset`);
@@ -87,7 +88,7 @@ test("edits a segment's members, saves and sees them after a reload", async ({ p
   await expect(page.getByRole("row", { name: /^beta-testers/ })).toContainText("3 contexts");
 });
 
-test.describe("audit log", () => {
+test.describe("audit trail", () => {
   test("lists the newest events and pages back to older ones", async ({ page }) => {
     await gotoHydrated(page, "/audit?project=shop");
     await expect(events(page)).toHaveCount(25);
@@ -102,13 +103,13 @@ test.describe("audit log", () => {
 
   test("filters by flag, environment and date", async ({ page }) => {
     await gotoHydrated(page, "/audit?project=shop");
-    const filters = page.getByRole("form", { name: "Filter the audit log" });
+    const filters = page.getByRole("form", { name: "Filter the audit trail" });
     const apply = filters.getByRole("button", { name: "Apply filters" });
     await filters.getByLabel("Flag").fill("checkout-v2");
     await apply.click();
     await expect(page).toHaveURL(/flag=checkout-v2/);
     await expect(events(page)).toHaveCount(10);
-    await expect(page.getByRole("list", { name: "Audit log" })).not.toContainText("dark-mode");
+    await expect(page.getByRole("list", { name: "Audit trail" })).not.toContainText("dark-mode");
 
     await filters.getByLabel("Environment").selectOption("production");
     await apply.click();
