@@ -3,6 +3,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using ToggleSlash.Evaluation;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>
 /// What the API saves is what <c>ToggleSlash.Evaluation</c> reads: the ruleset is built from the API's own
 /// answers (plus the salts, which it never returns), as an SDK read will, and evaluated.

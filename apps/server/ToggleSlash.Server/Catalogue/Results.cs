@@ -1,7 +1,7 @@
-using ToggleSlash.Server.Auth;
-using ToggleSlash.Server.Data;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using ToggleSlash.Server.Auth;
+using ToggleSlash.Server.Data;
 
 namespace ToggleSlash.Server.Catalogue;
 

@@ -1,5 +1,7 @@
 using System.Net;
 
+namespace ToggleSlash.Server.Tests;
+
 public sealed class ProjectApiTests : IDisposable
 {
     private readonly ApiServer server = new();

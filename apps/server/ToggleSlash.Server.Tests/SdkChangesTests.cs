@@ -1,8 +1,10 @@
 using System.Net;
 using System.Threading.Channels;
-using ToggleSlash.Server.Sdk;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using ToggleSlash.Server.Sdk;
+
+namespace ToggleSlash.Server.Tests;
 
 /// <summary>
 /// <c>GET /sdk/v1/changes</c>, the change signal a client key may open: the stream's events with <c>{}</c> for data.

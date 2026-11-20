@@ -1,7 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using ToggleSlash.Server.Auth;
-using ToggleSlash.Server.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
@@ -9,6 +7,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
+using ToggleSlash.Server.Auth;
+using ToggleSlash.Server.Data;
+
+namespace ToggleSlash.Server.Tests;
 
 public sealed class StorageTests : IDisposable
 {
@@ -225,7 +227,7 @@ public sealed class StorageTests : IDisposable
         Assert.Contains("projects", Tables());
     }
 
-    private (long, long) TwoProjects(ServerOn server)
+    private static (long, long) TwoProjects(ServerOn server)
     {
         var shop = new Project { Key = "shop", Name = "Shop", CreatedAt = Now };
         var blog = new Project { Key = "blog", Name = "Blog", CreatedAt = Now };

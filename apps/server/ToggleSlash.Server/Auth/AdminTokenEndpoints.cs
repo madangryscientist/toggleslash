@@ -1,8 +1,8 @@
 using System.Globalization;
+using Microsoft.EntityFrameworkCore;
 using ToggleSlash.Server.Audit;
 using ToggleSlash.Server.Catalogue;
 using ToggleSlash.Server.Data;
-using Microsoft.EntityFrameworkCore;
 
 namespace ToggleSlash.Server.Auth;
 

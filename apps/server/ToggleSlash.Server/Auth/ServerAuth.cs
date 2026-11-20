@@ -1,8 +1,8 @@
 using System.Security.Claims;
-using ToggleSlash.Server.Data;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Policy;
+using ToggleSlash.Server.Data;
 
 namespace ToggleSlash.Server.Auth;
 

@@ -1,6 +1,8 @@
 using System.Text.Json;
 using ToggleSlash.Evaluation;
 
+namespace ToggleSlash.Evaluation.Tests;
+
 /// <summary>
 /// Runs every vector in <c>fixtures/evaluation/</c> against the C# evaluator, unmodified. The same
 /// files run in <c>packages/engine/test/vectors.test.ts</c>. A vector that fails here is a bug in this

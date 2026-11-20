@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>Usage counts: <c>POST /sdk/v1/events</c>, what evaluate counts itself, and the two ways to read them back.</summary>
 public sealed class UsageApiTests : IDisposable
 {

@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text.Json;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>Reading the trail: the project feed, a flag's history, their filters and the cursor.</summary>
 public sealed class AuditApiTests : IDisposable
 {

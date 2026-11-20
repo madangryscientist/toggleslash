@@ -1,8 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using ToggleSlash.Server.Auth;
-using ToggleSlash.Server.Limits;
-using ToggleSlash.Server.Sdk;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -11,6 +8,11 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ToggleSlash.Server.Auth;
+using ToggleSlash.Server.Limits;
+using ToggleSlash.Server.Sdk;
+
+namespace ToggleSlash.Server.Tests;
 
 /// <summary>A clock that moves only when told to, for the limiter's <see cref="TimeProvider"/>.</summary>
 public sealed class ManualClock : TimeProvider

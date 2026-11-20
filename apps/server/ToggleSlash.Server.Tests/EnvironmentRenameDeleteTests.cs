@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text.Json;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>
 /// <c>PATCH</c> and <c>DELETE</c> on <c>/api/v1/projects/{project}/environments/{env}</c>. The stream ending after a delete
 /// is in <c>SdkStreamTests</c>, which owns the heartbeat seam; the token policy is in <c>AdminTokenTests</c>.
@@ -70,7 +72,10 @@ public sealed class EnvironmentRenameDeleteTests : IDisposable
     {
         await ApiServer.Expect(HttpStatusCode.Created, await server.Post($"{Shop}/environments/{env}/segments", new
         {
-            key = "beta", included = new[] { "u1" }, excluded = Array.Empty<string>(), rules = Array.Empty<object>(),
+            key = "beta",
+            included = new[] { "u1" },
+            excluded = Array.Empty<string>(),
+            rules = Array.Empty<object>(),
         }));
         var (serverId, serverKey) = await Key(env);
         var (clientId, clientKey) = await Key(env, "client");

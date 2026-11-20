@@ -6,6 +6,8 @@ using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>
 /// The admin diagnostic route, <c>POST /api/v1/projects/{project}/environments/{env}/evaluate</c>: it evaluates like
 /// <c>POST /sdk/v1/evaluate</c>, for an admin, and records nothing.

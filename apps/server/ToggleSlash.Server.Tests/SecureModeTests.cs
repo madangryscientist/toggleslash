@@ -5,6 +5,8 @@ using System.Text;
 using System.Text.Json;
 using ToggleSlash.Evaluation;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>
 /// Secure mode: in an environment with it on, a client-key <c>POST /sdk/v1/evaluate</c> must carry an ECDSA P-256
 /// signature over the context's keys, made with the environment's signing key, whose private half the server returns

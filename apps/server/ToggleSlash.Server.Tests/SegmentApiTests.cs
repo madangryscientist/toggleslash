@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>Segments belong to one environment: CRUD, validation, and a delete that refuses while a rule still names the segment.</summary>
 public sealed class SegmentApiTests : IDisposable
 {
@@ -95,7 +97,7 @@ public sealed class SegmentApiTests : IDisposable
         var path = $"/api/v1/projects/{project}/environments/{env}/segments/{segment}";
 
         await ApiServer.ExpectError(HttpStatusCode.NotFound, "not_found", await server.Get(path));
-        await ApiServer.ExpectError(HttpStatusCode.NotFound, "not_found", await server.Put(path, new { included = new string[0], excluded = new string[0], rules = new object[0] }));
+        await ApiServer.ExpectError(HttpStatusCode.NotFound, "not_found", await server.Put(path, new { included = Array.Empty<string>(), excluded = Array.Empty<string>(), rules = Array.Empty<object>() }));
         await ApiServer.ExpectError(HttpStatusCode.NotFound, "not_found", await server.AsAdmin(HttpMethod.Delete, path));
     }
 
@@ -105,7 +107,7 @@ public sealed class SegmentApiTests : IDisposable
         await Seed();
         await ApiServer.Expect(HttpStatusCode.Created, await server.Post(Prod, Segment("beta", ["alice"], ["bob"])));
 
-        var put = await server.Put($"{Prod}/beta", new { included = new[] { "carol" }, excluded = new string[0], rules = new[] { new { clauses = new object[0] } }, version = 1 });
+        var put = await server.Put($"{Prod}/beta", new { included = new[] { "carol" }, excluded = Array.Empty<string>(), rules = new[] { new { clauses = Array.Empty<object>() } }, version = 1 });
 
         await ApiServer.Expect(HttpStatusCode.OK, put);
         var read = await ApiServer.Json(await server.Get($"{Prod}/beta"));
@@ -176,7 +178,7 @@ public sealed class SegmentApiTests : IDisposable
     }
 
     private static object Members(long? version, params string[] included) =>
-        new { included, excluded = new string[0], rules = new object[0], version };
+        new { included, excluded = Array.Empty<string>(), rules = Array.Empty<object>(), version };
 
     private async Task<long> Version(string key = "beta") =>
         (await ApiServer.Json(await server.Get($"{Prod}/{key}"))).GetProperty("version").GetInt64();
@@ -453,8 +455,8 @@ public sealed class SegmentApiTests : IDisposable
         {
             on = true,
             offVariation = 1,
-            targets = new object[0],
-            prerequisites = new object[0],
+            targets = Array.Empty<object>(),
+            prerequisites = Array.Empty<object>(),
             rules = new[] { new { clauses = new[] { new { op = "segmentMatch", values = new[] { "beta" } } }, variation = 0 } },
             fallthrough = new { variation = 1 },
             version = 1,
@@ -471,9 +473,9 @@ public sealed class SegmentApiTests : IDisposable
         {
             on = true,
             offVariation = 1,
-            targets = new object[0],
-            prerequisites = new object[0],
-            rules = new object[0],
+            targets = Array.Empty<object>(),
+            prerequisites = Array.Empty<object>(),
+            rules = Array.Empty<object>(),
             fallthrough = new { variation = 1 },
             version = 2,
         }));
@@ -491,8 +493,8 @@ public sealed class SegmentApiTests : IDisposable
         {
             on = true,
             offVariation = 1,
-            targets = new object[0],
-            prerequisites = new object[0],
+            targets = Array.Empty<object>(),
+            prerequisites = Array.Empty<object>(),
             rules = new[] { new { clauses = new[] { new { op = "segmentMatch", values = new[] { "beta" } } }, variation = 0 } },
             fallthrough = new { variation = 1 },
             version = 1,
@@ -513,8 +515,8 @@ public sealed class SegmentApiTests : IDisposable
         {
             on = true,
             offVariation = 1,
-            targets = new object[0],
-            prerequisites = new object[0],
+            targets = Array.Empty<object>(),
+            prerequisites = Array.Empty<object>(),
             rules = new[] { new { clauses = new object[] { new { op = "segmentMatch", values = new[] { "other", "beta" }, negate = true } }, variation = 0 } },
             fallthrough = new { variation = 1 },
             version = 1,

@@ -1,5 +1,7 @@
 using System.Net;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>Every catalogue route is admin only: no token and a wrong one are 401, an SDK key is 403.</summary>
 public sealed class CatalogueAuthTests : IDisposable
 {

@@ -2,6 +2,8 @@ using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
+namespace ToggleSlash.Server.Tests;
+
 /// <summary>
 /// A flag's <c>clientVisible</c>: a client key ships in a page, so <c>POST /sdk/v1/evaluate</c> answers it only the
 /// flags marked visible to it. A server key and the admin diagnostic route answer every flag, and the ruleset does not

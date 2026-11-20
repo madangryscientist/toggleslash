@@ -2,9 +2,6 @@ using System.Data.Common;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
-using ToggleSlash.Server.Hardening;
-using ToggleSlash.Server.Limits;
-using ToggleSlash.Server.Sdk;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http.Timeouts;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -13,6 +10,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using ToggleSlash.Server.Hardening;
+using ToggleSlash.Server.Limits;
+using ToggleSlash.Server.Sdk;
+
+namespace ToggleSlash.Server.Tests;
 
 /// <summary>
 /// The response headers, the body limits and the timeouts. A test that needs Kestrel itself (its limits are not

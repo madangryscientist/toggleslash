@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text.Json;
 
+namespace ToggleSlash.Server.Tests;
+
 public sealed class HealthTests(TempDatabaseServer factory) : IClassFixture<TempDatabaseServer>
 {
     [Fact]

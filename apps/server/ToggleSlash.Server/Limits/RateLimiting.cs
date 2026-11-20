@@ -1,10 +1,10 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
-using ToggleSlash.Server.Auth;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Net.Http.Headers;
+using ToggleSlash.Server.Auth;
 
 namespace ToggleSlash.Server.Limits;
 
@@ -91,6 +91,7 @@ public static class RateLimiting
 }
 
 /// <summary>Endpoint metadata: this route takes from the key's bucket for <see cref="Limit"/>.</summary>
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class LimitedPerKeyAttribute(KeyLimit limit) : Attribute
 {
     public KeyLimit Limit { get; } = limit;

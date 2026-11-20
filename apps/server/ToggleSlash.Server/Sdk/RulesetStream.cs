@@ -1,8 +1,8 @@
 using System.Text;
+using Microsoft.EntityFrameworkCore;
 using ToggleSlash.Server.Auth;
 using ToggleSlash.Server.Data;
 using ToggleSlash.Server.Limits;
-using Microsoft.EntityFrameworkCore;
 
 namespace ToggleSlash.Server.Sdk;
 

@@ -1,5 +1,7 @@
 using System.Text.Json;
 
+namespace ToggleSlash.Evaluation.Tests;
+
 /// <summary>The language-neutral vectors in <c>fixtures/evaluation/</c>, read with a real JSON parser.</summary>
 internal static class Fixtures
 {

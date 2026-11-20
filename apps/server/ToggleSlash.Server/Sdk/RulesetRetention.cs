@@ -1,7 +1,7 @@
 using System.Globalization;
-using ToggleSlash.Server.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using ToggleSlash.Server.Data;
 
 namespace ToggleSlash.Server.Sdk;
 
@@ -33,7 +33,7 @@ public sealed record RulesetRetentionSettings(int Days)
 /// no successor and is never deleted. A rollback that lands between reading the current ruleset and the delete is repaired
 /// by recording the current snapshot again when the delete had removed it. Housekeeping, not an admin write: no audit event.
 /// </summary>
-public sealed class RulesetRetention(
+public sealed partial class RulesetRetention(
     IServiceScopeFactory scopes, TimeProvider time, RulesetRetentionSettings settings, ILogger<RulesetRetention> logger) : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(1);
@@ -57,7 +57,7 @@ public sealed class RulesetRetention(
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                logger.LogWarning(exception, "A ruleset retention sweep failed; the snapshots were left as they are.");
+                LogSweepFailed(logger, exception);
             }
         }
         while (await timer.WaitForNextTickAsync(stoppingToken));
@@ -89,10 +89,10 @@ public sealed class RulesetRetention(
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                logger.LogWarning(exception, "Could not prune the ruleset snapshots of environment {EnvironmentId}; they were left as they are.", environment);
+                LogPruneFailed(logger, exception, environment);
             }
         }
-        logger.LogInformation("Ruleset retention removed {Removed} snapshots older than {Days} days.", removed, settings.Days);
+        LogSwept(logger, removed, settings.Days);
         return removed;
     }
 
@@ -147,6 +147,15 @@ public sealed class RulesetRetention(
         }
         return removed;
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "A ruleset retention sweep failed; the snapshots were left as they are.")]
+    private static partial void LogSweepFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not prune the ruleset snapshots of environment {EnvironmentId}; they were left as they are.")]
+    private static partial void LogPruneFailed(ILogger logger, Exception exception, long environmentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Ruleset retention removed {Removed} snapshots older than {Days} days.")]
+    private static partial void LogSwept(ILogger logger, int removed, int days);
 }
 
 public static class RulesetRetentionSetup

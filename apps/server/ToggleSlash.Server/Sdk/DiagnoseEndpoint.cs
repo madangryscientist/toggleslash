@@ -1,9 +1,9 @@
-using ToggleSlash.Server.Auth;
-using ToggleSlash.Server.Catalogue;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using ToggleSlash.Server.Data;
 using Microsoft.EntityFrameworkCore;
+using ToggleSlash.Server.Auth;
+using ToggleSlash.Server.Catalogue;
+using ToggleSlash.Server.Data;
 using static ToggleSlash.Server.Sdk.SdkEndpoints;
 
 namespace ToggleSlash.Server.Sdk;

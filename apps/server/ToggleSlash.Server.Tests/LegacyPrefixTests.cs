@@ -1,7 +1,9 @@
 using System.Net;
+using Microsoft.Extensions.DependencyInjection;
 using ToggleSlash.Server.Auth;
 using ToggleSlash.Server.Data;
-using Microsoft.Extensions.DependencyInjection;
+
+namespace ToggleSlash.Server.Tests;
 
 /// <summary>
 /// Keys and tokens made before the <c>tgl_</c> prefix start with <c>fs_</c>. Authentication looks a credential up by the
