@@ -3,6 +3,8 @@
 Feature flags you can run yourself. Source available under the Elastic License 2.0. The dashboard has a chosen
 hostname behind Cloudflare Access and a documented deploy ([`docs/dashboard-hosting.md`](docs/dashboard-hosting.md)).
 
+Every feature, with where it lives in the source: [FEATURES.md](FEATURES.md).
+
 > **Status: alpha.** Changing fast. Expect breaking changes between versions. You can run ToggleSlash on your own machine or server:
 > a C# server keeps flags in SQLite and serves an admin API and the SDK routes, a `toggleslash` command
 > manages flags over that admin API, a dashboard manages them in a browser, a TypeScript server SDK evaluates flags in your process,
