@@ -152,6 +152,28 @@ test.describe("signed out", () => {
   });
 });
 
+test.describe("over plain http on a LAN address", () => {
+  test.use({ storageState: SIGNED_OUT });
+
+  test("the sign-in page says why instead of looping", async ({ request }) => {
+    // An IP literal: vite refuses a made-up hostname, and the request URL takes its host from this.
+    const headers = { host: `192.0.2.10:${PORT}` };
+    const page = await request.get(`${ORIGIN}/sign-in?returnTo=%2F`, { headers });
+    const html = await page.text();
+    expect(html).toContain("Signing in cannot work over plain http");
+    expect(html).not.toContain('name="password"');
+
+    const answer = await request.post(`${ORIGIN}/sign-in`, {
+      headers,
+      form: { password: E2E_OPERATOR_PASSWORD, returnTo: "/" },
+      maxRedirects: 0,
+    });
+    expect(answer.status()).toBe(303);
+    expect(answer.headers()["set-cookie"]).toBeUndefined();
+    expect(answer.headers()["location"]).toBe("/sign-in?returnTo=%2F");
+  });
+});
+
 test("a signed-in request to a server function gets its data", async ({ request }) => {
   const url = builtServerFunctions().get("loadEnvironments") ?? "";
   const response = await request.get(url, { headers: { "x-tsr-serverfn": "true" } });

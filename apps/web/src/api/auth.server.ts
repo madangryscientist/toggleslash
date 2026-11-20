@@ -123,8 +123,18 @@ export async function hasSession(
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
+function isLoopback(url: URL): boolean {
+  return LOOPBACK_HOSTS.has(url.hostname);
+}
+
+/** A browser drops a Secure cookie set over plain http, so signing in there could only loop. */
+export function insecureOrigin(requestUrl: string): boolean {
+  const url = new URL(requestUrl);
+  return url.protocol === "http:" && !isLoopback(url);
+}
+
 function cookieAttributes(requestUrl: string, maxAge: number): string {
-  const secure = LOOPBACK_HOSTS.has(new URL(requestUrl).hostname) ? "" : "; Secure";
+  const secure = isLoopback(new URL(requestUrl)) ? "" : "; Secure";
   return `Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
 }
 
@@ -149,6 +159,8 @@ async function signIn(request: Request, secrets: AuthSecrets, nowMs: number): Pr
   const submitted = form?.get("password");
   const { password, sessionSecret } = secrets;
   const target = typeof returnTo === "string" ? returnTo : null;
+  // No cookie and no `failed`: the page this lands on says why, from its own request.
+  if (insecureOrigin(request.url)) return redirect(signInPath.to(target));
   if (
     typeof submitted === "string" &&
     password !== undefined &&
@@ -165,6 +177,7 @@ async function signIn(request: Request, secrets: AuthSecrets, nowMs: number): Pr
 /** What the sign-in page is told by the request that renders it. */
 export interface RequestContext {
   configProblems: ConfigProblem[];
+  insecureOrigin: boolean;
 }
 
 /**
@@ -179,13 +192,18 @@ export async function gate(
   next: (context: RequestContext) => Response | Promise<Response>,
 ): Promise<Response> {
   const url = new URL(request.url);
-  if (url.pathname.startsWith("/_serverFn/")) return next({ configProblems: [] });
+  if (url.pathname.startsWith("/_serverFn/")) {
+    return next({ configProblems: [], insecureOrigin: false });
+  }
   const signedIn = await hasSession(request, secrets, nowMs);
   if (url.pathname === "/sign-in") {
     if (request.method === "POST") return signIn(request, secrets, nowMs);
     if (signedIn) return redirect(signInPath.after(url.searchParams.get("returnTo")));
-    return next({ configProblems: configProblems(secrets) });
+    return next({
+      configProblems: configProblems(secrets),
+      insecureOrigin: insecureOrigin(request.url),
+    });
   }
   if (!signedIn) return redirect(signInPath.to(`${url.pathname}${url.search}`));
-  return next({ configProblems: [] });
+  return next({ configProblems: [], insecureOrigin: false });
 }

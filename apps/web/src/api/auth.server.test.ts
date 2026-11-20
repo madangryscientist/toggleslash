@@ -1,10 +1,13 @@
 import { describe, expect, test } from "vitest";
+import { vi } from "vitest";
 import {
   clearedSessionCookie,
   configProblems,
   gate,
   hasSession,
+  insecureOrigin,
   passwordMatches,
+  type RequestContext,
   SESSION_COOKIE,
   SESSION_SECONDS,
   sessionCookie,
@@ -164,5 +167,55 @@ describe("the gate", () => {
   test("signing in never leaves this origin", async () => {
     const response = await gate(post(PASSWORD, "https://evil.test"), secrets, NOW, rendered);
     expect(response.headers.get("location")).toBe("/");
+  });
+});
+
+describe("plain http on a host that is not loopback", () => {
+  const LAN = "http://192.168.0.149:5107";
+
+  test("is insecure, and https or loopback is not", () => {
+    expect(insecureOrigin(`${LAN}/sign-in`)).toBe(true);
+    expect(insecureOrigin("http://localhost.evil.test/")).toBe(true);
+    for (const url of [
+      "https://dash.test/",
+      "https://192.168.0.149:5107/",
+      "http://localhost:4420/",
+      "http://127.0.0.1:4420/",
+      "http://[::1]:4420/",
+    ]) {
+      expect(insecureOrigin(url)).toBe(false);
+    }
+  });
+
+  test.each([
+    [`${LAN}/sign-in`, true],
+    ["https://dash.test/sign-in", false],
+    ["http://localhost:4420/sign-in", false],
+  ])("the sign-in page at %s is told insecureOrigin %s", async (url, insecure) => {
+    const next = vi.fn<(context: RequestContext) => Response>(() => rendered());
+    await gate(new Request(url), secrets, NOW, next);
+    expect(next).toHaveBeenCalledWith({ configProblems: [], insecureOrigin: insecure });
+  });
+
+  test("the right password over it sets no cookie and lands back on the page that says why", async () => {
+    const response = await gate(
+      new Request(`${LAN}/sign-in`, {
+        method: "POST",
+        body: new URLSearchParams({ password: PASSWORD, returnTo: "/keys" }),
+      }),
+      secrets,
+      NOW,
+      rendered,
+    );
+    expect(response.status).toBe(303);
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(response.headers.get("location")).toBe("/sign-in?returnTo=%2Fkeys");
+    expect(response.headers.get("location")).not.toContain("failed=true");
+  });
+
+  test("the same password over https still signs in with a Secure cookie", async () => {
+    const response = await gate(post(PASSWORD, "/keys"), secrets, NOW, rendered);
+    expect(response.status).toBe(303);
+    expect(response.headers.get("set-cookie")).toMatch(/; Secure$/);
   });
 });
