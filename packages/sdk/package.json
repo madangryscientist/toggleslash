@@ -1,6 +1,6 @@
 {
-  "name": "@hackcove/toggleslash-sdk",
-  "version": "0.1.0",
+  "name": "@slashsuite/toggleslash-sdk",
+  "version": "0.2.0",
   "private": true,
   "description": "The ToggleSlash server-side SDK for TypeScript: local evaluation that never throws and never blocks.",
   "license": "Elastic-2.0",
@@ -10,7 +10,7 @@
     "./shared": "./src/shared.ts"
   },
   "dependencies": {
-    "@hackcove/toggleslash-engine": "workspace:*"
+    "@slashsuite/toggleslash-engine": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "1.4.4",

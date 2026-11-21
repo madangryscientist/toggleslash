@@ -1,5 +1,5 @@
 import { createPrivateKey, sign } from "node:crypto";
-import { type Context, normaliseContext } from "@hackcove/toggleslash-engine";
+import { type Context, normaliseContext } from "@slashsuite/toggleslash-engine";
 
 /** `<byte length of the UTF-8>:<UTF-8 bytes>,` */
 function netstring(text: string): Buffer {

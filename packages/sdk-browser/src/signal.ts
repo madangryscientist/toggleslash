@@ -4,7 +4,7 @@ import {
   linkedController,
   retryAfterMs,
   SseParser,
-} from "@hackcove/toggleslash-sdk/shared";
+} from "@slashsuite/toggleslash-sdk/shared";
 import { Watchdog } from "./support.ts";
 
 const MIN_BACKOFF_MS = 1_000;

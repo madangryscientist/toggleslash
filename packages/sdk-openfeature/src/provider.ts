@@ -1,4 +1,4 @@
-import type { Client, SdkErrorCode, VariationDetail } from "@hackcove/toggleslash-sdk";
+import type { Client, SdkErrorCode, VariationDetail } from "@slashsuite/toggleslash-sdk";
 import {
   ErrorCode,
   type EvaluationContext,

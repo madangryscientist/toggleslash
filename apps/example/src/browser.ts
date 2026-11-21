@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
-import { createBrowserClient } from "@hackcove/toggleslash-sdk-browser";
-import type { SingleContext } from "@hackcove/toggleslash-sdk-browser";
+import { createBrowserClient } from "@slashsuite/toggleslash-sdk-browser";
+import type { SingleContext } from "@slashsuite/toggleslash-sdk-browser";
 
 /** What the page writes into its `#config` element (`src/page.ts`). */
 interface PageConfig {

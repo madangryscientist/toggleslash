@@ -1,14 +1,14 @@
 {
-  "name": "@hackcove/toggleslash-e2e",
+  "name": "@slashsuite/toggleslash-e2e",
   "version": "0.0.0",
   "private": true,
   "description": "The cross-language end-to-end test: the real C# server, the real CLI and the real TypeScript SDK.",
   "license": "Elastic-2.0",
   "type": "module",
   "dependencies": {
-    "@hackcove/toggleslash-sdk": "workspace:*",
-    "@hackcove/toggleslash-sdk-otel": "workspace:*",
-    "@opentelemetry/api": "1.10.0"
+    "@opentelemetry/api": "1.10.0",
+    "@slashsuite/toggleslash-sdk": "workspace:*",
+    "@slashsuite/toggleslash-sdk-otel": "workspace:*"
   },
   "devDependencies": {
     "@opentelemetry/context-async-hooks": "3.1.1",

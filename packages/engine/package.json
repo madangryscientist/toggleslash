@@ -1,6 +1,6 @@
 {
-  "name": "@hackcove/toggleslash-engine",
-  "version": "0.1.0",
+  "name": "@slashsuite/toggleslash-engine",
+  "version": "0.2.0",
   "private": true,
   "description": "The ToggleSlash flag evaluator: pure functions over a ruleset, to the shared evaluation spec.",
   "license": "Elastic-2.0",

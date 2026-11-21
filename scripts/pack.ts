@@ -110,7 +110,7 @@ const staging = join(out, "staged");
 rmSync(staging, { recursive: true, force: true });
 mkdirSync(staging, { recursive: true });
 for (const file of readdirSync(out))
-  if (file.startsWith("hackcove-toggleslash") && file.endsWith(".tgz")) rmSync(join(out, file));
+  if (file.startsWith("slashsuite-toggleslash") && file.endsWith(".tgz")) rmSync(join(out, file));
 
 const stagedDirs: string[] = [];
 

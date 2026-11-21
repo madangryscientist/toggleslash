@@ -1,9 +1,9 @@
 # ToggleSlash facts
 
-Checked against main at d3607d9 on 2026-11-17.
+Checked against main at c254941 on 2026-11-21.
 
 ## What it is
-ToggleSlash is a feature flag service you run yourself: it decides which users see which version of a feature, and you change those decisions from a command line or a web dashboard while the application runs. It is early (alpha), and its npm packages are at version 0.1.0.
+ToggleSlash is a feature flag service you run yourself: it decides which users see which version of a feature, and you change those decisions from a command line or a web dashboard while the application runs. It is early (alpha), and its npm packages are at version 0.2.0.
 
 ## Today
 - `server`: a server written in C# (.NET 10) keeps projects, environments, flags and segments in a SQLite file and serves an admin API and the routes the SDKs call.
@@ -59,8 +59,8 @@ ToggleSlash is a feature flag service you run yourself: it decides which users s
 ## Where it runs
 - `server-from-source`: the server runs from a checkout with the .NET 10 SDK (`dotnet run`), as `docs/quickstart.md` shows.
 - `server-container`: the server runs in Docker from an image you build from this repository with the included `compose.yaml` (`docs/self-hosting.md`); no image is published.
-- `cli-npm`: the CLI installs from npm as `@hackcove/toggleslash` (version 0.1.0) and needs Bun 1.4 or later.
-- `typescript-packages-npm`: the TypeScript engine, server SDK, browser SDK, OpenTelemetry hook and OpenFeature provider install from npm under `@hackcove/` (version 0.1.0).
+- `cli-npm`: the CLI installs from npm as `@slashsuite/toggleslash` (version 0.2.0) and needs Bun 1.4 or later.
+- `typescript-packages-npm`: the TypeScript engine, server SDK, browser SDK, OpenTelemetry hook and OpenFeature provider install from npm under `@slashsuite/` (version 0.2.0).
 - `server-sdks-from-checkout`: the Python (3.11 or later), Go (1.26), Java (17 or later), C# (.NET 10) and Ruby (3.3 or later) SDKs run from a checkout of this repository.
 - `dashboard-cloudflare-workers`: the dashboard runs on Cloudflare Workers; the maintainer's own copy is at flags.madangryscientist.com behind Cloudflare Access, for the maintainer only, and there is no public hosted service.
 - `local-stack`: `bun run stack` runs the server, the dashboard and the example app on one machine, on loopback, with the .NET SDK and Bun.

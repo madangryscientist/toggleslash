@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { parseArgs } from "node:util";
-import { describeEngine } from "@hackcove/toggleslash-engine";
+import { describeEngine } from "@slashsuite/toggleslash-engine";
 import pkg from "../package.json" with { type: "json" };
 import { createApi, type Fetch } from "./api.ts";
 import type { Command, Context } from "./command.ts";

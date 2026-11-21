@@ -4,7 +4,7 @@ import {
   evaluate,
   type Reason,
   type Ruleset,
-} from "@hackcove/toggleslash-engine";
+} from "@slashsuite/toggleslash-engine";
 import { type Clock, systemClock } from "./clock.ts";
 import type { Fetch } from "./http.ts";
 import { type ClientStatus, RulesetSync } from "./sync.ts";

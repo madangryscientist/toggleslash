@@ -12,4 +12,4 @@ export type {
   SingleContext,
   VariationDetail,
 } from "./types.ts";
-export type { Clock, Fetch } from "@hackcove/toggleslash-sdk/shared";
+export type { Clock, Fetch } from "@slashsuite/toggleslash-sdk/shared";

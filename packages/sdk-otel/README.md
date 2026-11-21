@@ -1,4 +1,4 @@
-# @hackcove/toggleslash-sdk-otel
+# @slashsuite/toggleslash-sdk-otel
 
 An evaluation hook for the ToggleSlash TypeScript SDK. Each evaluation adds a `feature_flag.evaluation` event to the
 active OpenTelemetry span, with the ruleset hash (`toggleslash.ruleset.etag`) that the server's lookup route can
@@ -6,7 +6,7 @@ turn back into the flags. Published on npm by `release.yml`; it depends on `@ope
 the tracer provider and the exporter.
 
 ```sh
-npm install @hackcove/toggleslash-sdk-otel @opentelemetry/api
+npm install @slashsuite/toggleslash-sdk-otel @opentelemetry/api
 ```
 
 ```ts

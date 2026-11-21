@@ -16,7 +16,7 @@ bun run toggleslash --version
 ```
 
 ```
-toggleslash 0.1.0 (toggleslash-engine 0.1.0)
+toggleslash 0.2.0 (toggleslash-engine 0.2.0)
 ```
 
 `bun run` prints the command it ran before the output (`$ bun packages/cli/src/index.ts ...`), and the CLI

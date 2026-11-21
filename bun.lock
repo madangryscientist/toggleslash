@@ -15,11 +15,11 @@
       },
     },
     "apps/example": {
-      "name": "@hackcove/toggleslash-example",
+      "name": "@slashsuite/toggleslash-example",
       "version": "0.0.0",
       "dependencies": {
-        "@hackcove/toggleslash-sdk": "workspace:*",
-        "@hackcove/toggleslash-sdk-browser": "workspace:*",
+        "@slashsuite/toggleslash-sdk": "workspace:*",
+        "@slashsuite/toggleslash-sdk-browser": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "1.4.4",
@@ -30,8 +30,8 @@
       "name": "@toggleslash/web",
       "dependencies": {
         "@hackcove/themes": "^0.3.1",
-        "@hackcove/toggleslash-engine": "workspace:*",
         "@hackcove/ui-react": "^0.11.2",
+        "@slashsuite/toggleslash-engine": "workspace:*",
         "@tailwindcss/vite": "^4.3.5",
         "@tanstack/react-router": "1.170.46",
         "@tanstack/react-start": "1.169.5",
@@ -57,24 +57,24 @@
       },
     },
     "packages/cli": {
-      "name": "@hackcove/toggleslash",
-      "version": "0.1.0",
+      "name": "@slashsuite/toggleslash",
+      "version": "0.2.0",
       "bin": {
         "toggleslash": "dist/index.js",
       },
       "devDependencies": {
-        "@hackcove/toggleslash-engine": "workspace:*",
+        "@slashsuite/toggleslash-engine": "workspace:*",
         "@types/bun": "1.4.4",
         "vitest": "5.1.0",
       },
     },
     "packages/e2e": {
-      "name": "@hackcove/toggleslash-e2e",
+      "name": "@slashsuite/toggleslash-e2e",
       "version": "0.0.0",
       "dependencies": {
-        "@hackcove/toggleslash-sdk": "workspace:*",
-        "@hackcove/toggleslash-sdk-otel": "workspace:*",
         "@opentelemetry/api": "1.10.0",
+        "@slashsuite/toggleslash-sdk": "workspace:*",
+        "@slashsuite/toggleslash-sdk-otel": "workspace:*",
       },
       "devDependencies": {
         "@opentelemetry/context-async-hooks": "3.1.1",
@@ -85,18 +85,18 @@
       },
     },
     "packages/engine": {
-      "name": "@hackcove/toggleslash-engine",
-      "version": "0.1.0",
+      "name": "@slashsuite/toggleslash-engine",
+      "version": "0.2.0",
       "devDependencies": {
         "@types/bun": "1.4.4",
         "vitest": "5.1.0",
       },
     },
     "packages/sdk": {
-      "name": "@hackcove/toggleslash-sdk",
-      "version": "0.1.0",
+      "name": "@slashsuite/toggleslash-sdk",
+      "version": "0.2.0",
       "dependencies": {
-        "@hackcove/toggleslash-engine": "workspace:*",
+        "@slashsuite/toggleslash-engine": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "1.4.4",
@@ -104,10 +104,10 @@
       },
     },
     "packages/sdk-browser": {
-      "name": "@hackcove/toggleslash-sdk-browser",
-      "version": "0.1.0",
+      "name": "@slashsuite/toggleslash-sdk-browser",
+      "version": "0.2.0",
       "dependencies": {
-        "@hackcove/toggleslash-sdk": "workspace:*",
+        "@slashsuite/toggleslash-sdk": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "1.4.4",
@@ -115,7 +115,7 @@
       },
     },
     "packages/sdk-conformance": {
-      "name": "@hackcove/toggleslash-sdk-conformance",
+      "name": "@slashsuite/toggleslash-sdk-conformance",
       "version": "0.0.0",
       "devDependencies": {
         "@types/bun": "1.4.4",
@@ -123,10 +123,10 @@
       },
     },
     "packages/sdk-openfeature": {
-      "name": "@hackcove/toggleslash-sdk-openfeature",
-      "version": "0.1.0",
+      "name": "@slashsuite/toggleslash-sdk-openfeature",
+      "version": "0.2.0",
       "dependencies": {
-        "@hackcove/toggleslash-sdk": "workspace:*",
+        "@slashsuite/toggleslash-sdk": "workspace:*",
       },
       "devDependencies": {
         "@openfeature/server-sdk": "1.23.0",
@@ -138,10 +138,10 @@
       },
     },
     "packages/sdk-otel": {
-      "name": "@hackcove/toggleslash-sdk-otel",
-      "version": "0.1.0",
+      "name": "@slashsuite/toggleslash-sdk-otel",
+      "version": "0.2.0",
       "dependencies": {
-        "@hackcove/toggleslash-sdk": "workspace:*",
+        "@slashsuite/toggleslash-sdk": "workspace:*",
       },
       "devDependencies": {
         "@opentelemetry/api": "1.10.0",
@@ -270,24 +270,6 @@
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.28.2", "", { "os": "win32", "cpu": "x64" }, "sha512-5ebpxr3nWMzrL/rnUI755Jkuee0bHL/Gq0WTF9lvcpv73wAp5eu8MfBUgWK9bhWvZjj7yX8etf/8tI8Ney695g=="],
 
     "@hackcove/themes": ["@hackcove/themes@0.3.1", "", { "peerDependencies": { "tailwindcss": "^4" } }, "sha512-aBbshop5mr4yXJoANIJQ7dOZk2mmi+Grb05TQ0gBFTA+jApnkPfmFSYgq9iVSLmNg9KmRdFwmzG8uG7DTwz9kw=="],
-
-    "@hackcove/toggleslash": ["@hackcove/toggleslash@workspace:packages/cli"],
-
-    "@hackcove/toggleslash-e2e": ["@hackcove/toggleslash-e2e@workspace:packages/e2e"],
-
-    "@hackcove/toggleslash-engine": ["@hackcove/toggleslash-engine@workspace:packages/engine"],
-
-    "@hackcove/toggleslash-example": ["@hackcove/toggleslash-example@workspace:apps/example"],
-
-    "@hackcove/toggleslash-sdk": ["@hackcove/toggleslash-sdk@workspace:packages/sdk"],
-
-    "@hackcove/toggleslash-sdk-browser": ["@hackcove/toggleslash-sdk-browser@workspace:packages/sdk-browser"],
-
-    "@hackcove/toggleslash-sdk-conformance": ["@hackcove/toggleslash-sdk-conformance@workspace:packages/sdk-conformance"],
-
-    "@hackcove/toggleslash-sdk-openfeature": ["@hackcove/toggleslash-sdk-openfeature@workspace:packages/sdk-openfeature"],
-
-    "@hackcove/toggleslash-sdk-otel": ["@hackcove/toggleslash-sdk-otel@workspace:packages/sdk-otel"],
 
     "@hackcove/ui-react": ["@hackcove/ui-react@0.11.2", "", { "dependencies": { "@internationalized/date": "^3.12.4", "react-aria-components": "^1.22.1" }, "peerDependencies": { "@types/react": ">=18", "@types/react-dom": ">=18", "react": ">=19", "react-dom": ">=19", "tailwindcss": "^4" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-HxXNAqEhPddV8oS/gZUDzqmnYNXrqT9BZN6QGcrla0rD2K34k5oVMvWr3yyb7EVdX/y2c5BJ0bCKRH76gdPhUQ=="],
 
@@ -540,6 +522,24 @@
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.1", "", {}, "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="],
 
     "@sindresorhus/is": ["@sindresorhus/is@7.2.0", "", {}, "sha512-P1Cz1dWaFfR4IR+U13mqqiGsLFf1KbayybWwdd2vfctdV6hDpUkgCY0nKOLLTMSoRd/jJNjtbqzf13K8DCCXQw=="],
+
+    "@slashsuite/toggleslash": ["@slashsuite/toggleslash@workspace:packages/cli"],
+
+    "@slashsuite/toggleslash-e2e": ["@slashsuite/toggleslash-e2e@workspace:packages/e2e"],
+
+    "@slashsuite/toggleslash-engine": ["@slashsuite/toggleslash-engine@workspace:packages/engine"],
+
+    "@slashsuite/toggleslash-example": ["@slashsuite/toggleslash-example@workspace:apps/example"],
+
+    "@slashsuite/toggleslash-sdk": ["@slashsuite/toggleslash-sdk@workspace:packages/sdk"],
+
+    "@slashsuite/toggleslash-sdk-browser": ["@slashsuite/toggleslash-sdk-browser@workspace:packages/sdk-browser"],
+
+    "@slashsuite/toggleslash-sdk-conformance": ["@slashsuite/toggleslash-sdk-conformance@workspace:packages/sdk-conformance"],
+
+    "@slashsuite/toggleslash-sdk-openfeature": ["@slashsuite/toggleslash-sdk-openfeature@workspace:packages/sdk-openfeature"],
+
+    "@slashsuite/toggleslash-sdk-otel": ["@slashsuite/toggleslash-sdk-otel@workspace:packages/sdk-otel"],
 
     "@speed-highlight/core": ["@speed-highlight/core@1.2.24", "", {}, "sha512-qeW2e1l78afw8VhRPfPQ1Gjj+KU5XFQ/OFV5ti6eTa9bruO7mJyZtA4vw0ofqmA3tKCkROE9xLk3VZoeRc98nw=="],
 

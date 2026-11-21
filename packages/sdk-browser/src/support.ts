@@ -1,4 +1,4 @@
-import type { Clock } from "@hackcove/toggleslash-sdk/shared";
+import type { Clock } from "@slashsuite/toggleslash-sdk/shared";
 import type { ErrorCode, VariationDetail } from "./types.ts";
 
 /** Same JSON type: what a caller's `T` can mean at runtime. */

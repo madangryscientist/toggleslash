@@ -1,4 +1,4 @@
-import { type Client, createClient, type Fetch } from "@hackcove/toggleslash-sdk";
+import { type Client, createClient, type Fetch } from "@slashsuite/toggleslash-sdk";
 import { context, trace, type Span } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import {

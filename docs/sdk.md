@@ -1,9 +1,9 @@
 # Server-side SDK (TypeScript)
 
-`packages/sdk` (`@hackcove/toggleslash-sdk`, moon project `sdk`) is the server-side SDK for TypeScript: it keeps
-a copy of one environment's ruleset current and evaluates flags **locally** with `@hackcove/toggleslash-engine`,
+`packages/sdk` (`@slashsuite/toggleslash-sdk`, moon project `sdk`) is the server-side SDK for TypeScript: it keeps
+a copy of one environment's ruleset current and evaluates flags **locally** with `@slashsuite/toggleslash-engine`,
 to [`evaluation.md`](evaluation.md). It needs a **server** key (`ruleset` and `stream` refuse a client key). It
-is published on npm at 0.1.0 by `release.yml`. Code that runs in a browser uses the
+is published on npm at 0.2.0 by `release.yml`. Code that runs in a browser uses the
 [browser SDK](sdk-browser.md) instead, where the server evaluates.
 
 This page is the TypeScript binding of the language-neutral [SDK contract](sdk-contract.md), which says what
@@ -22,11 +22,11 @@ canonical names are:
 | `hooks.afterEvaluation`, `onError` | `hooks.afterEvaluation`, `onError` |
 
 ```sh
-npm install @hackcove/toggleslash-sdk   # it brings @hackcove/toggleslash-engine with it
+npm install @slashsuite/toggleslash-sdk   # it brings @slashsuite/toggleslash-engine with it
 ```
 
 ```ts
-import { createClient } from "@hackcove/toggleslash-sdk";
+import { createClient } from "@slashsuite/toggleslash-sdk";
 
 const client = createClient({ url: "https://flags.example.com", sdkKey: process.env.TOGGLESLASH_SDK_KEY ?? "" });
 await client.ready(); // optional: true once a ruleset has loaded, false if the server could not be reached
@@ -152,7 +152,7 @@ For an environment with secure mode on, the browser SDK must send a signature ov
 application's server (see [`sdk-browser.md`](sdk-browser.md#secure-mode)). `signContext` makes it:
 
 ```ts
-import { signContext } from "@hackcove/toggleslash-sdk";
+import { signContext } from "@slashsuite/toggleslash-sdk";
 
 // TOGGLESLASH_SIGNING_KEY holds the PEM that `toggleslash envs signing-key` printed once.
 const signature = signContext(process.env.TOGGLESLASH_SIGNING_KEY!, { key: user.id });
@@ -160,7 +160,7 @@ const signature = signContext(process.env.TOGGLESLASH_SIGNING_KEY!, { key: user.
 ```
 
 It signs the context's kinds and keys (not its attributes) with ECDSA P-256 and answers 86 base64url characters. It
-needs `node:crypto`, so it is on the main entry only and never on `@hackcove/toggleslash-sdk/shared`, which the browser
+needs `node:crypto`, so it is on the main entry only and never on `@slashsuite/toggleslash-sdk/shared`, which the browser
 SDK imports. Unlike the rest of the SDK it **throws**, on a context that is not valid or a key that is not a P-256
 private key: both are mistakes at the call site. It needs no `Client`.
 

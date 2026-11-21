@@ -31,7 +31,7 @@ function walk(entry: string): Map<string, string[]> {
   return reached;
 }
 
-describe("@hackcove/toggleslash-sdk/shared", () => {
+describe("@slashsuite/toggleslash-sdk/shared", () => {
   const reached = walk(ENTRY);
   const names = [...reached.keys()].map((file) => file.slice(SDK_SRC.length + 1)).toSorted();
 
@@ -53,7 +53,7 @@ describe("@hackcove/toggleslash-sdk/shared", () => {
     const imported = readdirSync(src)
       .filter((file) => file.endsWith(".ts"))
       .flatMap((file) => specifiers(readFileSync(join(src, file), "utf8")))
-      .filter((specifier) => specifier.startsWith("@hackcove/"));
-    expect(new Set(imported)).toEqual(new Set(["@hackcove/toggleslash-sdk/shared"]));
+      .filter((specifier) => specifier.startsWith("@slashsuite/"));
+    expect(new Set(imported)).toEqual(new Set(["@slashsuite/toggleslash-sdk/shared"]));
   });
 });

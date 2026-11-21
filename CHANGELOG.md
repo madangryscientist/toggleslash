@@ -1,11 +1,20 @@
 # Changelog
 
 All notable changes to the six ToggleSlash npm packages are listed here. They ship together at one version
-(`packages/*/package.json`): `@hackcove/toggleslash` (the CLI, `packages/cli`), `@hackcove/toggleslash-engine`
-(`packages/engine`), `@hackcove/toggleslash-sdk` (`packages/sdk`), `@hackcove/toggleslash-sdk-browser`
-(`packages/sdk-browser`), `@hackcove/toggleslash-sdk-otel` (`packages/sdk-otel`) and
-`@hackcove/toggleslash-sdk-openfeature` (`packages/sdk-openfeature`). The format follows
+(`packages/*/package.json`): `@slashsuite/toggleslash` (the CLI, `packages/cli`), `@slashsuite/toggleslash-engine`
+(`packages/engine`), `@slashsuite/toggleslash-sdk` (`packages/sdk`), `@slashsuite/toggleslash-sdk-browser`
+(`packages/sdk-browser`), `@slashsuite/toggleslash-sdk-otel` (`packages/sdk-otel`) and
+`@slashsuite/toggleslash-sdk-openfeature` (`packages/sdk-openfeature`). The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
+
+## 0.2.0 (unreleased)
+
+### Changed
+
+- **Breaking:** Moved all six npm packages from the `@hackcove` scope to `@slashsuite` (`@slashsuite/toggleslash`,
+  `@slashsuite/toggleslash-engine`, `@slashsuite/toggleslash-sdk`, `@slashsuite/toggleslash-sdk-browser`,
+  `@slashsuite/toggleslash-sdk-otel`, and `@slashsuite/toggleslash-sdk-openfeature`). Update package dependencies and
+  imports to the `@slashsuite/*` names; the `0.1.0` releases under `@hackcove/*` stay on npm.
 
 ## 0.1.0 (2026-11-17)
 
