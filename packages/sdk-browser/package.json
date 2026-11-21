@@ -1,6 +1,6 @@
 {
-  "name": "@hackcove/toggleslash-sdk-browser",
-  "version": "0.1.0",
+  "name": "@slashsuite/toggleslash-sdk-browser",
+  "version": "0.2.0",
   "private": true,
   "description": "The ToggleSlash browser SDK: the server evaluates, the browser caches the answer and follows the change signal.",
   "license": "Elastic-2.0",
@@ -9,7 +9,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@hackcove/toggleslash-sdk": "workspace:*"
+    "@slashsuite/toggleslash-sdk": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "1.4.4",

@@ -1,8 +1,8 @@
 name: Release
 
-# Publishes the six ToggleSlash npm packages when a `v*` tag is pushed: `@hackcove/toggleslash` (the CLI,
-# packages/cli), `@hackcove/toggleslash-engine`, `@hackcove/toggleslash-sdk`, `@hackcove/toggleslash-sdk-browser`,
-# `@hackcove/toggleslash-sdk-otel` and `@hackcove/toggleslash-sdk-openfeature`, all at the tag's version. ci.yml's
+# Publishes the six ToggleSlash npm packages when a `v*` tag is pushed: `@slashsuite/toggleslash` (the CLI,
+# packages/cli), `@slashsuite/toggleslash-engine`, `@slashsuite/toggleslash-sdk`, `@slashsuite/toggleslash-sdk-browser`,
+# `@slashsuite/toggleslash-sdk-otel` and `@slashsuite/toggleslash-sdk-openfeature`, all at the tag's version. ci.yml's
 # gate runs first (a reusable workflow call, not a copy), then `bun scripts/pack.ts` builds and packs the six.
 #
 # Each package takes one of two paths, decided by asking npm whether it has the package:
@@ -95,27 +95,27 @@ jobs:
           published=""
           staged=""
           for name in toggleslash-engine toggleslash-sdk toggleslash-sdk-browser toggleslash-sdk-otel toggleslash-sdk-openfeature toggleslash; do
-            if out="$(npm view "@hackcove/$name" versions --json 2>"$RUNNER_TEMP/npm-view.err")"; then
+            if out="$(npm view "@slashsuite/$name" versions --json 2>"$RUNNER_TEMP/npm-view.err")"; then
               kind="$(node -e 'const v = [].concat(JSON.parse(process.argv[1])); console.log(v.some((x) => x !== "0.0.0-stage") ? "on-npm" : "placeholder")' "$out")" || {
-                echo "::error::Could not read npm's versions of @hackcove/$name: $out"
+                echo "::error::Could not read npm's versions of @slashsuite/$name: $out"
                 exit 1
               }
             elif grep -q E404 <<<"$out"; then
               kind="new"
             else
-              echo "::error::Could not ask npm whether @hackcove/$name exists: $out $(cat "$RUNNER_TEMP/npm-view.err")"
+              echo "::error::Could not ask npm whether @slashsuite/$name exists: $out $(cat "$RUNNER_TEMP/npm-view.err")"
               exit 1
             fi
             dir="${name#toggleslash-}"
             if [ "$name" = toggleslash ]; then dir=cli; fi
-            for dependency in $(node -p 'Object.keys(require(process.argv[1]).dependencies ?? {}).filter((d) => d.startsWith("@hackcove/toggleslash")).map((d) => d.slice("@hackcove/".length)).join(" ")' "./packages/$dir/package.json"); do
+            for dependency in $(node -p 'Object.keys(require(process.argv[1]).dependencies ?? {}).filter((d) => d.startsWith("@slashsuite/toggleslash")).map((d) => d.slice("@slashsuite/".length)).join(" ")' "./packages/$dir/package.json"); do
               if [[ " $staged " == *" $dependency "* ]]; then kind="depends on a staged package"; fi
             done
             if [ "$kind" = on-npm ]; then
               published="$published $name"
             else
               staged="$staged $name"
-              echo "@hackcove/$name is staged: $kind"
+              echo "@slashsuite/$name is staged: $kind"
             fi
           done
           echo "published=${published# }" >> "$GITHUB_OUTPUT"
@@ -132,11 +132,11 @@ jobs:
         run: |
           version="${TAG#v}"
           for name in $PUBLISHED; do
-            if [ "$(npm view "@hackcove/$name@$version" version 2>/dev/null)" = "$version" ]; then
-              echo "@hackcove/$name@$version is already on npm; skipped"
+            if [ "$(npm view "@slashsuite/$name@$version" version 2>/dev/null)" = "$version" ]; then
+              echo "@slashsuite/$name@$version is already on npm; skipped"
               continue
             fi
-            npm publish "$RUNNER_TEMP/pack/hackcove-$name-$version.tgz" --provenance --access public
+            npm publish "$RUNNER_TEMP/pack/slashsuite-$name-$version.tgz" --provenance --access public
           done
       # Staged for the maintainer's approval, in dependency order. This is the only step that sees NPM_TOKEN; it is
       # written to a private userconfig outside the checkout that the step removes on exit. npm refuses to stage a
@@ -150,7 +150,7 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [ -z "$NPM_TOKEN" ]; then
-            echo "::error::@hackcove/{${STAGED// /,}} are to be staged, which needs the NPM_TOKEN secret on the npm environment."
+            echo "::error::@slashsuite/{${STAGED// /,}} are to be staged, which needs the NPM_TOKEN secret on the npm environment."
             exit 1
           fi
           version="${TAG#v}"
@@ -158,19 +158,19 @@ jobs:
           trap 'rm -f "$NPM_CONFIG_USERCONFIG"' EXIT
           (umask 077 && printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > "$NPM_CONFIG_USERCONFIG")
           for name in $STAGED; do
-            if [ "$(npm view "@hackcove/$name@$version" version 2>/dev/null)" = "$version" ]; then
-              echo "@hackcove/$name@$version is already on npm; skipped"
+            if [ "$(npm view "@slashsuite/$name@$version" version 2>/dev/null)" = "$version" ]; then
+              echo "@slashsuite/$name@$version is already on npm; skipped"
               continue
             fi
-            waiting="$(npm stage list "@hackcove/$name" --json)"
+            waiting="$(npm stage list "@slashsuite/$name" --json)"
             already="$(node -e 'const v = process.argv[2]; console.log(JSON.parse(process.argv[1]).some((i) => i.version === v && !/reject/i.test(String(i.status))))' "$waiting" "$version")" || {
-              echo "::error::Could not read the staged versions of @hackcove/$name: $waiting"
+              echo "::error::Could not read the staged versions of @slashsuite/$name: $waiting"
               exit 1
             }
             if [ "$already" = true ]; then
-              echo "@hackcove/$name@$version is already staged and waits for approval on npmjs.com; skipped"
+              echo "@slashsuite/$name@$version is already staged and waits for approval on npmjs.com; skipped"
               continue
             fi
-            npm stage publish "$RUNNER_TEMP/pack/hackcove-$name-$version.tgz" --provenance --access public
+            npm stage publish "$RUNNER_TEMP/pack/slashsuite-$name-$version.tgz" --provenance --access public
           done
           echo "Staged versions wait for the maintainer's 2FA approval under Staged Packages on npmjs.com."

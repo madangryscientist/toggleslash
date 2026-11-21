@@ -1,17 +1,17 @@
-# @hackcove/toggleslash-engine
+# @slashsuite/toggleslash-engine
 
 The ToggleSlash flag evaluator for TypeScript: pure functions over a ruleset, with no network, no clock and no
 dependencies. It implements [`docs/evaluation.md`](https://github.com/slashsuite/toggleslash/blob/main/docs/evaluation.md), and every shared vector in
 `fixtures/evaluation/` runs against it. Most applications want the
-[server SDK](https://github.com/slashsuite/toggleslash/blob/main/docs/sdk.md) (`@hackcove/toggleslash-sdk`), which keeps a ruleset current and calls this for you.
+[server SDK](https://github.com/slashsuite/toggleslash/blob/main/docs/sdk.md) (`@slashsuite/toggleslash-sdk`), which keeps a ruleset current and calls this for you.
 Published on npm by `release.yml`.
 
 ```sh
-npm install @hackcove/toggleslash-engine
+npm install @slashsuite/toggleslash-engine
 ```
 
 ```ts
-import { createRuleset, evaluate } from "@hackcove/toggleslash-engine";
+import { createRuleset, evaluate } from "@slashsuite/toggleslash-engine";
 
 const ruleset = createRuleset({
   flags: [

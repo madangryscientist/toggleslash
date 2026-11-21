@@ -1,5 +1,5 @@
-import { createClient, type Client } from "@hackcove/toggleslash-sdk";
-import { createTracingHooks } from "@hackcove/toggleslash-sdk-otel";
+import { createClient, type Client } from "@slashsuite/toggleslash-sdk";
+import { createTracingHooks } from "@slashsuite/toggleslash-sdk-otel";
 import { context as otelContext, trace } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import {

@@ -18,8 +18,8 @@
   },
   "dependencies": {
     "@hackcove/themes": "^0.3.1",
-    "@hackcove/toggleslash-engine": "workspace:*",
     "@hackcove/ui-react": "^0.11.2",
+    "@slashsuite/toggleslash-engine": "workspace:*",
     "@tailwindcss/vite": "^4.3.5",
     "@tanstack/react-router": "1.170.46",
     "@tanstack/react-start": "1.169.5",

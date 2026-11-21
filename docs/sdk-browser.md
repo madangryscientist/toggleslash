@@ -1,14 +1,14 @@
 # Browser SDK (TypeScript)
 
-`packages/sdk-browser` (`@hackcove/toggleslash-sdk-browser`, moon project `sdk-browser`) is the SDK for code that runs
+`packages/sdk-browser` (`@slashsuite/toggleslash-sdk-browser`, moon project `sdk-browser`) is the SDK for code that runs
 in a browser. **The server evaluates.** The browser never receives a ruleset and never evaluates: it sends its context to
 `POST /sdk/v1/evaluate`, keeps the whole answer in memory, serves it synchronously, and asks again when
 `GET /sdk/v1/changes` says something changed (see [`api.md`](api.md), and section 13 of
 [`launchdarkly-gap-analysis.md`](launchdarkly-gap-analysis.md) for why). It needs a **client** key. It is packaged for npm by
-`release.yml` and published on npm at 0.1.0. The server-side SDK is in [`sdk.md`](sdk.md).
+`release.yml` and published on npm at 0.2.0. The server-side SDK is in [`sdk.md`](sdk.md).
 
 ```ts
-import { createBrowserClient } from "@hackcove/toggleslash-sdk-browser";
+import { createBrowserClient } from "@slashsuite/toggleslash-sdk-browser";
 
 const client = createBrowserClient({
   url: "https://flags.example.com",
@@ -164,7 +164,7 @@ as you rotate, and pages re-identify with fresh signatures. Turning secure mode 
 ## Shared code
 
 The signal parser, the usage reporter, the clock and the HTTP helpers are the server SDK's own modules, exported as
-`@hackcove/toggleslash-sdk/shared`. That entry imports neither the engine, `client.ts` nor `sync.ts`, and
+`@slashsuite/toggleslash-sdk/shared`. That entry imports neither the engine, `client.ts` nor `sync.ts`, and
 `packages/sdk-browser/test/shared-imports.test.ts` fails if it ever does, so a browser bundle never carries an evaluator.
 
 ## Not yet

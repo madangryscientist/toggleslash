@@ -1,4 +1,4 @@
-import type { DetailReason, EvaluationEvent, Hooks } from "@hackcove/toggleslash-sdk";
+import type { DetailReason, EvaluationEvent, Hooks } from "@slashsuite/toggleslash-sdk";
 import { type Attributes, trace } from "@opentelemetry/api";
 
 const EVENT_NAME = "feature_flag.evaluation";

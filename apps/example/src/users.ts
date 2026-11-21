@@ -1,4 +1,4 @@
-import type { SingleContext } from "@hackcove/toggleslash-sdk";
+import type { SingleContext } from "@slashsuite/toggleslash-sdk";
 
 /** The shoppers the page can be viewed as. `plan` is what the `pro-customers` segment looks at. */
 export const USERS: readonly SingleContext[] = [

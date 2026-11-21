@@ -4,7 +4,7 @@ import {
   systemClock,
   UsageReporter,
   withTimeout,
-} from "@hackcove/toggleslash-sdk/shared";
+} from "@slashsuite/toggleslash-sdk/shared";
 import { changedKeys, readAnswer, readSignatureRefusal } from "./answer.ts";
 import { ChangeSignal } from "./signal.ts";
 import { fallbackDetail, sameKind } from "./support.ts";

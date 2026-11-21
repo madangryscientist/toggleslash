@@ -1,6 +1,6 @@
 /**
  * The ToggleSlash server-side SDK: it keeps a copy of the environment's ruleset current and evaluates
- * flags locally with `@hackcove/toggleslash-engine`. See `docs/sdk.md`.
+ * flags locally with `@slashsuite/toggleslash-engine`. See `docs/sdk.md`.
  */
 export {
   type Client,
@@ -16,4 +16,4 @@ export type { Clock } from "./clock.ts";
 export { signContext } from "./sign.ts";
 export type { Fetch } from "./http.ts";
 export type { ClientStatus, StreamState, SyncErrorCode } from "./sync.ts";
-export type { Context, SingleContext } from "@hackcove/toggleslash-engine";
+export type { Context, SingleContext } from "@slashsuite/toggleslash-engine";

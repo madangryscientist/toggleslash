@@ -1,17 +1,17 @@
 # Tracing: the ruleset hash on a trace
 
-`packages/sdk-otel` (`@hackcove/toggleslash-sdk-otel`, moon project `sdk-otel`) is an evaluation hook for the
+`packages/sdk-otel` (`@slashsuite/toggleslash-sdk-otel`, moon project `sdk-otel`) is an evaluation hook for the
 [TypeScript SDK](sdk.md). Each time the SDK evaluates a flag it adds a `feature_flag.evaluation` event to the
 **active OpenTelemetry span**, with the flag's result and the **hash of the ruleset the SDK held**. Later, anyone
 holding a trace can ask the server what the flags were under that hash ([below](#from-a-trace-to-the-flags)).
 
-It is published on npm at 0.1.0 by `release.yml`. It depends on `@opentelemetry/api` only: it bundles no exporter and
+It is published on npm at 0.2.0 by `release.yml`. It depends on `@opentelemetry/api` only: it bundles no exporter and
 starts no tracer provider, so the application owns both. The SDK itself has no OpenTelemetry dependency; it only
 offers [`hooks.afterEvaluation`](sdk.md#hooks).
 
 ```ts
-import { createClient } from "@hackcove/toggleslash-sdk";
-import { createTracingHooks } from "@hackcove/toggleslash-sdk-otel";
+import { createClient } from "@slashsuite/toggleslash-sdk";
+import { createTracingHooks } from "@slashsuite/toggleslash-sdk-otel";
 
 const client = createClient({
   url: "https://flags.example.com",

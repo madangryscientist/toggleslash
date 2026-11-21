@@ -1,4 +1,4 @@
-import { createClient, signContext, type SingleContext } from "@hackcove/toggleslash-sdk";
+import { createClient, signContext, type SingleContext } from "@slashsuite/toggleslash-sdk";
 import { createApp } from "./app.ts";
 import { buildBrowserBundle } from "./bundle.ts";
 

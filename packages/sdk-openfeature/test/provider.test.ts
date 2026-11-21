@@ -4,7 +4,7 @@ import type {
   DetailReason,
   SdkErrorCode,
   VariationDetail,
-} from "@hackcove/toggleslash-sdk";
+} from "@slashsuite/toggleslash-sdk";
 import { ErrorCode, OpenFeature, StandardResolutionReasons } from "@openfeature/server-sdk";
 import { afterEach, describe, expect, test } from "vitest";
 import { ToggleSlashProvider } from "../src/index.ts";

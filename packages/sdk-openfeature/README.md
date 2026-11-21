@@ -1,16 +1,16 @@
-# @hackcove/toggleslash-sdk-openfeature
+# @slashsuite/toggleslash-sdk-openfeature
 
 A server-side [OpenFeature](https://openfeature.dev) provider over the ToggleSlash TypeScript SDK. It is a thin adapter:
 it evaluates nothing itself, makes no network call and caches nothing. Every answer is `client.variationDetail(...)` from
-`@hackcove/toggleslash-sdk`, mapped to OpenFeature's `ResolutionDetails`. Published on npm by `release.yml`.
+`@slashsuite/toggleslash-sdk`, mapped to OpenFeature's `ResolutionDetails`. Published on npm by `release.yml`.
 
 ```sh
-npm install @hackcove/toggleslash-sdk-openfeature @hackcove/toggleslash-sdk @openfeature/server-sdk
+npm install @slashsuite/toggleslash-sdk-openfeature @slashsuite/toggleslash-sdk @openfeature/server-sdk
 ```
 
 ```ts
-import { createClient } from "@hackcove/toggleslash-sdk";
-import { ToggleSlashProvider } from "@hackcove/toggleslash-sdk-openfeature";
+import { createClient } from "@slashsuite/toggleslash-sdk";
+import { ToggleSlashProvider } from "@slashsuite/toggleslash-sdk-openfeature";
 import { OpenFeature } from "@openfeature/server-sdk";
 
 const client = createClient({ url: "https://flags.example.com", sdkKey: process.env.TOGGLESLASH_SDK_KEY! });
@@ -19,7 +19,7 @@ await OpenFeature.setProviderAndWait(new ToggleSlashProvider(client));
 const enabled = await OpenFeature.getClient().getBooleanValue("new-checkout", false, { targetingKey: "user-42" });
 ```
 
-You make the client, with its own options and hooks (so `@hackcove/toggleslash-sdk-otel` tracing keeps working
+You make the client, with its own options and hooks (so `@slashsuite/toggleslash-sdk-otel` tracing keeps working
 underneath). The provider calls `ready()` when OpenFeature initialises it and `close()` when OpenFeature closes it.
 `initialize` never throws: if the first load failed, the SDK keeps retrying and evaluations answer the default with
 `PROVIDER_NOT_READY` until it succeeds.

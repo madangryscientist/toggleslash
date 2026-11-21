@@ -1,16 +1,16 @@
-# @hackcove/toggleslash-sdk
+# @slashsuite/toggleslash-sdk
 
 The ToggleSlash server-side SDK for TypeScript. It keeps a copy of one environment's ruleset current (an ETag poll and
-the server's stream) and evaluates flags locally with `@hackcove/toggleslash-engine`, so `variation` is synchronous,
+the server's stream) and evaluates flags locally with `@slashsuite/toggleslash-engine`, so `variation` is synchronous,
 never throws and never waits on the network. It needs a server key; code in a browser uses
-`@hackcove/toggleslash-sdk-browser`. Published on npm by `release.yml`.
+`@slashsuite/toggleslash-sdk-browser`. Published on npm by `release.yml`.
 
 ```sh
-npm install @hackcove/toggleslash-sdk
+npm install @slashsuite/toggleslash-sdk
 ```
 
 ```ts
-import { createClient } from "@hackcove/toggleslash-sdk";
+import { createClient } from "@slashsuite/toggleslash-sdk";
 
 const client = createClient({ url: "https://flags.example.com", sdkKey: process.env.TOGGLESLASH_SDK_KEY ?? "" });
 await client.ready(); // optional: true once a ruleset has loaded, false if the server could not be reached

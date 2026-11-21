@@ -1,13 +1,13 @@
 {
-  "name": "@hackcove/toggleslash-example",
+  "name": "@slashsuite/toggleslash-example",
   "version": "0.0.0",
   "private": true,
   "description": "A fictional shop checkout that uses ToggleSlash through the TypeScript SDK: the example client app.",
   "license": "Elastic-2.0",
   "type": "module",
   "dependencies": {
-    "@hackcove/toggleslash-sdk": "workspace:*",
-    "@hackcove/toggleslash-sdk-browser": "workspace:*"
+    "@slashsuite/toggleslash-sdk": "workspace:*",
+    "@slashsuite/toggleslash-sdk-browser": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "1.4.4",

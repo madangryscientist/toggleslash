@@ -1,4 +1,4 @@
-import { createClient, type Client, type Fetch } from "@hackcove/toggleslash-sdk";
+import { createClient, type Client, type Fetch } from "@slashsuite/toggleslash-sdk";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
